@@ -493,18 +493,26 @@ class SupabaseService extends ChangeNotifier {
     }
 
     try {
-      final profileRow = await client
-          .from('profiles')
-          .select(
-            'id,email,display_name,username,locale,onboarding_completed,avatar_path,pending_email,sex,cycle_tracking_enabled,cycle_data_sync_enabled',
-          )
-          .eq('id', user.id)
-          .maybeSingle();
-      final roleRow = await client
-          .from('user_roles')
-          .select('role')
-          .eq('user_id', user.id)
-          .maybeSingle();
+      final results = await Future.wait<Object?>([
+        client
+            .from('profiles')
+            .select(
+              'id,display_name,username,preferred_language,onboarding_completed,avatar_path,sex,time_zone_mode,fixed_time_zone_id,clock_format',
+            )
+            .eq('id', user.id)
+            .maybeSingle(),
+        client
+            .from('user_settings')
+            .select('language,cycle_sync_enabled')
+            .eq('user_id', user.id)
+            .maybeSingle(),
+      ]);
+      final profileRow = results[0] is Map
+          ? Map<String, dynamic>.from(results[0] as Map)
+          : null;
+      final settingsRow = results[1] is Map
+          ? Map<String, dynamic>.from(results[1] as Map)
+          : null;
 
       final avatarPath = profileRow?['avatar_path']?.toString();
       String? avatarSignedUrl;
@@ -520,19 +528,22 @@ class SupabaseService extends ChangeNotifier {
 
       _profile = AppUserProfile(
         id: user.id,
-        email: profileRow?['email']?.toString() ?? user.email ?? '',
+        email: user.email ?? '',
         displayName: profileRow?['display_name']?.toString() ?? '',
         username: profileRow?['username']?.toString(),
-        locale: profileRow?['locale']?.toString() ?? 'en',
-        role: AppRoleX.fromStorage(roleRow?['role']?.toString()),
+        locale:
+            profileRow?['preferred_language']?.toString() ??
+            settingsRow?['language']?.toString() ??
+            'en',
+        role: AppRole.user,
         onboardingCompleted:
             profileRow?['onboarding_completed'] as bool? ?? false,
         sex: UserSexX.fromStorage(profileRow?['sex']?.toString()),
         cycleTrackingEnabled:
-            profileRow?['cycle_tracking_enabled'] as bool? ?? false,
+            settingsRow?['cycle_sync_enabled'] as bool? ?? false,
         cycleDataSyncEnabled:
-            profileRow?['cycle_data_sync_enabled'] as bool? ?? false,
-        pendingEmail: profileRow?['pending_email']?.toString(),
+            settingsRow?['cycle_sync_enabled'] as bool? ?? false,
+        pendingEmail: null,
         avatarPath: avatarPath,
         avatarSignedUrl: avatarSignedUrl,
       );
@@ -562,9 +573,6 @@ class SupabaseService extends ChangeNotifier {
     }
     try {
       final result = await client.rpc('bootstrap_current_user');
-      if (installOwnerTemplates) {
-        await installOwnerTemplateIfNeeded();
-      }
       if (result is Map<String, dynamic>) {
         return result;
       }
@@ -575,8 +583,7 @@ class SupabaseService extends ChangeNotifier {
       if (strict) {
         rethrow;
       }
-      // Older databases may not have the login bootstrap yet. The app keeps
-      // running, and owner diagnostics will report the missing function.
+      // Older or unreachable databases should not block the cached app shell.
     }
     return null;
   }
@@ -687,9 +694,6 @@ class SupabaseService extends ChangeNotifier {
       );
       notifyListeners();
       unawaited(_refreshWorkspaceInBackground());
-      if (remoteState['role'] == 'owner') {
-        unawaited(_repairOwnerTemplateInBackground());
-      }
     } on Object catch (error) {
       _startupState = AppStartupState(
         status: AppStartupStatus.recoverableError,
@@ -706,21 +710,6 @@ class SupabaseService extends ChangeNotifier {
     required Object? bootstrapError,
   }) async {
     try {
-      final rawState = await _withTimeout(
-        client.rpc('get_my_startup_state'),
-        _startupOperationTimeout,
-        'We could not load your account status in time.',
-      );
-      return rawState is Map<String, dynamic>
-          ? rawState
-          : rawState is Map
-          ? Map<String, dynamic>.from(rawState)
-          : <String, dynamic>{};
-    } on Object catch (error) {
-      if (kDebugMode) {
-        debugPrint('STARTUP STATE RPC FAILED: $error');
-      }
-
       final results = await Future.wait<Object?>([
         _withTimeout(
           client
@@ -733,22 +722,41 @@ class SupabaseService extends ChangeNotifier {
         ),
         _withTimeout(
           client
-              .from('user_roles')
-              .select('role')
+              .from('roadmaps')
+              .select('id')
               .eq('user_id', user.id)
-              .maybeSingle(),
+              .isFilter('deleted_at', null),
           _startupOperationTimeout,
-          'We could not load your account role in time.',
+          'We could not load your roadmaps in time.',
+        ),
+        _withTimeout(
+          client
+              .from('roadmap_phases')
+              .select('id')
+              .eq('user_id', user.id)
+              .isFilter('deleted_at', null),
+          _startupOperationTimeout,
+          'We could not load your roadmap phases in time.',
+        ),
+        _withTimeout(
+          client
+              .from('tasks')
+              .select('id')
+              .eq('user_id', user.id)
+              .isFilter('deleted_at', null),
+          _startupOperationTimeout,
+          'We could not load your tasks in time.',
+        ),
+        _withTimeout(
+          client.from('task_domains').select('id').eq('user_id', user.id),
+          _startupOperationTimeout,
+          'We could not load your task domains in time.',
         ),
       ]);
 
       final profileRow = results[0] is Map
           ? Map<String, dynamic>.from(results[0] as Map)
           : null;
-      final roleRow = results[1] is Map
-          ? Map<String, dynamic>.from(results[1] as Map)
-          : null;
-
       if (profileRow == null) {
         if (bootstrapError != null) {
           throw bootstrapError;
@@ -759,25 +767,23 @@ class SupabaseService extends ChangeNotifier {
       return {
         'user_id': user.id,
         'email': user.email?.toLowerCase(),
-        'role': roleRow?['role']?.toString() ?? 'user',
+        'role': 'user',
         'onboarding_completed': profileRow['onboarding_completed'] == true,
-        'roadmap_count': null,
-        'roadmap_phase_count': null,
+        'roadmap_count': _listLength(results[1]),
+        'roadmap_phase_count': _listLength(results[2]),
         'roadmap_item_count': null,
-        'task_count': null,
+        'task_count': _listLength(results[3]),
         'recurring_template_count': null,
-        'startup_state_source': 'profile_fallback',
-        'startup_state_error': error.toString(),
+        'task_domain_count': _listLength(results[4]),
+        'startup_state_source': 'clean_baseline',
       };
-    }
-  }
+    } on Object catch (error) {
+      if (kDebugMode) {
+        debugPrint('STARTUP STATE LOAD FAILED: $error');
+      }
 
-  Future<void> _repairOwnerTemplateInBackground() async {
-    try {
-      await installOwnerTemplateIfNeeded();
-    } on Object {
-      // Startup must stay responsive; diagnostics can surface template repair
-      // failures later.
+      if (bootstrapError != null) throw bootstrapError;
+      rethrow;
     }
   }
 
@@ -809,7 +815,7 @@ class SupabaseService extends ChangeNotifier {
     final userId = user.id;
     final results = await Future.wait<Object?>([
       client.from('profiles').select().eq('id', userId).single(),
-      client.from('user_roles').select().eq('user_id', userId).single(),
+      client.from('user_settings').select().eq('user_id', userId).maybeSingle(),
       client
           .from('roadmaps')
           .select()
@@ -821,20 +827,19 @@ class SupabaseService extends ChangeNotifier {
           .select()
           .eq('user_id', userId)
           .isFilter('deleted_at', null)
-          .order('phase_number'),
+          .order('phase_order'),
       client
-          .from('roadmap_items')
+          .from('roadmap_milestones')
           .select()
           .eq('user_id', userId)
           .isFilter('deleted_at', null)
-          .order('planned_start', nullsFirst: false),
+          .order('created_at'),
       client
           .from('tasks')
           .select()
           .eq('user_id', userId)
-          .eq('is_recurring_template', false)
           .isFilter('deleted_at', null)
-          .order('scheduled_start_at', nullsFirst: false)
+          .order('planned_start_at_utc', nullsFirst: false)
           .limit(1000),
     ]);
 
@@ -845,10 +850,10 @@ class SupabaseService extends ChangeNotifier {
     _lastFullRemoteRefreshAt = DateTime.now();
     final snapshot = <String, dynamic>{
       'profile_loaded': results[0] != null,
-      'role_loaded': results[1] != null,
+      'settings_loaded': results[1] != null,
       'remote_roadmap_count': roadmaps.length,
       'remote_roadmap_phase_count': phases.length,
-      'remote_roadmap_item_count': items.length,
+      'remote_roadmap_milestone_count': items.length,
       'remote_task_count': tasks.length,
       'last_successful_full_refresh': _lastFullRemoteRefreshAt!
           .toIso8601String(),
@@ -868,6 +873,8 @@ class SupabaseService extends ChangeNotifier {
       onTimeout: () => throw TimeoutException(message, timeout),
     );
   }
+
+  int _listLength(Object? value) => value is List ? value.length : 0;
 
   void markSignedOutFromAuthEvent() {
     _profile = null;
@@ -966,13 +973,16 @@ class SupabaseService extends ChangeNotifier {
       if (clearSex || sex != null) {
         updates['sex'] = clearSex ? null : sex!.storageValue;
       }
-      if (cycleTrackingEnabled != null) {
-        updates['cycle_tracking_enabled'] = cycleTrackingEnabled;
-      }
-      if (cycleDataSyncEnabled != null) {
-        updates['cycle_data_sync_enabled'] = cycleDataSyncEnabled;
-      }
       await client.from('profiles').update(updates).eq('id', user.id);
+      if (cycleTrackingEnabled != null || cycleDataSyncEnabled != null) {
+        final cycleSyncEnabled =
+            cycleDataSyncEnabled ?? cycleTrackingEnabled ?? false;
+        await client.from('user_settings').upsert({
+          'user_id': user.id,
+          'cycle_sync_enabled': cycleSyncEnabled,
+          'updated_at': DateTime.now().toUtc().toIso8601String(),
+        }, onConflict: 'user_id');
+      }
       await client.auth.updateUser(
         UserAttributes(data: {'full_name': cleanName}),
       );
@@ -1015,13 +1025,6 @@ class SupabaseService extends ChangeNotifier {
         UserAttributes(email: cleanEmail),
         emailRedirectTo: AppBrand.authCallbackUri,
       );
-      await client
-          .from('profiles')
-          .update({
-            'pending_email': cleanEmail,
-            'email_change_requested_at': DateTime.now().toIso8601String(),
-          })
-          .eq('id', user.id);
       await refreshProfile();
       notifyListeners();
       return null;
@@ -1122,17 +1125,7 @@ class SupabaseService extends ChangeNotifier {
   }
 
   Future<void> installOwnerTemplateIfNeeded() async {
-    final client = clientOrNull;
-    if (client == null) {
-      return;
-    }
-    try {
-      await client.rpc('install_owner_template_if_needed');
-      await client.rpc('install_owner_daily_schedule_if_needed');
-    } on Object {
-      // Backend diagnostics will surface this. Sign-in must not fail just
-      // because private template installation is temporarily unavailable.
-    }
+    return;
   }
 
   Future<AccountExportResult?> exportMyData() async {

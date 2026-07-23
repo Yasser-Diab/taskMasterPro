@@ -19,6 +19,7 @@ import '../core/time/time_zone_service.dart';
 import '../core/theme/app_theme.dart';
 import '../core/widgets/app_notifications.dart';
 import '../features/auth/presentation/auth_gate.dart';
+import '../features/tasks/data/task_local_store.dart';
 import 'app_services.dart';
 
 class TaskMasterApp extends StatefulWidget {
@@ -54,7 +55,8 @@ class _TaskMasterAppState extends State<TaskMasterApp>
   late AppConfig _config;
   RealtimeChannel? _settingsChannel;
   String? _settingsUserId;
-  late final String _settingsDeviceId;
+  String? _settingsDeviceId;
+  final TaskLocalStore _settingsLocalStore = TaskLocalStore();
   bool _loadingRemoteSettings = false;
   bool _applyingRemoteSettings = false;
   Timer? _settingsRefreshDebounce;
@@ -64,8 +66,6 @@ class _TaskMasterAppState extends State<TaskMasterApp>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _config = widget.initialConfig;
-    _settingsDeviceId =
-        '${Platform.operatingSystem}:${Platform.localHostname}:settings';
     widget.timeZoneService.configure(_config, locale: _config.locale);
     widget.supabaseService.addListener(_handleSupabaseStateChanged);
     unawaited(_handleSupabaseStateChanged());
@@ -85,10 +85,8 @@ class _TaskMasterAppState extends State<TaskMasterApp>
     if (state == AppLifecycleState.resumed) {
       unawaited(
         widget.timeZoneService.refreshDeviceZone().then(
-          (_) => widget.timeZoneService.configure(
-            _config,
-            locale: _config.locale,
-          ),
+          (_) =>
+              widget.timeZoneService.configure(_config, locale: _config.locale),
         ),
       );
     }
@@ -136,22 +134,22 @@ class _TaskMasterAppState extends State<TaskMasterApp>
     if (client == null || user == null) return;
     if (_settingsChannel != null && _settingsUserId == user.id) return;
     await _removeSettingsSubscription();
+    final deviceId = await _ensureRemoteDeviceRow(client: client, user: user);
+    if (deviceId == null) return;
     _settingsUserId = user.id;
-    final channel = client.channel('taskmaster-settings-${user.id}');
+    final channel = client.channel(
+      'taskmaster:user:${user.id}:runtime',
+      opts: const RealtimeChannelConfig(private: true),
+    );
     _settingsChannel = channel
-        .onPostgresChanges(
-          event: PostgresChangeEvent.insert,
-          schema: 'public',
-          table: 'sync_events',
-          filter: PostgresChangeFilter(
-            type: PostgresChangeFilterType.eq,
-            column: 'user_id',
-            value: user.id,
-          ),
+        .onBroadcast(
+          event: 'settings_changed',
           callback: (payload) {
-            final record = payload.newRecord;
-            if (record['entity_type']?.toString() != 'settings') return;
-            if (record['device_id']?.toString() == _settingsDeviceId) return;
+            final body = _jsonMap(payload['payload']);
+            final sourceDeviceId =
+                body['device_id']?.toString() ??
+                payload['device_id']?.toString();
+            if (sourceDeviceId == deviceId) return;
             _settingsRefreshDebounce?.cancel();
             _settingsRefreshDebounce = Timer(
               const Duration(milliseconds: 350),
@@ -181,25 +179,32 @@ class _TaskMasterAppState extends State<TaskMasterApp>
     if (client == null || user == null) return;
     _loadingRemoteSettings = true;
     try {
-      final common = await client
-          .from('common_settings')
-          .select()
-          .eq('user_id', user.id)
-          .maybeSingle();
-      Map<String, dynamic>? platform;
-      final platformTable = _platformSettingsTable();
-      if (platformTable != null) {
-        platform = await client
-            .from(platformTable)
+      final deviceId = await _ensureRemoteDeviceRow(client: client, user: user);
+      if (deviceId == null) return;
+      final results = await Future.wait<Object?>([
+        client
+            .from('user_settings')
             .select()
             .eq('user_id', user.id)
-            .maybeSingle();
-      }
-      if (common == null && platform == null) return;
+            .maybeSingle(),
+        client
+            .from('device_settings')
+            .select()
+            .eq('user_id', user.id)
+            .eq('device_id', deviceId)
+            .maybeSingle(),
+      ]);
+      final userSettings = results[0] is Map
+          ? Map<String, dynamic>.from(results[0] as Map)
+          : null;
+      final deviceSettings = results[1] is Map
+          ? Map<String, dynamic>.from(results[1] as Map)
+          : null;
+      if (userSettings == null && deviceSettings == null) return;
       final next = _configWithRemoteSettings(
         _config,
-        common == null ? null : Map<String, dynamic>.from(common),
-        platform,
+        userSettings,
+        deviceSettings,
       );
       if (_settingsSignature(next) == _settingsSignature(_config)) return;
       _applyingRemoteSettings = true;
@@ -224,29 +229,21 @@ class _TaskMasterAppState extends State<TaskMasterApp>
     final user = widget.supabaseService.currentUser;
     if (client == null || user == null) return;
     try {
-      await client.from('common_settings').upsert({
+      final deviceId = await _ensureRemoteDeviceRow(client: client, user: user);
+      if (deviceId == null) return;
+      await client.from('user_settings').upsert({
         'user_id': user.id,
-        'updated_by_device': _settingsDeviceId,
         ..._commonSettingsRow(config),
       }, onConflict: 'user_id');
-      final platformTable = _platformSettingsTable();
       final platformRow = _platformSettingsRow(config);
-      if (platformTable != null && platformRow.isNotEmpty) {
-        await client.from(platformTable).upsert({
+      if (platformRow.isNotEmpty) {
+        await client.from('device_settings').upsert({
           'user_id': user.id,
-          'updated_by_device': _settingsDeviceId,
+          'device_id': deviceId,
           ...platformRow,
-        }, onConflict: 'user_id');
+        }, onConflict: 'user_id,device_id');
       }
-      await client.from('sync_events').insert({
-        'user_id': user.id,
-        'entity_type': 'settings',
-        'entity_id': user.id,
-        'event_type': 'settings_changed',
-        'device_id': _settingsDeviceId,
-        'payload': {'platform': Platform.operatingSystem},
-        'occurred_at': DateTime.now().toUtc().toIso8601String(),
-      });
+      await _broadcastSettingsChanged(deviceId);
     } on Object {
       // Local settings stay authoritative until the next explicit save.
     }
@@ -257,26 +254,60 @@ class _TaskMasterAppState extends State<TaskMasterApp>
     final user = widget.supabaseService.currentUser;
     if (client == null || user == null) return;
     try {
-      await client.from('user_time_zone_settings').upsert({
+      final row = {
+        'time_zone_mode': config.timeZoneMode == 'fixed' ? 'fixed' : 'device',
+        'fixed_time_zone_id': config.fixedTimeZoneId,
+        'updated_at': DateTime.now().toUtc().toIso8601String(),
+      };
+      await client.from('profiles').update(row).eq('id', user.id);
+      await client.from('user_settings').upsert({
         'user_id': user.id,
-        'mode': config.timeZoneMode,
-        'home_time_zone_id': config.homeTimeZoneId,
-        'current_time_zone_id': widget.timeZoneService.effectiveZoneId(config),
-        'travel_behavior': config.travelTimeZoneBehavior,
-        'ask_before_adjusting': config.askBeforeAdjustingTimeZone,
-        'keep_home_while_travelling': config.keepHomeTimeZoneWhileTravelling,
-        'last_detected_time_zone_id': widget.timeZoneService.deviceZoneId,
-        'last_time_zone_change_at': DateTime.now().toUtc().toIso8601String(),
+        ...row,
       }, onConflict: 'user_id');
     } on Object {
       // The device-local settings remain authoritative until sync retries.
     }
   }
 
-  String? _platformSettingsTable() {
-    if (Platform.isAndroid) return 'android_settings';
-    if (Platform.isWindows) return 'windows_settings';
-    return null;
+  Future<String?> _ensureRemoteDeviceRow({
+    required SupabaseClient client,
+    required User user,
+  }) async {
+    try {
+      final deviceId =
+          _settingsDeviceId ?? await _settingsLocalStore.loadDeviceId();
+      _settingsDeviceId = deviceId;
+      await client.from('devices').upsert({
+        'id': deviceId,
+        'user_id': user.id,
+        'device_name': Platform.localHostname,
+        'platform': _settingsPlatform,
+        'platform_version': Platform.operatingSystemVersion,
+        'app_version': '',
+        'build_number': '',
+        'last_seen_at': DateTime.now().toUtc().toIso8601String(),
+        'notification_enabled': _config.notificationSounds,
+      }, onConflict: 'id');
+      return deviceId;
+    } on Object {
+      return null;
+    }
+  }
+
+  Future<void> _broadcastSettingsChanged(String deviceId) async {
+    try {
+      await _settingsChannel?.sendBroadcastMessage(
+        event: 'settings_changed',
+        payload: {'device_id': deviceId, 'platform': _settingsPlatform},
+      );
+    } on Object {
+      // Settings are already saved remotely; realtime is an optimization.
+    }
+  }
+
+  String get _settingsPlatform {
+    if (Platform.isAndroid) return 'android';
+    return 'windows';
   }
 
   Map<String, Object?> _commonSettingsRow(AppConfig config) {
@@ -284,93 +315,40 @@ class _TaskMasterAppState extends State<TaskMasterApp>
       'language': config.locale.languageCode,
       'theme': config.themeChoice.storageValue,
       'coaching_intensity': config.coachingIntensity,
+      'focus_duration_seconds': 1500,
+      'short_break_duration_seconds': 300,
+      'long_break_duration_seconds': 900,
+      'long_break_after_focus_count': 4,
+      'auto_start_break': false,
+      'auto_start_focus': false,
+      'ask_break_activity': config.askBreakActivityReview,
+      'idle_threshold_seconds': 30,
+      'default_search_engine': _cleanSearchEngine(config.defaultSearchEngine),
+      'browser_sync_enabled': config.syncBrowserTabsAndUrls,
+      'bookmark_sync_enabled': true,
+      'health_sync_enabled': !config.healthDataLocalOnly,
+      'cycle_sync_enabled':
+          widget.supabaseService.profile?.cycleDataSyncEnabled ?? false,
       'time_zone_mode': config.timeZoneMode,
       'fixed_time_zone_id': config.fixedTimeZoneId,
-      'home_time_zone_id': config.homeTimeZoneId,
-      'travel_time_zone_behavior': config.travelTimeZoneBehavior,
-      'quiet_hours_start': config.quietHoursStart,
-      'quiet_hours_end': config.quietHoursEnd,
-      'browser_preferences': {
-        'save_cookies_and_sessions': config.saveCookiesAndSessions,
-        'sync_browser_tabs_and_urls': config.syncBrowserTabsAndUrls,
-        'save_website_passwords': config.saveWebsitePasswords,
-        'password_autofill': config.passwordAutofill,
-        'form_autofill': config.formAutofill,
-      },
-      'search_engine': config.defaultSearchEngine,
-      'custom_search_url': config.customSearchUrl,
-      'activity_tracking_preferences': {
-        'track_browser_activity': config.trackBrowserActivity,
-        'track_full_urls': config.trackFullUrls,
-        'track_page_titles': config.trackPageTitles,
-        'track_search_queries': config.trackSearchQueries,
-        'track_external_applications': config.trackExternalApplications,
-        'pause_tracking_in_private_mode': config.pauseTrackingInPrivateMode,
-        'excluded_domains': config.excludedActivityDomains,
-        'excluded_applications': config.excludedActivityApplications,
-      },
-      'health_sync_preferences': {
-        'keep_data_local': config.healthDataLocalOnly,
-      },
-      'password_manager_preferences': {
-        'save_website_passwords': config.saveWebsitePasswords,
-        'password_autofill': config.passwordAutofill,
-      },
-      'privacy_options': {
-        'remember_session': config.rememberSession,
-        'reduced_motion': config.reducedMotion,
-        'high_contrast': config.highContrast,
-        'ui_click_sounds': config.uiClickSounds,
-        'ui_click_volume': config.uiClickVolume,
-        'notification_sounds': config.notificationSounds,
-        'pomodoro_sounds': config.pomodoroSounds,
-        'completion_sounds': config.completionSounds,
-        'error_sounds': config.errorSounds,
-        'haptic_feedback': config.hapticFeedback,
-        'ask_break_activity_review': config.askBreakActivityReview,
-        'auto_credit_trusted_break_activity':
-            config.autoCreditTrustedBreakActivity,
-        'wake_up_time': config.wakeUpTime,
-        'bedtime': config.bedtime,
-        'work_start_time': config.workStartTime,
-        'work_end_time': config.workEndTime,
-        'workdays': config.workdays,
-        'lunch_duration_minutes': config.lunchDurationMinutes,
-        'commute_to_work_minutes': config.commuteToWorkMinutes,
-        'commute_home_minutes': config.commuteHomeMinutes,
-        'max_daily_study_minutes': config.maxDailyStudyMinutes,
-        'max_weekly_study_minutes': config.maxWeeklyStudyMinutes,
-        'weekly_review_time': config.weeklyReviewTime,
-        'ask_before_adjusting_time_zone': config.askBeforeAdjustingTimeZone,
-        'keep_home_time_zone_while_travelling':
-            config.keepHomeTimeZoneWhileTravelling,
-      },
+      'clock_format': 'system',
+      'quiet_hours_start_minutes': _clockToMinutes(config.quietHoursStart),
+      'quiet_hours_end_minutes': _clockToMinutes(config.quietHoursEnd),
     };
   }
 
   Map<String, Object?> _platformSettingsRow(AppConfig config) {
-    if (Platform.isAndroid) {
-      return {
-        'foreground_timer_service': config.androidForegroundTimerService,
-        'exact_alarm_guidance': config.androidExactAlarmGuidance,
-        'battery_optimization_guidance':
-            config.androidBatteryOptimizationGuidance,
-        'background_health_access': false,
-      };
-    }
-    if (Platform.isWindows) {
-      return {
-        'start_with_windows': config.startWithWindows,
-        'start_minimized': config.startMinimized,
-        'minimize_to_tray': config.minimizeToTray,
-        'continue_timers_after_close': config.continueTimersAfterClose,
-        'resume_after_windows_sign_in': config.resumeAfterWindowsSignIn,
-        'allow_wake_timers': config.allowWakeTimers,
-        'run_reminder_service_in_background':
-            config.runReminderServiceInBackground,
-      };
-    }
-    return const {};
+    return {
+      'start_with_windows': Platform.isWindows && config.startWithWindows,
+      'start_minimized': Platform.isWindows && config.startMinimized,
+      'keep_running_in_tray': config.minimizeToTray,
+      'notify_on_device': config.notificationSounds,
+      'health_background_reading':
+          Platform.isAndroid && !config.healthDataLocalOnly,
+      'widget_enabled':
+          Platform.isAndroid && config.androidForegroundTimerService,
+      'window_maximized': config.restoreWindowMaximized,
+    };
   }
 
   AppConfig _configWithRemoteSettings(
@@ -378,11 +356,9 @@ class _TaskMasterAppState extends State<TaskMasterApp>
     Map<String, dynamic>? common,
     Map<String, dynamic>? platform,
   ) {
-    final browser = _jsonMap(common?['browser_preferences']);
-    final activity = _jsonMap(common?['activity_tracking_preferences']);
-    final health = _jsonMap(common?['health_sync_preferences']);
-    final privacy = _jsonMap(common?['privacy_options']);
     final language = common?['language']?.toString();
+    final quietStart = _minutesToClock(common?['quiet_hours_start_minutes']);
+    final quietEnd = _minutesToClock(common?['quiet_hours_end_minutes']);
     return base.copyWith(
       locale: language == null ? null : Locale(_normalizeLanguage(language)),
       themeChoice: common?['theme'] == null
@@ -392,144 +368,25 @@ class _TaskMasterAppState extends State<TaskMasterApp>
           common?['coaching_intensity']?.toString() ?? base.coachingIntensity,
       timeZoneMode: common?['time_zone_mode']?.toString(),
       fixedTimeZoneId: common?['fixed_time_zone_id']?.toString(),
-      homeTimeZoneId: common?['home_time_zone_id']?.toString(),
-      travelTimeZoneBehavior: common?['travel_time_zone_behavior']?.toString(),
-      quietHoursStart: common?['quiet_hours_start']?.toString(),
-      quietHoursEnd: common?['quiet_hours_end']?.toString(),
-      saveCookiesAndSessions: _boolSetting(
-        browser['save_cookies_and_sessions'],
-        base.saveCookiesAndSessions,
-      ),
+      quietHoursStart: quietStart,
+      quietHoursEnd: quietEnd,
       syncBrowserTabsAndUrls: _boolSetting(
-        browser['sync_browser_tabs_and_urls'],
+        common?['browser_sync_enabled'],
         base.syncBrowserTabsAndUrls,
       ),
-      saveWebsitePasswords: _boolSetting(
-        browser['save_website_passwords'],
-        base.saveWebsitePasswords,
-      ),
-      passwordAutofill: _boolSetting(
-        browser['password_autofill'],
-        base.passwordAutofill,
-      ),
-      formAutofill: _boolSetting(browser['form_autofill'], base.formAutofill),
       defaultSearchEngine:
-          common?['search_engine']?.toString() ?? base.defaultSearchEngine,
-      customSearchUrl:
-          common?['custom_search_url']?.toString() ?? base.customSearchUrl,
-      trackBrowserActivity: _boolSetting(
-        activity['track_browser_activity'],
-        base.trackBrowserActivity,
-      ),
-      trackFullUrls: _boolSetting(
-        activity['track_full_urls'],
-        base.trackFullUrls,
-      ),
-      trackPageTitles: _boolSetting(
-        activity['track_page_titles'],
-        base.trackPageTitles,
-      ),
-      trackSearchQueries: _boolSetting(
-        activity['track_search_queries'],
-        base.trackSearchQueries,
-      ),
-      trackExternalApplications: _boolSetting(
-        activity['track_external_applications'],
-        base.trackExternalApplications,
-      ),
-      pauseTrackingInPrivateMode: _boolSetting(
-        activity['pause_tracking_in_private_mode'],
-        base.pauseTrackingInPrivateMode,
-      ),
-      excludedActivityDomains: _stringListSetting(
-        activity['excluded_domains'],
-        base.excludedActivityDomains,
-      ),
-      excludedActivityApplications: _stringListSetting(
-        activity['excluded_applications'],
-        base.excludedActivityApplications,
-      ),
-      healthDataLocalOnly: _boolSetting(
-        health['keep_data_local'],
-        base.healthDataLocalOnly,
-      ),
-      rememberSession: _boolSetting(
-        privacy['remember_session'],
-        base.rememberSession,
-      ),
-      reducedMotion: _boolSetting(
-        privacy['reduced_motion'],
-        base.reducedMotion,
-      ),
-      highContrast: _boolSetting(privacy['high_contrast'], base.highContrast),
-      uiClickSounds: _boolSetting(
-        privacy['ui_click_sounds'],
-        base.uiClickSounds,
-      ),
-      uiClickVolume: _doubleSetting(
-        privacy['ui_click_volume'],
-        base.uiClickVolume,
-      ),
+          common?['default_search_engine']?.toString() ??
+          base.defaultSearchEngine,
+      healthDataLocalOnly: common?['health_sync_enabled'] is bool
+          ? !(common!['health_sync_enabled'] as bool)
+          : base.healthDataLocalOnly,
       notificationSounds: _boolSetting(
-        privacy['notification_sounds'],
+        platform?['notify_on_device'],
         base.notificationSounds,
       ),
-      pomodoroSounds: _boolSetting(
-        privacy['pomodoro_sounds'],
-        base.pomodoroSounds,
-      ),
-      completionSounds: _boolSetting(
-        privacy['completion_sounds'],
-        base.completionSounds,
-      ),
-      errorSounds: _boolSetting(privacy['error_sounds'], base.errorSounds),
-      hapticFeedback: _boolSetting(
-        privacy['haptic_feedback'],
-        base.hapticFeedback,
-      ),
       askBreakActivityReview: _boolSetting(
-        privacy['ask_break_activity_review'],
+        common?['ask_break_activity'],
         base.askBreakActivityReview,
-      ),
-      autoCreditTrustedBreakActivity: _boolSetting(
-        privacy['auto_credit_trusted_break_activity'],
-        base.autoCreditTrustedBreakActivity,
-      ),
-      wakeUpTime: privacy['wake_up_time']?.toString() ?? base.wakeUpTime,
-      bedtime: privacy['bedtime']?.toString() ?? base.bedtime,
-      workStartTime:
-          privacy['work_start_time']?.toString() ?? base.workStartTime,
-      workEndTime: privacy['work_end_time']?.toString() ?? base.workEndTime,
-      workdays: _intListSetting(privacy['workdays'], base.workdays),
-      lunchDurationMinutes: _intSetting(
-        privacy['lunch_duration_minutes'],
-        base.lunchDurationMinutes,
-      ),
-      commuteToWorkMinutes: _intSetting(
-        privacy['commute_to_work_minutes'],
-        base.commuteToWorkMinutes,
-      ),
-      commuteHomeMinutes: _intSetting(
-        privacy['commute_home_minutes'],
-        base.commuteHomeMinutes,
-      ),
-      maxDailyStudyMinutes: _intSetting(
-        privacy['max_daily_study_minutes'],
-        base.maxDailyStudyMinutes,
-      ),
-      maxWeeklyStudyMinutes: _intSetting(
-        privacy['max_weekly_study_minutes'],
-        base.maxWeeklyStudyMinutes,
-      ),
-      weeklyReviewTime:
-          privacy['weekly_review_time']?.toString() ?? base.weeklyReviewTime,
-      askBeforeAdjustingTimeZone: _boolSetting(
-        privacy['ask_before_adjusting_time_zone'],
-        base.askBeforeAdjustingTimeZone,
-      ),
-      keepHomeTimeZoneWhileTravelling: _boolSetting(
-        privacy['keep_home_time_zone_while_travelling'],
-        base.keepHomeTimeZoneWhileTravelling,
       ),
       startWithWindows: _boolSetting(
         platform?['start_with_windows'],
@@ -540,36 +397,12 @@ class _TaskMasterAppState extends State<TaskMasterApp>
         base.startMinimized,
       ),
       minimizeToTray: _boolSetting(
-        platform?['minimize_to_tray'],
+        platform?['keep_running_in_tray'],
         base.minimizeToTray,
       ),
-      continueTimersAfterClose: _boolSetting(
-        platform?['continue_timers_after_close'],
-        base.continueTimersAfterClose,
-      ),
-      resumeAfterWindowsSignIn: _boolSetting(
-        platform?['resume_after_windows_sign_in'],
-        base.resumeAfterWindowsSignIn,
-      ),
-      allowWakeTimers: _boolSetting(
-        platform?['allow_wake_timers'],
-        base.allowWakeTimers,
-      ),
-      runReminderServiceInBackground: _boolSetting(
-        platform?['run_reminder_service_in_background'],
-        base.runReminderServiceInBackground,
-      ),
       androidForegroundTimerService: _boolSetting(
-        platform?['foreground_timer_service'],
+        platform?['widget_enabled'],
         base.androidForegroundTimerService,
-      ),
-      androidExactAlarmGuidance: _boolSetting(
-        platform?['exact_alarm_guidance'],
-        base.androidExactAlarmGuidance,
-      ),
-      androidBatteryOptimizationGuidance: _boolSetting(
-        platform?['battery_optimization_guidance'],
-        base.androidBatteryOptimizationGuidance,
       ),
     );
   }
@@ -597,35 +430,35 @@ class _TaskMasterAppState extends State<TaskMasterApp>
     return value?.toString().toLowerCase() == 'true' ? true : fallback;
   }
 
-  int _intSetting(Object? value, int fallback) {
-    if (value is num) return value.toInt();
-    return int.tryParse(value?.toString() ?? '') ?? fallback;
+  String _cleanSearchEngine(String value) {
+    return switch (value) {
+      'bing' => 'bing',
+      'duckduckgo' => 'duckduckgo',
+      'brave' => 'brave',
+      _ => 'google',
+    };
   }
 
-  double _doubleSetting(Object? value, double fallback) {
-    if (value is num) return value.toDouble();
-    return double.tryParse(value?.toString() ?? '') ?? fallback;
+  int? _clockToMinutes(String? value) {
+    if (value == null || value.trim().isEmpty) return null;
+    final parts = value.split(':');
+    if (parts.length != 2) return null;
+    final hours = int.tryParse(parts[0]);
+    final minutes = int.tryParse(parts[1]);
+    if (hours == null || minutes == null) return null;
+    if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return null;
+    return hours * 60 + minutes;
   }
 
-  List<String> _stringListSetting(Object? value, List<String> fallback) {
-    if (value is List) {
-      return value
-          .map((item) => item.toString())
-          .where((item) => item.trim().isNotEmpty)
-          .toList(growable: false);
-    }
-    return fallback;
-  }
-
-  List<int> _intListSetting(Object? value, List<int> fallback) {
-    if (value is List) {
-      final items = value
-          .map((item) => item is num ? item.toInt() : int.tryParse('$item'))
-          .whereType<int>()
-          .toList(growable: false);
-      return items.isEmpty ? fallback : items;
-    }
-    return fallback;
+  String? _minutesToClock(Object? value) {
+    final total = value is num
+        ? value.toInt()
+        : int.tryParse(value?.toString() ?? '');
+    if (total == null || total < 0 || total > 1439) return null;
+    final hours = total ~/ 60;
+    final minutes = total % 60;
+    return '${hours.toString().padLeft(2, '0')}:'
+        '${minutes.toString().padLeft(2, '0')}';
   }
 
   @override

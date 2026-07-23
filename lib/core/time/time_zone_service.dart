@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:timezone/data/latest.dart' as tz_data;
@@ -35,7 +34,7 @@ class TimeZoneService extends ChangeNotifier {
   String _configuredZoneId = 'Etc/UTC';
   String _effectiveZoneId = 'Etc/UTC';
   Locale _locale = const Locale('en');
-  String _clockFormat = 'system';
+  final String _clockFormat = 'system';
   DateTime? _lastZoneRefreshAt;
   String? _lastDetectedZoneId;
   DeviceTimeZoneChange? _pendingChange;
