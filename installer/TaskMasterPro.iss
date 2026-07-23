@@ -1,5 +1,5 @@
 #define MyAppName "TaskMaster Pro"
-#define MyAppVersion "0.1.1"
+#define MyAppVersion "0.1.2"
 #define MyAppPublisher "Personal Task Manager"
 #define MyAppExeName "personal_task_manager.exe"
 #define MySourceDir "..\build\windows\x64\runner\Release"
