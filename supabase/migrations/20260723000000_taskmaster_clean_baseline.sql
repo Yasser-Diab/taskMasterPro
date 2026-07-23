@@ -1109,7 +1109,7 @@ begin
             'taskmaster:user:' || p_user_id::text || ':runtime',
             true;
   exception
-    when undefined_schema or undefined_function or invalid_schema_name then
+    when undefined_function or invalid_schema_name then
       null;
   end;
 end;
@@ -1691,17 +1691,18 @@ grant execute on function public.session_snapshot(uuid) to authenticated;
 do $$
 begin
   if to_regclass('realtime.messages') is not null then
-    execute 'alter table realtime.messages enable row level security';
-    execute $policy$
-      create policy taskmaster_runtime_broadcast_receive
-      on realtime.messages
-      for select
-      to authenticated
-      using (topic = 'taskmaster:user:' || auth.uid()::text || ':runtime')
-    $policy$;
+    begin
+      execute $policy$
+        create policy taskmaster_runtime_broadcast_receive
+        on realtime.messages
+        for select
+        to authenticated
+        using (topic = 'taskmaster:user:' || auth.uid()::text || ':runtime')
+      $policy$;
+    exception
+      when duplicate_object or insufficient_privilege then null;
+    end;
   end if;
-exception
-  when duplicate_object then null;
 end $$;
 
 -- ---------------------------------------------------------------------------
@@ -1722,54 +1723,55 @@ end $$;
 do $$
 begin
   if to_regclass('storage.objects') is not null then
-    execute 'alter table storage.objects enable row level security';
-    execute $policy$
-      create policy taskmaster_storage_select_own
-      on storage.objects
-      for select
-      to authenticated
-      using (
-        bucket_id in ('avatars', 'task-resources')
-        and name like auth.uid()::text || '/%'
-      )
-    $policy$;
-    execute $policy$
-      create policy taskmaster_storage_insert_own
-      on storage.objects
-      for insert
-      to authenticated
-      with check (
-        bucket_id in ('avatars', 'task-resources')
-        and name like auth.uid()::text || '/%'
-      )
-    $policy$;
-    execute $policy$
-      create policy taskmaster_storage_update_own
-      on storage.objects
-      for update
-      to authenticated
-      using (
-        bucket_id in ('avatars', 'task-resources')
-        and name like auth.uid()::text || '/%'
-      )
-      with check (
-        bucket_id in ('avatars', 'task-resources')
-        and name like auth.uid()::text || '/%'
-      )
-    $policy$;
-    execute $policy$
-      create policy taskmaster_storage_delete_own
-      on storage.objects
-      for delete
-      to authenticated
-      using (
-        bucket_id in ('avatars', 'task-resources')
-        and name like auth.uid()::text || '/%'
-      )
-    $policy$;
+    begin
+      execute $policy$
+        create policy taskmaster_storage_select_own
+        on storage.objects
+        for select
+        to authenticated
+        using (
+          bucket_id in ('avatars', 'task-resources')
+          and name like auth.uid()::text || '/%'
+        )
+      $policy$;
+      execute $policy$
+        create policy taskmaster_storage_insert_own
+        on storage.objects
+        for insert
+        to authenticated
+        with check (
+          bucket_id in ('avatars', 'task-resources')
+          and name like auth.uid()::text || '/%'
+        )
+      $policy$;
+      execute $policy$
+        create policy taskmaster_storage_update_own
+        on storage.objects
+        for update
+        to authenticated
+        using (
+          bucket_id in ('avatars', 'task-resources')
+          and name like auth.uid()::text || '/%'
+        )
+        with check (
+          bucket_id in ('avatars', 'task-resources')
+          and name like auth.uid()::text || '/%'
+        )
+      $policy$;
+      execute $policy$
+        create policy taskmaster_storage_delete_own
+        on storage.objects
+        for delete
+        to authenticated
+        using (
+          bucket_id in ('avatars', 'task-resources')
+          and name like auth.uid()::text || '/%'
+        )
+      $policy$;
+    exception
+      when duplicate_object or insufficient_privilege then null;
+    end;
   end if;
-exception
-  when duplicate_object then null;
 end $$;
 
 -- ---------------------------------------------------------------------------
