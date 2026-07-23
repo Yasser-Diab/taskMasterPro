@@ -340,17 +340,22 @@ class TaskActionController extends ChangeNotifier {
     await _removeRealtimeSubscription();
     _syncUserId = userId;
     _deviceId = await _repository.loadDeviceId();
-    final channel = client.channel('taskmaster-sync-events-$userId');
+    final channel = client.channel(
+      'taskmaster:user:$userId:runtime',
+      opts: const RealtimeChannelConfig(private: true),
+    );
     _syncChannel = channel
-        .onPostgresChanges(
-          event: PostgresChangeEvent.insert,
-          schema: 'public',
-          table: 'sync_events',
-          filter: PostgresChangeFilter(
-            type: PostgresChangeFilterType.eq,
-            column: 'user_id',
-            value: userId,
-          ),
+        .onBroadcast(event: 'task_changed', callback: _handleRealtimeSyncEvent)
+        .onBroadcast(
+          event: 'session_changed',
+          callback: _handleRealtimeSyncEvent,
+        )
+        .onBroadcast(
+          event: 'activity_changed',
+          callback: _handleRealtimeSyncEvent,
+        )
+        .onBroadcast(
+          event: 'roadmap_changed',
           callback: _handleRealtimeSyncEvent,
         )
         .subscribe((status, [error]) {
@@ -374,8 +379,9 @@ class TaskActionController extends ChangeNotifier {
     }
   }
 
-  void _handleRealtimeSyncEvent(PostgresChangePayload payload) {
-    final record = payload.newRecord;
+  void _handleRealtimeSyncEvent(Map<String, dynamic> payload) {
+    final nested = payload['payload'];
+    final record = nested is Map ? Map<String, dynamic>.from(nested) : payload;
     if (record.isEmpty) return;
     final eventDevice = record['device_id']?.toString();
     if (eventDevice != null && eventDevice == _deviceId) {

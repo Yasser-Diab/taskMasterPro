@@ -188,7 +188,6 @@ class TaskRepository {
   }) async {
     final user = _supabaseService.currentUser;
     if (user == null) return;
-    final client = _supabaseService.clientOrNull;
     final deviceId = await _localStore.loadDeviceId();
     final now = DateTime.now().toUtc();
     final id = const Uuid().v4();
@@ -209,35 +208,6 @@ class TaskRepository {
       'revision': now.millisecondsSinceEpoch,
     };
     await _localStore.upsertRow(user.id, 'widget_action_events', id, row);
-    final operation = await _queueTaskOperation(
-      user.id,
-      'widget_action_event',
-      row,
-    );
-    if (client == null) return;
-    try {
-      await client.from('widget_action_events').upsert(row, onConflict: 'id');
-      await _localStore.removeOperation(user.id, operation.id);
-      final syncPayload = <String, Object?>{
-        'widget_kind': widgetKind,
-        'command_type': commandType,
-      };
-      if (taskId != null) syncPayload['task_id'] = taskId;
-      if (sessionId != null) syncPayload['session_id'] = sessionId;
-      unawaited(
-        publishSyncEvent(
-          entityType: 'widget',
-          entityId: id,
-          eventType: 'widget_action_applied',
-          revision: now.millisecondsSinceEpoch,
-          payload: syncPayload,
-        ),
-      );
-    } on Object catch (error) {
-      if (_isConnectivityError(error)) return;
-      await _localStore.removeOperation(user.id, operation.id);
-      rethrow;
-    }
   }
 
   Future<List<TaskItem>> loadLocalTasks({bool deleted = false}) async {
@@ -735,20 +705,24 @@ class TaskRepository {
     final local =
         localRows
             .where((row) => row['task_id']?.toString() == taskId)
-            .map(WorkDemand.fromMap)
+            .map((row) => WorkDemand.fromMap(_workDemandRowForUi(row)))
             .where((item) => item.deletedAt == null)
             .toList()
           ..sort((a, b) => a.position.compareTo(b.position));
     if (client == null) return local;
     try {
       final rows = await client
-          .from('work_demands')
+          .from('task_demands')
           .select()
           .eq('user_id', user.id)
           .eq('task_id', taskId)
           .isFilter('deleted_at', null)
-          .order('position');
-      final parsed = rows.map<WorkDemand>(WorkDemand.fromMap).toList();
+          .order('sort_order');
+      final parsed = rows
+          .map<WorkDemand>(
+            (row) => WorkDemand.fromMap(_workDemandRowForUi(row)),
+          )
+          .toList();
       await _localStore.replaceRowsWhere(
         user.id,
         'work_demands',
@@ -766,7 +740,7 @@ class TaskRepository {
     final client = _supabaseService.clientOrNull;
     final user = _supabaseService.currentUser;
     if (user == null) return demand;
-    final payload = demand.toMap(userId: user.id);
+    final payload = _workDemandPayload(demand, user.id);
     await _localStore.upsertRow(user.id, 'work_demands', demand.id, payload);
     final operation = await _queueTaskOperation(
       user.id,
@@ -776,12 +750,12 @@ class TaskRepository {
     if (client == null) return demand;
     try {
       final row = await client
-          .from('work_demands')
+          .from('task_demands')
           .upsert(payload, onConflict: 'id')
           .select()
           .single();
       await _localStore.removeOperation(user.id, operation.id);
-      final saved = WorkDemand.fromMap(row);
+      final saved = WorkDemand.fromMap(_workDemandRowForUi(row));
       await _localStore.upsertRow(
         user.id,
         'work_demands',
@@ -817,21 +791,27 @@ class TaskRepository {
     final local =
         localRows
             .where((row) => row['task_id']?.toString() == taskId)
-            .map(LearningCheckpoint.fromMap)
+            .map(
+              (row) =>
+                  LearningCheckpoint.fromMap(_learningCheckpointRowForUi(row)),
+            )
             .where((item) => item.deletedAt == null)
             .toList()
           ..sort((a, b) => a.position.compareTo(b.position));
     if (client == null) return local;
     try {
       final rows = await client
-          .from('learning_checkpoints')
+          .from('task_checkpoints')
           .select()
           .eq('user_id', user.id)
           .eq('task_id', taskId)
           .isFilter('deleted_at', null)
-          .order('position');
+          .order('sort_order');
       final parsed = rows
-          .map<LearningCheckpoint>(LearningCheckpoint.fromMap)
+          .map<LearningCheckpoint>(
+            (row) =>
+                LearningCheckpoint.fromMap(_learningCheckpointRowForUi(row)),
+          )
           .toList();
       await _localStore.replaceRowsWhere(
         user.id,
@@ -852,7 +832,7 @@ class TaskRepository {
     final client = _supabaseService.clientOrNull;
     final user = _supabaseService.currentUser;
     if (user == null) return checkpoint;
-    final payload = checkpoint.toMap(userId: user.id);
+    final payload = _learningCheckpointPayload(checkpoint, user.id);
     await _localStore.upsertRow(
       user.id,
       'learning_checkpoints',
@@ -867,12 +847,14 @@ class TaskRepository {
     if (client == null) return checkpoint;
     try {
       final row = await client
-          .from('learning_checkpoints')
+          .from('task_checkpoints')
           .upsert(payload, onConflict: 'id')
           .select()
           .single();
       await _localStore.removeOperation(user.id, operation.id);
-      final saved = LearningCheckpoint.fromMap(row);
+      final saved = LearningCheckpoint.fromMap(
+        _learningCheckpointRowForUi(row),
+      );
       await _localStore.upsertRow(
         user.id,
         'learning_checkpoints',
@@ -1016,10 +998,14 @@ class TaskRepository {
     if (client == null || user == null) {
       return;
     }
-    await client.rpc(
-      'skip_task_occurrence',
-      params: {'target_task_id': task.id},
-    );
+    await client
+        .from('tasks')
+        .update({
+          'status': 'skipped',
+          'updated_at': DateTime.now().toUtc().toIso8601String(),
+        })
+        .eq('id', task.id)
+        .eq('user_id', user.id);
   }
 
   Future<void> setRecurrenceState(TaskItem task, String action) async {
@@ -1028,10 +1014,20 @@ class TaskRepository {
     if (client == null || user == null) {
       return;
     }
-    await client.rpc(
-      'set_task_recurrence_state',
-      params: {'target_task_id': task.id, 'requested_action': action},
-    );
+    final paused = switch (action) {
+      'pause' || 'paused' || 'disable' => true,
+      'resume' || 'active' || 'enable' => false,
+      _ => null,
+    };
+    if (paused == null) return;
+    await client
+        .from('tasks')
+        .update({
+          'recurrence_paused': paused,
+          'updated_at': DateTime.now().toUtc().toIso8601String(),
+        })
+        .eq('id', task.id)
+        .eq('user_id', user.id);
   }
 
   Future<List<TaskUsageActivity>> loadTaskUsage(String taskId) async {
@@ -1048,19 +1044,20 @@ class TaskRepository {
               row['task_id']?.toString() == taskId &&
               row['excluded_from_reports'] != true,
         )
-        .map(TaskUsageActivity.fromMap)
+        .map((row) => TaskUsageActivity.fromMap(_activityIntervalRowForUi(row)))
         .toList(growable: false);
     if (client == null) return local;
     try {
       final rows = await client
-          .from('task_activity_records')
+          .from('activity_intervals')
           .select()
           .eq('task_id', taskId)
           .eq('user_id', user.id)
-          .eq('excluded_from_reports', false)
-          .order('started_at', ascending: false);
+          .order('started_at_utc', ascending: false);
       final parsed = rows
-          .map<TaskUsageActivity>((row) => TaskUsageActivity.fromMap(row))
+          .map<TaskUsageActivity>(
+            (row) => TaskUsageActivity.fromMap(_activityIntervalRowForUi(row)),
+          )
           .toList();
       await _localStore.replaceRowsWhere(
         user.id,
@@ -1082,7 +1079,9 @@ class TaskRepository {
     if (user == null) {
       return;
     }
-    final rows = [for (final record in records) record.toMap(userId: user.id)];
+    final rows = [
+      for (final record in records) _activityIntervalPayload(record, user.id),
+    ];
     for (final row in rows) {
       await _localStore.upsertRow(
         user.id,
@@ -1096,7 +1095,7 @@ class TaskRepository {
       return;
     }
     try {
-      await client.from('task_activity_records').upsert(rows);
+      await client.from('activity_intervals').upsert(rows);
       unawaited(
         publishSyncEvent(
           entityType: 'activity',
@@ -1127,47 +1126,40 @@ class TaskRepository {
     final now = DateTime.now().toUtc().toIso8601String();
     try {
       await client
-          .from('task_browser_tabs')
-          .update({'closed_at': now, 'is_active': false, 'updated_at': now})
+          .from('browser_tabs')
+          .update({'deleted_at': now, 'active': false, 'updated_at': now})
           .eq('user_id', user.id)
           .eq('task_id', task.id)
-          .isFilter('closed_at', null);
+          .isFilter('deleted_at', null);
       if (tabs.isNotEmpty) {
-        await client.from('task_browser_tabs').upsert([
+        await client.from('browser_tabs').upsert([
           for (var index = 0; index < tabs.length; index += 1)
             {
-              'id': tabs[index]['id'],
+              'id':
+                  _uuidOrNull(tabs[index]['id']?.toString()) ??
+                  const Uuid().v4(),
               'user_id': user.id,
+              'device_id': null,
               'task_id': task.id,
-              'session_id': sessionId,
-              'url': tabs[index]['url'],
-              'title': tabs[index]['title'],
-              'domain': Uri.tryParse(
-                tabs[index]['url']?.toString() ?? '',
-              )?.host,
-              'tab_order': index,
-              'is_active': index == selectedTab,
-              'closed_at': null,
-              'last_active_at': index == selectedTab ? now : null,
+              'occurrence_id': null,
+              'resource_id': null,
+              'url': tabs[index]['url']?.toString().trim().isNotEmpty == true
+                  ? tabs[index]['url'].toString()
+                  : 'https://www.google.com',
+              'title':
+                  tabs[index]['title']?.toString().trim().isNotEmpty == true
+                  ? tabs[index]['title'].toString()
+                  : 'Google',
+              'custom_title': tabs[index]['custom_title']?.toString(),
+              'pinned': tabs[index]['pinned'] == true,
+              'active': index == selectedTab,
+              'sort_order': index,
+              'last_seen_at': now,
               'updated_at': now,
+              'deleted_at': null,
             },
-        ]);
+        ], onConflict: 'id');
       }
-      final selectedTabId = tabs.isEmpty
-          ? null
-          : tabs[selectedTab.clamp(0, tabs.length - 1)]['id'];
-      await client.from('task_workspace_state').upsert({
-        'user_id': user.id,
-        'task_id': task.id,
-        'browser_expanded': browserExpanded,
-        'browser_width': browserWidth,
-        'workspace_layout': browserExpanded ? 'right_panel' : 'collapsed',
-        'browser_mode': browserMode,
-        'selected_task_panel': selectedPanel.toString(),
-        'selected_browser_tab_id': selectedTabId,
-        'last_opened_at': now,
-        'updated_at': now,
-      }, onConflict: 'user_id,task_id');
     } on Object catch (error) {
       if (kDebugMode) debugPrint('BROWSER CHECKPOINT DEFERRED: $error');
     }
@@ -1492,41 +1484,16 @@ class TaskRepository {
   }
 
   Future<List<TaskInterruption>> loadInterruptions(String taskId) async {
-    final client = _supabaseService.clientOrNull;
     final user = _supabaseService.currentUser;
     if (user == null) return const [];
     final localRows = await _localStore.loadRows(user.id, 'task_interruptions');
-    final local = localRows
+    return localRows
         .where(
           (row) =>
               row['task_id']?.toString() == taskId && row['deleted_at'] == null,
         )
         .map(TaskInterruption.fromMap)
         .toList(growable: false);
-    if (client == null) return local;
-
-    try {
-      final rows = await client
-          .from('task_interruptions')
-          .select()
-          .eq('user_id', user.id)
-          .eq('task_id', taskId)
-          .isFilter('deleted_at', null)
-          .order('started_at', ascending: false);
-      final parsed = rows
-          .map<TaskInterruption>((row) => TaskInterruption.fromMap(row))
-          .toList();
-      await _localStore.replaceRowsWhere(
-        user.id,
-        'task_interruptions',
-        'task_id',
-        {taskId},
-        [for (final item in parsed) _interruptionRow(item, user.id)],
-      );
-      return parsed;
-    } on Object {
-      return local;
-    }
   }
 
   Future<TaskInterruption> addInterruption(
@@ -1544,7 +1511,6 @@ class TaskRepository {
   Future<TaskInterruption> _saveInterruption(
     TaskInterruption interruption,
   ) async {
-    final client = _supabaseService.clientOrNull;
     final user = _supabaseService.currentUser;
     if (user == null) return interruption;
     final payload = _interruptionRow(interruption, user.id);
@@ -1554,36 +1520,10 @@ class TaskRepository {
       interruption.id,
       payload,
     );
-    final operation = await _queueTaskOperation(
-      user.id,
-      'interruption_upsert',
-      payload,
-    );
-    if (client == null) return interruption;
-    try {
-      final row = await client
-          .from('task_interruptions')
-          .upsert(payload, onConflict: 'id')
-          .select()
-          .single();
-      final saved = TaskInterruption.fromMap(row);
-      await _localStore.upsertRow(
-        user.id,
-        'task_interruptions',
-        saved.id,
-        _interruptionRow(saved, user.id),
-      );
-      await _localStore.removeOperation(user.id, operation.id);
-      return saved;
-    } on Object catch (error) {
-      if (_isConnectivityError(error)) return interruption;
-      await _localStore.removeOperation(user.id, operation.id);
-      rethrow;
-    }
+    return interruption;
   }
 
   Future<void> deleteInterruption(TaskInterruption interruption) async {
-    final client = _supabaseService.clientOrNull;
     final user = _supabaseService.currentUser;
     if (user == null) return;
     final deletedAt = DateTime.now().toUtc().toIso8601String();
@@ -1593,24 +1533,6 @@ class TaskRepository {
       interruption.id,
       {..._interruptionRow(interruption, user.id), 'deleted_at': deletedAt},
     );
-    final operation = await _queueTaskOperation(
-      user.id,
-      'interruption_delete',
-      {'id': interruption.id, 'deleted_at': deletedAt},
-    );
-    if (client == null) return;
-    try {
-      await client
-          .from('task_interruptions')
-          .update({'deleted_at': deletedAt})
-          .eq('id', interruption.id)
-          .eq('user_id', user.id);
-      await _localStore.removeOperation(user.id, operation.id);
-    } on Object catch (error) {
-      if (_isConnectivityError(error)) return;
-      await _localStore.removeOperation(user.id, operation.id);
-      rethrow;
-    }
   }
 
   Map<String, dynamic> _noteRow(TaskNote note, String userId) => {
@@ -1683,13 +1605,15 @@ class TaskRepository {
 
     try {
       final rows = await client
-          .from('sessions')
+          .from('task_sessions')
           .select()
+          .eq('user_id', user.id)
           .eq('task_id', taskId)
-          .isFilter('deleted_at', null)
-          .order('started_at', ascending: false);
+          .order('started_at_utc', ascending: false);
       return rows
-          .map<TrackedSession>((row) => TrackedSession.fromMap(row))
+          .map<TrackedSession>(
+            (row) => TrackedSession.fromMap(_sessionRowForUi(row)),
+          )
           .toList();
     } on Object {
       return (await _loadLocalSessions(
@@ -1717,14 +1641,16 @@ class TaskRepository {
 
     try {
       final rows = await client
-          .from('sessions')
+          .from('task_sessions')
           .select()
-          .gte('started_at', start.toIso8601String())
-          .lt('started_at', end.toIso8601String())
-          .isFilter('deleted_at', null)
-          .order('started_at', ascending: false);
+          .eq('user_id', user.id)
+          .gte('started_at_utc', start.toUtc().toIso8601String())
+          .lt('started_at_utc', end.toUtc().toIso8601String())
+          .order('started_at_utc', ascending: false);
       final parsed = rows
-          .map<TrackedSession>((row) => TrackedSession.fromMap(row))
+          .map<TrackedSession>(
+            (row) => TrackedSession.fromMap(_sessionRowForUi(row)),
+          )
           .toList();
       for (final session in parsed) {
         await _localStore.upsertRow(
@@ -1758,11 +1684,12 @@ class TaskRepository {
 
     try {
       final row = await client
-          .from('sessions')
+          .from('task_sessions')
           .select()
+          .eq('user_id', user.id)
           .eq('id', sessionId)
           .maybeSingle();
-      return row == null ? null : TrackedSession.fromMap(row);
+      return row == null ? null : TrackedSession.fromMap(_sessionRowForUi(row));
     } on Object {
       return (await _loadLocalSessions(
         user.id,
@@ -1775,17 +1702,22 @@ class TaskRepository {
     final user = client?.auth.currentUser;
     if (user == null) return session;
     final local = session.copyWith(syncStatus: 'pending');
-    final payload = {...local.toInsertMap(), 'user_id': user.id};
-    await _localStore.upsertRow(user.id, 'sessions', session.id, payload);
+    final payload = _sessionPayload(local, user.id);
+    await _localStore.upsertRow(
+      user.id,
+      'sessions',
+      session.id,
+      local.toInsertMap(),
+    );
     final operation = await _queueTaskOperation(user.id, 'session', payload);
     if (client == null) return local;
     try {
       final row = await client
-          .from('sessions')
-          .upsert({...payload, 'sync_status': 'synced'})
+          .from('task_sessions')
+          .upsert(payload, onConflict: 'id')
           .select()
           .single();
-      final saved = TrackedSession.fromMap(row);
+      final saved = TrackedSession.fromMap(_sessionRowForUi(row));
       await _localStore.upsertRow(
         user.id,
         'sessions',
@@ -1823,11 +1755,10 @@ class TaskRepository {
           .from('session_segments')
           .select()
           .eq('session_id', sessionId)
-          .isFilter('deleted_at', null)
-          .order('started_at');
+          .order('started_at_utc');
       return rows
           .map<TrackedSessionSegment>(
-            (row) => TrackedSessionSegment.fromMap(row),
+            (row) => TrackedSessionSegment.fromMap(_segmentRowForUi(row)),
           )
           .toList();
     } on Object {
@@ -1841,13 +1772,12 @@ class TaskRepository {
     final client = _supabaseService.clientOrNull;
     final user = client?.auth.currentUser;
     if (user == null) return segment;
-    final payload = {...segment.toInsertMap(), 'user_id': user.id};
-    await _localStore.upsertRow(
-      user.id,
-      'session_segments',
-      segment.id,
-      payload,
-    );
+    await _localStore.upsertRow(user.id, 'session_segments', segment.id, {
+      ...segment.toInsertMap(),
+      'user_id': user.id,
+    });
+    final payload = await _segmentPayload(segment, user.id);
+    if (payload == null) return segment;
     final operation = await _queueTaskOperation(
       user.id,
       'session_segment',
@@ -1861,7 +1791,7 @@ class TaskRepository {
           .select()
           .single();
       await _localStore.removeOperation(user.id, operation.id);
-      return TrackedSessionSegment.fromMap(row);
+      return TrackedSessionSegment.fromMap(_segmentRowForUi(row));
     } on Object catch (error) {
       if (_isConnectivityError(error)) return segment;
       await _localStore.removeOperation(user.id, operation.id);
@@ -1870,50 +1800,40 @@ class TaskRepository {
   }
 
   Future<void> addSessionEvent(SessionEventRecord event) async {
-    final client = _supabaseService.clientOrNull;
-    final user = client?.auth.currentUser;
+    final user = _supabaseService.currentUser;
     if (user == null) return;
     final payload = {...event.toInsertMap(), 'user_id': user.id};
     await _localStore.upsertRow(user.id, 'session_events', event.id, payload);
-    final operation = await _queueTaskOperation(
-      user.id,
-      'session_event',
-      payload,
-    );
-    if (client == null) return;
-    try {
-      await client.from('session_events').upsert(payload, onConflict: 'id');
-      await _localStore.removeOperation(user.id, operation.id);
-      unawaited(
-        publishSyncEvent(
-          entityType: 'session',
-          entityId: event.sessionId,
-          eventType: event.eventType,
-          revision: event.eventTime.millisecondsSinceEpoch,
-        ),
-      );
-    } on Object catch (error) {
-      if (_isConnectivityError(error)) return;
-      await _localStore.removeOperation(user.id, operation.id);
-      rethrow;
-    }
   }
 
   Future<List<TaskProgressEntry>> loadProgressEntries(String taskId) async {
     final client = _supabaseService.clientOrNull;
-    if (client == null || client.auth.currentUser == null) {
+    final user = client?.auth.currentUser;
+    if (client == null || user == null) {
       return const [];
     }
 
     try {
-      final rows = await client
-          .from('task_progress_entries')
-          .select()
-          .eq('task_id', taskId)
-          .order('recorded_at');
-      return rows
-          .map<TaskProgressEntry>((row) => TaskProgressEntry.fromMap(row))
-          .toList();
+      final row = await client
+          .from('tasks')
+          .select('id,manual_progress,updated_at')
+          .eq('user_id', user.id)
+          .eq('id', taskId)
+          .maybeSingle();
+      if (row == null || row['manual_progress'] == null) return const [];
+      return [
+        TaskProgressEntry.fromMap({
+          'id': '${taskId}_manual_progress',
+          'task_id': taskId,
+          'progress_percentage': row['manual_progress'],
+          'progress_value': row['manual_progress'],
+          'progress_unit': 'percent',
+          'summary': '',
+          'recorded_at': row['updated_at'],
+          'created_at': row['updated_at'],
+          'updated_at': row['updated_at'],
+        }),
+      ];
     } on Object {
       return const [];
     }
@@ -1926,12 +1846,16 @@ class TaskRepository {
       return entry;
     }
 
-    final row = await client
-        .from('task_progress_entries')
-        .insert({...entry.toInsertMap(), 'user_id': user.id})
-        .select()
-        .single();
-    return TaskProgressEntry.fromMap(row);
+    await client
+        .from('tasks')
+        .update({
+          'manual_progress': entry.progressPercentage,
+          'progress_method': 'manual',
+          'updated_at': DateTime.now().toUtc().toIso8601String(),
+        })
+        .eq('id', entry.taskId)
+        .eq('user_id', user.id);
+    return entry;
   }
 
   Future<Map<String, dynamic>> _taskPayloadForRemote(
@@ -2026,6 +1950,238 @@ class TaskRepository {
     };
   }
 
+  Map<String, dynamic> _workDemandPayload(WorkDemand demand, String userId) {
+    return {
+      'id': demand.id,
+      'user_id': userId,
+      'task_id': demand.taskId,
+      'title': demand.title,
+      'description': demand.description,
+      'priority': _cleanDemandPriority(demand.priority),
+      'status': _cleanDemandStatus(demand.status),
+      'original_due_date': _dateOnly(demand.originalDueDate),
+      'current_scheduled_date': _dateOnly(demand.currentScheduledDate),
+      'completed_at': demand.completedAt?.toUtc().toIso8601String(),
+      'rollover_policy': _cleanRolloverPolicy(demand.rolloverPolicy),
+      'sort_order': demand.position,
+      'deleted_at': demand.deletedAt?.toUtc().toIso8601String(),
+      'updated_at': DateTime.now().toUtc().toIso8601String(),
+    };
+  }
+
+  Map<String, dynamic> _workDemandRowForUi(Map<String, dynamic> row) {
+    return {
+      ...row,
+      'priority': _legacyDemandPriority(row['priority']?.toString()),
+      'status': row['status']?.toString() == 'deferred'
+          ? 'blocked'
+          : row['status'],
+      'rollover_policy': row['rollover_policy']?.toString() == 'next_occurrence'
+          ? 'next_valid_work_occurrence'
+          : row['rollover_policy'],
+      'position': row['position'] ?? row['sort_order'],
+    };
+  }
+
+  Map<String, dynamic> _learningCheckpointPayload(
+    LearningCheckpoint checkpoint,
+    String userId,
+  ) {
+    return {
+      'id': checkpoint.id,
+      'user_id': userId,
+      'task_id': checkpoint.taskId,
+      'title': checkpoint.title,
+      'description': checkpoint.description,
+      'status': _cleanCheckpointStatus(checkpoint.status),
+      'completion_criteria': checkpoint.completionCriteria,
+      'target_date': _dateOnly(checkpoint.targetDate),
+      'evidence': checkpoint.evidence,
+      'completed_at': checkpoint.completedAt?.toUtc().toIso8601String(),
+      'sort_order': checkpoint.position,
+      'deleted_at': checkpoint.deletedAt?.toUtc().toIso8601String(),
+      'updated_at': DateTime.now().toUtc().toIso8601String(),
+    };
+  }
+
+  Map<String, dynamic> _learningCheckpointRowForUi(Map<String, dynamic> row) {
+    return {
+      ...row,
+      'status': row['status']?.toString() == 'not_started'
+          ? 'open'
+          : row['status']?.toString() == 'archived'
+          ? 'cancelled'
+          : row['status'],
+      'position': row['position'] ?? row['sort_order'],
+    };
+  }
+
+  Map<String, dynamic> _activityIntervalPayload(
+    TaskUsageActivity record,
+    String userId,
+  ) {
+    final totalSeconds = record.activeSeconds + record.idleSeconds;
+    final durationSeconds = totalSeconds <= 0
+        ? record.creditedSeconds
+        : totalSeconds;
+    final endedAt =
+        record.endedAt ??
+        record.startedAt.add(Duration(seconds: durationSeconds));
+    final isApplication = record.type == TaskActivityType.application;
+    return {
+      'id': record.id,
+      'user_id': userId,
+      'session_id': _uuidOrNull(record.sessionId),
+      'segment_id': null,
+      'task_id': record.taskId,
+      'device_id': null,
+      'context_type': isApplication ? 'external_application' : 'browser',
+      'application_id': isApplication
+          ? record.applicationName ?? record.windowTitle
+          : record.domain ?? record.normalizedDomain,
+      'window_title': record.windowTitle ?? record.pageTitle,
+      'resource_id': null,
+      'started_at_utc': record.startedAt.toUtc().toIso8601String(),
+      'ended_at_utc': endedAt.toUtc().toIso8601String(),
+      'duration_seconds': durationSeconds < 0 ? 0 : durationSeconds,
+      'idle_seconds': record.idleSeconds < 0 ? 0 : record.idleSeconds,
+    };
+  }
+
+  Map<String, dynamic> _activityIntervalRowForUi(Map<String, dynamic> row) {
+    if (row.containsKey('started_at')) return row;
+    final duration = _intValue(row['duration_seconds']);
+    final idle = _intValue(row['idle_seconds']);
+    final active = duration - idle;
+    final contextType = row['context_type']?.toString();
+    final isApplication = contextType == 'external_application';
+    return {
+      ...row,
+      'activity_type': isApplication ? 'application' : 'website',
+      'application_name': isApplication
+          ? row['application_id']?.toString()
+          : null,
+      'domain': isApplication ? null : row['application_id']?.toString(),
+      'window_title': row['window_title'],
+      'source_task_id': row['task_id'],
+      'started_at': row['started_at_utc'],
+      'ended_at': row['ended_at_utc'],
+      'active_seconds': active < 0 ? 0 : active,
+      'idle_seconds': idle,
+      'credited_seconds': active < 0 ? 0 : active,
+      'visit_count': 1,
+      'is_saved_resource': false,
+      'excluded_from_reports': false,
+      'user_confirmed': false,
+      'is_cross_task_contribution': false,
+    };
+  }
+
+  Map<String, dynamic> _sessionPayload(TrackedSession session, String userId) {
+    return {
+      'id': session.id,
+      'user_id': userId,
+      'task_id': session.taskId,
+      'occurrence_id': null,
+      'execution_mode': _sessionExecutionMode(session),
+      'state': _cleanSessionState(session.status),
+      'started_at_utc': session.startedAt.toUtc().toIso8601String(),
+      'completed_at_utc': session.endedAt?.toUtc().toIso8601String(),
+      'accumulated_active_seconds': session.accumulatedActiveSeconds > 0
+          ? session.accumulatedActiveSeconds
+          : session.activeSeconds,
+      'accumulated_paused_seconds': session.accumulatedPausedSeconds > 0
+          ? session.accumulatedPausedSeconds
+          : session.pausedSeconds,
+      'accumulated_idle_seconds': session.idleSeconds,
+      'created_at': session.createdAt.toUtc().toIso8601String(),
+      'updated_at': DateTime.now().toUtc().toIso8601String(),
+      'revision': session.revision,
+    };
+  }
+
+  Map<String, dynamic> _sessionRowForUi(Map<String, dynamic> row) {
+    final active = _intValue(row['accumulated_active_seconds']);
+    final paused = _intValue(row['accumulated_paused_seconds']);
+    final idle = _intValue(row['accumulated_idle_seconds']);
+    return {
+      ...row,
+      'started_at': row['started_at_utc'],
+      'ended_at': row['completed_at_utc'],
+      'gross_seconds': active + paused + idle,
+      'active_seconds': active,
+      'idle_seconds': idle,
+      'paused_seconds': paused,
+      'status': _legacySessionStatus(
+        row['state']?.toString(),
+        row['completed_at_utc'],
+      ),
+      'stage': row['state'],
+      'accumulated_active_seconds': active,
+      'accumulated_paused_seconds': paused,
+      'sync_status': 'synced',
+    };
+  }
+
+  Future<Map<String, dynamic>?> _segmentPayload(
+    TrackedSessionSegment segment,
+    String userId,
+  ) async {
+    final session = (await _loadLocalSessions(
+      userId,
+    )).where((item) => item.id == segment.sessionId).firstOrNull;
+    final taskId = session?.taskId;
+    if (taskId == null || taskId.isEmpty) return null;
+    final active = segment.type.countsAsActive ? segment.durationSeconds : 0;
+    final paused = segment.type == SessionSegmentType.paused
+        ? segment.durationSeconds
+        : segment.accumulatedPausedSeconds;
+    final idle = segment.type == SessionSegmentType.idle
+        ? segment.durationSeconds
+        : 0;
+    return {
+      'id': segment.id,
+      'user_id': userId,
+      'session_id': segment.sessionId,
+      'task_id': taskId,
+      'segment_number': 1,
+      'segment_type': _cleanSegmentType(segment.type),
+      'state': segment.endedAt == null ? 'running' : 'completed',
+      'planned_duration_seconds': segment.plannedDurationSeconds,
+      'actual_active_seconds': active < 0 ? 0 : active,
+      'paused_seconds': paused < 0 ? 0 : paused,
+      'idle_seconds': idle < 0 ? 0 : idle,
+      'started_at_utc': segment.startedAt.toUtc().toIso8601String(),
+      'last_resumed_at_utc': segment.startedAt.toUtc().toIso8601String(),
+      'completed_at_utc': (segment.completedAt ?? segment.endedAt)
+          ?.toUtc()
+          .toIso8601String(),
+      'transition_reason': segment.transitionReason,
+      'parent_segment_id': null,
+      'created_at': segment.createdAt.toUtc().toIso8601String(),
+      'updated_at': DateTime.now().toUtc().toIso8601String(),
+    };
+  }
+
+  Map<String, dynamic> _segmentRowForUi(Map<String, dynamic> row) {
+    final active = _intValue(row['actual_active_seconds']);
+    final paused = _intValue(row['paused_seconds']);
+    final idle = _intValue(row['idle_seconds']);
+    return {
+      ...row,
+      'segment_type': _legacySegmentType(row['segment_type']?.toString()),
+      'started_at': row['started_at_utc'],
+      'ended_at': row['completed_at_utc'],
+      'duration_seconds': active + paused + idle,
+      'planned_duration_seconds': row['planned_duration_seconds'],
+      'accumulated_active_seconds': active,
+      'accumulated_paused_seconds': paused,
+      'completed_at': row['completed_at_utc'],
+      'source': 'timer',
+      'stage': row['state'],
+    };
+  }
+
   Future<String?> _resolveDomainId({
     required TaskItem task,
     required String userId,
@@ -2085,6 +2241,8 @@ class TaskRepository {
   static String _runtimeEventName(String entityType) {
     return switch (entityType) {
       'roadmap' || 'roadmap_phase' || 'roadmap_milestone' => 'roadmap_changed',
+      'session' || 'session_segment' => 'session_changed',
+      'activity' || 'activity_interval' => 'activity_changed',
       'settings' => 'settings_changed',
       'notification' || 'task_reminder' => 'notification_changed',
       _ => 'task_changed',
@@ -2128,6 +2286,53 @@ class TaskRepository {
     };
   }
 
+  static String _cleanDemandPriority(String priority) {
+    return switch (priority.trim().toLowerCase()) {
+      'critical' || 'urgent' => 'urgent',
+      'high' => 'high',
+      'low' => 'low',
+      _ => 'medium',
+    };
+  }
+
+  static String _legacyDemandPriority(String? priority) {
+    return switch (priority) {
+      'urgent' => 'critical',
+      'high' => 'high',
+      'low' => 'low',
+      _ => 'normal',
+    };
+  }
+
+  static String _cleanDemandStatus(WorkDemandStatus status) {
+    return switch (status) {
+      WorkDemandStatus.inProgress => 'in_progress',
+      WorkDemandStatus.completed => 'completed',
+      WorkDemandStatus.cancelled => 'cancelled',
+      WorkDemandStatus.blocked => 'deferred',
+      WorkDemandStatus.open => 'open',
+    };
+  }
+
+  static String _cleanCheckpointStatus(LearningCheckpointStatus status) {
+    return switch (status) {
+      LearningCheckpointStatus.inProgress => 'in_progress',
+      LearningCheckpointStatus.completed => 'completed',
+      LearningCheckpointStatus.skipped => 'skipped',
+      LearningCheckpointStatus.cancelled => 'archived',
+      LearningCheckpointStatus.open => 'not_started',
+    };
+  }
+
+  static String _cleanRolloverPolicy(String policy) {
+    return switch (policy.trim().toLowerCase()) {
+      'none' => 'none',
+      'manual' => 'manual',
+      'next_work_day' => 'next_work_day',
+      _ => 'next_occurrence',
+    };
+  }
+
   static String _cleanTimeZoneBehavior(String value) {
     return switch (value) {
       'fixed_time_zone' => 'fixed_time_zone',
@@ -2135,6 +2340,55 @@ class TaskRepository {
       'keep_local_clock' => 'keep_local_clock',
       'keep_absolute_time' => 'keep_absolute_time',
       _ => 'floating',
+    };
+  }
+
+  static String _sessionExecutionMode(TrackedSession session) {
+    return switch (session.trackingMode) {
+      SessionTrackingMode.reading => 'reading',
+      SessionTrackingMode.manual => 'manual_completion',
+      _ => 'continuous_timer',
+    };
+  }
+
+  static String _cleanSessionState(TrackedSessionStatus status) {
+    return switch (status) {
+      TrackedSessionStatus.running => 'focus_running',
+      TrackedSessionStatus.paused => 'focus_paused',
+      TrackedSessionStatus.completed ||
+      TrackedSessionStatus.stopped ||
+      TrackedSessionStatus.corrected => 'task_completed',
+      TrackedSessionStatus.discarded => 'cancelled',
+      _ => 'focus_ready',
+    };
+  }
+
+  static String _legacySessionStatus(String? state, Object? completedAt) {
+    if (completedAt != null) return 'completed';
+    return switch (state) {
+      'focus_running' || 'break_running' => 'running',
+      'focus_paused' || 'break_paused' => 'paused',
+      'task_completed' => 'completed',
+      'cancelled' => 'discarded',
+      _ => 'created',
+    };
+  }
+
+  static String _cleanSegmentType(SessionSegmentType type) {
+    return switch (type) {
+      SessionSegmentType.breakTime => 'short_break',
+      SessionSegmentType.reading || SessionSegmentType.video => 'reading',
+      SessionSegmentType.manual => 'manual',
+      _ => 'continuous_work',
+    };
+  }
+
+  static String _legacySegmentType(String? type) {
+    return switch (type) {
+      'short_break' || 'long_break' => 'break',
+      'reading' => 'reading',
+      'manual' => 'manual',
+      _ => 'active',
     };
   }
 
@@ -2409,22 +2663,20 @@ class TaskRepository {
       case 'usage':
         final rows = payload['rows'];
         if (rows is List && rows.isNotEmpty) {
-          await client.from('task_activity_records').upsert(rows);
+          await client.from('activity_intervals').upsert(rows);
         }
       case 'session':
         await client.from('task_sessions').upsert(payload, onConflict: 'id');
       case 'session_segment':
         await client.from('session_segments').upsert(payload, onConflict: 'id');
       case 'session_event':
-        await client.from('session_events').upsert(payload, onConflict: 'id');
+        return;
       case 'work_demand':
         await client.from('task_demands').upsert(payload, onConflict: 'id');
       case 'learning_checkpoint':
         await client.from('task_checkpoints').upsert(payload, onConflict: 'id');
       case 'widget_action_event':
-        await client
-            .from('widget_action_events')
-            .upsert(payload, onConflict: 'id');
+        return;
       case 'note_upsert':
         await client.from('task_notes').upsert(payload, onConflict: 'id');
       case 'note_delete':
@@ -2434,15 +2686,9 @@ class TaskRepository {
             .eq('id', payload['id'])
             .eq('user_id', userId);
       case 'interruption_upsert':
-        await client
-            .from('task_interruptions')
-            .upsert(payload, onConflict: 'id');
+        return;
       case 'interruption_delete':
-        await client
-            .from('task_interruptions')
-            .update({'deleted_at': payload['deleted_at']})
-            .eq('id', payload['id'])
-            .eq('user_id', userId);
+        return;
     }
   }
 
