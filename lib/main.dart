@@ -10,6 +10,7 @@ import 'core/platform/app_notification_service.dart';
 import 'core/platform/interaction_feedback_service.dart';
 import 'core/platform/health_data_service.dart';
 import 'core/time/time_zone_service.dart';
+import 'features/tasks/data/task_local_store.dart';
 
 Future<void> main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -27,7 +28,11 @@ Future<void> main(List<String> args) async {
   final timeZoneService = AppTimeZoneController();
   await timeZoneService.initialize();
   timeZoneService.configure(initialConfig, locale: initialConfig.locale);
-  final healthDataService = HealthDataService(supabaseService);
+  final taskLocalStore = TaskLocalStore();
+  final healthDataService = HealthDataService(
+    supabaseService,
+    loadDeviceId: taskLocalStore.loadDeviceId,
+  );
   healthDataService.keepDataLocal = initialConfig.healthDataLocalOnly;
   await healthDataService.initialize();
 

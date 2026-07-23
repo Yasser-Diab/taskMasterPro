@@ -92,7 +92,8 @@ class HealthDataSummary {
 }
 
 class HealthDataService extends ChangeNotifier {
-  HealthDataService(this._supabase);
+  HealthDataService(this._supabase, {Future<String> Function()? loadDeviceId})
+    : _loadDeviceId = loadDeviceId;
 
   static const _channel = MethodChannel('taskmasterpro/health');
   static const Set<String> _defaultRequestedTypes = {
@@ -105,9 +106,9 @@ class HealthDataService extends ChangeNotifier {
   };
 
   final SupabaseService _supabase;
+  final Future<String> Function()? _loadDeviceId;
 
   HealthProviderStatus _healthConnectStatus = HealthProviderStatus.unsupported;
-  HealthProviderStatus _huaweiStatus = HealthProviderStatus.unsupported;
   Set<String> _grantedTypes = const {};
   Set<String> _requestedTypes = const {};
   Set<String> _grantedPermissions = const {};
@@ -121,7 +122,6 @@ class HealthDataService extends ChangeNotifier {
   bool _keepDataLocal = false;
 
   HealthProviderStatus get healthConnectStatus => _healthConnectStatus;
-  HealthProviderStatus get huaweiStatus => _huaweiStatus;
   Set<String> get grantedTypes => _grantedTypes;
   Set<String> get requestedTypes => _requestedTypes;
   Set<String> get grantedPermissions => _grantedPermissions;
@@ -138,7 +138,6 @@ class HealthDataService extends ChangeNotifier {
   Future<void> initialize() async {
     if (!Platform.isAndroid) {
       _healthConnectStatus = HealthProviderStatus.unsupported;
-      _huaweiStatus = HealthProviderStatus.unsupported;
       return;
     }
     await _loadCachedSummary();
@@ -283,7 +282,6 @@ class HealthDataService extends ChangeNotifier {
     _healthConnectStatus = statusFromNative(
       result?['healthConnect']?.toString(),
     );
-    _huaweiStatus = statusFromNative(result?['huawei']?.toString());
     Set<String> stringSet(String key) =>
         (result?[key] as List<Object?>? ?? const [])
             .map((value) => '$value')
@@ -356,62 +354,130 @@ class HealthDataService extends ChangeNotifier {
   Future<void> _syncSummary(String userId, HealthDataSummary summary) async {
     final client = _supabase.clientOrNull;
     if (client == null) return;
-    final date = (summary.lastReadAt ?? DateTime.now())
-        .toUtc()
-        .toIso8601String()
-        .split('T')
-        .first;
-    final records = <Map<String, Object?>>[
-      _summaryRecord(userId, date, 'steps', summary.steps.toDouble(), 'count'),
-      _summaryRecord(
-        userId,
-        date,
-        'exercise_minutes',
-        summary.exerciseMinutes.toDouble(),
-        'minutes',
-      ),
-      _summaryRecord(
-        userId,
-        date,
-        'distance',
-        summary.distanceKilometers,
-        'km',
-      ),
-      if (summary.latestHeartRate != null)
-        _summaryRecord(
-          userId,
-          date,
-          'heart_rate',
-          summary.latestHeartRate!.toDouble(),
-          'bpm',
-        ),
-      if (summary.lastSleepMinutes != null)
-        _summaryRecord(
-          userId,
-          date,
-          'sleep',
-          summary.lastSleepMinutes!.toDouble(),
-          'minutes',
-        ),
-    ];
+    final deviceId = await _loadDeviceId?.call();
+    if (deviceId == null || deviceId.isEmpty) return;
+    final now = DateTime.now().toUtc();
+    final readAt = (summary.lastReadAt ?? now).toUtc();
+    final date = readAt.toIso8601String().split('T').first;
+    final sources = summary.dataSources.toList()..sort();
+    final sourcePackage = sources.isNotEmpty ? sources.first : 'health_connect';
     try {
-      await client.from('health_connections').upsert({
+      await client.from('devices').upsert({
+        'id': deviceId,
         'user_id': userId,
-        'device_id': 'android_local',
-        'provider': 'health_connect',
-        'connection_status': 'connected',
-        'granted_data_types': _grantedTypes.toList(),
-        'background_access_enabled': summary.backgroundAccessEnabled,
-        'last_read_at': summary.lastReadAt?.toUtc().toIso8601String(),
-        'last_successful_sync_at': DateTime.now().toUtc().toIso8601String(),
-        'last_error': null,
-      }, onConflict: 'user_id,device_id,provider');
-      await client
-          .from('health_records')
-          .upsert(
-            records,
-            onConflict: 'user_id,provider,device_id,source_record_id',
-          );
+        'device_name': Platform.localHostname,
+        'platform': 'android',
+        'platform_version': Platform.operatingSystemVersion,
+        'app_version': '',
+        'build_number': '',
+        'last_seen_at': now.toIso8601String(),
+        'notification_enabled': false,
+      }, onConflict: 'id');
+      final connection = await client
+          .from('health_connections')
+          .upsert({
+            'user_id': userId,
+            'device_id': deviceId,
+            'provider': 'health_connect',
+            'connection_status': 'connected',
+            'granted_data_types': _grantedTypes.toList(),
+            'last_read_at': readAt.toIso8601String(),
+            'last_successful_sync_at': now.toIso8601String(),
+            'last_error': null,
+          }, onConflict: 'user_id,device_id,provider')
+          .select('id')
+          .single();
+      final connectionId = connection['id']?.toString();
+      if (connectionId == null || connectionId.isEmpty) return;
+      final records = <Map<String, Object?>>[
+        if (summary.steps > 0)
+          _summaryRecord(
+            userId,
+            connectionId,
+            date,
+            'steps',
+            summary.steps.toDouble(),
+            'count',
+            sourcePackage,
+            sources,
+          ),
+        if (summary.exerciseMinutes > 0)
+          _summaryRecord(
+            userId,
+            connectionId,
+            date,
+            'exercise',
+            (summary.exerciseMinutes * 60).toDouble(),
+            'seconds',
+            sourcePackage,
+            sources,
+          ),
+        if (summary.distanceKilometers > 0)
+          _summaryRecord(
+            userId,
+            connectionId,
+            date,
+            'distance',
+            summary.distanceKilometers * 1000,
+            'meters',
+            sourcePackage,
+            sources,
+          ),
+        if (summary.calories > 0)
+          _summaryRecord(
+            userId,
+            connectionId,
+            date,
+            'active_calories',
+            summary.calories,
+            'kcal',
+            sourcePackage,
+            sources,
+          ),
+        if (summary.latestHeartRate != null)
+          _summaryRecord(
+            userId,
+            connectionId,
+            date,
+            'heart_rate',
+            summary.latestHeartRate!.toDouble(),
+            'bpm',
+            sourcePackage,
+            sources,
+          ),
+        if (summary.lastSleepMinutes != null)
+          _summaryRecord(
+            userId,
+            connectionId,
+            date,
+            'sleep',
+            (summary.lastSleepMinutes! * 60).toDouble(),
+            'seconds',
+            sourcePackage,
+            sources,
+          ),
+      ];
+      if (records.isNotEmpty) {
+        await client
+            .from('health_records')
+            .upsert(
+              records,
+              onConflict: 'user_id,provider,source_record_id,data_type',
+            );
+      }
+      await client.from('health_daily_summaries').upsert({
+        'user_id': userId,
+        'summary_date': date,
+        'steps': summary.steps,
+        'exercise_seconds': summary.exerciseMinutes * 60,
+        'distance_meters': summary.distanceKilometers * 1000,
+        'active_calories': summary.calories,
+        'sleep_seconds': (summary.lastSleepMinutes ?? 0) * 60,
+        'latest_heart_rate': summary.latestHeartRate,
+        'sources': {'packages': sources},
+        'calculated_at': now.toIso8601String(),
+        'updated_at': now.toIso8601String(),
+      }, onConflict: 'user_id,summary_date');
     } on Object catch (error) {
       _error = error.toString();
       notifyListeners();
@@ -420,20 +486,24 @@ class HealthDataService extends ChangeNotifier {
 
   Map<String, Object?> _summaryRecord(
     String userId,
+    String connectionId,
     String date,
     String type,
     double value,
     String unit,
+    String sourcePackage,
+    List<String> sources,
   ) => {
     'user_id': userId,
-    'device_id': 'android_local',
+    'connection_id': connectionId,
     'provider': 'health_connect',
+    'source_package': sourcePackage,
     'source_record_id': 'daily:$date:$type',
     'data_type': type,
-    'started_at': '${date}T00:00:00Z',
-    'ended_at': '${date}T23:59:59Z',
+    'started_at_utc': '${date}T00:00:00Z',
+    'ended_at_utc': '${date}T23:59:59Z',
     'numeric_value': value,
     'unit': unit,
-    'metadata': {'summary': true},
+    'metadata': {'summary': true, 'sources': sources},
   };
 }

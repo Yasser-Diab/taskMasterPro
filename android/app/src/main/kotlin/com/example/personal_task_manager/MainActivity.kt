@@ -772,6 +772,11 @@ class MainActivity : FlutterFragmentActivity() {
                         AggregateRequest(setOf(ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL), filter)
                     )
                     calories = aggregate[ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL]?.inKilocalories ?: 0.0
+                    val records = client.readRecords(
+                        ReadRecordsRequest<ActiveCaloriesBurnedRecord>(filter, pageSize = 10)
+                    ).records
+                    recordCount += records.size
+                    dataSources.addAll(records.map { it.metadata.dataOrigin.packageName })
                 }
 
                 var exerciseMinutes = 0L
@@ -883,7 +888,6 @@ class MainActivity : FlutterFragmentActivity() {
         }
         return mapOf(
             "healthConnect" to status,
-            "huawei" to "unavailable",
             "requestedTypes" to requestedTypes,
             "grantedTypes" to grantedTypes,
             "requestedPermissions" to requestedPermissions,
