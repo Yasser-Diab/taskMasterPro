@@ -76,6 +76,75 @@ button:disabled {
   --accent-2: #0891b2;
 }
 
+.auth-shell {
+  display: grid;
+  grid-template-columns: minmax(320px, 520px) minmax(320px, 720px);
+  align-content: center;
+  justify-content: center;
+  gap: 18px;
+  min-height: 100%;
+  padding: 28px;
+  background:
+    linear-gradient(180deg, rgba(59, 130, 246, 0.11), transparent 420px),
+    var(--bg);
+}
+
+.auth-card {
+  display: grid;
+  align-content: start;
+  gap: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 22px;
+  background: var(--panel);
+  box-shadow: 0 24px 90px rgba(0, 0, 0, 0.28);
+}
+
+.auth-card.compact {
+  grid-column: 1 / -1;
+  justify-items: center;
+  width: min(420px, 100%);
+  margin: auto;
+  text-align: center;
+}
+
+.auth-card h1,
+.auth-card h2 {
+  margin: 0;
+  letter-spacing: 0;
+}
+
+.auth-logo,
+.auth-card.compact img {
+  width: min(260px, 100%);
+}
+
+.segmented {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-2);
+}
+
+.segmented button {
+  min-height: 38px;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+}
+
+.segmented button.active {
+  background: var(--accent);
+  color: white;
+}
+
+.full {
+  width: 100%;
+}
+
 .sidebar {
   position: sticky;
   top: 0;
@@ -459,6 +528,51 @@ button:disabled {
   gap: 8px;
 }
 
+.active-task-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(320px, 1.6fr) auto;
+  align-items: center;
+  gap: 16px;
+}
+
+.activity-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(110px, 1fr));
+  gap: 10px;
+}
+
+.activity-summary .metric {
+  padding: 12px;
+}
+
+.activity-summary .metric strong {
+  font-size: 1.05rem;
+}
+
+.task-meta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.task-meta-row span,
+.data-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+  border-radius: 999px;
+  padding: 4px 9px;
+  background: rgba(148, 163, 184, 0.14);
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.focus-intent {
+  border-left: 3px solid var(--accent);
+  padding-left: 9px;
+}
+
 .priority,
 .status {
   width: fit-content;
@@ -514,6 +628,15 @@ button:disabled {
   margin: 0;
   color: var(--muted);
   text-transform: capitalize;
+}
+
+.timer-task-select {
+  width: min(420px, 100%);
+}
+
+.compact-list {
+  gap: 8px;
+  color: var(--muted);
 }
 
 .roadmap-grid {
@@ -630,6 +753,44 @@ button:disabled {
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
 }
 
+.editor-section {
+  display: grid;
+  gap: 10px;
+  border-top: 1px solid var(--line);
+  padding-top: 14px;
+}
+
+.editor-section h4 {
+  margin: 0;
+}
+
+.resource-add-row {
+  display: grid;
+  grid-template-columns: minmax(150px, 1fr) minmax(180px, 1.2fr) auto;
+  gap: 8px;
+}
+
+.file-attach-row {
+  width: fit-content;
+}
+
+.chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.data-chip button {
+  display: inline-grid;
+  width: 18px;
+  height: 18px;
+  place-items: center;
+  border-radius: 50%;
+  padding: 0;
+  background: color-mix(in srgb, var(--danger) 20%, transparent);
+  color: var(--text);
+}
+
 .span-2 {
   grid-column: span 2;
 }
@@ -681,6 +842,22 @@ select:focus {
 .auth-box {
   display: grid;
   gap: 12px;
+}
+
+.diagnostics-box {
+  margin-top: 12px;
+  color: var(--muted);
+}
+
+.diagnostics-box summary {
+  cursor: pointer;
+  color: var(--accent-2);
+}
+
+.sound-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
 }
 
 .error-text {
@@ -739,6 +916,11 @@ select:focus {
 }
 
 @media (max-width: 1199px) {
+  .auth-shell {
+    grid-template-columns: 1fr;
+    align-content: start;
+  }
+
   .app {
     grid-template-columns: 84px minmax(0, 1fr);
   }
@@ -761,6 +943,8 @@ select:focus {
 
   .metric-grid,
   .release-grid,
+  .activity-summary,
+  .active-task-panel,
   .split-grid,
   .settings-grid,
   .pomodoro-page {
@@ -773,6 +957,10 @@ select:focus {
 }
 
 @media (max-width: 759px) {
+  .auth-shell {
+    padding: 14px;
+  }
+
   .app {
     display: block;
     padding-bottom: 74px;
@@ -839,8 +1027,13 @@ select:focus {
   }
 
   .form-grid,
+  .resource-add-row,
   .span-2 {
     grid-template-columns: 1fr;
     grid-column: auto;
+  }
+
+  .activity-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }

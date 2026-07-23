@@ -157,7 +157,12 @@ function copySupabaseSql() {
   return target;
 }
 
+function syncMediaAssets() {
+  runNodeScript(path.join(scriptDir, 'sync-assets.mjs'), []);
+}
+
 function packageWeb() {
+  syncMediaAssets();
   runNodeScript(path.join(appDir, 'node_modules', 'typescript', 'bin', 'tsc'), ['--noEmit']);
   runNodeScript(path.join(appDir, 'node_modules', 'vite', 'bin', 'vite.js'), ['build']);
   cpSync(path.join(appDir, 'dist'), webReleaseDir, { recursive: true });
@@ -204,6 +209,7 @@ function packageAndroid() {
     runNodeScript(path.join(appDir, 'node_modules', '@capacitor', 'cli', 'bin', 'capacitor'), ['add', 'android']);
   }
   runNodeScript(path.join(appDir, 'node_modules', '@capacitor', 'cli', 'bin', 'capacitor'), ['sync', 'android']);
+  syncMediaAssets();
 
   const androidSdk = findAndroidSdk();
   if (!androidSdk) {

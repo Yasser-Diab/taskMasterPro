@@ -1,11 +1,12 @@
 {
   "name": "taskmaster-pro-next",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite --host 127.0.0.1",
-    "build": "tsc --noEmit && vite build",
+    "assets:sync": "node scripts/sync-assets.mjs",
+    "dev": "npm run assets:sync && vite --host 127.0.0.1",
+    "build": "npm run assets:sync && tsc --noEmit && vite build",
     "package:release": "node scripts/package-release.mjs",
     "preview": "vite preview --host 127.0.0.1",
     "electron:dev": "concurrently -k \"npm run dev\" \"wait-on http://127.0.0.1:5173 && electron .\"",
@@ -28,8 +29,8 @@
     "react-dom": "^18.3.1"
   },
   "devDependencies": {
-    "@playwright/test": "^1.54.2",
     "@capacitor/cli": "^7.4.3",
+    "@playwright/test": "^1.54.2",
     "@types/node": "^22.13.1",
     "@types/react": "^18.3.18",
     "@types/react-dom": "^18.3.5",
@@ -37,6 +38,8 @@
     "concurrently": "^9.1.2",
     "electron": "^43.2.0",
     "electron-builder": "^26.15.3",
+    "png-to-ico": "^3.0.2",
+    "sharp": "^0.35.3",
     "typescript": "^5.7.3",
     "vite": "^6.0.11",
     "wait-on": "^8.0.2"
@@ -50,15 +53,20 @@
     "files": [
       "dist/**/*",
       "electron/**/*",
+      "resources/**/*",
       "package.json"
     ],
     "win": {
-      "target": "nsis"
+      "target": "nsis",
+      "icon": "resources/icons/app-icon.ico"
     },
     "nsis": {
       "oneClick": false,
       "perMachine": false,
-      "allowToChangeInstallationDirectory": true
+      "allowToChangeInstallationDirectory": true,
+      "installerIcon": "resources/icons/app-icon.ico",
+      "uninstallerIcon": "resources/icons/app-icon.ico",
+      "installerHeaderIcon": "resources/icons/app-icon.ico"
     }
   },
   "main": "electron/main.cjs"

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Activity,
+  AppWindow,
   Bell,
   BookOpen,
   BriefcaseBusiness,
@@ -30,6 +31,7 @@ import {
   Monitor,
   MoreHorizontal,
   Pause,
+  Paperclip,
   Play,
   Plus,
   RefreshCw,
@@ -43,9 +45,11 @@ import {
   Trash2,
   User,
   Smartphone,
+  Target,
 } from 'lucide-react';
 import type { Session } from '@supabase/supabase-js';
 import {
+  type ActivityInterval,
   BrowserTabState,
   type AppSection,
   type ExecutionMode,
@@ -58,9 +62,12 @@ import {
 } from './domain';
 import { defaultDomains } from './domain';
 import {
+  appendActivityInterval,
   completeCurrentSegment,
   createId,
+  defaultFocusProfile,
   loadLocalSnapshot,
+  normalizeTask,
   nowIso,
   pullRemoteSnapshot,
   runtimeRemaining,
@@ -71,7 +78,11 @@ import {
   syncTask,
   transitionRuntime,
 } from './store';
+import type { CurrentActivity } from './platform/services';
+import { platformServices } from './platform/services';
 import { publicProjectLabel, supabase, supabaseUrl } from './supabaseClient';
+
+const assetUrl = (path: string) => `${import.meta.env.BASE_URL}${path.replace(/^\/+/, '')}`;
 
 const sections: Array<{ id: AppSection; label: string; icon: typeof LayoutDashboard }> = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -132,13 +143,19 @@ const commonZones = [
 
 export function App() {
   const [snapshot, setSnapshot] = useState<TaskMasterSnapshot>(() => loadLocalSnapshot());
+  const devPreviewAuth =
+    import.meta.env.DEV && window.localStorage.getItem('taskmaster-pro-next.preview-auth') === '1';
   const [section, setSection] = useState<AppSection>('dashboard');
   const [quickNoteOpen, setQuickNoteOpen] = useState(false);
   const [taskEditorOpen, setTaskEditorOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<TaskItem | undefined>();
   const [session, setSession] = useState<Session | null>(null);
+  const [authReady, setAuthReady] = useState(false);
+  const [authMode, setAuthMode] = useState<'sign-in' | 'create-account'>('sign-in');
   const [authEmail, setAuthEmail] = useState('');
   const [authPassword, setAuthPassword] = useState('');
+  const [authDisplayName, setAuthDisplayName] = useState('');
+  const [authUsername, setAuthUsername] = useState('');
   const [authBusy, setAuthBusy] = useState(false);
   const [authError, setAuthError] = useState<string>();
   const [clock, setClock] = useState(() => Date.now());
@@ -165,10 +182,15 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    void supabase.auth.getSession().then(({ data }) => setSession(data.session));
+    void supabase.auth.getSession().then(({ data }) => {
+      setSession(data.session);
+      setAuthReady(true);
+      if (data.session) void refreshFromRemote();
+    });
     const { data } = supabase.auth.onAuthStateChange((_event, nextSession) => {
       setSession(nextSession);
       if (nextSession) void refreshFromRemote();
+      setAuthReady(true);
     });
     return () => data.subscription.unsubscribe();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -206,6 +228,40 @@ export function App() {
     });
   }, [clock, patchSnapshot, snapshot.runtime]);
 
+  useEffect(() => {
+    if (!snapshot.runtime.activeTaskId || !snapshot.runtime.state.endsWith('_running')) return;
+    let cancelled = false;
+    const sample = async () => {
+      const task = loadLocalSnapshot().tasks.find((item) => item.id === snapshot.runtime.activeTaskId);
+      if (!task) return;
+      const activity = await platformServices.activityTracking.currentActivity();
+      if (cancelled) return;
+      const timestamp = nowIso();
+      const interval: ActivityInterval = {
+        id: createId('activity'),
+        taskId: task.id,
+        sourceType: activity.sourceType,
+        applicationName: activity.applicationName,
+        processName: activity.processName,
+        windowTitle: activity.windowTitle,
+        domain: activity.domain,
+        url: activity.url,
+        classification: classifyActivity(task, activity),
+        startedAtUtc: timestamp,
+        endedAtUtc: timestamp,
+        activeSeconds: 10,
+        idleSeconds: 0,
+      };
+      patchSnapshot((current) => appendActivityInterval(current, interval));
+    };
+    void sample();
+    const intervalId = window.setInterval(() => void sample(), 10_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, [patchSnapshot, snapshot.runtime.activeTaskId, snapshot.runtime.state]);
+
   async function refreshFromRemote() {
     try {
       const next = await pullRemoteSnapshot(loadLocalSnapshot());
@@ -221,12 +277,39 @@ export function App() {
   async function signInWithPassword() {
     setAuthBusy(true);
     setAuthError(undefined);
-    const { error } = await supabase.auth.signInWithPassword({
-      email: authEmail.trim(),
-      password: authPassword,
-    });
+    const email = authEmail.trim();
+    const displayName = authDisplayName.trim();
+    const username = authUsername.trim();
+    const { data, error } =
+      authMode === 'create-account'
+        ? await supabase.auth.signUp({
+            email,
+            password: authPassword,
+            options: {
+              data: {
+                display_name: displayName,
+                username,
+              },
+            },
+          })
+        : await supabase.auth.signInWithPassword({
+            email,
+            password: authPassword,
+          });
     setAuthBusy(false);
-    if (error) setAuthError(error.message);
+    if (error) {
+      setAuthError(error.message);
+      return;
+    }
+    if (authMode === 'create-account') {
+      const settings = {
+        ...snapshot.settings,
+        displayName: displayName || email.split('@')[0],
+        username: username || email.split('@')[0].replace(/[^a-zA-Z0-9_]/g, ''),
+      };
+      patchSnapshot((current) => ({ ...current, settings }));
+      if (data.session) void syncSettings(settings);
+    }
   }
 
   async function signInWithGoogle() {
@@ -270,10 +353,13 @@ export function App() {
       recurrenceRule: input.recurrenceRule,
       progressMethod: input.progressMethod ?? 'manual',
       manualProgress: input.manualProgress ?? 0,
+      tags: input.tags ?? [],
+      resources: input.resources ?? [],
+      focusProfile: input.focusProfile ?? defaultFocusProfile(input.title),
       createdAt: input.createdAt ?? nowIso(),
       updatedAt: nowIso(),
     };
-    upsertTask(task);
+    upsertTask(normalizeTask(task));
     setTaskEditorOpen(false);
     setEditingTask(undefined);
   }
@@ -301,6 +387,9 @@ export function App() {
         remindersEnabled: false,
         progressMethod: 'manual',
         manualProgress: 0,
+        tags: [],
+        resources: [],
+        focusProfile: defaultFocusProfile(note.title),
         createdAt,
         updatedAt: createdAt,
       };
@@ -358,6 +447,32 @@ export function App() {
   }
 
   const activeTask = snapshot.tasks.find((task) => task.id === snapshot.runtime.activeTaskId);
+  if (!authReady) {
+    return <SplashScreen theme={snapshot.settings.theme} />;
+  }
+
+  if (!session && !devPreviewAuth) {
+    return (
+      <AuthScreen
+        theme={snapshot.settings.theme}
+        mode={authMode}
+        email={authEmail}
+        password={authPassword}
+        displayName={authDisplayName}
+        username={authUsername}
+        busy={authBusy}
+        error={authError}
+        onMode={setAuthMode}
+        onEmail={setAuthEmail}
+        onPassword={setAuthPassword}
+        onDisplayName={setAuthDisplayName}
+        onUsername={setAuthUsername}
+        onSubmit={signInWithPassword}
+        onGoogle={signInWithGoogle}
+      />
+    );
+  }
+
   const content = (
     <main className="app-main" data-testid="app-main">
       <TopBar
@@ -367,7 +482,7 @@ export function App() {
           setEditingTask(undefined);
           setTaskEditorOpen(true);
         }}
-        syncLabel={snapshot.syncError ? 'Sync issue' : snapshot.lastSyncAt ? 'Synced' : 'Local first'}
+        syncLabel={snapshot.syncError ? 'Sync issue' : snapshot.lastSyncAt ? 'Synced' : 'Offline ready'}
       />
       {section === 'dashboard' && (
         <Dashboard
@@ -500,6 +615,131 @@ export function App() {
   );
 }
 
+function SplashScreen({ theme }: { theme: TaskMasterSnapshot['settings']['theme'] }) {
+  return (
+    <main className={`auth-shell theme-${theme}`}>
+      <section className="auth-card compact">
+        <img src={assetUrl('assets/branding/logo-dark.png')} alt="TaskMaster Pro" />
+        <Loader2 className="spin" size={28} />
+        <p>Opening your workspace...</p>
+      </section>
+    </main>
+  );
+}
+
+function AuthScreen({
+  theme,
+  mode,
+  email,
+  password,
+  displayName,
+  username,
+  busy,
+  error,
+  onMode,
+  onEmail,
+  onPassword,
+  onDisplayName,
+  onUsername,
+  onSubmit,
+  onGoogle,
+}: {
+  theme: TaskMasterSnapshot['settings']['theme'];
+  mode: 'sign-in' | 'create-account';
+  email: string;
+  password: string;
+  displayName: string;
+  username: string;
+  busy: boolean;
+  error?: string;
+  onMode: (mode: 'sign-in' | 'create-account') => void;
+  onEmail: (value: string) => void;
+  onPassword: (value: string) => void;
+  onDisplayName: (value: string) => void;
+  onUsername: (value: string) => void;
+  onSubmit: () => void;
+  onGoogle: () => void;
+}) {
+  const creating = mode === 'create-account';
+  return (
+    <main className={`auth-shell theme-${theme}`}>
+      <section className="auth-card">
+        <div>
+          <img className="auth-logo" src={assetUrl('assets/branding/logo-dark.png')} alt="TaskMaster Pro" />
+          <p className="eyebrow">Your planning workspace</p>
+          <h1>{creating ? 'Create your TaskMaster Pro account' : 'Welcome back'}</h1>
+          <p className="quiet">
+            Plan your tasks, run focused work sessions, keep your data synced, and continue working offline after
+            sign-in.
+          </p>
+        </div>
+        <div className="segmented">
+          <button className={mode === 'sign-in' ? 'active' : ''} onClick={() => onMode('sign-in')} type="button">
+            Sign in
+          </button>
+          <button
+            className={mode === 'create-account' ? 'active' : ''}
+            onClick={() => onMode('create-account')}
+            type="button"
+          >
+            Create account
+          </button>
+        </div>
+        {creating && (
+          <div className="form-grid">
+            <label>
+              Display name
+              <input value={displayName} onChange={(event) => onDisplayName(event.target.value)} placeholder="Your name" />
+            </label>
+            <label>
+              Username
+              <input value={username} onChange={(event) => onUsername(event.target.value)} placeholder="username" />
+            </label>
+          </div>
+        )}
+        <label>
+          Email
+          <input value={email} onChange={(event) => onEmail(event.target.value)} placeholder="you@example.com" type="email" />
+        </label>
+        <label>
+          Password
+          <input value={password} onChange={(event) => onPassword(event.target.value)} placeholder="Your password" type="password" />
+        </label>
+        {error && <p className="error-text">{error}</p>}
+        <button className="primary-btn full" disabled={busy || !email || !password} onClick={onSubmit} type="button">
+          {busy ? <Loader2 className="spin" size={18} /> : <LogIn size={18} />}
+          {creating ? 'Create account' : 'Sign in'}
+        </button>
+        <button className="ghost-btn full" disabled={busy} onClick={onGoogle} type="button">
+          <Globe2 size={18} />
+          Continue with Google
+        </button>
+      </section>
+      <section className="auth-card install-auth-card">
+        <h2>Install TaskMaster Pro</h2>
+        <p className="quiet">Use the same account on Windows, Android, and the web app.</p>
+        <div className="release-grid">
+          {releaseDownloads.map((item) => {
+            const Icon = item.icon;
+            return (
+              <a className="release-card" href={item.href} key={item.href} target="_blank" rel="noreferrer">
+                <span className="release-icon">
+                  <Icon size={20} />
+                </span>
+                <span>
+                  <strong>{item.label}</strong>
+                  <small>{item.detail}</small>
+                </span>
+                <Download size={18} />
+              </a>
+            );
+          })}
+        </div>
+      </section>
+    </main>
+  );
+}
+
 function Sidebar({
   section,
   onSection,
@@ -511,11 +751,11 @@ function Sidebar({
 }) {
   return (
     <aside className="sidebar">
-      <img className="brand-logo" src="/assets/taskmaster-logo.png" alt="TaskMaster Pro" />
+      <img className="brand-logo" src={assetUrl('assets/branding/logo-dark.png')} alt="TaskMaster Pro" />
       <div className="profile-chip">
         <div className="avatar">{initials(snapshot.settings.displayName)}</div>
-        <strong>{snapshot.settings.displayName}</strong>
-        <span>@{snapshot.settings.username}</span>
+        <strong>{snapshot.settings.displayName || 'Your workspace'}</strong>
+        <span>{snapshot.settings.username ? `@${snapshot.settings.username}` : 'Signed in'}</span>
       </div>
       <nav className="nav">
         {sections.map((item) => {
@@ -599,10 +839,12 @@ function Dashboard({
       <div className="hero-panel">
         <div>
           <p className="eyebrow">Today</p>
-          <h2>{todayTasks.length ? 'Your day is ready.' : 'No scheduled pressure today.'}</h2>
+          <h2>{todayTasks.length ? 'Your plan is ready.' : 'Start by adding what matters today.'}</h2>
           <p>
-            {todayTasks.length} planned items, {completed} completed overall, idle threshold{' '}
-            {snapshot.settings.idleThresholdSeconds}s.
+            {todayTasks.length
+              ? `${todayTasks.length} planned item${todayTasks.length === 1 ? '' : 's'} for today.`
+              : 'Create a task, capture a quick note, or open a roadmap when you are ready.'}
+            {completed ? ` ${completed} task${completed === 1 ? '' : 's'} completed so far.` : ''}
           </p>
         </div>
         <button className="primary-btn" onClick={onOpenTasks} type="button">
@@ -616,37 +858,6 @@ function Dashboard({
         <Metric title="Active tasks" value={String(snapshot.tasks.filter((task) => task.status !== 'completed').length)} icon={ListChecks} />
         <Metric title="Roadmaps" value={String(snapshot.roadmaps.length)} icon={Map} />
       </div>
-      <section className="panel release-panel" aria-label="Release downloads">
-        <div className="panel-title">
-          <h3>Install builds</h3>
-          <a
-            className="text-btn"
-            href="https://github.com/Yasser-Diab/taskMasterPro/releases/latest"
-            target="_blank"
-            rel="noreferrer"
-          >
-            Latest release
-            <ExternalLink size={15} />
-          </a>
-        </div>
-        <div className="release-grid">
-          {releaseDownloads.map((item) => {
-            const Icon = item.icon;
-            return (
-              <a className="release-card" href={item.href} key={item.href} target="_blank" rel="noreferrer">
-                <span className="release-icon">
-                  <Icon size={20} />
-                </span>
-                <span>
-                  <strong>{item.label}</strong>
-                  <small>{item.detail}</small>
-                </span>
-                <Download size={18} />
-              </a>
-            );
-          })}
-        </div>
-      </section>
       <div className="split-grid">
         <section className="panel">
           <div className="panel-title">
@@ -654,6 +865,7 @@ function Dashboard({
             <button className="text-btn" onClick={onOpenTasks} type="button">Manage</button>
           </div>
           <div className="list">
+            {snapshot.tasks.length === 0 && <EmptyState text="No tasks yet. Add your first task when you are ready." />}
             {snapshot.tasks.slice(0, 5).map((task) => (
               <TaskRow key={task.id} task={task} onStart={() => onStartFocus(task.id)} />
             ))}
@@ -686,6 +898,7 @@ function Tasks({
 }) {
   const [query, setQuery] = useState('');
   const filtered = snapshot.tasks.filter((task) => task.title.toLowerCase().includes(query.toLowerCase()));
+  const activeTask = snapshot.tasks.find((task) => task.id === snapshot.runtime.activeTaskId);
   return (
     <section className="page" data-testid="tasks-page">
       <div className="page-tools">
@@ -698,14 +911,21 @@ function Tasks({
           New task
         </button>
       </div>
+      <ActiveTaskPanel snapshot={snapshot} task={activeTask} onStart={onStart} onEdit={onEdit} />
       <div className="task-board">
         {(['todo', 'in_progress', 'completed'] as const).map((status) => (
           <section className="panel board-column" key={status}>
             <h3>{statusLabel(status)}</h3>
+            {filtered.filter((task) => task.status === status).length === 0 && (
+              <EmptyState text={status === 'todo' ? 'No planned tasks here yet.' : 'Nothing in this column.'} />
+            )}
             {filtered
               .filter((task) => task.status === status)
-              .map((task) => (
-                <article className="task-card" key={task.id}>
+              .map((rawTask) => {
+                const task = normalizeTask(rawTask);
+                const stats = summarizeTaskActivity(snapshot, task);
+                return (
+                  <article className="task-card" key={task.id}>
                   <div className="task-card-head">
                     <span className={`priority priority-${task.priority}`}>{task.priority}</span>
                     <button className="icon-btn" onClick={() => onEdit(task)} type="button" aria-label="Edit task">
@@ -714,6 +934,23 @@ function Tasks({
                   </div>
                   <h4>{task.title}</h4>
                   <p>{task.description || 'No description'}</p>
+                  <div className="task-meta-row">
+                    <span>
+                      <Paperclip size={14} />
+                      {task.resources.length} resources
+                    </span>
+                    <span>
+                      <AppWindow size={14} />
+                      {task.focusProfile.relatedApplications.length} related apps
+                    </span>
+                    <span>
+                      <Target size={14} />
+                      {stats.focusScore}% focus
+                    </span>
+                  </div>
+                  {task.focusProfile.expectedActivity && (
+                    <p className="focus-intent">{task.focusProfile.expectedActivity}</p>
+                  )}
                   <Progress value={task.manualProgress} />
                   <div className="card-actions">
                     <button className="ghost-btn" onClick={() => onStart(task.id)} type="button">
@@ -737,9 +974,72 @@ function Tasks({
                     </button>
                   </div>
                 </article>
-              ))}
+                );
+              })}
           </section>
         ))}
+      </div>
+    </section>
+  );
+}
+
+function ActiveTaskPanel({
+  snapshot,
+  task,
+  onStart,
+  onEdit,
+}: {
+  snapshot: TaskMasterSnapshot;
+  task?: TaskItem;
+  onStart: (taskId: string) => void;
+  onEdit: (task: TaskItem) => void;
+}) {
+  if (!task) {
+    const nextTask = snapshot.tasks.find((item) => item.status !== 'completed');
+    return (
+      <section className="panel active-task-panel">
+        <div>
+          <p className="eyebrow">Active work</p>
+          <h3>No task is running</h3>
+          <p className="quiet">Start a task to track focused work, related apps, resources, and interruptions.</p>
+        </div>
+        {nextTask && (
+          <button className="primary-btn" onClick={() => onStart(nextTask.id)} type="button">
+            <Play size={18} />
+            Start next task
+          </button>
+        )}
+      </section>
+    );
+  }
+
+  const normalized = normalizeTask(task);
+  const stats = summarizeTaskActivity(snapshot, normalized);
+  const latestActivity = snapshot.activityIntervals.find((interval) => interval.taskId === task.id);
+  return (
+    <section className="panel active-task-panel">
+      <div>
+        <p className="eyebrow">Active work</p>
+        <h3>{task.title}</h3>
+        <p className="quiet">{normalized.focusProfile.expectedActivity}</p>
+        {latestActivity && (
+          <p className="quiet">
+            Current device context: {latestActivity.applicationName || 'TaskMaster Pro'}
+            {latestActivity.windowTitle ? ` - ${latestActivity.windowTitle}` : ''}
+          </p>
+        )}
+      </div>
+      <div className="activity-summary">
+        <Metric title="Active captured" value={formatDuration(stats.totalActiveSeconds)} icon={Activity} />
+        <Metric title="Focused" value={formatDuration(stats.focusedSeconds)} icon={CheckCheck} />
+        <Metric title="Other context" value={formatDuration(stats.neutralSeconds + stats.distractingSeconds)} icon={Gauge} />
+        <Metric title="Focus score" value={`${stats.focusScore}%`} icon={Target} />
+      </div>
+      <div className="toolbar">
+        <button className="ghost-btn" onClick={() => onEdit(normalized)} type="button">
+          <Paperclip size={16} />
+          Add resources/apps
+        </button>
       </div>
     </section>
   );
@@ -767,15 +1067,31 @@ function Pomodoro({
   const runtime = snapshot.runtime;
   const remaining = runtimeRemaining(runtime, new Date(clock));
   const selectable = snapshot.tasks.filter((task) => task.status !== 'completed');
+  const [selectedTaskId, setSelectedTaskId] = useState(activeTask?.id ?? selectable[0]?.id ?? '');
+  const selectedTask = selectable.find((task) => task.id === selectedTaskId) ?? activeTask ?? selectable[0];
   return (
     <section className="page pomodoro-page" data-testid="pomodoro-page">
       <section className="timer-panel">
-        <p className="eyebrow">{activeTask?.title ?? 'Choose a task'}</p>
+        <p className="eyebrow">Standalone Pomodoro</p>
+        <h2>{activeTask?.title ?? 'Focus timer'}</h2>
         <div className="timer-readout">{formatClock(remaining)}</div>
         <p className="state-label">{runtime.state.replaceAll('_', ' ')}</p>
+        {!runtime.state.endsWith('_running') && (
+          <label className="timer-task-select">
+            Link this focus to a task
+            <select value={selectedTask?.id ?? ''} onChange={(event) => setSelectedTaskId(event.target.value)}>
+              {selectable.length === 0 && <option value="">Create a task first</option>}
+              {selectable.map((task) => (
+                <option key={task.id} value={task.id}>
+                  {task.title}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <div className="timer-actions">
-          {runtime.state === 'focus_ready' && selectable[0] && (
-            <button className="primary-btn" onClick={() => onStart(selectable[0].id)} type="button">
+          {(runtime.state === 'idle' || runtime.state === 'focus_ready') && selectedTask && (
+            <button className="primary-btn" onClick={() => onStart(selectedTask.id)} type="button">
               <CirclePlay size={18} />
               Start focus
             </button>
@@ -816,7 +1132,7 @@ function Pomodoro({
               <button className="ghost-btn" onClick={onFinishTask} type="button">Finish task</button>
             </>
           )}
-          {runtime.state !== 'focus_ready' && (
+          {runtime.state !== 'idle' && runtime.state !== 'focus_ready' && (
             <button className="danger-btn" onClick={onFinishTask} type="button">
               <Square size={16} />
               Stop
@@ -825,11 +1141,15 @@ function Pomodoro({
         </div>
       </section>
       <section className="panel">
-        <h3>Available focus tasks</h3>
-        <div className="list">
-          {selectable.map((task) => (
-            <TaskRow key={task.id} task={task} onStart={() => onStart(task.id)} />
-          ))}
+        <h3>How this timer works</h3>
+        <p className="quiet">
+          Pomodoro is only the timer. Start and manage task resources, related applications, checklists, and activity
+          evidence from the Tasks page.
+        </p>
+        <div className="list compact-list">
+          <span>Focus stops at zero and waits for your next action.</span>
+          <span>Breaks do not start automatically unless you turn that on later.</span>
+          <span>Actual duration and transition reasons are preserved in session history.</span>
         </div>
       </section>
     </section>
@@ -1071,8 +1391,8 @@ function SettingsView({
               <User size={22} />
               <div>
                 <strong>{session.user.email}</strong>
-                <span>User ID: {session.user.id}</span>
-                <span>Project: {publicProjectLabel()}</span>
+                <span>Your account is connected and ready to sync.</span>
+                <span>{publicProjectLabel()}</span>
               </div>
               <button className="ghost-btn" onClick={onRefresh} type="button">
                 <RefreshCw size={16} />
@@ -1164,12 +1484,40 @@ function SettingsView({
         <section className="panel">
           <h3>Browser and privacy</h3>
           <Toggle label="Sync browser tabs and URLs" value={settings.browserSyncEnabled} onChange={(browserSyncEnabled) => update({ browserSyncEnabled })} />
-          <Toggle label="Sync saved website passwords" value={settings.passwordSyncEnabled} onChange={(passwordSyncEnabled) => update({ passwordSyncEnabled })} />
+          <Toggle label="Sync encrypted password vault" value={settings.passwordSyncEnabled} onChange={(passwordSyncEnabled) => update({ passwordSyncEnabled })} />
           <Toggle label="Sync health data" value={settings.healthSyncEnabled} onChange={(healthSyncEnabled) => update({ healthSyncEnabled })} />
           <Toggle label="Sync cycle data" value={settings.cycleSyncEnabled} onChange={(cycleSyncEnabled) => update({ cycleSyncEnabled })} />
-          <p className="quiet">Supabase URL: {supabaseUrl}</p>
-          <p className="quiet">Local rows: {snapshot.tasks.length} tasks, {snapshot.quickNotes.length} notes.</p>
-          {snapshot.syncError && <p className="error-text">Last sync error: {snapshot.syncError}</p>}
+          <p className="quiet">Website sessions and cookies stay on this device. Passwords require a separate encrypted vault.</p>
+          <details className="diagnostics-box">
+            <summary>Diagnostics</summary>
+            <p>Supabase URL: {supabaseUrl}</p>
+            <p>Local rows: {snapshot.tasks.length} tasks, {snapshot.quickNotes.length} notes.</p>
+            {snapshot.syncError && <p className="error-text">Last sync error: {snapshot.syncError}</p>}
+          </details>
+        </section>
+        <section className="panel">
+          <h3>Notification sounds</h3>
+          <p className="quiet">Preview the TaskMaster sounds packaged from the media folder.</p>
+          <div className="sound-grid">
+            {[
+              ['focusCompleted', 'Focus alarm'],
+              ['breakCompleted', 'Break alarm'],
+              ['taskReminder', 'Task reminder'],
+              ['taskOverdue', 'Overdue warning'],
+              ['dailyCoaching', 'Daily coaching'],
+              ['criticalAlarm', 'Critical alarm'],
+            ].map(([key, label]) => (
+              <button
+                className="ghost-btn"
+                key={key}
+                onClick={() => void platformServices.notifications.playPreview(key)}
+                type="button"
+              >
+                <Bell size={16} />
+                {label}
+              </button>
+            ))}
+          </div>
         </section>
       </div>
     </section>
@@ -1262,9 +1610,64 @@ function TaskEditor({
       timeZoneId: snapshot.settings.homeTimeZoneId,
       manualProgress: 0,
       remindersEnabled: false,
+      tags: [],
+      resources: [],
+      focusProfile: defaultFocusProfile(''),
     },
   );
+  const [resourceName, setResourceName] = useState('');
+  const [resourceUrl, setResourceUrl] = useState('');
+  const [appName, setAppName] = useState('');
+  const [processName, setProcessName] = useState('');
   const selectedRoadmap = snapshot.roadmaps.find((roadmap) => roadmap.id === draft.roadmapId);
+  const resources = draft.resources ?? [];
+  const focusProfile = {
+    ...defaultFocusProfile(draft.title),
+    ...(draft.focusProfile ?? {}),
+    relatedApplications: draft.focusProfile?.relatedApplications ?? [],
+    allowedDomains: draft.focusProfile?.allowedDomains ?? [],
+    distractionDomains: draft.focusProfile?.distractionDomains ?? [],
+  };
+  function updateFocusProfile(patch: Partial<typeof focusProfile>) {
+    setDraft({ ...draft, focusProfile: { ...focusProfile, ...patch } });
+  }
+  function addResource() {
+    const name = resourceName.trim() || resourceUrl.trim();
+    if (!name) return;
+    setDraft({
+      ...draft,
+      resources: [
+        ...resources,
+        {
+          id: createId('resource'),
+          name,
+          resourceType: resourceUrl.trim() ? 'web_page' : 'external_reference',
+          url: resourceUrl.trim() || undefined,
+          createdAt: nowIso(),
+        },
+      ],
+    });
+    setResourceName('');
+    setResourceUrl('');
+  }
+  function addRelatedApp() {
+    const name = appName.trim();
+    if (!name) return;
+    updateFocusProfile({
+      relatedApplications: [
+        ...focusProfile.relatedApplications,
+        {
+          id: createId('app'),
+          applicationName: name,
+          processName: processName.trim() || undefined,
+          matchType: processName.trim() ? 'process' : 'application',
+          expectedUse: 'primary_work',
+        },
+      ],
+    });
+    setAppName('');
+    setProcessName('');
+  }
   return (
     <div className="modal-backdrop" role="presentation">
       <section className="modal-sheet wide" role="dialog" aria-modal="true" aria-label="Task editor">
@@ -1356,6 +1759,106 @@ function TaskEditor({
           </label>
           <Toggle label="Reminder enabled" value={draft.remindersEnabled ?? false} onChange={(remindersEnabled) => setDraft({ ...draft, remindersEnabled })} />
         </div>
+        <section className="editor-section">
+          <div className="panel-title">
+            <h4>Focus expectations</h4>
+          </div>
+          <label>
+            What should count as useful work for this task?
+            <textarea
+              value={focusProfile.expectedActivity}
+              onChange={(event) => updateFocusProfile({ expectedActivity: event.target.value })}
+              placeholder="Example: writing the proposal, reviewing the source PDF, or researching the selected topic"
+            />
+          </label>
+        </section>
+        <section className="editor-section">
+          <div className="panel-title">
+            <h4>Resources and attachments</h4>
+            <span className="quiet">{resources.length} linked</span>
+          </div>
+          <div className="resource-add-row">
+            <input value={resourceName} onChange={(event) => setResourceName(event.target.value)} placeholder="Resource name" />
+            <input value={resourceUrl} onChange={(event) => setResourceUrl(event.target.value)} placeholder="URL or reference" />
+            <button className="ghost-btn" onClick={addResource} type="button">
+              <Paperclip size={16} />
+              Add
+            </button>
+          </div>
+          <label className="file-attach-row">
+            Select local attachments
+            <input
+              multiple
+              type="file"
+              onChange={(event) => {
+                const files = Array.from(event.target.files ?? []);
+                if (!files.length) return;
+                setDraft({
+                  ...draft,
+                  resources: [
+                    ...resources,
+                    ...files.map((file) => ({
+                      id: createId('resource'),
+                      name: file.name,
+                      resourceType: 'local_file' as const,
+                      notes: `${Math.round(file.size / 1024)} KB selected on this device`,
+                      createdAt: nowIso(),
+                    })),
+                  ],
+                });
+                event.currentTarget.value = '';
+              }}
+            />
+          </label>
+          <div className="chip-list">
+            {resources.map((resource) => (
+              <span className="data-chip" key={resource.id}>
+                <Paperclip size={13} />
+                {resource.name}
+                <button
+                  aria-label={`Remove ${resource.name}`}
+                  onClick={() => setDraft({ ...draft, resources: resources.filter((item) => item.id !== resource.id) })}
+                  type="button"
+                >
+                  ×
+                </button>
+              </span>
+            ))}
+          </div>
+        </section>
+        <section className="editor-section">
+          <div className="panel-title">
+            <h4>Related applications</h4>
+            <span className="quiet">{focusProfile.relatedApplications.length} linked</span>
+          </div>
+          <div className="resource-add-row">
+            <input value={appName} onChange={(event) => setAppName(event.target.value)} placeholder="Application name" />
+            <input value={processName} onChange={(event) => setProcessName(event.target.value)} placeholder="Process name, optional" />
+            <button className="ghost-btn" onClick={addRelatedApp} type="button">
+              <AppWindow size={16} />
+              Add
+            </button>
+          </div>
+          <div className="chip-list">
+            {focusProfile.relatedApplications.map((app) => (
+              <span className="data-chip" key={app.id}>
+                <AppWindow size={13} />
+                {app.applicationName}
+                <button
+                  aria-label={`Remove ${app.applicationName}`}
+                  onClick={() =>
+                    updateFocusProfile({
+                      relatedApplications: focusProfile.relatedApplications.filter((item) => item.id !== app.id),
+                    })
+                  }
+                  type="button"
+                >
+                  ×
+                </button>
+              </span>
+            ))}
+          </div>
+        </section>
         <div className="modal-actions">
           <button className="ghost-btn" onClick={onClose} type="button">Cancel</button>
           <button className="primary-btn" onClick={() => onSave(draft)} type="button">
@@ -1490,8 +1993,11 @@ function zoneOffsetLabel(zone: string) {
 }
 
 function formatDuration(seconds: number) {
-  const minutes = Math.round(seconds / 60);
-  if (minutes < 60) return `${minutes}m`;
+  const wholeSeconds = Math.max(0, Math.round(seconds));
+  if (wholeSeconds < 60) return `${wholeSeconds}s`;
+  const minutes = Math.floor(wholeSeconds / 60);
+  const secondsRest = wholeSeconds % 60;
+  if (minutes < 60) return secondsRest ? `${minutes}m ${secondsRest}s` : `${minutes}m`;
   const hours = Math.floor(minutes / 60);
   const rest = minutes % 60;
   return rest ? `${hours}h ${rest}m` : `${hours}h`;
@@ -1504,12 +2010,56 @@ function formatClock(seconds: number) {
 }
 
 function initials(name: string) {
-  return name
+  const value = name
     .split(/\s+/)
     .filter(Boolean)
     .slice(0, 2)
     .map((part) => part[0]?.toUpperCase())
     .join('');
+  return value || 'TM';
+}
+
+function summarizeTaskActivity(snapshot: TaskMasterSnapshot, task: TaskItem) {
+  const intervals = snapshot.activityIntervals.filter((interval) => interval.taskId === task.id);
+  const totalActiveSeconds = intervals.reduce((sum, interval) => sum + interval.activeSeconds, 0);
+  const focusedSeconds = intervals
+    .filter((interval) => interval.classification === 'focused' || interval.classification === 'research')
+    .reduce((sum, interval) => sum + interval.activeSeconds, 0);
+  const neutralSeconds = intervals
+    .filter((interval) => interval.classification === 'neutral' || interval.classification === 'communication')
+    .reduce((sum, interval) => sum + interval.activeSeconds, 0);
+  const distractingSeconds = intervals
+    .filter((interval) => interval.classification === 'distracting')
+    .reduce((sum, interval) => sum + interval.activeSeconds, 0);
+  return {
+    totalActiveSeconds,
+    focusedSeconds,
+    neutralSeconds,
+    distractingSeconds,
+    focusScore: totalActiveSeconds ? Math.round((focusedSeconds / totalActiveSeconds) * 100) : 0,
+  };
+}
+
+function classifyActivity(task: TaskItem, activity: CurrentActivity): ActivityInterval['classification'] {
+  const normalized = normalizeTask(task);
+  const appName = `${activity.applicationName ?? ''} ${activity.processName ?? ''}`.toLowerCase();
+  const title = (activity.windowTitle ?? '').toLowerCase();
+  if (activity.sourceType === 'taskmaster') return 'focused';
+  const related = normalized.focusProfile.relatedApplications.some((app) => {
+    const expectedApp = app.applicationName.toLowerCase();
+    const expectedProcess = app.processName?.toLowerCase();
+    return appName.includes(expectedApp) || Boolean(expectedProcess && appName.includes(expectedProcess));
+  });
+  if (related) return 'focused';
+  const resourceHit = normalized.resources.some((resource) => {
+    const name = resource.name.toLowerCase();
+    const url = resource.url?.toLowerCase();
+    return title.includes(name) || Boolean(url && title.includes(url));
+  });
+  if (resourceHit) return 'research';
+  if (/(chat|mail|teams|slack|whatsapp|telegram|discord)/i.test(appName)) return 'communication';
+  if (/(game|netflix|youtube|tiktok|instagram|facebook|xbox)/i.test(`${appName} ${title}`)) return 'distracting';
+  return 'neutral';
 }
 
 function labelForSection(section: AppSection) {

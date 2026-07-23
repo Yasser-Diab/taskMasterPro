@@ -29,6 +29,31 @@ export interface TaskDomain {
   sortOrder: number;
 }
 
+export interface TaskResource {
+  id: string;
+  name: string;
+  resourceType: 'web_page' | 'pdf' | 'document' | 'image' | 'folder' | 'local_file' | 'external_reference';
+  url?: string;
+  localPath?: string;
+  notes?: string;
+  createdAt: string;
+}
+
+export interface RelatedApplication {
+  id: string;
+  applicationName: string;
+  processName?: string;
+  matchType: 'application' | 'process' | 'window_title' | 'domain';
+  expectedUse: 'primary_work' | 'research' | 'reference' | 'communication' | 'distraction';
+}
+
+export interface TaskFocusProfile {
+  expectedActivity: string;
+  allowedDomains: string[];
+  distractionDomains: string[];
+  relatedApplications: RelatedApplication[];
+}
+
 export interface TaskItem {
   id: string;
   userId?: string;
@@ -48,6 +73,9 @@ export interface TaskItem {
   recurrenceRule?: string;
   progressMethod: 'manual' | 'checkpoints' | 'linked_sessions';
   manualProgress: number;
+  tags: string[];
+  resources: TaskResource[];
+  focusProfile: TaskFocusProfile;
   createdAt: string;
   updatedAt: string;
   deletedAt?: string;
@@ -99,7 +127,25 @@ export interface SessionSegment {
   activeSeconds: number;
 }
 
+export interface ActivityInterval {
+  id: string;
+  taskId: string;
+  sessionId?: string;
+  sourceType: 'taskmaster' | 'internal_browser' | 'external_application' | 'external_website' | 'document' | 'manual';
+  applicationName?: string;
+  processName?: string;
+  windowTitle?: string;
+  domain?: string;
+  url?: string;
+  classification: 'focused' | 'research' | 'communication' | 'neutral' | 'distracting' | 'idle';
+  startedAtUtc: string;
+  endedAtUtc?: string;
+  activeSeconds: number;
+  idleSeconds: number;
+}
+
 export type PomodoroState =
+  | 'idle'
   | 'focus_ready'
   | 'focus_running'
   | 'focus_paused'
@@ -158,6 +204,7 @@ export interface TaskMasterSnapshot {
   roadmaps: RoadmapPlan[];
   quickNotes: QuickNote[];
   sessions: SessionSegment[];
+  activityIntervals: ActivityInterval[];
   browserTabs: BrowserTabState[];
   settings: UserSettings;
   runtime: RuntimeState;
@@ -178,8 +225,8 @@ export const defaultDomains: TaskDomain[] = [
 ];
 
 export const defaultSettings: UserSettings = {
-  displayName: 'Diab',
-  username: 'YasserDiab',
+  displayName: '',
+  username: '',
   language: 'en',
   theme: 'dark_blue',
   focusDurationSeconds: 1500,
@@ -200,7 +247,7 @@ export const defaultSettings: UserSettings = {
 };
 
 export const blankRuntime: RuntimeState = {
-  state: 'focus_ready',
+  state: 'idle',
   accumulatedActiveSeconds: 0,
   plannedDurationSeconds: defaultSettings.focusDurationSeconds,
   completedFocusCount: 0,

@@ -1,4 +1,5 @@
 import type {
+  ActivityInterval,
   BrowserTabState,
   PomodoroState,
   QuickNote,
@@ -13,7 +14,7 @@ import type {
 import { blankRuntime, defaultDomains, defaultSettings } from './domain';
 import { supabase } from './supabaseClient';
 
-const storageKey = 'taskmaster-pro-next.snapshot.v1';
+const storageKey = 'taskmaster-pro-next.snapshot.v2';
 
 export function nowIso() {
   return new Date().toISOString();
@@ -31,73 +32,11 @@ export function initialSnapshot(): TaskMasterSnapshot {
   const createdAt = nowIso();
   return {
     domains: defaultDomains,
-    tasks: [
-      {
-        id: createId('task'),
-        domainId: 'work',
-        title: 'Stabilize TaskMaster Pro',
-        description: 'Finish the clean runtime rebuild and verify the app across devices.',
-        executionMode: 'hybrid',
-        status: 'in_progress',
-        priority: 'high',
-        plannedLocalDate: new Date().toISOString().slice(0, 10),
-        timeZoneId: defaultSettings.homeTimeZoneId,
-        remindersEnabled: true,
-        progressMethod: 'manual',
-        manualProgress: 45,
-        createdAt,
-        updatedAt: createdAt,
-      },
-      {
-        id: createId('task'),
-        domainId: 'learning',
-        title: 'Review roadmap progress',
-        description: 'Check milestones, linked tasks, and focus time before marking anything complete.',
-        executionMode: 'pomodoro',
-        status: 'todo',
-        priority: 'normal',
-        plannedLocalDate: new Date().toISOString().slice(0, 10),
-        timeZoneId: defaultSettings.homeTimeZoneId,
-        remindersEnabled: false,
-        progressMethod: 'manual',
-        manualProgress: 0,
-        createdAt,
-        updatedAt: createdAt,
-      },
-    ],
-    roadmaps: [
-      {
-        id: 'roadmap_clean_runtime',
-        title: 'Clean data runtime',
-        description: 'Rebuild the broken data and runtime layers without throwing away the product identity.',
-        goal: 'Reliable Windows, Android, and browser-first TaskMaster Pro.',
-        status: 'active',
-        progressMethod: 'linked_tasks',
-        manualProgress: 35,
-        phases: [
-          {
-            id: 'phase_schema',
-            roadmapId: 'roadmap_clean_runtime',
-            title: 'Database foundation',
-            description: 'Clean Supabase schema, RLS, and local sync model.',
-            phaseOrder: 1,
-            status: 'completed',
-          },
-          {
-            id: 'phase_runtime',
-            roadmapId: 'roadmap_clean_runtime',
-            title: 'Runtime and UI stability',
-            description: 'Timer, quick notes, browser metadata, and responsive pages.',
-            phaseOrder: 2,
-            status: 'active',
-          },
-        ],
-        createdAt,
-        updatedAt: createdAt,
-      },
-    ],
+    tasks: [],
+    roadmaps: [],
     quickNotes: [],
     sessions: [],
+    activityIntervals: [],
     browserTabs: [
       {
         id: createId('tab'),
@@ -130,10 +69,11 @@ export function saveLocalSnapshot(snapshot: TaskMasterSnapshot) {
 export function normalizeSnapshot(snapshot: Partial<TaskMasterSnapshot>): TaskMasterSnapshot {
   return {
     domains: snapshot.domains?.length ? snapshot.domains : defaultDomains,
-    tasks: snapshot.tasks ?? [],
+    tasks: (snapshot.tasks ?? []).map(normalizeTask),
     roadmaps: snapshot.roadmaps ?? [],
     quickNotes: snapshot.quickNotes ?? [],
     sessions: snapshot.sessions ?? [],
+    activityIntervals: snapshot.activityIntervals ?? [],
     browserTabs: snapshot.browserTabs?.length
       ? snapshot.browserTabs
       : [
@@ -152,11 +92,36 @@ export function normalizeSnapshot(snapshot: Partial<TaskMasterSnapshot>): TaskMa
   };
 }
 
+export function defaultFocusProfile(title = '') {
+  return {
+    expectedActivity: title ? `Work related to "${title}"` : 'Focused work for this task',
+    allowedDomains: [],
+    distractionDomains: [],
+    relatedApplications: [],
+  };
+}
+
+export function normalizeTask(task: TaskItem): TaskItem {
+  return {
+    ...task,
+    tags: task.tags ?? [],
+    resources: task.resources ?? [],
+    focusProfile: {
+      ...defaultFocusProfile(task.title),
+      ...(task.focusProfile ?? {}),
+      allowedDomains: task.focusProfile?.allowedDomains ?? [],
+      distractionDomains: task.focusProfile?.distractionDomains ?? [],
+      relatedApplications: task.focusProfile?.relatedApplications ?? [],
+    },
+  };
+}
+
 export async function pullRemoteSnapshot(current: TaskMasterSnapshot): Promise<TaskMasterSnapshot> {
   const user = (await supabase.auth.getUser()).data.user;
   if (!user) return current;
 
-  const [settings, tasks, roadmaps, phases, quickNotes] = await Promise.all([
+  const [profile, settings, tasks, roadmaps, phases, quickNotes] = await Promise.all([
+    supabase.from('profiles').select('*').eq('id', user.id).maybeSingle(),
     supabase.from('user_settings').select('*').eq('user_id', user.id).maybeSingle(),
     supabase.from('tasks').select('*').eq('user_id', user.id).is('deleted_at', null),
     supabase.from('roadmaps').select('*').eq('user_id', user.id).is('deleted_at', null),
@@ -164,7 +129,7 @@ export async function pullRemoteSnapshot(current: TaskMasterSnapshot): Promise<T
     supabase.from('quick_notes').select('*').eq('user_id', user.id),
   ]);
 
-  const errors = [settings.error, tasks.error, roadmaps.error, phases.error, quickNotes.error].filter(Boolean);
+  const errors = [profile.error, settings.error, tasks.error, roadmaps.error, phases.error, quickNotes.error].filter(Boolean);
   if (errors.length) {
     throw new Error(errors.map((error) => error?.message).join('; '));
   }
@@ -173,8 +138,13 @@ export async function pullRemoteSnapshot(current: TaskMasterSnapshot): Promise<T
   const nextRoadmaps = (roadmaps.data ?? []).map((row) => fromRoadmapRow(row, phaseRows));
   const next: TaskMasterSnapshot = {
     ...current,
-    settings: settings.data ? fromSettingsRow(settings.data, current.settings) : current.settings,
-    tasks: (tasks.data ?? []).map(fromTaskRow),
+    settings: {
+      ...(settings.data ? fromSettingsRow(settings.data, current.settings) : current.settings),
+      displayName: profile.data?.display_name ?? current.settings.displayName,
+      username: profile.data?.username ?? current.settings.username,
+      language: profile.data?.preferred_language ?? current.settings.language,
+    },
+    tasks: (tasks.data ?? []).map(fromTaskRow).map(normalizeTask),
     roadmaps: nextRoadmaps,
     quickNotes: (quickNotes.data ?? []).map(fromQuickNoteRow),
     lastSyncAt: nowIso(),
@@ -199,6 +169,19 @@ export async function syncQuickNote(note: QuickNote) {
 export async function syncSettings(settings: UserSettings) {
   const user = (await supabase.auth.getUser()).data.user;
   if (!user) return;
+  await supabase.from('profiles').upsert(
+    {
+      id: user.id,
+      display_name: settings.displayName || null,
+      username: settings.username || null,
+      preferred_language: settings.language,
+      time_zone_mode: 'fixed',
+      fixed_time_zone_id: settings.homeTimeZoneId,
+      clock_format: 'system',
+      updated_at: nowIso(),
+    },
+    { onConflict: 'id' },
+  );
   await supabase.from('user_settings').upsert(toSettingsRow(settings, user.id), {
     onConflict: 'user_id',
   });
@@ -258,6 +241,13 @@ export function completeCurrentSegment(snapshot: TaskMasterSnapshot): TaskMaster
   };
 }
 
+export function appendActivityInterval(snapshot: TaskMasterSnapshot, interval: ActivityInterval): TaskMasterSnapshot {
+  return {
+    ...snapshot,
+    activityIntervals: [interval, ...snapshot.activityIntervals].slice(0, 500),
+  };
+}
+
 function fromTaskRow(row: Record<string, any>): TaskItem {
   return {
     id: row.id,
@@ -278,6 +268,9 @@ function fromTaskRow(row: Record<string, any>): TaskItem {
     recurrenceRule: row.recurrence_rule ?? undefined,
     progressMethod: row.progress_method ?? 'manual',
     manualProgress: Number(row.manual_progress ?? 0),
+    tags: Array.isArray(row.tags) ? row.tags : [],
+    resources: [],
+    focusProfile: defaultFocusProfile(row.title ?? ''),
     createdAt: row.created_at ?? nowIso(),
     updatedAt: row.updated_at ?? nowIso(),
     deletedAt: row.deleted_at ?? undefined,
@@ -410,6 +403,7 @@ function fromSettingsRow(row: Record<string, any>, current: UserSettings): UserS
     idleThresholdSeconds: row.idle_threshold_seconds ?? current.idleThresholdSeconds,
     homeTimeZoneId: row.fixed_time_zone_id ?? current.homeTimeZoneId,
     browserSyncEnabled: row.browser_sync_enabled ?? current.browserSyncEnabled,
+    passwordSyncEnabled: row.browser_password_sync_enabled ?? current.passwordSyncEnabled,
     healthSyncEnabled: row.health_sync_enabled ?? current.healthSyncEnabled,
     cycleSyncEnabled: row.cycle_sync_enabled ?? current.cycleSyncEnabled,
   };
@@ -431,6 +425,7 @@ function toSettingsRow(settings: UserSettings, userId: string) {
     idle_threshold_seconds: settings.idleThresholdSeconds,
     default_search_engine: 'google',
     browser_sync_enabled: settings.browserSyncEnabled,
+    browser_password_sync_enabled: settings.passwordSyncEnabled,
     bookmark_sync_enabled: true,
     health_sync_enabled: settings.healthSyncEnabled,
     cycle_sync_enabled: settings.cycleSyncEnabled,
