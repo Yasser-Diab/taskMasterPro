@@ -3,6 +3,11 @@
   "version": "0.1.1",
   "private": true,
   "scripts": {
-    "package:release": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/package-release.ps1"
+    "package:release": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/package-release.ps1",
+    "next:dev": "npm --prefix taskmaster-next run dev",
+    "next:build": "npm --prefix taskmaster-next run build",
+    "next:test": "npm --prefix taskmaster-next run test:e2e",
+    "next:electron": "npm --prefix taskmaster-next run electron:dev",
+    "next:cap:sync": "npm --prefix taskmaster-next run cap:sync"
   }
 }

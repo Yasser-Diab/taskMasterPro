@@ -7,6 +7,16 @@
 build/
 release/
 coverage/
+node_modules/
+taskmaster-next/dist/
+taskmaster-next/dist-electron/
+taskmaster-next/releases/
+taskmaster-next/android/
+taskmaster-next/.vite/
+taskmaster-next/test-results/
+taskmaster-next/playwright-report/
+taskmaster-next/.capacitor/
+github-ready*/
 *.md
 **/flutter/ephemeral/
 android/.gradle/

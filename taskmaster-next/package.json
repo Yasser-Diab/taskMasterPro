@@ -1,0 +1,65 @@
+{
+  "name": "taskmaster-pro-next",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "tsc --noEmit && vite build",
+    "package:release": "node scripts/package-release.mjs",
+    "preview": "vite preview --host 127.0.0.1",
+    "electron:dev": "concurrently -k \"npm run dev\" \"wait-on http://127.0.0.1:5173 && electron .\"",
+    "electron:pack": "npm run build && electron-builder --win nsis",
+    "cap:init": "cap init \"TaskMaster Pro\" \"com.yasserdiab.taskmasterpro\" --web-dir dist",
+    "cap:sync": "npm run build && cap sync",
+    "test:e2e": "playwright test",
+    "test:e2e:headed": "playwright test --headed"
+  },
+  "dependencies": {
+    "@capacitor/android": "^7.4.3",
+    "@capacitor/app": "^7.1.0",
+    "@capacitor/browser": "^7.0.2",
+    "@capacitor/core": "^7.4.3",
+    "@capacitor/preferences": "^7.0.2",
+    "@supabase/supabase-js": "^2.53.0",
+    "date-fns": "^4.1.0",
+    "lucide-react": "^0.468.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.54.2",
+    "@capacitor/cli": "^7.4.3",
+    "@types/node": "^22.13.1",
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "@vitejs/plugin-react": "^4.3.4",
+    "concurrently": "^9.1.2",
+    "electron": "^43.2.0",
+    "electron-builder": "^26.15.3",
+    "typescript": "^5.7.3",
+    "vite": "^6.0.11",
+    "wait-on": "^8.0.2"
+  },
+  "build": {
+    "appId": "com.yasserdiab.taskmasterpro",
+    "productName": "TaskMaster Pro",
+    "directories": {
+      "output": "dist-electron"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": "nsis"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  },
+  "main": "electron/main.cjs"
+}
