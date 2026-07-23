@@ -91,16 +91,23 @@ class TaskRepository {
     final user = _supabaseService.currentUser;
     if (client == null || user == null) return;
     try {
-      await client.from('sync_events').insert({
-        'user_id': user.id,
-        'entity_type': entityType,
-        'entity_id': entityId,
-        'event_type': eventType,
-        'revision': revision,
-        'device_id': await _localStore.loadDeviceId(),
-        'payload': payload,
-        'occurred_at': DateTime.now().toUtc().toIso8601String(),
-      });
+      final channel = client.channel(
+        'taskmaster:user:${user.id}:runtime',
+        opts: const RealtimeChannelConfig(private: true),
+      );
+      await channel.sendBroadcastMessage(
+        event: _runtimeEventName(entityType),
+        payload: {
+          'entity_type': entityType,
+          'entity_id': entityId,
+          'event_type': eventType,
+          'revision': revision,
+          'device_id': await _localStore.loadDeviceId(),
+          'payload': payload,
+          'occurred_at': DateTime.now().toUtc().toIso8601String(),
+        },
+      );
+      await client.removeChannel(channel);
     } on Object catch (error) {
       if (kDebugMode && !_isConnectivityError(error)) {
         debugPrint('SYNC EVENT PUBLISH FAILED: $error');
@@ -258,14 +265,13 @@ class TaskRepository {
     try {
       final rows = await client
           .from('tasks')
-          .select()
+          .select('*,task_domains(name)')
           .eq('user_id', user.id)
-          .eq('is_recurring_template', false)
           .isFilter('deleted_at', null)
-          .isFilter('archived_at', null)
-          .order('priority_rank')
-          .order('scheduled_start_at', nullsFirst: false)
-          .order('due_date', nullsFirst: false)
+          .neq('status', 'archived')
+          .order('planned_start_at_utc', nullsFirst: false)
+          .order('due_at_utc', nullsFirst: false)
+          .order('updated_at', ascending: false)
           .limit(1000);
 
       final parsed = _parseTaskRows(rows);
@@ -294,7 +300,8 @@ class TaskRepository {
     try {
       final rows = await client
           .from('tasks')
-          .select()
+          .select('*,task_domains(name)')
+          .eq('user_id', user.id)
           .not('deleted_at', 'is', null)
           .order('deleted_at', ascending: false)
           .limit(100);
@@ -320,7 +327,7 @@ class TaskRepository {
       }
       final typedRow = Map<String, dynamic>.from(row);
       try {
-        tasks.add(TaskItem.fromMap(typedRow));
+        tasks.add(TaskItem.fromMap(_taskRowForUi(typedRow)));
       } on Object catch (error, stackTrace) {
         if (kDebugMode) {
           debugPrint('TASK PARSE FAILED');
@@ -341,15 +348,16 @@ class TaskRepository {
 
     try {
       final rows = await client
-          .from('categories')
-          .select('name,color_seed')
+          .from('task_domains')
+          .select('name,color')
+          .eq('user_id', client.auth.currentUser!.id)
           .isFilter('deleted_at', null)
           .order('sort_order')
           .order('name');
       return rows.map<TaskCategory>((row) {
         return TaskCategory(
           name: row['name']?.toString() ?? 'Personal',
-          colorSeed: _colorFromStorage(row['color_seed']?.toString()),
+          colorSeed: _colorFromStorage(row['color']?.toString()),
         );
       }).toList();
     } on Object {
@@ -368,25 +376,6 @@ class TaskRepository {
     final roadmaps = <TaskRoadmapOption>[];
     final phases = <TaskRoadmapPhaseOption>[];
     final milestones = <TaskMilestoneOption>[];
-
-    try {
-      final rows = await client
-          .from('projects')
-          .select('id,name')
-          .eq('user_id', user.id)
-          .isFilter('deleted_at', null)
-          .order('name');
-      projects.addAll(
-        rows.map(
-          (row) => TaskProjectOption(
-            id: row['id'].toString(),
-            name: row['name']?.toString() ?? '',
-          ),
-        ),
-      );
-    } on Object catch (error) {
-      if (kDebugMode) debugPrint('PROJECT OPTIONS FAILED: $error');
-    }
 
     try {
       final rows = await client
@@ -410,7 +399,7 @@ class TaskRepository {
     try {
       final rows = await client
           .from('roadmap_phases')
-          .select('id,roadmap_id,phase_order,phase_number,objective')
+          .select('id,roadmap_id,phase_order,title')
           .eq('user_id', user.id)
           .isFilter('deleted_at', null)
           .order('phase_order');
@@ -421,11 +410,8 @@ class TaskRepository {
           TaskRoadmapPhaseOption(
             id: row['id'].toString(),
             roadmapId: roadmapId,
-            title: row['objective']?.toString() ?? '',
-            phaseOrder: _intValue(
-              row['phase_order'] ?? row['phase_number'],
-              fallback: phases.length + 1,
-            ),
+            title: row['title']?.toString() ?? '',
+            phaseOrder: _intValue(row['phase_order'], fallback: phases.length),
           ),
         );
       }
@@ -435,11 +421,11 @@ class TaskRepository {
 
     try {
       final rows = await client
-          .from('roadmap_items')
-          .select('id,roadmap_id,phase_id,topic,item_type')
+          .from('roadmap_milestones')
+          .select('id,roadmap_id,phase_id,title')
           .eq('user_id', user.id)
           .isFilter('deleted_at', null)
-          .order('planned_start');
+          .order('created_at');
       for (final row in rows) {
         final roadmapId = row['roadmap_id']?.toString();
         if (roadmapId == null || roadmapId.isEmpty) continue;
@@ -448,7 +434,7 @@ class TaskRepository {
             id: row['id'].toString(),
             roadmapId: roadmapId,
             phaseId: row['phase_id']?.toString(),
-            title: row['topic']?.toString() ?? '',
+            title: row['title']?.toString() ?? '',
           ),
         );
       }
@@ -471,8 +457,11 @@ class TaskRepository {
       return task;
     }
 
-    final insertValues = task.toInsertMap()..remove('default_resource_id');
-    final payload = {'id': task.id, 'user_id': user.id, ...insertValues};
+    final payload = await _taskPayloadForRemote(
+      task,
+      userId: user.id,
+      client: client,
+    );
     await _localStore.upsertTask(user.id, task);
     final operation = await _queueTaskOperation(user.id, 'create', payload);
     if (client == null) return task;
@@ -483,7 +472,7 @@ class TaskRepository {
           .select()
           .single();
 
-      final saved = TaskItem.fromMap(row);
+      final saved = TaskItem.fromMap(_taskRowForUi(row));
       await _localStore.upsertTask(user.id, saved);
       await _localStore.removeOperation(user.id, operation.id);
       await _createRecurrenceIfNeeded(client, saved, task);
@@ -511,20 +500,25 @@ class TaskRepository {
     if (user == null) {
       return task;
     }
-    final payload = {'id': task.id, ...task.toInsertMap()};
+    final payload = await _taskPayloadForRemote(
+      task,
+      userId: user.id,
+      client: client,
+    );
     await _localStore.upsertTask(user.id, task);
     final operation = await _queueTaskOperation(user.id, 'update', payload);
     if (client == null) return task;
     try {
+      final updateValues = Map<String, dynamic>.from(payload)..remove('id');
       final row = await client
           .from('tasks')
-          .update(task.toInsertMap())
+          .update(updateValues)
           .eq('id', task.id)
           .eq('user_id', user.id)
           .select()
           .single();
 
-      final saved = TaskItem.fromMap(row);
+      final saved = TaskItem.fromMap(_taskRowForUi(row));
       await _localStore.upsertTask(user.id, saved);
       await _localStore.removeOperation(user.id, operation.id);
       unawaited(
@@ -1199,7 +1193,14 @@ class TaskRepository {
     if (client == null) return;
 
     try {
-      await client.rpc('soft_delete_task', params: {'task_id': task.id});
+      await client
+          .from('tasks')
+          .update({
+            'deleted_at': deleted.deletedAt?.toUtc().toIso8601String(),
+            'updated_at': DateTime.now().toUtc().toIso8601String(),
+          })
+          .eq('id', task.id)
+          .eq('user_id', user.id);
       await _localStore.removeOperation(user.id, operation.id);
       unawaited(
         publishSyncEvent(
@@ -1235,14 +1236,19 @@ class TaskRepository {
       final row = await client
           .from('tasks')
           .update({
-            'archived_at': archivedAt.toUtc().toIso8601String(),
+            'status': 'archived',
             'updated_at': archivedAt.toUtc().toIso8601String(),
           })
           .eq('id', task.id)
           .eq('user_id', user.id)
           .select()
           .single();
-      final saved = TaskItem.fromMap(row);
+      final saved = TaskItem.fromMap(
+        _taskRowForUi({
+          ...Map<String, dynamic>.from(row),
+          'archived_at': archivedAt.toUtc().toIso8601String(),
+        }),
+      );
       await _localStore.upsertTask(user.id, saved);
       await _localStore.removeOperation(user.id, operation.id);
       unawaited(
@@ -1278,13 +1284,14 @@ class TaskRepository {
           .from('tasks')
           .update({
             'deleted_at': null,
+            'status': _cleanTaskStatus(restored),
             'updated_at': DateTime.now().toIso8601String(),
           })
           .eq('id', task.id)
           .eq('user_id', user.id)
           .select()
           .single();
-      final saved = TaskItem.fromMap(row);
+      final saved = TaskItem.fromMap(_taskRowForUi(row));
       await _localStore.upsertTask(user.id, saved);
       await _localStore.removeOperation(user.id, operation.id);
       unawaited(
@@ -1632,17 +1639,36 @@ class TaskRepository {
       return;
     }
 
-    await client.from('categories').upsert([
-      for (var i = 0; i < categories.length; i += 1)
-        {
-          'user_id': user.id,
-          'name': categories[i].name,
-          'color_seed':
-              '#${categories[i].colorSeed.toRadixString(16).padLeft(8, '0').substring(2).toUpperCase()}',
-          'sort_order': i * 10,
-          'is_system': false,
-        },
-    ], onConflict: 'user_id,name');
+    for (var i = 0; i < categories.length; i += 1) {
+      final category = categories[i];
+      final existing = await client
+          .from('task_domains')
+          .select('id')
+          .eq('user_id', user.id)
+          .ilike('name', category.name)
+          .isFilter('deleted_at', null)
+          .limit(1)
+          .maybeSingle();
+      final values = {
+        'user_id': user.id,
+        'name': category.name,
+        'icon': _taskDomainIcon(category.name),
+        'color': _colorToStorage(category.colorSeed),
+        'sort_order': i * 10,
+        'is_template': false,
+        'updated_at': DateTime.now().toUtc().toIso8601String(),
+      };
+      final existingId = existing?['id']?.toString();
+      if (existingId != null) {
+        await client
+            .from('task_domains')
+            .update(values)
+            .eq('id', existingId)
+            .eq('user_id', user.id);
+      } else {
+        await client.from('task_domains').insert(values);
+      }
+    }
   }
 
   Future<List<TrackedSession>> loadSessionsForTask(String taskId) async {
@@ -1908,6 +1934,330 @@ class TaskRepository {
     return TaskProgressEntry.fromMap(row);
   }
 
+  Future<Map<String, dynamic>> _taskPayloadForRemote(
+    TaskItem task, {
+    required String userId,
+    required SupabaseClient? client,
+  }) async {
+    final plannedStart = task.plannedStartAt ?? task.scheduledStartAt;
+    final plannedEnd = task.plannedEndAt ?? task.scheduledEndAt;
+    final plannedDate =
+        task.plannedDate ?? task.scheduledLocalDate ?? task.startDate;
+    return {
+      'id': task.id,
+      'user_id': userId,
+      'domain_id': await _resolveDomainId(
+        task: task,
+        userId: userId,
+        client: client,
+      ),
+      'roadmap_id': _uuidOrNull(task.roadmapId),
+      'phase_id': task.roadmapId == null
+          ? null
+          : _uuidOrNull(task.roadmapPhaseId),
+      'title': task.title,
+      'description': task.description,
+      'execution_mode': _cleanExecutionMode(task.executionMode),
+      'status': _cleanTaskStatus(task),
+      'priority': _cleanPriority(task.priority),
+      'planned_local_date': _dateOnly(plannedDate),
+      'planned_start_minutes':
+          _clockToMinutes(task.scheduledLocalTime) ??
+          _minutesFromDateTime(plannedStart),
+      'planned_end_minutes': _minutesFromDateTime(plannedEnd),
+      'time_zone_behavior': _cleanTimeZoneBehavior(task.timeZoneBehavior),
+      'time_zone_id': task.effectiveTimeZoneId.isEmpty
+          ? null
+          : task.effectiveTimeZoneId,
+      'planned_start_at_utc': plannedStart?.toUtc().toIso8601String(),
+      'planned_end_at_utc': plannedEnd?.toUtc().toIso8601String(),
+      'due_at_utc': (task.dueAt ?? task.dueDate)?.toUtc().toIso8601String(),
+      'estimated_duration_seconds': task.estimatedMinutes * 60,
+      'estimated_focus_sessions': task.estimatedPomodoros,
+      'progress_method': task.checklist.isNotEmpty ? 'checklist' : 'manual',
+      'manual_progress': task.progressPercentage,
+      'recurrence_rule': task.recurrenceRule,
+      'recurrence_time_zone_id': task.recurrenceTimezone,
+      'recurrence_series_id': _uuidOrNull(task.seriesTaskId),
+      'recurrence_paused': task.recurrencePausedAt != null,
+      'reminders_enabled': task.reminderRules.isNotEmpty,
+      'adaptive_reminders_enabled': task.adaptiveRemindersEnabled,
+      'updated_at': DateTime.now().toUtc().toIso8601String(),
+    };
+  }
+
+  Map<String, dynamic> _taskRowForUi(Map<String, dynamic> row) {
+    final domain = row['task_domains'];
+    final domainName = domain is Map ? domain['name']?.toString() : null;
+    final executionMode = row['execution_mode']?.toString();
+    final status = row['status']?.toString();
+    final archivedAt = status == 'archived'
+        ? row['updated_at']?.toString()
+        : row['archived_at']?.toString();
+    final estimatedSeconds = _intValue(row['estimated_duration_seconds']);
+    return {
+      ...row,
+      'task_type': _legacyTaskType(executionMode),
+      'task_domain': _legacyDomainValue(domainName),
+      'execution_mode': _legacyExecutionMode(executionMode),
+      'category_id': row['domain_id'],
+      'category_name': domainName ?? 'Personal',
+      'roadmap_phase_id': row['phase_id'],
+      'priority': _legacyPriority(row['priority']?.toString()),
+      'status': _legacyStatus(status),
+      'planned_date': row['planned_local_date'],
+      'planned_start_at': row['planned_start_at_utc'],
+      'planned_end_at': row['planned_end_at_utc'],
+      'due_at': row['due_at_utc'],
+      'estimated_minutes': estimatedSeconds <= 0
+          ? 25
+          : (estimatedSeconds / 60).round(),
+      'estimated_pomodoros': row['estimated_focus_sessions'],
+      'progress_percentage': _intValue(row['manual_progress']),
+      'recurrence_timezone': row['recurrence_time_zone_id'],
+      'series_task_id': row['recurrence_series_id'],
+      'scheduled_start_at': row['planned_start_at_utc'],
+      'scheduled_end_at': row['planned_end_at_utc'],
+      'scheduled_local_date': row['planned_local_date'],
+      'time_zone_behavior': row['time_zone_behavior'],
+      'is_recurring_template': false,
+      'is_recurrence_exception': false,
+      'archived_at': archivedAt,
+    };
+  }
+
+  Future<String?> _resolveDomainId({
+    required TaskItem task,
+    required String userId,
+    required SupabaseClient? client,
+  }) async {
+    if (client == null) return null;
+    final name = _domainNameForTask(task);
+    try {
+      final existing = await client
+          .from('task_domains')
+          .select('id')
+          .eq('user_id', userId)
+          .ilike('name', name)
+          .isFilter('deleted_at', null)
+          .limit(1)
+          .maybeSingle();
+      final existingId = existing?['id']?.toString();
+      if (existingId != null) {
+        return existingId;
+      }
+      final inserted = await client
+          .from('task_domains')
+          .insert({
+            'user_id': userId,
+            'name': name,
+            'icon': _taskDomainIcon(name),
+            'color': _domainColor(task.taskDomain),
+            'sort_order': 900,
+            'is_template': false,
+          })
+          .select('id')
+          .single();
+      return inserted['id']?.toString();
+    } on Object {
+      return null;
+    }
+  }
+
+  String _domainNameForTask(TaskItem task) {
+    if (task.taskDomain == TaskDomain.custom &&
+        task.category.trim().isNotEmpty) {
+      return task.category.trim();
+    }
+    return switch (task.taskDomain) {
+      TaskDomain.work => 'Work',
+      TaskDomain.learning => 'Learning',
+      TaskDomain.reading => 'Reading',
+      TaskDomain.selfImprovement => 'Self-improvement',
+      TaskDomain.household => 'Householding',
+      TaskDomain.sport => 'Sport',
+      TaskDomain.event => 'Event',
+      TaskDomain.personal => 'Personal',
+      TaskDomain.custom => 'Personal',
+    };
+  }
+
+  static String _runtimeEventName(String entityType) {
+    return switch (entityType) {
+      'roadmap' || 'roadmap_phase' || 'roadmap_milestone' => 'roadmap_changed',
+      'settings' => 'settings_changed',
+      'notification' || 'task_reminder' => 'notification_changed',
+      _ => 'task_changed',
+    };
+  }
+
+  static String _cleanExecutionMode(TaskExecutionMode mode) {
+    return switch (mode) {
+      TaskExecutionMode.pomodoroFocus => 'pomodoro',
+      TaskExecutionMode.continuousTimer => 'continuous_timer',
+      TaskExecutionMode.checklist => 'checklist',
+      TaskExecutionMode.readingSession => 'reading',
+      TaskExecutionMode.habit => 'habit',
+      TaskExecutionMode.event => 'event',
+      TaskExecutionMode.manualCompletion => 'manual_completion',
+      TaskExecutionMode.hybrid => 'hybrid',
+    };
+  }
+
+  static String _cleanTaskStatus(TaskItem task) {
+    if (task.archivedAt != null) return 'archived';
+    return switch (task.status) {
+      TaskStatus.running => 'running',
+      TaskStatus.paused || TaskStatus.interrupted => 'paused',
+      TaskStatus.completed => 'completed',
+      TaskStatus.cancelled => 'cancelled',
+      TaskStatus.ready ||
+      TaskStatus.waiting ||
+      TaskStatus.reviewRequired ||
+      TaskStatus.overdue => 'scheduled',
+      _ => 'not_started',
+    };
+  }
+
+  static String _cleanPriority(TaskPriority priority) {
+    return switch (priority) {
+      TaskPriority.critical => 'urgent',
+      TaskPriority.high => 'high',
+      TaskPriority.normal => 'medium',
+      TaskPriority.low => 'low',
+    };
+  }
+
+  static String _cleanTimeZoneBehavior(String value) {
+    return switch (value) {
+      'fixed_time_zone' => 'fixed_time_zone',
+      'device_time_zone' => 'device_time_zone',
+      'keep_local_clock' => 'keep_local_clock',
+      'keep_absolute_time' => 'keep_absolute_time',
+      _ => 'floating',
+    };
+  }
+
+  static String _legacyTaskType(String? executionMode) {
+    return switch (executionMode) {
+      'continuous_timer' => 'timed',
+      'event' => 'event',
+      'habit' => 'habit',
+      'reading' => 'reading',
+      'manual_completion' => 'manual',
+      _ => 'focus',
+    };
+  }
+
+  static String _legacyExecutionMode(String? executionMode) {
+    return switch (executionMode) {
+      'pomodoro' => 'pomodoro_focus',
+      'reading' => 'reading_session',
+      'continuous_timer' => 'continuous_timer',
+      'checklist' => 'checklist',
+      'habit' => 'habit',
+      'event' => 'event',
+      'manual_completion' => 'manual_completion',
+      'hybrid' => 'hybrid',
+      _ => 'manual_completion',
+    };
+  }
+
+  static String _legacyPriority(String? priority) {
+    return switch (priority) {
+      'urgent' => 'critical',
+      'high' => 'high',
+      'low' => 'low',
+      _ => 'normal',
+    };
+  }
+
+  static String _legacyStatus(String? status) {
+    return switch (status) {
+      'running' => 'running',
+      'paused' => 'paused',
+      'completed' => 'completed',
+      'cancelled' => 'cancelled',
+      'scheduled' => 'ready',
+      _ => 'not_started',
+    };
+  }
+
+  static String _legacyDomainValue(String? name) {
+    return switch (name?.trim().toLowerCase()) {
+      'work' => 'work',
+      'learning' => 'learning',
+      'reading' => 'reading',
+      'self-improvement' || 'self improvement' => 'self_improvement',
+      'householding' || 'household' => 'household',
+      'sport' => 'sport',
+      'event' => 'event',
+      'personal' => 'personal',
+      _ => 'custom',
+    };
+  }
+
+  static String _taskDomainIcon(String name) {
+    return switch (name.trim().toLowerCase()) {
+      'work' => 'briefcase',
+      'learning' => 'graduation-cap',
+      'reading' => 'book-open',
+      'self-improvement' || 'self improvement' => 'sparkles',
+      'householding' || 'household' => 'home',
+      'sport' => 'dumbbell',
+      'event' => 'calendar',
+      'habit' => 'repeat',
+      _ => 'circle',
+    };
+  }
+
+  static String _domainColor(TaskDomain domain) {
+    return switch (domain) {
+      TaskDomain.work => '#3B82F6',
+      TaskDomain.learning => '#22D3EE',
+      TaskDomain.reading => '#6366F1',
+      TaskDomain.selfImprovement => '#A855F7',
+      TaskDomain.household => '#84CC16',
+      TaskDomain.sport => '#22C55E',
+      TaskDomain.event => '#F97316',
+      TaskDomain.personal => '#64748B',
+      TaskDomain.custom => '#64748B',
+    };
+  }
+
+  static String? _uuidOrNull(String? value) {
+    if (value == null || value.trim().isEmpty) return null;
+    return RegExp(
+          r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$',
+        ).hasMatch(value)
+        ? value
+        : null;
+  }
+
+  static String? _dateOnly(DateTime? value) =>
+      value?.toIso8601String().split('T').first;
+
+  static int? _minutesFromDateTime(DateTime? value) {
+    if (value == null) return null;
+    final local = value.toLocal();
+    return local.hour * 60 + local.minute;
+  }
+
+  static int? _clockToMinutes(String? value) {
+    if (value == null || value.trim().isEmpty) return null;
+    final parts = value.split(':');
+    if (parts.length != 2) return null;
+    final hours = int.tryParse(parts[0]);
+    final minutes = int.tryParse(parts[1]);
+    if (hours == null || minutes == null) return null;
+    if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return null;
+    return hours * 60 + minutes;
+  }
+
+  static String _colorToStorage(int value) {
+    return '#${value.toRadixString(16).padLeft(8, '0').substring(2).toUpperCase()}';
+  }
+
   static int _colorFromStorage(String? value) {
     final normalized = value?.replaceFirst('#', '').trim();
     if (normalized == null || normalized.length != 6) {
@@ -2013,7 +2363,7 @@ class TaskRepository {
         await client
             .from('tasks')
             .update({
-              'archived_at': payload['archived_at'],
+              'status': 'archived',
               'updated_at': DateTime.now().toUtc().toIso8601String(),
             })
             .eq('id', payload['task_id'])
@@ -2062,17 +2412,15 @@ class TaskRepository {
           await client.from('task_activity_records').upsert(rows);
         }
       case 'session':
-        await client.from('sessions').upsert(payload, onConflict: 'id');
+        await client.from('task_sessions').upsert(payload, onConflict: 'id');
       case 'session_segment':
         await client.from('session_segments').upsert(payload, onConflict: 'id');
       case 'session_event':
         await client.from('session_events').upsert(payload, onConflict: 'id');
       case 'work_demand':
-        await client.from('work_demands').upsert(payload, onConflict: 'id');
+        await client.from('task_demands').upsert(payload, onConflict: 'id');
       case 'learning_checkpoint':
-        await client
-            .from('learning_checkpoints')
-            .upsert(payload, onConflict: 'id');
+        await client.from('task_checkpoints').upsert(payload, onConflict: 'id');
       case 'widget_action_event':
         await client
             .from('widget_action_events')
@@ -2131,66 +2479,16 @@ class TaskRepository {
     try {
       await client
           .from('tasks')
-          .update({'is_recurring_template': true})
+          .update({
+            'recurrence_rule': rrule,
+            'recurrence_time_zone_id': original.recurrenceTimezone,
+            'recurrence_series_id': saved.id,
+            'recurrence_paused': false,
+            'updated_at': DateTime.now().toUtc().toIso8601String(),
+          })
           .eq('id', saved.id);
-      final existing = await client
-          .from('task_recurrences')
-          .select('id')
-          .eq('task_id', saved.id)
-          .eq('user_id', user.id)
-          .isFilter('deleted_at', null)
-          .order('created_at', ascending: false)
-          .limit(1)
-          .maybeSingle();
-      final recurrenceValues = {
-        'user_id': user.id,
-        'task_id': saved.id,
-        'rule': {'preset': ?preset, 'rrule': rrule},
-        'timezone': original.recurrenceTimezone,
-        'rrule': rrule,
-        'starts_at': startsAt.toIso8601String(),
-        'duration_minutes': saved.estimatedMinutes,
-        'end_type': original.recurrenceEndType,
-        'ends_at': original.recurrenceEndAt?.toIso8601String(),
-        'maximum_occurrences': original.recurrenceMaximumOccurrences,
-        'is_active': true,
-      };
-      final recurrenceRow = existing == null
-          ? await client
-                .from('task_recurrences')
-                .insert(recurrenceValues)
-                .select('id')
-                .single()
-          : await client
-                .from('task_recurrences')
-                .update(recurrenceValues)
-                .eq('id', existing['id'])
-                .eq('user_id', user.id)
-                .select('id')
-                .single();
-      final recurrenceId = recurrenceRow['id']?.toString();
-      if (recurrenceId == null) {
-        return;
-      }
-      await client
-          .from('tasks')
-          .update({'recurrence_id': recurrenceId})
-          .eq('id', saved.id);
-      await client.rpc(
-        'generate_task_occurrences',
-        params: {
-          'recurrence_id': recurrenceId,
-          'range_start': DateTime.now()
-              .subtract(const Duration(days: 1))
-              .toIso8601String(),
-          'range_end': DateTime.now()
-              .add(const Duration(days: 90))
-              .toIso8601String(),
-        },
-      );
     } on Object {
-      // Recurrence support depends on the latest migration. Keep the task
-      // usable if the backend has not been upgraded yet.
+      // Keep the task usable if recurrence metadata cannot be synchronized.
     }
   }
 
