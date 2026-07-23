@@ -57,14 +57,53 @@ class SessionCommandResult {
   bool get applied => status == 'applied' || status == 'duplicate';
 
   factory SessionCommandResult.fromMap(Map<String, dynamic> map) {
+    final snapshot = _objectMap(map['snapshot']);
+    final session = _objectMap(snapshot == null ? null : snapshot['session']);
+    final segment = _objectMap(
+      snapshot == null ? null : snapshot['current_segment'],
+    );
+    final cleanState =
+        map['stage']?.toString() ??
+        (session == null ? null : session['state']?.toString());
+    String? fallbackSegmentId;
+    if (segment != null && segment['state']?.toString() == 'running') {
+      fallbackSegmentId = segment['id']?.toString();
+    }
+    final currentSegmentId = map['segment_id']?.toString() ?? fallbackSegmentId;
     return SessionCommandResult(
       status: map['status']?.toString() ?? 'unknown',
-      revision: _intValue(map['revision']),
-      message: map['message']?.toString(),
-      stage: map['stage']?.toString(),
-      sessionState: map['session_state']?.toString(),
-      segmentId: map['segment_id']?.toString(),
+      revision: _intValue(
+        map['revision'] ??
+            (session == null ? null : session['revision']) ??
+            map['result_revision'],
+      ),
+      message: map['message']?.toString() ?? map['error']?.toString(),
+      stage: cleanState,
+      sessionState:
+          map['session_state']?.toString() ??
+          _legacyStatusForCleanState(cleanState),
+      segmentId: currentSegmentId,
     );
+  }
+
+  static Map<String, dynamic>? _objectMap(Object? value) {
+    return value is Map ? Map<String, dynamic>.from(value) : null;
+  }
+
+  static String? _legacyStatusForCleanState(String? state) {
+    return switch (state) {
+      'focus_running' || 'break_running' || 'running' => 'running',
+      'focus_paused' ||
+      'break_paused' ||
+      'paused' ||
+      'focus_ready' ||
+      'break_ready' ||
+      'focus_completed_waiting' ||
+      'break_completed_waiting' => 'paused',
+      'task_completed' => 'completed',
+      'cancelled' => 'discarded',
+      _ => null,
+    };
   }
 }
 
@@ -151,6 +190,7 @@ class TaskRepository {
     if (user == null || client == null) return null;
     final deviceId = await _localStore.loadDeviceId();
     try {
+      await _ensureRemoteDevice(client, user, deviceId);
       final result = await client.rpc(
         'apply_session_command',
         params: {
@@ -174,6 +214,24 @@ class TaskRepository {
       }
       return null;
     }
+  }
+
+  Future<void> _ensureRemoteDevice(
+    SupabaseClient client,
+    User user,
+    String deviceId,
+  ) async {
+    await client.from('devices').upsert({
+      'id': deviceId,
+      'user_id': user.id,
+      'device_name': Platform.localHostname,
+      'platform': Platform.isAndroid ? 'android' : 'windows',
+      'platform_version': Platform.operatingSystemVersion,
+      'app_version': '',
+      'build_number': '',
+      'last_seen_at': DateTime.now().toUtc().toIso8601String(),
+      'notification_enabled': false,
+    }, onConflict: 'id');
   }
 
   Future<void> recordWidgetActionEvent({
@@ -2084,7 +2142,7 @@ class TaskRepository {
       'task_id': session.taskId,
       'occurrence_id': null,
       'execution_mode': _sessionExecutionMode(session),
-      'state': _cleanSessionState(session.status),
+      'state': _cleanSessionState(session.status, stage: session.stage),
       'started_at_utc': session.startedAt.toUtc().toIso8601String(),
       'completed_at_utc': session.endedAt?.toUtc().toIso8601String(),
       'accumulated_active_seconds': session.accumulatedActiveSeconds > 0
@@ -2144,7 +2202,7 @@ class TaskRepository {
       'user_id': userId,
       'session_id': segment.sessionId,
       'task_id': taskId,
-      'segment_number': 1,
+      'segment_number': await _localSegmentNumber(userId, segment),
       'segment_type': _cleanSegmentType(segment.type),
       'state': segment.endedAt == null ? 'running' : 'completed',
       'planned_duration_seconds': segment.plannedDurationSeconds,
@@ -2161,6 +2219,34 @@ class TaskRepository {
       'created_at': segment.createdAt.toUtc().toIso8601String(),
       'updated_at': DateTime.now().toUtc().toIso8601String(),
     };
+  }
+
+  Future<int> _localSegmentNumber(
+    String userId,
+    TrackedSessionSegment segment,
+  ) async {
+    final rows = await _localStore.loadRows(userId, 'session_segments');
+    final matching =
+        [
+          for (final row in rows)
+            if (row['session_id']?.toString() == segment.sessionId) row,
+        ]..sort((a, b) {
+          final aStarted =
+              DateTime.tryParse(a['started_at']?.toString() ?? '') ??
+              DateTime.fromMillisecondsSinceEpoch(0);
+          final bStarted =
+              DateTime.tryParse(b['started_at']?.toString() ?? '') ??
+              DateTime.fromMillisecondsSinceEpoch(0);
+          final byTime = aStarted.compareTo(bStarted);
+          if (byTime != 0) return byTime;
+          return (a['id']?.toString() ?? '').compareTo(
+            b['id']?.toString() ?? '',
+          );
+        });
+    final index = matching.indexWhere(
+      (row) => row['id']?.toString() == segment.id,
+    );
+    return index < 0 ? matching.length + 1 : index + 1;
   }
 
   Map<String, dynamic> _segmentRowForUi(Map<String, dynamic> row) {
@@ -2344,6 +2430,11 @@ class TaskRepository {
   }
 
   static String _sessionExecutionMode(TrackedSession session) {
+    final stage = _cleanRuntimeStage(session.stage);
+    if (stage != null &&
+        (stage.startsWith('focus_') || stage.startsWith('break_'))) {
+      return 'pomodoro';
+    }
     return switch (session.trackingMode) {
       SessionTrackingMode.reading => 'reading',
       SessionTrackingMode.manual => 'manual_completion',
@@ -2351,10 +2442,15 @@ class TaskRepository {
     };
   }
 
-  static String _cleanSessionState(TrackedSessionStatus status) {
+  static String _cleanSessionState(
+    TrackedSessionStatus status, {
+    String? stage,
+  }) {
+    final cleanStage = _cleanRuntimeStage(stage);
+    if (cleanStage != null) return cleanStage;
     return switch (status) {
-      TrackedSessionStatus.running => 'focus_running',
-      TrackedSessionStatus.paused => 'focus_paused',
+      TrackedSessionStatus.running => 'running',
+      TrackedSessionStatus.paused => 'paused',
       TrackedSessionStatus.completed ||
       TrackedSessionStatus.stopped ||
       TrackedSessionStatus.corrected => 'task_completed',
@@ -2363,11 +2459,35 @@ class TaskRepository {
     };
   }
 
+  static String? _cleanRuntimeStage(String? stage) {
+    return switch (stage) {
+      'focus_ready' ||
+      'focus_running' ||
+      'focus_paused' ||
+      'focus_completed_waiting' ||
+      'break_ready' ||
+      'break_running' ||
+      'break_paused' ||
+      'break_completed_waiting' ||
+      'running' ||
+      'paused' ||
+      'task_completed' ||
+      'cancelled' => stage,
+      _ => null,
+    };
+  }
+
   static String _legacySessionStatus(String? state, Object? completedAt) {
     if (completedAt != null) return 'completed';
     return switch (state) {
       'focus_running' || 'break_running' => 'running',
       'focus_paused' || 'break_paused' => 'paused',
+      'focus_ready' ||
+      'break_ready' ||
+      'focus_completed_waiting' ||
+      'break_completed_waiting' => 'paused',
+      'running' => 'running',
+      'paused' => 'paused',
       'task_completed' => 'completed',
       'cancelled' => 'discarded',
       _ => 'created',
