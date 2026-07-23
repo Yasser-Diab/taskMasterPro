@@ -223,6 +223,27 @@ void main() {
   });
 
   group('Pomodoro state machine', () {
+    test('focus timer starts at the full configured duration', () {
+      fakeAsync((async) {
+        final controller = PomodoroController(
+          preset: const PomodoroPreset(
+            name: 'display test',
+            focusMinutes: 25,
+            shortBreakMinutes: 5,
+            longBreakMinutes: 20,
+            longBreakAfter: 4,
+          ),
+        );
+        addTearDown(controller.dispose);
+
+        controller.startFocus(sessionId: 'session-display');
+        expect(controller.clockText, '25:00');
+
+        async.elapse(const Duration(seconds: 1));
+        expect(controller.clockText, '24:59');
+      });
+    });
+
     test('focus completion waits for the user before starting break', () {
       fakeAsync((async) {
         final controller = PomodoroController(

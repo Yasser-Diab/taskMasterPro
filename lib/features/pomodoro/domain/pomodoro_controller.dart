@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:clock/clock.dart';
 import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
 
@@ -31,6 +32,7 @@ class PomodoroController extends ChangeNotifier {
   PomodoroRunState _state = PomodoroRunState.idle;
   TrackingMode _trackingMode = TrackingMode.interactive;
   DateTime? _startedAt;
+  DateTime? _lastResumedAtUtc;
   int _remainingSeconds;
   int _completedFocusSessions = 0;
   int _interruptionCount = 0;
@@ -47,7 +49,7 @@ class PomodoroController extends ChangeNotifier {
   PomodoroRunState get state => _state;
   TrackingMode get trackingMode => _trackingMode;
   DateTime? get startedAt => _startedAt;
-  int get remainingSeconds => _remainingSeconds;
+  int get remainingSeconds => _computedRemainingSeconds();
   int get completedFocusSessions => _completedFocusSessions;
   int get interruptionCount => _interruptionCount;
   bool get successful => _successful;
@@ -87,8 +89,9 @@ class PomodoroController extends ChangeNotifier {
   }
 
   String get clockText {
-    final minutes = (_remainingSeconds ~/ 60).toString().padLeft(2, '0');
-    final seconds = (_remainingSeconds % 60).toString().padLeft(2, '0');
+    final remaining = remainingSeconds;
+    final minutes = (remaining ~/ 60).toString().padLeft(2, '0');
+    final seconds = (remaining % 60).toString().padLeft(2, '0');
     return '$minutes:$seconds';
   }
 
@@ -120,7 +123,8 @@ class PomodoroController extends ChangeNotifier {
 
   void startFocus({String? sessionId}) {
     if (_state == PomodoroRunState.focusRunning) return;
-    _startedAt ??= DateTime.now();
+    final now = clock.now();
+    _startedAt ??= now;
     _sessionId ??= sessionId ?? const Uuid().v4();
     if (_phase != PomodoroPhase.focus) {
       _finishBreakForReview(reason: 'return_to_focus');
@@ -130,6 +134,7 @@ class PomodoroController extends ChangeNotifier {
       _remainingSeconds = _preset.focusMinutes * 60;
     }
     _state = PomodoroRunState.focusRunning;
+    _lastResumedAtUtc = now.toUtc();
     _addSegment('active');
     _startTicker();
     notifyListeners();
@@ -139,6 +144,8 @@ class PomodoroController extends ChangeNotifier {
     if (!_state.isRunning) {
       return;
     }
+    _remainingSeconds = _computedRemainingSeconds();
+    _lastResumedAtUtc = null;
     _state = _phase == PomodoroPhase.focus
         ? PomodoroRunState.focusPaused
         : PomodoroRunState.breakPaused;
@@ -155,6 +162,7 @@ class PomodoroController extends ChangeNotifier {
     _state = _phase == PomodoroPhase.focus
         ? PomodoroRunState.focusRunning
         : PomodoroRunState.breakRunning;
+    _lastResumedAtUtc = clock.now().toUtc();
     _closeOpenSegment();
     _addSegment(_phase == PomodoroPhase.focus ? 'active' : 'break');
     _startTicker();
@@ -193,7 +201,9 @@ class PomodoroController extends ChangeNotifier {
         ? _preset.longBreakMinutes * 60
         : _preset.shortBreakMinutes * 60;
     _state = PomodoroRunState.breakRunning;
-    _breakActivity = PomodoroBreakActivity(startedAt: DateTime.now());
+    final now = clock.now();
+    _lastResumedAtUtc = now.toUtc();
+    _breakActivity = PomodoroBreakActivity(startedAt: now);
     _addSegment('break');
     _startTicker();
     notifyListeners();
@@ -208,6 +218,7 @@ class PomodoroController extends ChangeNotifier {
 
   void finishBreakEarly() {
     if (_phase == PomodoroPhase.focus || _state.isInactive) return;
+    _remainingSeconds = _computedRemainingSeconds();
     _finishBreakForReview(reason: 'break_finished_early');
     _state = PomodoroRunState.breakFinishedWaitingForUser;
     _remainingSeconds = 0;
@@ -219,6 +230,7 @@ class PomodoroController extends ChangeNotifier {
     _remainingSeconds += minutes * 60;
     if (!_state.isRunning) {
       _state = PomodoroRunState.breakRunning;
+      _lastResumedAtUtc = clock.now().toUtc();
       _addSegment('break');
       _startTicker();
     }
@@ -238,6 +250,7 @@ class PomodoroController extends ChangeNotifier {
     if (_state == PomodoroRunState.focusFinishedWaitingForUser) {
       _remainingSeconds = minutes * 60;
       _state = PomodoroRunState.focusRunning;
+      _lastResumedAtUtc = clock.now().toUtc();
       _addSegment('active');
       _startTicker();
       notifyListeners();
@@ -300,8 +313,7 @@ class PomodoroController extends ChangeNotifier {
   void _startTicker() {
     _timer?.cancel();
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (_remainingSeconds > 0) {
-        _remainingSeconds -= 1;
+      if (_computedRemainingSeconds() > 0) {
         notifyListeners();
         return;
       }
@@ -329,6 +341,8 @@ class PomodoroController extends ChangeNotifier {
 
   void _finishFocusSegment({required String reason}) {
     _timer?.cancel();
+    _remainingSeconds = _computedRemainingSeconds();
+    _lastResumedAtUtc = null;
     _closeOpenSegment();
     final countsAsCompleted =
         reason == 'planned_duration_reached' || _remainingSeconds <= 0;
@@ -348,9 +362,11 @@ class PomodoroController extends ChangeNotifier {
 
   void _finishBreakForReview({required String reason}) {
     _timer?.cancel();
+    _remainingSeconds = _computedRemainingSeconds();
+    _lastResumedAtUtc = null;
     _closeOpenSegment();
     if (_breakActivity != null) {
-      _pendingBreakReview = _breakActivity!.copyWith(endedAt: DateTime.now());
+      _pendingBreakReview = _breakActivity!.copyWith(endedAt: clock.now());
     }
     _breakActivity = null;
   }
@@ -359,12 +375,13 @@ class PomodoroController extends ChangeNotifier {
     _phase = PomodoroPhase.focus;
     _state = PomodoroRunState.focusReady;
     _remainingSeconds = _preset.focusMinutes * 60;
+    _lastResumedAtUtc = null;
   }
 
   void _addSegment(String kind) {
     _segments = [
       ..._segments,
-      SessionSegment(kind: kind, startedAt: DateTime.now()),
+      SessionSegment(kind: kind, startedAt: clock.now()),
     ];
   }
 
@@ -378,7 +395,7 @@ class PomodoroController extends ChangeNotifier {
     }
     _segments = [
       ..._segments.take(_segments.length - 1),
-      last.close(DateTime.now()),
+      last.close(clock.now()),
     ];
   }
 
@@ -389,7 +406,7 @@ class PomodoroController extends ChangeNotifier {
     }
     _timer?.cancel();
     _closeOpenSegment();
-    final endedAt = DateTime.now();
+    final endedAt = clock.now();
     var activeSeconds = 0;
     var pausedSeconds = 0;
 
@@ -421,6 +438,7 @@ class PomodoroController extends ChangeNotifier {
     _phase = PomodoroPhase.focus;
     _state = PomodoroRunState.idle;
     _startedAt = null;
+    _lastResumedAtUtc = null;
     _remainingSeconds = _preset.focusMinutes * 60;
     _completedFocusSessions = 0;
     _interruptionCount = 0;
@@ -431,5 +449,18 @@ class PomodoroController extends ChangeNotifier {
     _breakActivity = null;
     _pendingBreakReview = null;
     notifyListeners();
+  }
+
+  int _computedRemainingSeconds([DateTime? observedAt]) {
+    final lastResumed = _lastResumedAtUtc;
+    if (!_state.isRunning || lastResumed == null) {
+      return _remainingSeconds.clamp(0, 1 << 31);
+    }
+    final elapsed = (observedAt ?? clock.now())
+        .toUtc()
+        .difference(lastResumed)
+        .inSeconds
+        .clamp(0, 1 << 31);
+    return (_remainingSeconds - elapsed).clamp(0, _remainingSeconds);
   }
 }
