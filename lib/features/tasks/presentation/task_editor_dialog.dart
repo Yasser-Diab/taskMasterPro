@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../../../app/app_services.dart';
 import '../../../core/localization/app_localizations.dart';
+import '../../../core/time/time_zone_service.dart';
 import '../domain/task_category.dart';
 import '../domain/task_item.dart';
 import '../domain/task_support_models.dart';
@@ -105,7 +107,7 @@ class _TaskEditorDialogState extends State<TaskEditorDialog> {
       text: task?.recurrenceRule ?? '',
     );
     _timezoneController = TextEditingController(
-      text: task?.recurrenceTimezone ?? 'UTC',
+      text: task?.recurrenceTimezone ?? task?.timeZoneId ?? '',
     );
     _dependenciesController = TextEditingController(
       text: task?.dependencies.join(', ') ?? '',
@@ -184,6 +186,17 @@ class _TaskEditorDialogState extends State<TaskEditorDialog> {
     _completionRulesController.dispose();
     _checklistController.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_timezoneController.text.trim().isEmpty) {
+      final service = AppServices.of(context).timeZoneService;
+      _timezoneController.text = service.validatedZoneId(
+        service.effectiveTimeZoneId,
+      );
+    }
   }
 
   @override
@@ -668,12 +681,10 @@ class _TaskEditorDialogState extends State<TaskEditorDialog> {
             ),
           ],
           const SizedBox(height: 12),
-          TextFormField(
-            controller: _timezoneController,
-            decoration: InputDecoration(
-              labelText: context.text('timeZone'),
-              hintText: 'Africa/Cairo',
-            ),
+          _TimeZonePickerField(
+            value: _timezoneController.text.trim(),
+            instant: _plannedStart ?? _dueAt ?? DateTime.now(),
+            onTap: _pickTimeZone,
           ),
           const SizedBox(height: 12),
           DropdownButtonFormField<String>(
@@ -949,6 +960,20 @@ class _TaskEditorDialogState extends State<TaskEditorDialog> {
     });
   }
 
+  Future<void> _pickTimeZone() async {
+    final service = AppServices.of(context).timeZoneService;
+    final picked = await showDialog<String>(
+      context: context,
+      builder: (context) => _TimeZonePickerDialog(
+        service: service,
+        selectedZoneId: _timezoneController.text.trim(),
+        instant: _plannedStart ?? _dueAt ?? DateTime.now(),
+      ),
+    );
+    if (picked == null || !mounted) return;
+    setState(() => _timezoneController.text = picked);
+  }
+
   void _save() {
     if (_formKey.currentState?.validate() != true) return;
     final original = widget.task;
@@ -1018,6 +1043,9 @@ class _TaskEditorDialogState extends State<TaskEditorDialog> {
     final selectedPhase = widget.editorLinks.phases
         .where((phase) => phase.id == _phaseId)
         .firstOrNull;
+    final selectedTimeZone = AppServices.of(
+      context,
+    ).timeZoneService.validatedZoneId(_timezoneController.text.trim());
     final task = base.copyWith(
       title: _titleController.text.trim(),
       description: _descriptionController.text.trim(),
@@ -1060,15 +1088,17 @@ class _TaskEditorDialogState extends State<TaskEditorDialog> {
       plannedEndAt: _plannedEnd,
       scheduledStartAt: _plannedStart,
       scheduledEndAt: _plannedEnd,
+      timeZoneId: selectedTimeZone,
+      timeZoneBehavior: 'keep_local_clock',
       dueAt: _dueAt,
       dueDate: _dueAt,
       estimatedMinutes: _estimatedMinutes,
       estimatedPomodoros: _taskType == TaskType.focus ? _estimatedPomodoros : 0,
       recurrence: _recurring ? _buildRrule() : null,
       recurrenceRule: _recurring ? _buildRrule() : null,
-      recurrenceTimezone: _timezoneController.text.trim().isEmpty
-          ? 'UTC'
-          : _timezoneController.text.trim(),
+      recurrenceTimezone: _recurring
+          ? selectedTimeZone
+          : base.recurrenceTimezone,
       recurrenceEndAt: _recurring && _recurrenceEndType == 'on_date'
           ? _recurrenceEndAt
           : null,
@@ -1235,6 +1265,138 @@ class _EditorSection extends StatelessWidget {
       children: children,
     );
   }
+}
+
+class _TimeZonePickerField extends StatelessWidget {
+  const _TimeZonePickerField({
+    required this.value,
+    required this.instant,
+    required this.onTap,
+  });
+
+  final String value;
+  final DateTime instant;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final service = AppServices.of(context).timeZoneService;
+    final zoneId = service.validatedZoneId(value);
+    final city = _zoneCityLabel(zoneId);
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(6),
+      child: InputDecorator(
+        decoration: InputDecoration(
+          labelText: context.text('timeZone'),
+          suffixIcon: const Icon(Icons.search_outlined),
+        ),
+        child: Text('(${service.offsetLabel(zoneId, instant: instant)}) $city'),
+      ),
+    );
+  }
+}
+
+class _TimeZonePickerDialog extends StatefulWidget {
+  const _TimeZonePickerDialog({
+    required this.service,
+    required this.selectedZoneId,
+    required this.instant,
+  });
+
+  final TimeZoneService service;
+  final String selectedZoneId;
+  final DateTime instant;
+
+  @override
+  State<_TimeZonePickerDialog> createState() => _TimeZonePickerDialogState();
+}
+
+class _TimeZonePickerDialogState extends State<_TimeZonePickerDialog> {
+  final _searchController = TextEditingController();
+  late final List<String> _zones;
+
+  @override
+  void initState() {
+    super.initState();
+    _zones = widget.service.availableZoneIds();
+    _searchController.addListener(() => setState(() {}));
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final query = _searchController.text.trim().toLowerCase();
+    final selected = widget.service.validatedZoneId(widget.selectedZoneId);
+    final matches = _zones
+        .where((zone) {
+          if (query.isEmpty) {
+            return zone == selected ||
+                zone.startsWith('Africa/') ||
+                zone.startsWith('Europe/') ||
+                zone.startsWith('America/');
+          }
+          final normalized = zone.toLowerCase().replaceAll('_', ' ');
+          final city = _zoneCityLabel(zone).toLowerCase();
+          return normalized.contains(query) || city.contains(query);
+        })
+        .take(80)
+        .toList(growable: false);
+
+    return AlertDialog(
+      title: Text(context.text('timeZone')),
+      content: SizedBox(
+        width: 520,
+        height: 520,
+        child: Column(
+          children: [
+            TextField(
+              controller: _searchController,
+              autofocus: true,
+              decoration: InputDecoration(
+                labelText: context.text('searchTimeZones'),
+                prefixIcon: const Icon(Icons.search_outlined),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Expanded(
+              child: ListView.builder(
+                itemCount: matches.length,
+                itemBuilder: (context, index) {
+                  final zone = matches[index];
+                  final label =
+                      '(${widget.service.offsetLabel(zone, instant: widget.instant)}) ${_zoneCityLabel(zone)}';
+                  return ListTile(
+                    selected: zone == selected,
+                    title: Text(label),
+                    subtitle: Text(zone),
+                    onTap: () => Navigator.of(context).pop(zone),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: Text(context.text('cancel')),
+        ),
+      ],
+    );
+  }
+}
+
+String _zoneCityLabel(String zoneId) {
+  final normalized = zoneId.split('/').last.replaceAll('_', ' ');
+  if (normalized == 'UTC') return 'UTC';
+  return normalized;
 }
 
 class _DateTimeButton extends StatelessWidget {

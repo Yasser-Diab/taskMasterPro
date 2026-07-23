@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../../app/app_services.dart';
 import '../../../core/config/supabase_service.dart';
@@ -95,210 +96,225 @@ class TodayDashboardScreen extends StatelessWidget {
       24 * 60,
     );
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          MaterialLocalizations.of(context).formatFullDate(DateTime.now()),
-        ),
-        actions: [
-          IconButton(
-            tooltip: context.text('quickNote'),
-            onPressed: () {},
-            icon: const Icon(Icons.note_add_outlined),
-          ),
-          IconButton(
-            tooltip: context.text('quickAdd'),
-            onPressed: onQuickAdd,
-            icon: const Icon(Icons.add_task_outlined),
-          ),
-        ],
-      ),
-      body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.all(20),
-          children: [
-            _HeroFocus(
-              focusTask: activeTask ?? focusTask,
-              activeTask: activeTask,
-              profile: profile,
-              onStartPomodoro: onStartPomodoro,
+    return CallbackShortcuts(
+      bindings: {
+        const SingleActivator(
+          LogicalKeyboardKey.keyN,
+          control: true,
+          shift: true,
+        ): () =>
+            unawaited(_openQuickNote(context, taskController)),
+      },
+      child: Focus(
+        autofocus: true,
+        child: Scaffold(
+          appBar: AppBar(
+            title: Text(
+              MaterialLocalizations.of(context).formatFullDate(DateTime.now()),
             ),
-            const SizedBox(height: 16),
-            _ActiveCoachStrip(
-              tasks: currentTasks,
-              controller: taskController,
-              plannedMinutes: plannedMinutes,
-              recordedMinutes: recordedMinutes,
-              completedToday: completedToday,
-              overdueCount: overdueTasks.length,
-              interruptionSeconds: interruptionSeconds,
-              overCapacityMinutes: overCapacityMinutes,
-            ),
-            const SizedBox(height: 16),
-            LayoutBuilder(
-              builder: (context, constraints) {
-                final wide = constraints.maxWidth >= 920;
-                final cards = [
-                  SectionCard(
-                    title: context.text('focusedTime'),
-                    icon: Icons.center_focus_strong_outlined,
-                    child: _MetricText(
-                      primary: _formatMinutes(recordedMinutes),
-                      secondary: context.text('verifiedActive'),
-                    ),
-                  ),
-                  SectionCard(
-                    title: context.text('plannedActual'),
-                    icon: Icons.compare_arrows_outlined,
-                    child: _ProgressLine(
-                      label:
-                          '${context.text('planned')}: ${_formatMinutes(plannedMinutes)}  •  ${context.text('recorded')}: ${_formatMinutes(recordedMinutes)}',
-                      value: plannedMinutes == 0
-                          ? 0
-                          : (recordedMinutes / plannedMinutes).clamp(0, 1),
-                    ),
-                  ),
-                  SectionCard(
-                    title: context.text('taskOutput'),
-                    icon: Icons.fact_check_outlined,
-                    child: _MetricText(
-                      primary:
-                          '$completedToday ${context.text('completed').toLowerCase()}',
-                      secondary:
-                          '$inProgressToday ${context.text('inProgress').toLowerCase()}',
-                    ),
-                  ),
-                  SectionCard(
-                    title: context.text('categoryDistribution'),
-                    icon: Icons.pie_chart_outline,
-                    child: _CategoryBreakdown(entries: categoryEntries),
-                  ),
-                ];
+            actions: [
+              _QuickNoteActionButton(
+                onPressed: () =>
+                    unawaited(_openQuickNote(context, taskController)),
+              ),
+              IconButton(
+                tooltip: context.text('quickAdd'),
+                onPressed: onQuickAdd,
+                icon: const Icon(Icons.add_task_outlined),
+              ),
+            ],
+          ),
+          body: SafeArea(
+            child: ListView(
+              padding: const EdgeInsets.all(20),
+              children: [
+                _HeroFocus(
+                  focusTask: activeTask ?? focusTask,
+                  activeTask: activeTask,
+                  profile: profile,
+                  onStartPomodoro: onStartPomodoro,
+                ),
+                const SizedBox(height: 16),
+                _ActiveCoachStrip(
+                  tasks: currentTasks,
+                  controller: taskController,
+                  plannedMinutes: plannedMinutes,
+                  recordedMinutes: recordedMinutes,
+                  completedToday: completedToday,
+                  overdueCount: overdueTasks.length,
+                  interruptionSeconds: interruptionSeconds,
+                  overCapacityMinutes: overCapacityMinutes,
+                ),
+                const SizedBox(height: 16),
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final wide = constraints.maxWidth >= 920;
+                    final cards = [
+                      SectionCard(
+                        title: context.text('focusedTime'),
+                        icon: Icons.center_focus_strong_outlined,
+                        child: _MetricText(
+                          primary: _formatMinutes(recordedMinutes),
+                          secondary: context.text('verifiedActive'),
+                        ),
+                      ),
+                      SectionCard(
+                        title: context.text('plannedActual'),
+                        icon: Icons.compare_arrows_outlined,
+                        child: _ProgressLine(
+                          label:
+                              '${context.text('planned')}: ${_formatMinutes(plannedMinutes)}  •  ${context.text('recorded')}: ${_formatMinutes(recordedMinutes)}',
+                          value: plannedMinutes == 0
+                              ? 0
+                              : (recordedMinutes / plannedMinutes).clamp(0, 1),
+                        ),
+                      ),
+                      SectionCard(
+                        title: context.text('taskOutput'),
+                        icon: Icons.fact_check_outlined,
+                        child: _MetricText(
+                          primary:
+                              '$completedToday ${context.text('completed').toLowerCase()}',
+                          secondary:
+                              '$inProgressToday ${context.text('inProgress').toLowerCase()}',
+                        ),
+                      ),
+                      SectionCard(
+                        title: context.text('categoryDistribution'),
+                        icon: Icons.pie_chart_outline,
+                        child: _CategoryBreakdown(entries: categoryEntries),
+                      ),
+                    ];
 
-                if (!wide) {
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      for (final card in cards) ...[
-                        card,
-                        if (!identical(card, cards.last))
-                          const SizedBox(height: 12),
+                    if (!wide) {
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          for (final card in cards) ...[
+                            card,
+                            if (!identical(card, cards.last))
+                              const SizedBox(height: 12),
+                          ],
+                        ],
+                      );
+                    }
+
+                    final cardWidth = (constraints.maxWidth - 36) / 4;
+                    return Wrap(
+                      spacing: 12,
+                      runSpacing: 12,
+                      children: [
+                        for (final card in cards)
+                          SizedBox(
+                            width: cardWidth.clamp(220, 420),
+                            child: card,
+                          ),
                       ],
-                    ],
-                  );
-                }
-
-                final cardWidth = (constraints.maxWidth - 36) / 4;
-                return Wrap(
+                    );
+                  },
+                ),
+                const SizedBox(height: 16),
+                Wrap(
                   spacing: 12,
                   runSpacing: 12,
                   children: [
-                    for (final card in cards)
-                      SizedBox(width: cardWidth.clamp(220, 420), child: card),
+                    _SmallStatus(
+                      title: context.text('overdue'),
+                      text:
+                          '${overdueTasks.length} ${context.text('tasks').toLowerCase()}',
+                      icon: Icons.warning_amber_outlined,
+                      important: overdueTasks.isNotEmpty,
+                      onTap: () => _showOverduePanel(context),
+                    ),
+                    _SmallStatus(
+                      title: context.text('waitingReview'),
+                      text: reviewTasks.isEmpty
+                          ? context.text('allReviewsCompleted')
+                          : '${reviewTasks.length} ${context.text('items')}',
+                      icon: Icons.rate_review_outlined,
+                      onTap: () => _showReviewPanel(context),
+                    ),
+                    _SmallStatus(
+                      title: context.text('interruptedTime'),
+                      text: interruptionSeconds == 0
+                          ? context.text('noInterruptionsToday')
+                          : '${_formatSecondsCompact(interruptionSeconds)} ${context.text('today').toLowerCase()}',
+                      icon: Icons.search_outlined,
+                      onTap: () => _showInterruptionPanel(context),
+                    ),
+                    _SmallStatus(
+                      title: context.text('dailyWorkload'),
+                      text: overCapacityMinutes > 0
+                          ? '${_formatMinutes(overCapacityMinutes)} ${context.text('overCapacity').toLowerCase()}'
+                          : context.text('withinCapacity'),
+                      icon: Icons.balance_outlined,
+                      important: overCapacityMinutes > 0,
+                      onTap: () => _showWorkloadPanel(
+                        context,
+                        availableMinutes: availableMinutes,
+                      ),
+                    ),
                   ],
-                );
-              },
-            ),
-            const SizedBox(height: 16),
-            Wrap(
-              spacing: 12,
-              runSpacing: 12,
-              children: [
-                _SmallStatus(
-                  title: context.text('overdue'),
-                  text:
-                      '${overdueTasks.length} ${context.text('tasks').toLowerCase()}',
-                  icon: Icons.warning_amber_outlined,
-                  important: overdueTasks.isNotEmpty,
-                  onTap: () => _showOverduePanel(context),
                 ),
-                _SmallStatus(
-                  title: context.text('waitingReview'),
-                  text: reviewTasks.isEmpty
-                      ? context.text('allReviewsCompleted')
-                      : '${reviewTasks.length} ${context.text('items')}',
-                  icon: Icons.rate_review_outlined,
-                  onTap: () => _showReviewPanel(context),
-                ),
-                _SmallStatus(
-                  title: context.text('interruptedTime'),
-                  text: interruptionSeconds == 0
-                      ? context.text('noInterruptionsToday')
-                      : '${_formatSecondsCompact(interruptionSeconds)} ${context.text('today').toLowerCase()}',
-                  icon: Icons.search_outlined,
-                  onTap: () => _showInterruptionPanel(context),
-                ),
-                _SmallStatus(
-                  title: context.text('dailyWorkload'),
-                  text: overCapacityMinutes > 0
-                      ? '${_formatMinutes(overCapacityMinutes)} ${context.text('overCapacity').toLowerCase()}'
-                      : context.text('withinCapacity'),
-                  icon: Icons.balance_outlined,
-                  important: overCapacityMinutes > 0,
-                  onTap: () => _showWorkloadPanel(
-                    context,
-                    availableMinutes: availableMinutes,
+                const SizedBox(height: 16),
+                SectionCard(
+                  title: context.text('today'),
+                  icon: Icons.today_outlined,
+                  action: TextButton.icon(
+                    onPressed: onQuickAdd,
+                    icon: const Icon(Icons.add_outlined),
+                    label: Text(context.text('quickAdd')),
                   ),
+                  child: Column(
+                    children: [
+                      if (todayTasks.isEmpty)
+                        Align(
+                          alignment: AlignmentDirectional.centerStart,
+                          child: Text(context.text('nextAction')),
+                        )
+                      else
+                        for (final task in todayTasks.take(5))
+                          _TaskLine(task: task, controller: taskController),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                SectionCard(
+                  title: context.text('roadmapPhase'),
+                  icon: Icons.route_outlined,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        context.text('nextRoadmapTarget'),
+                        style: Theme.of(context).textTheme.titleSmall,
+                      ),
+                      const SizedBox(height: 8),
+                      Text(context.text('roadmapPlaceholder')),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Expanded(
+                      child: AppButton.filled(
+                        onPressed: onStartPomodoro,
+                        icon: const Icon(Icons.play_arrow_outlined),
+                        label: Text(context.text('startPomodoro')),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    AppButton.outlined(
+                      onPressed: onQuickAdd,
+                      icon: const Icon(Icons.add_outlined),
+                      label: Text(context.text('quickAdd')),
+                    ),
+                  ],
                 ),
               ],
             ),
-            const SizedBox(height: 16),
-            SectionCard(
-              title: context.text('today'),
-              icon: Icons.today_outlined,
-              action: TextButton.icon(
-                onPressed: onQuickAdd,
-                icon: const Icon(Icons.add_outlined),
-                label: Text(context.text('quickAdd')),
-              ),
-              child: Column(
-                children: [
-                  if (todayTasks.isEmpty)
-                    Align(
-                      alignment: AlignmentDirectional.centerStart,
-                      child: Text(context.text('nextAction')),
-                    )
-                  else
-                    for (final task in todayTasks.take(5))
-                      _TaskLine(task: task, controller: taskController),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-            SectionCard(
-              title: context.text('roadmapPhase'),
-              icon: Icons.route_outlined,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    context.text('nextRoadmapTarget'),
-                    style: Theme.of(context).textTheme.titleSmall,
-                  ),
-                  const SizedBox(height: 8),
-                  Text(context.text('roadmapPlaceholder')),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  child: AppButton.filled(
-                    onPressed: onStartPomodoro,
-                    icon: const Icon(Icons.play_arrow_outlined),
-                    label: Text(context.text('startPomodoro')),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                AppButton.outlined(
-                  onPressed: onQuickAdd,
-                  icon: const Icon(Icons.add_outlined),
-                  label: Text(context.text('quickAdd')),
-                ),
-              ],
-            ),
-          ],
+          ),
         ),
       ),
     );
@@ -1499,6 +1515,282 @@ class _TaskLine extends StatelessWidget {
       ),
     );
   }
+}
+
+class _QuickNoteActionButton extends StatelessWidget {
+  const _QuickNoteActionButton({required this.onPressed});
+
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final wide = MediaQuery.sizeOf(context).width >= 760;
+    if (wide) {
+      return Padding(
+        padding: const EdgeInsetsDirectional.only(end: 4),
+        child: TextButton.icon(
+          onPressed: onPressed,
+          icon: const Icon(Icons.note_add_outlined),
+          label: Text(context.text('quickNote')),
+        ),
+      );
+    }
+    return Semantics(
+      button: true,
+      label: context.text('quickNote'),
+      child: IconButton(
+        tooltip: context.text('quickNote'),
+        onPressed: onPressed,
+        icon: const Icon(Icons.note_add_outlined),
+      ),
+    );
+  }
+}
+
+class _QuickNoteResult {
+  const _QuickNoteResult({required this.note, required this.convertToTask});
+
+  final QuickNote note;
+  final bool convertToTask;
+}
+
+class _QuickNoteComposer extends StatefulWidget {
+  const _QuickNoteComposer({
+    required this.categories,
+    required this.roadmaps,
+    required this.sheet,
+  });
+
+  final List<String> categories;
+  final Map<String, String> roadmaps;
+  final bool sheet;
+
+  @override
+  State<_QuickNoteComposer> createState() => _QuickNoteComposerState();
+}
+
+class _QuickNoteComposerState extends State<_QuickNoteComposer> {
+  final _titleController = TextEditingController();
+  final _detailsController = TextEditingController();
+  String? _category;
+  String? _roadmapId;
+  bool _submitted = false;
+
+  @override
+  void dispose() {
+    _titleController.dispose();
+    _detailsController.dispose();
+    super.dispose();
+  }
+
+  void _submit({required bool convertToTask}) {
+    if (_submitted) return;
+    final title = _titleController.text.trim();
+    final details = _detailsController.text.trim();
+    if (title.isEmpty && details.isEmpty) {
+      return;
+    }
+    _submitted = true;
+    Navigator.of(context).pop(
+      _QuickNoteResult(
+        note: QuickNote(
+          title: title,
+          body: title.isEmpty ? details : title,
+          details: details,
+          category: _category,
+          roadmapId: _roadmapId,
+        ),
+        convertToTask: convertToTask,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final content = Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        TextField(
+          controller: _titleController,
+          autofocus: true,
+          textInputAction: TextInputAction.next,
+          decoration: InputDecoration(
+            labelText: context.text('quickNoteTitle'),
+          ),
+          onSubmitted: (_) => _submit(convertToTask: false),
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _detailsController,
+          minLines: 3,
+          maxLines: 5,
+          decoration: InputDecoration(
+            labelText: context.text('quickNoteDetails'),
+          ),
+        ),
+        if (widget.categories.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          DropdownButtonFormField<String>(
+            initialValue: _category,
+            decoration: InputDecoration(labelText: context.text('category')),
+            items: [
+              for (final category in widget.categories)
+                DropdownMenuItem(value: category, child: Text(category)),
+            ],
+            onChanged: (value) => setState(() => _category = value),
+          ),
+        ],
+        if (widget.roadmaps.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          DropdownButtonFormField<String>(
+            initialValue: _roadmapId,
+            decoration: InputDecoration(labelText: context.text('roadmap')),
+            items: [
+              for (final entry in widget.roadmaps.entries)
+                DropdownMenuItem(value: entry.key, child: Text(entry.value)),
+            ],
+            onChanged: (value) => setState(() => _roadmapId = value),
+          ),
+        ],
+      ],
+    );
+
+    final actions = [
+      TextButton(
+        onPressed: () => Navigator.of(context).pop(),
+        child: Text(context.text('cancel')),
+      ),
+      AppButton.outlined(
+        onPressed: () => _submit(convertToTask: true),
+        icon: const Icon(Icons.add_task_outlined),
+        label: Text(context.text('saveAndConvertToTask')),
+      ),
+      AppButton.filled(
+        onPressed: () => _submit(convertToTask: false),
+        icon: const Icon(Icons.save_outlined),
+        label: Text(context.text('saveNote')),
+      ),
+    ];
+
+    if (widget.sheet) {
+      return SafeArea(
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(
+            16,
+            8,
+            16,
+            16 + MediaQuery.viewInsetsOf(context).bottom,
+          ),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Center(
+                  child: Container(
+                    width: 42,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).dividerColor,
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  context.text('quickNote'),
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
+                const SizedBox(height: 12),
+                content,
+                const SizedBox(height: 16),
+                Wrap(spacing: 8, runSpacing: 8, children: actions),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    return AlertDialog(
+      title: Text(context.text('quickNote')),
+      content: SizedBox(width: 460, child: content),
+      actions: actions,
+    );
+  }
+}
+
+Future<void> _openQuickNote(
+  BuildContext context,
+  TaskActionController controller,
+) async {
+  final categories = controller.categories.map((item) => item.name).toList()
+    ..sort();
+  const roadmaps = <String, String>{};
+  final sheet =
+      Theme.of(context).platform == TargetPlatform.android ||
+      MediaQuery.sizeOf(context).width < 760;
+  final result = sheet
+      ? await showModalBottomSheet<_QuickNoteResult>(
+          context: context,
+          isScrollControlled: true,
+          showDragHandle: false,
+          builder: (context) => _QuickNoteComposer(
+            categories: categories,
+            roadmaps: roadmaps,
+            sheet: true,
+          ),
+        )
+      : await showDialog<_QuickNoteResult>(
+          context: context,
+          builder: (context) => _QuickNoteComposer(
+            categories: categories,
+            roadmaps: roadmaps,
+            sheet: false,
+          ),
+        );
+  if (!context.mounted || result == null) return;
+
+  final pendingTask = result.convertToTask
+      ? TaskItem(
+          title: result.note.title.isEmpty
+              ? result.note.body
+              : result.note.title,
+          description: result.note.details,
+          taskType: TaskType.manual,
+          executionMode: TaskExecutionMode.manualCompletion,
+          category: result.note.category ?? 'Personal',
+          roadmapId: result.note.roadmapId,
+          notes: result.note.details,
+          estimatedMinutes: 5,
+          timerEnabled: false,
+        )
+      : null;
+  final noteToSave = pendingTask == null
+      ? result.note
+      : result.note.copyWith(convertedTaskId: pendingTask.id);
+  final saved = await controller.addQuickNote(noteToSave);
+  if (!context.mounted) return;
+  if (saved == null) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(context.text('quickNoteSaveFailed'))),
+    );
+    return;
+  }
+
+  if (pendingTask != null) {
+    await controller.addTask(pendingTask);
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(context.text('quickNoteConverted'))));
+    return;
+  }
+
+  ScaffoldMessenger.of(
+    context,
+  ).showSnackBar(SnackBar(content: Text(context.text('quickNoteSaved'))));
 }
 
 Future<void> _editTaskFromDashboard(

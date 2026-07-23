@@ -971,6 +971,11 @@ void FlutterWindow::ConfigureTaskBrowserChannel() {
           result->Success();
           return;
         }
+        if (method == "destroy") {
+          DestroyBrowser();
+          result->Success();
+          return;
+        }
         if (method == "navigate") {
           NavigateBrowser(StringArgument(map, "url"));
           result->Success();
@@ -1112,6 +1117,10 @@ void FlutterWindow::EnsureBrowser(const std::wstring& url,
           ICoreWebView2CreateCoreWebView2EnvironmentCompletedHandler>(
           [this, url](HRESULT result,
                       ICoreWebView2Environment* environment) -> HRESULT {
+            if (!browser_creating_ || browser_host_window_ == nullptr) {
+              browser_creating_ = false;
+              return S_OK;
+            }
             if (FAILED(result) || environment == nullptr) {
               browser_creating_ = false;
               SendBrowserEvent(false, L"",
@@ -1127,6 +1136,12 @@ void FlutterWindow::EnsureBrowser(const std::wstring& url,
                                 ICoreWebView2Controller* controller)
                         -> HRESULT {
                       browser_creating_ = false;
+                      if (browser_host_window_ == nullptr) {
+                        if (controller != nullptr) {
+                          controller->Close();
+                        }
+                        return S_OK;
+                      }
                       if (FAILED(controller_result) || controller == nullptr) {
                         SendBrowserEvent(false, L"",
                                          L"WebView2 could not be created.");
@@ -1323,6 +1338,28 @@ void FlutterWindow::HideBrowser() {
   }
 }
 
+void FlutterWindow::DestroyBrowser() {
+  browser_creating_ = false;
+  browser_detached_ = false;
+  if (browser_controller_) {
+    browser_controller_->put_IsVisible(FALSE);
+    browser_controller_->Close();
+  }
+  browser_webview_.Reset();
+  browser_controller_.Reset();
+  browser_environment_.Reset();
+  if (browser_host_window_ != nullptr) {
+    DestroyWindow(browser_host_window_);
+    browser_host_window_ = nullptr;
+  }
+  if (detached_browser_window_ != nullptr) {
+    DestroyWindow(detached_browser_window_);
+    detached_browser_window_ = nullptr;
+  }
+  browser_current_url_.clear();
+  browser_last_error_.clear();
+}
+
 void FlutterWindow::NavigateBrowser(const std::wstring& url) {
   if (url.empty()) {
     return;
@@ -1477,17 +1514,7 @@ void FlutterWindow::SendBrowserEvent(bool loading,
 }
 
 void FlutterWindow::ResetBrowserForProfile() {
-  HideBrowser();
-  if (detached_browser_window_ != nullptr) {
-    ShowWindow(detached_browser_window_, SW_HIDE);
-  }
-  browser_webview_.Reset();
-  browser_controller_.Reset();
-  browser_environment_.Reset();
-  browser_current_url_.clear();
-  browser_last_error_.clear();
-  browser_creating_ = false;
-  browser_detached_ = false;
+  DestroyBrowser();
 }
 
 HWND FlutterWindow::BrowserParentWindow() {

@@ -144,15 +144,19 @@ alter default privileges in schema public grant all on sequences to postgres, an
 
   $apkSource = Join-Path $root "build\app\outputs\flutter-apk\app-release.apk"
   $apkTarget = Join-Path $releaseDir "TaskMasterPro-android-release.apk"
+  $stableApkTarget = Join-Path $releaseDir "TaskMasterPro-Android.apk"
   Copy-Item -LiteralPath $apkSource -Destination $apkTarget -Force
+  Copy-Item -LiteralPath $apkSource -Destination $stableApkTarget -Force
 
   $installer = Join-Path $releaseDir "TaskMasterPro-windows-x64-setup.exe"
+  $stableInstaller = Join-Path $releaseDir "TaskMasterPro-Windows-Setup.exe"
   if (!(Test-Path $installer)) {
     throw "Windows installer was not created: $installer"
   }
   if (!(Test-Path $apkTarget)) {
     throw "Android APK was not created: $apkTarget"
   }
+  Copy-Item -LiteralPath $installer -Destination $stableInstaller -Force
   Copy-Item -LiteralPath $rebuildSql -Destination (Join-Path $releaseDir "TaskMasterPro-supabase-clean-rebuild.sql") -Force
 
   Write-Host ""

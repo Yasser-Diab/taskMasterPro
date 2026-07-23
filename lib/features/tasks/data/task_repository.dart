@@ -1446,6 +1446,78 @@ class TaskRepository {
     }
   }
 
+  Future<List<QuickNote>> loadQuickNotes() async {
+    final client = _supabaseService.clientOrNull;
+    final user = _supabaseService.currentUser;
+    if (user == null) return const [];
+    final localRows = await _localStore.loadRows(user.id, 'quick_notes');
+    final local =
+        localRows
+            .where((row) => row['deleted_at'] == null)
+            .map(QuickNote.fromMap)
+            .toList(growable: false)
+          ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    if (client == null) return local;
+
+    try {
+      final rows = await client
+          .from('quick_notes')
+          .select()
+          .eq('user_id', user.id)
+          .isFilter('deleted_at', null)
+          .order('created_at', ascending: false)
+          .timeout(const Duration(seconds: 15));
+      final parsed = rows
+          .map<QuickNote>((row) => QuickNote.fromMap(row))
+          .toList();
+      await _localStore.replaceRowsWhere(
+        user.id,
+        'quick_notes',
+        'user_id',
+        {user.id},
+        [for (final note in parsed) _quickNoteRow(note, user.id)],
+      );
+      return parsed;
+    } on Object {
+      return local;
+    }
+  }
+
+  Future<QuickNote> addQuickNote(QuickNote note) async {
+    final client = _supabaseService.clientOrNull;
+    final user = _supabaseService.currentUser;
+    if (user == null) return note;
+    final payload = _quickNoteRow(note, user.id);
+    await _localStore.upsertRow(user.id, 'quick_notes', note.id, payload);
+    final operation = await _queueTaskOperation(
+      user.id,
+      'quick_note_upsert',
+      payload,
+    );
+    if (client == null) return note;
+    try {
+      final row = await client
+          .from('quick_notes')
+          .upsert(payload, onConflict: 'id')
+          .select()
+          .single()
+          .timeout(const Duration(seconds: 15));
+      final saved = QuickNote.fromMap(row);
+      await _localStore.upsertRow(
+        user.id,
+        'quick_notes',
+        saved.id,
+        _quickNoteRow(saved, user.id),
+      );
+      await _localStore.removeOperation(user.id, operation.id);
+      return saved;
+    } on Object catch (error) {
+      if (_isConnectivityError(error)) return note;
+      await _localStore.removeOperation(user.id, operation.id);
+      rethrow;
+    }
+  }
+
   Future<List<TaskNote>> loadNotes(String taskId) async {
     final client = _supabaseService.clientOrNull;
     final user = _supabaseService.currentUser;
@@ -1613,6 +1685,15 @@ class TaskRepository {
     ...note.toInsertMap(),
     'created_at': note.createdAt.toUtc().toIso8601String(),
     'updated_at': note.updatedAt.toUtc().toIso8601String(),
+  };
+
+  Map<String, dynamic> _quickNoteRow(QuickNote note, String userId) => {
+    'id': note.id,
+    'user_id': userId,
+    ...note.toInsertMap(),
+    'created_at': note.createdAt.toUtc().toIso8601String(),
+    'updated_at': note.updatedAt.toUtc().toIso8601String(),
+    'deleted_at': note.deletedAt?.toUtc().toIso8601String(),
   };
 
   Map<String, dynamic> _interruptionRow(
@@ -2694,6 +2775,7 @@ class TaskRepository {
       'work_demand' => 'work_demand',
       'learning_checkpoint' => 'learning_checkpoint',
       'widget_action_event' => 'widget_action_event',
+      'quick_note_upsert' => 'quick_note',
       'note_upsert' || 'note_delete' => 'task_note',
       'interruption_upsert' || 'interruption_delete' => 'task_interruption',
       _ => 'task',
@@ -2811,6 +2893,8 @@ class TaskRepository {
         await client.from('task_checkpoints').upsert(payload, onConflict: 'id');
       case 'widget_action_event':
         return;
+      case 'quick_note_upsert':
+        await client.from('quick_notes').upsert(payload, onConflict: 'id');
       case 'note_upsert':
         await client.from('task_notes').upsert(payload, onConflict: 'id');
       case 'note_delete':

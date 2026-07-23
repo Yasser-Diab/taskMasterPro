@@ -13,6 +13,7 @@ import '../../../core/config/app_environment.dart';
 import '../../../core/config/supabase_service.dart';
 import '../../../core/localization/app_localizations.dart';
 import '../../../core/platform/app_lifecycle_service.dart';
+import '../../../core/platform/external_url_launcher.dart';
 import '../../../core/platform/health_data_service.dart';
 import '../../../core/platform/task_browser_surface_controller.dart';
 import '../../../core/platform/task_reminder_scheduler.dart';
@@ -32,6 +33,9 @@ class SettingsScreen extends StatelessWidget {
 
   final TaskActionController? taskController;
   final PomodoroController? pomodoroController;
+  static const _privacyUrl =
+      'https://yasser-diab.github.io/taskMasterPro/privacy-policy/';
+  static const _termsUrl = 'https://yasser-diab.github.io/taskMasterPro/terms/';
 
   @override
   Widget build(BuildContext context) {
@@ -40,323 +44,340 @@ class SettingsScreen extends StatelessWidget {
 
     return _TaskBrowserHidden(
       child: Scaffold(
-      resizeToAvoidBottomInset: true,
-      appBar: AppBar(
-        title: Text(context.text('settings')),
-        actions: [
-          if (services.supabaseService.isSignedIn)
-            AppIconButton(
-              tooltip: context.text('signOut'),
-              onPressed: () => _confirmAndSignOut(context),
-              icon: const Icon(Icons.logout_outlined),
-            ),
-        ],
-      ),
-      body: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
-        child: SafeArea(
-          child: AnimatedPadding(
-            duration: const Duration(milliseconds: 180),
-            curve: Curves.easeOut,
-            padding: EdgeInsets.only(
-              bottom: MediaQuery.viewInsetsOf(context).bottom,
-            ),
-            child: ListView(
-              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-              padding: const EdgeInsets.all(20),
-              children: [
-                _SettingsGroup(
-                  title: context.text('accountSecurity'),
-                  children: [
-                    ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      leading: const Icon(Icons.person_outline),
-                      title: Text(context.text('profileTitle')),
-                      subtitle: Text(
-                        services
-                                    .supabaseService
-                                    .profile
-                                    ?.displayName
-                                    .isNotEmpty ==
-                                true
-                            ? services.supabaseService.profile!.displayName
-                            : services.supabaseService.profile?.email ??
-                                  context.text('notSignedIn'),
-                      ),
-                      onTap: services.supabaseService.isSignedIn
-                          ? () {
-                              services.feedbackService.playUiClick();
-                              Navigator.of(context).push(
-                                MaterialPageRoute<void>(
-                                  builder: (_) => AccountProfileScreen(
-                                    taskController: taskController,
-                                    pomodoroController: pomodoroController,
-                                    onOpenDeleteAccount: () {
-                                      Navigator.of(context).push(
-                                        MaterialPageRoute<void>(
-                                          builder: (_) =>
-                                              const DeleteAccountScreen(),
-                                        ),
-                                      );
-                                    },
-                                  ),
-                                ),
-                              );
-                            }
-                          : null,
-                    ),
-                    ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      leading: const Icon(Icons.password_outlined),
-                      title: Text(context.text('changePassword')),
-                      subtitle: Text(context.text('changePasswordHelp')),
-                      onTap: services.supabaseService.currentUser?.email == null
-                          ? null
-                          : () => _requestPasswordReset(context),
-                    ),
-                    ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      leading: const Icon(Icons.devices_outlined),
-                      title: Text(context.text('activeSessions')),
-                      subtitle: Text(context.text('activeSessionsHelp')),
-                      onTap: () => showAccountDevicesDialog(context),
-                    ),
-                    ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      leading: const Icon(Icons.download_outlined),
-                      title: Text(context.text('exportMyData')),
-                      subtitle: Text(context.text('exportMyDataHelp')),
-                      onTap: services.supabaseService.isSignedIn
-                          ? () => _exportMyData(context)
-                          : null,
-                    ),
-                    const Divider(),
-                    ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      leading: const Icon(Icons.logout_outlined),
-                      title: Text(context.text('logoutThisDevice')),
-                      onTap: services.supabaseService.isSignedIn
-                          ? () => _confirmAndSignOut(context)
-                          : null,
-                    ),
-                    ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      leading: const Icon(Icons.logout),
-                      title: Text(context.text('logoutAllDevices')),
-                      subtitle: Text(context.text('logoutAllDevicesHelp')),
-                      onTap: services.supabaseService.isSignedIn
-                          ? () => _confirmAndSignOut(context, allDevices: true)
-                          : null,
-                    ),
-                    const Divider(),
-                    ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      leading: Icon(
-                        Icons.delete_forever_outlined,
-                        color: Theme.of(context).colorScheme.error,
-                      ),
-                      title: Text(context.text('deleteAccount')),
-                      subtitle: Text(context.text('deleteAccountHelp')),
-                      onTap: services.supabaseService.isSignedIn
-                          ? () {
-                              services.feedbackService.playUiClick();
-                              Navigator.of(context).push(
-                                MaterialPageRoute<void>(
-                                  builder: (_) => const DeleteAccountScreen(),
-                                ),
-                              );
-                            }
-                          : null,
-                    ),
-                  ],
-                ),
-                _SettingsGroup(
-                  title: context.text('language'),
-                  children: [
-                    DropdownButtonFormField<Locale>(
-                      initialValue: config.locale,
-                      items: [
-                        DropdownMenuItem(
-                          value: const Locale('en'),
-                          child: Text(context.text('english')),
-                        ),
-                        DropdownMenuItem(
-                          value: const Locale('ar'),
-                          child: Text(context.text('arabic')),
-                        ),
-                        DropdownMenuItem(
-                          value: const Locale('de'),
-                          child: Text(context.text('german')),
-                        ),
-                      ],
-                      onChanged: (locale) {
-                        if (locale == null) {
-                          return;
-                        }
-                        services.feedbackService.playUiClick();
-                        services.updateConfig(config.copyWith(locale: locale));
-                      },
-                    ),
-                  ],
-                ),
-                _SettingsGroup(
-                  title: context.text('theme'),
-                  children: [
-                    DropdownButtonFormField<AppThemeChoice>(
-                      initialValue: config.themeChoice,
-                      items: [
-                        DropdownMenuItem(
-                          value: AppThemeChoice.darkBlue,
-                          child: Text(context.text('darkBlue')),
-                        ),
-                        DropdownMenuItem(
-                          value: AppThemeChoice.blackGold,
-                          child: Text(context.text('blackGold')),
-                        ),
-                        DropdownMenuItem(
-                          value: AppThemeChoice.light,
-                          child: Text(context.text('lightTheme')),
-                        ),
-                      ],
-                      onChanged: (choice) {
-                        if (choice == null) {
-                          return;
-                        }
-                        services.feedbackService.playUiClick();
-                        services.updateConfig(
-                          config.copyWith(themeChoice: choice),
-                        );
-                      },
-                    ),
-                    AppSwitchListTile(
-                      value: config.compactDesktop,
-                      title: Text(context.text('compactDesktop')),
-                      onChanged: (value) {
-                        services.updateConfig(
-                          config.copyWith(compactDesktop: value),
-                        );
-                      },
-                    ),
-                    AppSwitchListTile(
-                      value: config.reducedMotion,
-                      title: Text(context.text('reducedMotion')),
-                      onChanged: (value) {
-                        services.updateConfig(
-                          config.copyWith(reducedMotion: value),
-                        );
-                      },
-                    ),
-                    AppSwitchListTile(
-                      value: config.highContrast,
-                      title: Text(context.text('highContrast')),
-                      onChanged: (value) {
-                        services.updateConfig(
-                          config.copyWith(highContrast: value),
-                        );
-                      },
-                    ),
-                  ],
-                ),
-                _ApplicationSettingsGroup(config: config),
-                _ScheduleSettingsGroup(config: config),
-                _TimeZoneSettingsGroup(config: config),
-                _CoachingSettingsGroup(config: config),
-                if (Platform.isAndroid) ...[
-                  _AndroidNotificationSettingsGroup(
-                    config: config,
-                    taskController: taskController,
-                  ),
-                  _HealthSettingsGroup(config: config),
-                ],
-                _CycleWellbeingSettingsGroup(
-                  onOpenProfile: services.supabaseService.isSignedIn
-                      ? () {
-                          Navigator.of(context).push(
-                            MaterialPageRoute<void>(
-                              builder: (_) => AccountProfileScreen(
-                                taskController: taskController,
-                                pomodoroController: pomodoroController,
-                              ),
-                            ),
-                          );
-                        }
-                      : null,
-                ),
-                if (Platform.isWindows)
-                  _WindowsRuntimeSettingsGroup(config: config),
-                _SettingsGroup(
-                  title: context.text('synchronization'),
-                  children: [
-                    ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      leading: const Icon(Icons.cloud_download_outlined),
-                      title: Text(context.text('downloadLatestAccountData')),
-                      subtitle: Text(
-                        context.text('downloadLatestAccountDataHelp'),
-                      ),
-                      onTap: services.supabaseService.isSignedIn
-                          ? () => _fullAccountRefresh(context)
-                          : null,
-                    ),
-                  ],
-                ),
-                _SoundsSettingsGroup(config: config),
-                _BrowserPrivacySettingsGroup(config: config),
-                if (services.supabaseService.isOwner)
+        resizeToAvoidBottomInset: true,
+        appBar: AppBar(
+          title: Text(context.text('settings')),
+          actions: [
+            if (services.supabaseService.isSignedIn)
+              AppIconButton(
+                tooltip: context.text('signOut'),
+                onPressed: () => _confirmAndSignOut(context),
+                icon: const Icon(Icons.logout_outlined),
+              ),
+          ],
+        ),
+        body: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
+          child: SafeArea(
+            child: AnimatedPadding(
+              duration: const Duration(milliseconds: 180),
+              curve: Curves.easeOut,
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.viewInsetsOf(context).bottom,
+              ),
+              child: ListView(
+                keyboardDismissBehavior:
+                    ScrollViewKeyboardDismissBehavior.onDrag,
+                padding: const EdgeInsets.all(20),
+                children: [
                   _SettingsGroup(
-                    title: context.text('administration'),
+                    title: context.text('accountSecurity'),
                     children: [
                       ListTile(
                         contentPadding: EdgeInsets.zero,
-                        leading: const Icon(
-                          Icons.admin_panel_settings_outlined,
+                        leading: const Icon(Icons.person_outline),
+                        title: Text(context.text('profileTitle')),
+                        subtitle: Text(
+                          services
+                                      .supabaseService
+                                      .profile
+                                      ?.displayName
+                                      .isNotEmpty ==
+                                  true
+                              ? services.supabaseService.profile!.displayName
+                              : services.supabaseService.profile?.email ??
+                                    context.text('notSignedIn'),
                         ),
-                        title: Text(context.text('backendSupabase')),
-                        subtitle: Text(context.text('ownerOnly')),
+                        onTap: services.supabaseService.isSignedIn
+                            ? () {
+                                services.feedbackService.playUiClick();
+                                Navigator.of(context).push(
+                                  MaterialPageRoute<void>(
+                                    builder: (_) => AccountProfileScreen(
+                                      taskController: taskController,
+                                      pomodoroController: pomodoroController,
+                                      onOpenDeleteAccount: () {
+                                        Navigator.of(context).push(
+                                          MaterialPageRoute<void>(
+                                            builder: (_) =>
+                                                const DeleteAccountScreen(),
+                                          ),
+                                        );
+                                      },
+                                    ),
+                                  ),
+                                );
+                              }
+                            : null,
+                      ),
+                      ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: const Icon(Icons.password_outlined),
+                        title: Text(context.text('changePassword')),
+                        subtitle: Text(context.text('changePasswordHelp')),
+                        onTap:
+                            services.supabaseService.currentUser?.email == null
+                            ? null
+                            : () => _requestPasswordReset(context),
+                      ),
+                      ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: const Icon(Icons.devices_outlined),
+                        title: Text(context.text('activeSessions')),
+                        subtitle: Text(context.text('activeSessionsHelp')),
+                        onTap: () => showAccountDevicesDialog(context),
+                      ),
+                      ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: const Icon(Icons.download_outlined),
+                        title: Text(context.text('exportMyData')),
+                        subtitle: Text(context.text('exportMyDataHelp')),
+                        onTap: services.supabaseService.isSignedIn
+                            ? () => _exportMyData(context)
+                            : null,
+                      ),
+                      const Divider(),
+                      ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: const Icon(Icons.logout_outlined),
+                        title: Text(context.text('logoutThisDevice')),
+                        onTap: services.supabaseService.isSignedIn
+                            ? () => _confirmAndSignOut(context)
+                            : null,
+                      ),
+                      ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: const Icon(Icons.logout),
+                        title: Text(context.text('logoutAllDevices')),
+                        subtitle: Text(context.text('logoutAllDevicesHelp')),
+                        onTap: services.supabaseService.isSignedIn
+                            ? () =>
+                                  _confirmAndSignOut(context, allDevices: true)
+                            : null,
+                      ),
+                      const Divider(),
+                      ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: Icon(
+                          Icons.delete_forever_outlined,
+                          color: Theme.of(context).colorScheme.error,
+                        ),
+                        title: Text(context.text('deleteAccount')),
+                        subtitle: Text(context.text('deleteAccountHelp')),
+                        onTap: services.supabaseService.isSignedIn
+                            ? () {
+                                services.feedbackService.playUiClick();
+                                Navigator.of(context).push(
+                                  MaterialPageRoute<void>(
+                                    builder: (_) => const DeleteAccountScreen(),
+                                  ),
+                                );
+                              }
+                            : null,
+                      ),
+                    ],
+                  ),
+                  _SettingsGroup(
+                    title: context.text('language'),
+                    children: [
+                      DropdownButtonFormField<Locale>(
+                        initialValue: config.locale,
+                        items: [
+                          DropdownMenuItem(
+                            value: const Locale('en'),
+                            child: Text(context.text('english')),
+                          ),
+                          DropdownMenuItem(
+                            value: const Locale('ar'),
+                            child: Text(context.text('arabic')),
+                          ),
+                          DropdownMenuItem(
+                            value: const Locale('de'),
+                            child: Text(context.text('german')),
+                          ),
+                        ],
+                        onChanged: (locale) {
+                          if (locale == null) {
+                            return;
+                          }
+                          services.feedbackService.playUiClick();
+                          services.updateConfig(
+                            config.copyWith(locale: locale),
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                  _SettingsGroup(
+                    title: context.text('theme'),
+                    children: [
+                      DropdownButtonFormField<AppThemeChoice>(
+                        initialValue: config.themeChoice,
+                        items: [
+                          DropdownMenuItem(
+                            value: AppThemeChoice.darkBlue,
+                            child: Text(context.text('darkBlue')),
+                          ),
+                          DropdownMenuItem(
+                            value: AppThemeChoice.blackGold,
+                            child: Text(context.text('blackGold')),
+                          ),
+                          DropdownMenuItem(
+                            value: AppThemeChoice.light,
+                            child: Text(context.text('lightTheme')),
+                          ),
+                        ],
+                        onChanged: (choice) {
+                          if (choice == null) {
+                            return;
+                          }
+                          services.feedbackService.playUiClick();
+                          services.updateConfig(
+                            config.copyWith(themeChoice: choice),
+                          );
+                        },
+                      ),
+                      AppSwitchListTile(
+                        value: config.compactDesktop,
+                        title: Text(context.text('compactDesktop')),
+                        onChanged: (value) {
+                          services.updateConfig(
+                            config.copyWith(compactDesktop: value),
+                          );
+                        },
+                      ),
+                      AppSwitchListTile(
+                        value: config.reducedMotion,
+                        title: Text(context.text('reducedMotion')),
+                        onChanged: (value) {
+                          services.updateConfig(
+                            config.copyWith(reducedMotion: value),
+                          );
+                        },
+                      ),
+                      AppSwitchListTile(
+                        value: config.highContrast,
+                        title: Text(context.text('highContrast')),
+                        onChanged: (value) {
+                          services.updateConfig(
+                            config.copyWith(highContrast: value),
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                  _ApplicationSettingsGroup(config: config),
+                  _ScheduleSettingsGroup(config: config),
+                  _TimeZoneSettingsGroup(config: config),
+                  _CoachingSettingsGroup(config: config),
+                  if (Platform.isAndroid) ...[
+                    _AndroidNotificationSettingsGroup(
+                      config: config,
+                      taskController: taskController,
+                    ),
+                    _HealthSettingsGroup(config: config),
+                  ],
+                  _CycleWellbeingSettingsGroup(
+                    onOpenProfile: services.supabaseService.isSignedIn
+                        ? () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute<void>(
+                                builder: (_) => AccountProfileScreen(
+                                  taskController: taskController,
+                                  pomodoroController: pomodoroController,
+                                ),
+                              ),
+                            );
+                          }
+                        : null,
+                  ),
+                  if (Platform.isWindows)
+                    _WindowsRuntimeSettingsGroup(config: config),
+                  _SettingsGroup(
+                    title: context.text('synchronization'),
+                    children: [
+                      ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: const Icon(Icons.cloud_download_outlined),
+                        title: Text(context.text('downloadLatestAccountData')),
+                        subtitle: Text(
+                          context.text('downloadLatestAccountDataHelp'),
+                        ),
+                        onTap: services.supabaseService.isSignedIn
+                            ? () => _fullAccountRefresh(context)
+                            : null,
+                      ),
+                    ],
+                  ),
+                  _SoundsSettingsGroup(config: config),
+                  _BrowserPrivacySettingsGroup(config: config),
+                  if (services.supabaseService.isOwner)
+                    _SettingsGroup(
+                      title: context.text('administration'),
+                      children: [
+                        ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: const Icon(
+                            Icons.admin_panel_settings_outlined,
+                          ),
+                          title: Text(context.text('backendSupabase')),
+                          subtitle: Text(context.text('ownerOnly')),
+                          onTap: () {
+                            services.feedbackService.playUiClick();
+                            Navigator.of(context).push(
+                              MaterialPageRoute<void>(
+                                builder: (_) =>
+                                    const BackendAdministrationScreen(),
+                              ),
+                            );
+                          },
+                        ),
+                        ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: const Icon(Icons.refresh_outlined),
+                          title: Text(context.text('clearCacheReload')),
+                          subtitle: Text(context.text('clearCacheReloadHelp')),
+                          onTap: () => _fullAccountRefresh(context),
+                        ),
+                      ],
+                    ),
+                  _SettingsGroup(
+                    title: context.text('about'),
+                    children: [
+                      ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: const Icon(Icons.info_outline),
+                        title: Text(context.text('about')),
+                        subtitle: Text(context.text('aboutText')),
                         onTap: () {
                           services.feedbackService.playUiClick();
                           Navigator.of(context).push(
                             MaterialPageRoute<void>(
-                              builder: (_) =>
-                                  const BackendAdministrationScreen(),
+                              builder: (_) => const AboutScreen(),
                             ),
                           );
                         },
                       ),
                       ListTile(
                         contentPadding: EdgeInsets.zero,
-                        leading: const Icon(Icons.refresh_outlined),
-                        title: Text(context.text('clearCacheReload')),
-                        subtitle: Text(context.text('clearCacheReloadHelp')),
-                        onTap: () => _fullAccountRefresh(context),
+                        leading: const Icon(Icons.privacy_tip_outlined),
+                        title: Text(context.text('privacyPolicy')),
+                        onTap: () => ExternalUrlLauncher.open(_privacyUrl),
+                      ),
+                      ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: const Icon(Icons.description_outlined),
+                        title: Text(context.text('termsOfService')),
+                        onTap: () => ExternalUrlLauncher.open(_termsUrl),
                       ),
                     ],
                   ),
-                _SettingsGroup(
-                  title: context.text('about'),
-                  children: [
-                    ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      leading: const Icon(Icons.info_outline),
-                      title: Text(context.text('about')),
-                      subtitle: Text(context.text('aboutText')),
-                      onTap: () {
-                        services.feedbackService.playUiClick();
-                        Navigator.of(context).push(
-                          MaterialPageRoute<void>(
-                            builder: (_) => const AboutScreen(),
-                          ),
-                        );
-                      },
-                    ),
-                  ],
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
-      ),
       ),
     );
   }
@@ -1929,7 +1950,7 @@ class _TaskBrowserHiddenState extends State<_TaskBrowserHidden> {
   @override
   void initState() {
     super.initState();
-    unawaited(TaskBrowserSurfaceController.hideAll());
+    unawaited(TaskBrowserSurfaceController.destroyAll());
   }
 
   @override
@@ -2295,8 +2316,7 @@ class CycleSettings {
   }
 
   factory CycleSettings.fromRemote(Map<String, dynamic> row) {
-    DateTime? date(String key) =>
-        DateTime.tryParse(row[key]?.toString() ?? '');
+    DateTime? date(String key) => DateTime.tryParse(row[key]?.toString() ?? '');
     return CycleSettings(
       lastPeriodStart: date('last_period_start'),
       lastPeriodEnd: date('last_period_end'),

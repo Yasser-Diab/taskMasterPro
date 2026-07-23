@@ -186,9 +186,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
                           ),
                           Expanded(
                             child: ColoredBox(
-                              color: Theme.of(
-                                context,
-                              ).scaffoldBackgroundColor,
+                              color: Theme.of(context).scaffoldBackgroundColor,
                               child: page,
                             ),
                           ),
@@ -390,7 +388,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   }
 
   Future<void> _hideTaskBrowserSurface() async {
-    await TaskBrowserSurfaceController.hideAll();
+    await TaskBrowserSurfaceController.destroyAll();
   }
 
   Future<void> _handleExitRequest() async {

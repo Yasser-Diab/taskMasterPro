@@ -73,7 +73,7 @@ class _RoadmapOverviewScreenState extends State<RoadmapOverviewScreen> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    unawaited(TaskBrowserSurfaceController.hideAll());
+    unawaited(TaskBrowserSurfaceController.destroyAll());
     final nextRepository = RoadmapRepository(
       AppServices.of(context).supabaseService,
     );

@@ -170,6 +170,7 @@ class _TaskWorkspaceLayoutState extends State<_TaskWorkspaceLayout> {
       resources: _taskResources,
       onCollapse: _collapseBrowser,
       onToggleFull: _toggleFullBrowser,
+      onOpenBrowser: _toggleBrowserShortcut,
       onEditTask: () =>
           _editTaskDialog(context, widget.controller, widget.task),
       onAddNote: () => _addNote(context, widget.controller, widget.task),
@@ -720,6 +721,7 @@ class _TaskBrowserSlot extends StatefulWidget {
     required this.resources,
     required this.onCollapse,
     required this.onToggleFull,
+    required this.onOpenBrowser,
     required this.onEditTask,
     required this.onAddNote,
     required this.onStartWithoutWorkspace,
@@ -734,6 +736,7 @@ class _TaskBrowserSlot extends StatefulWidget {
   final List<TaskResource> resources;
   final VoidCallback onCollapse;
   final VoidCallback onToggleFull;
+  final VoidCallback onOpenBrowser;
   final VoidCallback onEditTask;
   final VoidCallback onAddNote;
   final VoidCallback onStartWithoutWorkspace;
@@ -810,6 +813,13 @@ class _TaskBrowserSlotState extends State<_TaskBrowserSlot> {
 
   @override
   Widget build(BuildContext context) {
+    if (!widget.layoutMode.isVisible) {
+      return _CollapsedTaskBrowserSummary(
+        task: widget.task,
+        resources: widget.resources,
+        onOpenBrowser: widget.onOpenBrowser,
+      );
+    }
     return TaskBrowserWorkspace(
       key: ValueKey('retained-task-browser-${widget.task.id}'),
       task: widget.task,
@@ -824,6 +834,70 @@ class _TaskBrowserSlotState extends State<_TaskBrowserSlot> {
       onAddCurrentPage: widget.onAddCurrentPage,
       onUsage: widget.onUsage,
       onCheckpoint: widget.onCheckpoint,
+    );
+  }
+}
+
+class _CollapsedTaskBrowserSummary extends StatelessWidget {
+  const _CollapsedTaskBrowserSummary({
+    required this.task,
+    required this.resources,
+    required this.onOpenBrowser,
+  });
+
+  final TaskItem task;
+  final List<TaskResource> resources;
+  final VoidCallback onOpenBrowser;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final startUrl = task.workspaceStartingUrl ?? task.learningResourceLink;
+    final resourceCount = resources.length;
+    final detail = startUrl?.trim().isNotEmpty == true
+        ? startUrl!.trim()
+        : resourceCount > 0
+        ? '$resourceCount ${context.text('resources')}'
+        : context.text('noWorkspaceUrl');
+    return ColoredBox(
+      color: theme.colorScheme.surface,
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 460),
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.public_outlined,
+                  size: 42,
+                  color: theme.colorScheme.primary,
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  context.text('inAppBrowser'),
+                  style: theme.textTheme.titleMedium,
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  detail,
+                  textAlign: TextAlign.center,
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 2,
+                  style: theme.textTheme.bodySmall,
+                ),
+                const SizedBox(height: 16),
+                AppButton.filled(
+                  onPressed: onOpenBrowser,
+                  icon: const Icon(Icons.open_in_browser_outlined),
+                  label: Text(context.text('openUrl')),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

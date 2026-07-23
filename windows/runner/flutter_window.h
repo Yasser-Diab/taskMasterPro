@@ -59,6 +59,7 @@ class FlutterWindow : public Win32Window {
                          const std::wstring& profile_id);
   void PositionBrowser(double x, double y, double width, double height);
   void HideBrowser();
+  void DestroyBrowser();
   void NavigateBrowser(const std::wstring& url);
   void BrowserGoBack();
   void BrowserGoForward();

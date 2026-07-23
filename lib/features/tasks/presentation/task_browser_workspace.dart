@@ -10,6 +10,7 @@ import 'package:flutter/services.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../app/app_services.dart';
+import '../../../core/config/app_environment.dart';
 import '../../../core/localization/app_localizations.dart';
 import '../../../core/widgets/app_controls.dart';
 import '../domain/task_item.dart';
@@ -69,7 +70,7 @@ class TaskBrowserWorkspace extends StatefulWidget {
 }
 
 class _TaskBrowserWorkspaceState extends State<TaskBrowserWorkspace>
-    with AutomaticKeepAliveClientMixin, WidgetsBindingObserver {
+    with WidgetsBindingObserver {
   static const _channel = MethodChannel('taskmasterpro/task_browser');
   static const _googleStartUrl = _taskBrowserGoogleStartUrl;
 
@@ -91,6 +92,7 @@ class _TaskBrowserWorkspaceState extends State<TaskBrowserWorkspace>
   bool _addressDirty = false;
   bool _surfaceShown = false;
   int _selectedTab = 0;
+  int _surfaceGeneration = 0;
   Rect? _lastSurfaceRect;
   Timer? _rectTimer;
   Timer? _saveTimer;
@@ -98,9 +100,6 @@ class _TaskBrowserWorkspaceState extends State<TaskBrowserWorkspace>
   DateTime _activityStartedAt = DateTime.now();
 
   String get _browserId => widget.task.id;
-
-  @override
-  bool get wantKeepAlive => true;
 
   @override
   void initState() {
@@ -137,26 +136,25 @@ class _TaskBrowserWorkspaceState extends State<TaskBrowserWorkspace>
       _flushActivity();
     }
     if (!widget.layoutMode.isVisible) {
-      _hidePlatformSurface(resetSurface: true);
+      _releasePlatformSurface(destroy: true);
     }
     if (oldWidget.task.id != widget.task.id) {
       _flushActivity();
-      _surfaceShown = false;
-      _lastSurfaceRect = null;
+      _releasePlatformSurface(destroy: true);
       unawaited(_restoreSession());
     }
   }
 
   @override
   void deactivate() {
-    _hidePlatformSurface(resetSurface: true);
+    _releasePlatformSurface(destroy: true);
     super.deactivate();
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (!kIsWeb && Platform.isWindows && state != AppLifecycleState.resumed) {
-      _hidePlatformSurface(resetSurface: true);
+      _releasePlatformSurface(destroy: true);
     }
   }
 
@@ -171,14 +169,18 @@ class _TaskBrowserWorkspaceState extends State<TaskBrowserWorkspace>
     _urlController.dispose();
     _saveNow();
     WidgetsBinding.instance.removeObserver(this);
-    _hidePlatformSurface(resetSurface: true);
+    _releasePlatformSurface(destroy: true);
+    _channel.setMethodCallHandler(null);
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    super.build(context);
-    WidgetsBinding.instance.addPostFrameCallback((_) => _syncWindowsSurface());
+    if (widget.layoutMode.isVisible) {
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => _syncWindowsSurface(),
+      );
+    }
 
     return Column(
       children: [
@@ -246,13 +248,22 @@ class _TaskBrowserWorkspaceState extends State<TaskBrowserWorkspace>
                     resources: widget.resources,
                     onNavigate: _navigate,
                   )
+                : !widget.layoutMode.isVisible
+                ? _BrowserStatusView(
+                    icon: Icons.public_off_outlined,
+                    title: context.text('browserCollapsed'),
+                    message: _title ?? _currentLoadedUrl,
+                  )
                 : _BrowserSurface(
-                    key: ValueKey('browser-surface-$_browserId-$_profileId'),
+                    key: ValueKey(
+                      'browser-surface-$_browserId-$_profileId-$_surfaceGeneration',
+                    ),
                     surfaceKey: _surfaceKey,
                     browserId: _browserId,
                     profileId: _profileId,
                     initialUrl: _currentLoadedUrl,
                     detached: _detached,
+                    generation: _surfaceGeneration,
                   ),
           ),
         ),
@@ -260,15 +271,22 @@ class _TaskBrowserWorkspaceState extends State<TaskBrowserWorkspace>
     );
   }
 
-  void _hidePlatformSurface({bool resetSurface = false}) {
+  void _releasePlatformSurface({required bool destroy}) {
     if (kIsWeb || !(Platform.isWindows || Platform.isAndroid)) {
       return;
     }
-    if (resetSurface) {
-      _surfaceShown = false;
-      _lastSurfaceRect = null;
+    _surfaceShown = false;
+    _lastSurfaceRect = null;
+    _rectTimer?.cancel();
+    _rectTimer = null;
+    if (destroy) {
+      _surfaceGeneration += 1;
     }
-    unawaited(_channel.invokeMethod<void>('hide', {'browserId': _browserId}));
+    unawaited(
+      _channel.invokeMethod<void>(destroy ? 'destroy' : 'hide', {
+        'browserId': _browserId,
+      }),
+    );
   }
 
   Future<void> _restoreSession() async {
@@ -495,6 +513,10 @@ class _TaskBrowserWorkspaceState extends State<TaskBrowserWorkspace>
     bool force = false,
     bool allowInitialNavigation = false,
   }) {
+    if (!widget.layoutMode.isVisible) {
+      _releasePlatformSurface(destroy: true);
+      return;
+    }
     if (kIsWeb || !Platform.isWindows || _detached) {
       return;
     }
@@ -1219,6 +1241,7 @@ class _BrowserSurface extends StatelessWidget {
     required this.profileId,
     required this.initialUrl,
     required this.detached,
+    required this.generation,
     super.key,
   });
 
@@ -1227,12 +1250,27 @@ class _BrowserSurface extends StatelessWidget {
   final String profileId;
   final String initialUrl;
   final bool detached;
+  final int generation;
 
   @override
   Widget build(BuildContext context) {
+    if (AppEnvironment.webViewTestMode) {
+      return Container(
+        color: Colors.red,
+        alignment: Alignment.center,
+        child: const Text(
+          'WEBVIEW TEST AREA',
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      );
+    }
     if (!kIsWeb && Platform.isAndroid) {
       return PlatformViewLink(
-        key: ValueKey('android-browser-$browserId-$profileId'),
+        key: ValueKey('android-browser-$browserId-$profileId-$generation'),
         viewType: 'taskmasterpro/task_browser',
         surfaceFactory: (context, controller) {
           return AndroidViewSurface(
@@ -1277,6 +1315,52 @@ class _BrowserSurface extends StatelessWidget {
       );
     }
     return _UnsupportedPlatform();
+  }
+}
+
+class _BrowserStatusView extends StatelessWidget {
+  const _BrowserStatusView({
+    required this.icon,
+    required this.title,
+    required this.message,
+  });
+
+  final IconData icon;
+  final String title;
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return ColoredBox(
+      color: theme.colorScheme.surface,
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 460),
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, size: 40, color: theme.colorScheme.primary),
+                const SizedBox(height: 12),
+                Text(
+                  title,
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.titleMedium,
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  message,
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.bodySmall,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
 

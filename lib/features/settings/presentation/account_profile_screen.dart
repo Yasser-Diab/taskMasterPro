@@ -144,7 +144,7 @@ class _AccountProfileScreenState extends State<AccountProfileScreen> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    unawaited(TaskBrowserSurfaceController.hideAll());
+    unawaited(TaskBrowserSurfaceController.destroyAll());
     final service = AppServices.of(context).supabaseService;
     if (_listeningService != service) {
       _listeningService?.removeListener(_handleProfileChanged);
@@ -289,11 +289,10 @@ class _AccountProfileScreenState extends State<AccountProfileScreen> {
                     title: Text(context.text('syncCycleData')),
                     subtitle: Text(context.text('syncCycleDataHelp')),
                     onChanged: _cycleTrackingEnabled
-                        ? (value) =>
-                              setState(() {
-                                _identityDirty = true;
-                                _cycleDataSyncEnabled = value;
-                              })
+                        ? (value) => setState(() {
+                            _identityDirty = true;
+                            _cycleDataSyncEnabled = value;
+                          })
                         : null,
                   ),
                 ],

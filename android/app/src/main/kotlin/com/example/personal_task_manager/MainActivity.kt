@@ -435,6 +435,14 @@ class MainActivity : FlutterFragmentActivity() {
                     }
                     result.success(null)
                 }
+                "destroy" -> {
+                    if (view != null) {
+                        view.destroyFromChannel()
+                    } else {
+                        browserViews.values.toList().forEach { it.destroyFromChannel() }
+                    }
+                    result.success(null)
+                }
                 "showDocked", "detach", "dock" -> result.success(null)
                 else -> result.notImplemented()
             }
@@ -1178,6 +1186,7 @@ private class TaskBrowserPlatformView(
 ) : PlatformView {
     private val channel = MethodChannel(messenger, "taskmasterpro/task_browser")
     private val webView = WebView(context)
+    private var disposed = false
 
     init {
         webView.settings.javaScriptEnabled = true
@@ -1289,45 +1298,66 @@ private class TaskBrowserPlatformView(
     override fun getView(): View = webView
 
     override fun dispose() {
+        if (disposed) {
+            return
+        }
+        disposed = true
         CookieManager.getInstance().flush()
         webView.stopLoading()
         webView.destroy()
         onDispose()
     }
 
+    fun destroyFromChannel() {
+        dispose()
+    }
+
     fun navigate(url: String) {
+        if (disposed) {
+            return
+        }
         webView.visibility = View.VISIBLE
         webView.alpha = 1f
         webView.loadUrl(url)
     }
 
     fun hide() {
+        if (disposed) {
+            return
+        }
         webView.stopLoading()
         webView.visibility = View.GONE
         webView.alpha = 0f
     }
 
     fun goBack() {
-        if (webView.canGoBack()) {
+        if (!disposed && webView.canGoBack()) {
             webView.goBack()
         }
     }
 
     fun goForward() {
-        if (webView.canGoForward()) {
+        if (!disposed && webView.canGoForward()) {
             webView.goForward()
         }
     }
 
     fun reload() {
-        webView.reload()
+        if (!disposed) {
+            webView.reload()
+        }
     }
 
     fun stop() {
-        webView.stopLoading()
+        if (!disposed) {
+            webView.stopLoading()
+        }
     }
 
     private fun sendEvent(event: Map<String, Any>) {
+        if (disposed) {
+            return
+        }
         channel.invokeMethod(
             "browserEvent",
             mapOf("browserId" to browserId) + event

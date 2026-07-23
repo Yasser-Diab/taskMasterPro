@@ -19,6 +19,10 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
+  static const _privacyUrl =
+      'https://yasser-diab.github.io/taskMasterPro/privacy-policy/';
+  static const _termsUrl = 'https://yasser-diab.github.io/taskMasterPro/terms/';
+
   final _fullNameController = TextEditingController();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
@@ -280,17 +284,42 @@ class _LoginScreenState extends State<LoginScreen> {
                           ],
                         )
                       else
-                        CheckboxListTile(
-                          contentPadding: EdgeInsets.zero,
-                          value: _termsAccepted,
-                          onChanged: _busy
-                              ? null
-                              : (value) {
-                                  setState(
-                                    () => _termsAccepted = value ?? false,
-                                  );
-                                },
-                          title: Text(context.text('acceptTerms')),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            CheckboxListTile(
+                              contentPadding: EdgeInsets.zero,
+                              value: _termsAccepted,
+                              onChanged: _busy
+                                  ? null
+                                  : (value) {
+                                      setState(
+                                        () => _termsAccepted = value ?? false,
+                                      );
+                                    },
+                              title: Text(context.text('acceptTerms')),
+                            ),
+                            Wrap(
+                              spacing: 8,
+                              children: [
+                                TextButton(
+                                  onPressed: _busy
+                                      ? null
+                                      : () => ExternalUrlLauncher.open(
+                                          _privacyUrl,
+                                        ),
+                                  child: Text(context.text('privacyPolicy')),
+                                ),
+                                TextButton(
+                                  onPressed: _busy
+                                      ? null
+                                      : () =>
+                                            ExternalUrlLauncher.open(_termsUrl),
+                                  child: Text(context.text('termsOfService')),
+                                ),
+                              ],
+                            ),
+                          ],
                         ),
                       if (_mode == _AuthMode.signIn)
                         Align(

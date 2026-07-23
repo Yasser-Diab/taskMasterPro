@@ -4,6 +4,21 @@
 
 create extension if not exists pgcrypto;
 
+do $$
+declare
+  existing_table record;
+begin
+  for existing_table in
+    select tablename
+    from pg_tables
+    where schemaname = 'public'
+      and tablename <> 'spatial_ref_sys'
+  loop
+    execute format('drop table if exists public.%I cascade', existing_table.tablename);
+  end loop;
+end $$;
+
+drop schema if exists private cascade;
 create schema if not exists private;
 
 -- ---------------------------------------------------------------------------
@@ -646,14 +661,16 @@ create table public.task_reminders (
   device_id uuid references public.devices(id) on delete set null,
   reminder_type text not null default 'task'
     check (reminder_type in ('task', 'focus_alarm', 'break_alarm', 'coaching')),
-  title text not null,
+  title text not null default '',
   body text not null default '',
-  scheduled_at_utc timestamptz,
+  scheduled_at timestamptz,
+  custom_trigger_at timestamptz,
   offset_minutes integer,
+  notification_id text,
   channel text not null default 'task_reminders',
-  status text not null default 'scheduled'
-    check (status in ('scheduled', 'sent', 'dismissed', 'snoozed', 'cancelled', 'failed')),
-  adaptive boolean not null default false,
+  status text not null default 'pending'
+    check (status in ('pending', 'scheduled', 'sent', 'dismissed', 'snoozed', 'cancelled', 'failed')),
+  is_adaptive boolean not null default false,
   reason text,
   sent_at timestamptz,
   dismissed_at timestamptz,
@@ -683,13 +700,37 @@ create table public.task_notes (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references public.profiles(id) on delete cascade,
   task_id uuid not null references public.tasks(id) on delete cascade,
+  session_id uuid references public.task_sessions(id) on delete set null,
   resource_id uuid references public.task_resources(id) on delete set null,
+  note_type text not null default 'general'
+    check (note_type in ('general', 'progress', 'problem', 'idea', 'decision', 'next_action', 'learning_summary', 'work_result')),
+  title text not null default '',
   body text not null,
+  is_pinned boolean not null default false,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   deleted_at timestamptz,
   revision bigint not null default 0
 );
+
+create table public.quick_notes (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  title text not null default '',
+  body text not null,
+  details text not null default '',
+  category text,
+  roadmap_id uuid references public.roadmaps(id) on delete set null,
+  converted_task_id uuid references public.tasks(id) on delete set null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  deleted_at timestamptz,
+  revision bigint not null default 0
+);
+
+create index quick_notes_user_created_idx
+on public.quick_notes(user_id, created_at desc)
+where deleted_at is null;
 
 -- ---------------------------------------------------------------------------
 -- Health, cycle data, and coaching
@@ -1573,7 +1614,8 @@ begin
     'cycle_entries',
     'user_behavior_features',
     'coaching_recommendations',
-    'task_notes'
+    'task_notes',
+    'quick_notes'
   ]
   loop
     execute format(
@@ -1689,6 +1731,7 @@ begin
     'task_reminders',
     'reading_sessions',
     'task_notes',
+    'quick_notes',
     'health_connections',
     'health_records',
     'health_daily_summaries',

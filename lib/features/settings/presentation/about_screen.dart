@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../../../app/app_services.dart';
 import '../../../core/config/build_info.dart';
 import '../../../core/localization/app_localizations.dart';
+import '../../../core/platform/external_url_launcher.dart';
 import '../../../core/theme/app_brand.dart';
 import '../../../core/theme/app_theme.dart';
 
@@ -15,6 +16,10 @@ class AboutScreen extends StatefulWidget {
 }
 
 class _AboutScreenState extends State<AboutScreen> {
+  static const _privacyUrl =
+      'https://yasser-diab.github.io/taskMasterPro/privacy-policy/';
+  static const _termsUrl = 'https://yasser-diab.github.io/taskMasterPro/terms/';
+
   bool _developerMode = false;
   bool _showSensitive = false;
 
@@ -105,6 +110,23 @@ class _AboutScreenState extends State<AboutScreen> {
                           ),
                         ],
                       ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Card(
+                    child: Column(
+                      children: [
+                        ListTile(
+                          leading: const Icon(Icons.privacy_tip_outlined),
+                          title: Text(context.text('privacyPolicy')),
+                          onTap: () => ExternalUrlLauncher.open(_privacyUrl),
+                        ),
+                        ListTile(
+                          leading: const Icon(Icons.description_outlined),
+                          title: Text(context.text('termsOfService')),
+                          onTap: () => ExternalUrlLauncher.open(_termsUrl),
+                        ),
+                      ],
                     ),
                   ),
                   const SizedBox(height: 16),

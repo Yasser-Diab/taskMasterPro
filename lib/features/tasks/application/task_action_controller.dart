@@ -237,6 +237,7 @@ class TaskActionController extends ChangeNotifier {
   List<TaskItem> _deletedTasks = const [];
   List<TaskCategory> _categories = const [];
   List<TrackedSession> _sessions = const [];
+  List<QuickNote> _quickNotes = const [];
   final Map<String, List<TaskNote>> _notesByTask = {};
   final Map<String, List<TaskInterruption>> _interruptionsByTask = {};
   final Map<String, List<TrackedSession>> _sessionsByTask = {};
@@ -269,6 +270,7 @@ class TaskActionController extends ChangeNotifier {
   List<TaskItem> get deletedTasks => _deletedTasks;
   List<TaskCategory> get categories => _categories;
   List<TrackedSession> get sessions => _sessions;
+  List<QuickNote> get quickNotes => _quickNotes;
   List<TaskUsageActivity> get cachedUsageRecords => [
     for (final records in _usageByTask.values) ...records,
   ];
@@ -320,12 +322,17 @@ class TaskActionController extends ChangeNotifier {
         _loadDeletedTasks(),
         _loadCategories(),
         _loadSessions(),
+        _loadQuickNotes(),
       ]);
       await _loadRecoveryCheckpoint();
       await _loadTodayInterruptions();
       await _restoreReminderSchedule();
     });
     unawaited(_ensureRealtimeSubscription());
+  }
+
+  Future<void> _loadQuickNotes() async {
+    _quickNotes = await _repository.loadQuickNotes();
   }
 
   Future<void> _ensureRealtimeSubscription() async {
@@ -1554,6 +1561,30 @@ class TaskActionController extends ChangeNotifier {
 
   int noteCount(String taskId) {
     return _notesByTask[taskId]?.length ?? 0;
+  }
+
+  Future<QuickNote?> addQuickNote(QuickNote note) async {
+    final previous = _quickNotes;
+    _quickNotes = [note, ..._quickNotes.where((item) => item.id != note.id)];
+    _syncState = TaskSyncState.syncing;
+    _error = null;
+    notifyListeners();
+    try {
+      final saved = await _repository.addQuickNote(note);
+      _quickNotes = [
+        saved,
+        ..._quickNotes.where((item) => item.id != saved.id),
+      ];
+      _syncState = TaskSyncState.synced;
+      notifyListeners();
+      return saved;
+    } on Object catch (error) {
+      _quickNotes = previous;
+      _syncState = TaskSyncState.failed;
+      _error = error.toString();
+      notifyListeners();
+      return null;
+    }
   }
 
   Future<void> addNote(TaskNote note) async {

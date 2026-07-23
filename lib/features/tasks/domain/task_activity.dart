@@ -164,6 +164,83 @@ class TaskNote {
   }
 }
 
+class QuickNote {
+  QuickNote({
+    String? id,
+    this.title = '',
+    required this.body,
+    this.details = '',
+    this.category,
+    this.roadmapId,
+    this.convertedTaskId,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+    this.deletedAt,
+  }) : id = id ?? const Uuid().v4(),
+       createdAt = createdAt ?? DateTime.now(),
+       updatedAt = updatedAt ?? DateTime.now();
+
+  final String id;
+  final String title;
+  final String body;
+  final String details;
+  final String? category;
+  final String? roadmapId;
+  final String? convertedTaskId;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+  final DateTime? deletedAt;
+
+  QuickNote copyWith({
+    String? title,
+    String? body,
+    String? details,
+    String? category,
+    String? roadmapId,
+    String? convertedTaskId,
+    DateTime? deletedAt,
+  }) {
+    return QuickNote(
+      id: id,
+      title: title ?? this.title,
+      body: body ?? this.body,
+      details: details ?? this.details,
+      category: category ?? this.category,
+      roadmapId: roadmapId ?? this.roadmapId,
+      convertedTaskId: convertedTaskId ?? this.convertedTaskId,
+      createdAt: createdAt,
+      updatedAt: DateTime.now(),
+      deletedAt: deletedAt ?? this.deletedAt,
+    );
+  }
+
+  factory QuickNote.fromMap(Map<String, dynamic> map) {
+    return QuickNote(
+      id: map['id']?.toString(),
+      title: map['title']?.toString() ?? '',
+      body: map['body']?.toString() ?? '',
+      details: map['details']?.toString() ?? '',
+      category: map['category']?.toString(),
+      roadmapId: map['roadmap_id']?.toString(),
+      convertedTaskId: map['converted_task_id']?.toString(),
+      createdAt: _dateFromMap(map['created_at']) ?? DateTime.now(),
+      updatedAt: _dateFromMap(map['updated_at']) ?? DateTime.now(),
+      deletedAt: _dateFromMap(map['deleted_at']),
+    );
+  }
+
+  Map<String, dynamic> toInsertMap() {
+    return {
+      'title': title,
+      'body': body,
+      'details': details,
+      'category': category,
+      'roadmap_id': roadmapId,
+      'converted_task_id': convertedTaskId,
+    };
+  }
+}
+
 class TaskInterruption {
   TaskInterruption({
     String? id,

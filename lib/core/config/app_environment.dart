@@ -15,6 +15,9 @@ class AppEnvironment {
     'SUPABASE_PROJECT_REF',
     defaultValue: '',
   );
+  static const webViewTestMode = bool.fromEnvironment(
+    'TASKMASTER_WEBVIEW_TEST',
+  );
 
   static SupabaseTarget? get supabaseTarget {
     if (supabaseUrl.trim().isEmpty || supabasePublishableKey.trim().isEmpty) {
