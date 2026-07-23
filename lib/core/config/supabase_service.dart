@@ -180,6 +180,55 @@ class AccountExportResult {
       'taskmaster-pro-export-${generatedAt.toIso8601String().replaceAll(':', '-')}.json';
 }
 
+class AppDeviceSession {
+  const AppDeviceSession({
+    required this.id,
+    required this.userId,
+    required this.deviceName,
+    required this.platform,
+    required this.platformVersion,
+    required this.appVersion,
+    required this.buildNumber,
+    required this.lastSeenAt,
+    required this.notificationEnabled,
+    this.logoutRequestedAt,
+  });
+
+  final String id;
+  final String userId;
+  final String deviceName;
+  final String platform;
+  final String platformVersion;
+  final String appVersion;
+  final String buildNumber;
+  final DateTime? lastSeenAt;
+  final bool notificationEnabled;
+  final DateTime? logoutRequestedAt;
+
+  String get displayName {
+    final trimmed = deviceName.trim();
+    if (trimmed.isNotEmpty) return trimmed;
+    return platform == 'android' ? 'Android device' : 'Windows device';
+  }
+
+  factory AppDeviceSession.fromMap(Map<String, dynamic> row) {
+    return AppDeviceSession(
+      id: row['id']?.toString() ?? '',
+      userId: row['user_id']?.toString() ?? '',
+      deviceName: row['device_name']?.toString() ?? '',
+      platform: row['platform']?.toString() ?? '',
+      platformVersion: row['platform_version']?.toString() ?? '',
+      appVersion: row['app_version']?.toString() ?? '',
+      buildNumber: row['build_number']?.toString() ?? '',
+      lastSeenAt: DateTime.tryParse(row['last_seen_at']?.toString() ?? ''),
+      notificationEnabled: row['notification_enabled'] as bool? ?? false,
+      logoutRequestedAt: DateTime.tryParse(
+        row['logout_requested_at']?.toString() ?? '',
+      ),
+    );
+  }
+}
+
 class SupabaseService extends ChangeNotifier {
   static const _startupOperationTimeout = Duration(seconds: 8);
   static const _startupRefreshTimeout = Duration(seconds: 15);
@@ -336,9 +385,18 @@ class SupabaseService extends ChangeNotifier {
         redirectTo: AppBrand.authCallbackUri,
         scopes: 'email profile',
       );
+      final providerError = await _oauthProviderConfigurationError(
+        response.url,
+      );
+      if (providerError != null) {
+        return (url: null, error: providerError);
+      }
       return (url: response.url, error: null);
     } on AuthException catch (error) {
-      return (url: null, error: error.message);
+      return (
+        url: null,
+        error: _friendlyGoogleOAuthError(error.message),
+      );
     } on Object catch (_) {
       return (
         url: null,
@@ -346,6 +404,37 @@ class SupabaseService extends ChangeNotifier {
             'Could not open Google sign-in. Check your connection and try again.',
       );
     }
+  }
+
+  Future<String?> _oauthProviderConfigurationError(String url) async {
+    final uri = Uri.tryParse(url);
+    if (uri == null) return null;
+    final httpClient = HttpClient()
+      ..connectionTimeout = const Duration(seconds: 5);
+    try {
+      final request = await httpClient.getUrl(uri);
+      request.followRedirects = false;
+      final response = await request.close();
+      if (response.statusCode < HttpStatus.badRequest) {
+        await response.drain<void>();
+        return null;
+      }
+      final body = await utf8.decoder.bind(response).join();
+      return _friendlyGoogleOAuthError(body);
+    } on Object {
+      return null;
+    } finally {
+      httpClient.close(force: true);
+    }
+  }
+
+  String _friendlyGoogleOAuthError(String rawMessage) {
+    final lowered = rawMessage.toLowerCase();
+    if (lowered.contains('unsupported provider') ||
+        lowered.contains('provider is not enabled')) {
+      return 'Google sign-in is not enabled for this Supabase project yet. Enable the Google provider in Supabase Auth, then try again.';
+    }
+    return rawMessage;
   }
 
   Future<String?> signUpWithPassword({
@@ -439,6 +528,73 @@ class SupabaseService extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<List<AppDeviceSession>> listDeviceSessions() async {
+    final client = clientOrNull;
+    final user = client?.auth.currentUser;
+    if (client == null || user == null) {
+      return const [];
+    }
+    try {
+      final rows = await client
+          .from('devices')
+          .select(
+            'id,user_id,device_name,platform,platform_version,app_version,'
+            'build_number,last_seen_at,notification_enabled,'
+            'logout_requested_at',
+          )
+          .eq('user_id', user.id)
+          .order('last_seen_at', ascending: false);
+      return rows
+          .whereType<Map>()
+          .map((row) => AppDeviceSession.fromMap(Map<String, dynamic>.from(row)))
+          .where((device) => device.id.isNotEmpty)
+          .toList(growable: false);
+    } on Object {
+      return const [];
+    }
+  }
+
+  Future<String?> requestDeviceLogout(String deviceId) async {
+    final client = clientOrNull;
+    final user = client?.auth.currentUser;
+    if (client == null || user == null) {
+      return 'Connection unavailable. Retry while signed in.';
+    }
+    final targetId = deviceId.trim();
+    if (targetId.isEmpty) {
+      return 'Device not found.';
+    }
+    try {
+      final now = DateTime.now().toUtc().toIso8601String();
+      await client
+          .from('devices')
+          .update({
+            'logout_requested_at': now,
+            'updated_at': now,
+          })
+          .eq('id', targetId)
+          .eq('user_id', user.id);
+      try {
+        final channel = client.channel(
+          'taskmaster:user:${user.id}:runtime',
+          opts: const RealtimeChannelConfig(private: true),
+        );
+        channel.subscribe();
+        await Future<void>.delayed(const Duration(milliseconds: 250));
+        await channel.sendBroadcastMessage(
+          event: 'device_logout_requested',
+          payload: {'device_id': targetId},
+        );
+        await client.removeChannel(channel);
+      } on Object {
+        // The target device also checks its row on reconnect/resubscribe.
+      }
+      return null;
+    } on Object catch (error) {
+      return error.toString();
+    }
+  }
+
   Future<String?> handleAuthDeepLink(String link) async {
     final client = clientOrNull;
     if (client == null) {
@@ -513,6 +669,42 @@ class SupabaseService extends ChangeNotifier {
       final settingsRow = results[1] is Map
           ? Map<String, dynamic>.from(results[1] as Map)
           : null;
+      final metadata = user.userMetadata ?? const <String, dynamic>{};
+      final metadataDisplayName =
+          _metadataString(metadata, 'full_name') ??
+          _metadataString(metadata, 'name');
+      final metadataLanguage = _normalizeProfileLanguage(
+        _metadataString(metadata, 'preferred_language'),
+      );
+      final rowDisplayName = profileRow?['display_name']?.toString().trim();
+      final emailPrefix = user.email?.split('@').first.trim() ?? '';
+      final displayName =
+          metadataDisplayName != null &&
+              metadataDisplayName.isNotEmpty &&
+              (rowDisplayName == null ||
+                  rowDisplayName.isEmpty ||
+                  rowDisplayName == emailPrefix)
+          ? metadataDisplayName
+          : rowDisplayName ?? '';
+      final locale = _normalizeProfileLanguage(
+        profileRow?['preferred_language']?.toString() ??
+            settingsRow?['language']?.toString() ??
+            metadataLanguage,
+      );
+      if (metadataDisplayName != null &&
+          metadataDisplayName.isNotEmpty &&
+          metadataDisplayName != rowDisplayName &&
+          (rowDisplayName == null ||
+              rowDisplayName.isEmpty ||
+              rowDisplayName == emailPrefix)) {
+        unawaited(
+          _repairProfileFromMetadata(
+            user.id,
+            displayName: metadataDisplayName,
+            language: locale,
+          ),
+        );
+      }
 
       final avatarPath = profileRow?['avatar_path']?.toString();
       String? avatarSignedUrl;
@@ -529,12 +721,9 @@ class SupabaseService extends ChangeNotifier {
       _profile = AppUserProfile(
         id: user.id,
         email: user.email ?? '',
-        displayName: profileRow?['display_name']?.toString() ?? '',
+        displayName: displayName,
         username: profileRow?['username']?.toString(),
-        locale:
-            profileRow?['preferred_language']?.toString() ??
-            settingsRow?['language']?.toString() ??
-            'en',
+        locale: locale,
         role: AppRole.user,
         onboardingCompleted:
             profileRow?['onboarding_completed'] as bool? ?? false,
@@ -560,6 +749,43 @@ class SupabaseService extends ChangeNotifier {
         cycleTrackingEnabled: false,
         cycleDataSyncEnabled: false,
       );
+    }
+  }
+
+  String? _metadataString(Map<String, dynamic> metadata, String key) {
+    final value = metadata[key]?.toString().trim();
+    return value == null || value.isEmpty ? null : value;
+  }
+
+  String _normalizeProfileLanguage(String? value) {
+    return switch (value) {
+      'ar' => 'ar',
+      'de' => 'de',
+      _ => 'en',
+    };
+  }
+
+  Future<void> _repairProfileFromMetadata(
+    String userId, {
+    required String displayName,
+    required String language,
+  }) async {
+    final client = clientOrNull;
+    if (client == null) return;
+    try {
+      await client
+          .from('profiles')
+          .update({
+            'display_name': displayName,
+            'preferred_language': language,
+          })
+          .eq('id', userId);
+      await client.from('user_settings').upsert({
+        'user_id': userId,
+        'language': language,
+      }, onConflict: 'user_id');
+    } on Object {
+      // The in-memory profile already uses metadata; repair can retry later.
     }
   }
 

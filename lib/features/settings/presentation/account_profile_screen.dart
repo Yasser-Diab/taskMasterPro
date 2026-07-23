@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image/image.dart' as image_tools;
@@ -5,10 +7,105 @@ import 'package:image/image.dart' as image_tools;
 import '../../../app/app_services.dart';
 import '../../../core/config/supabase_service.dart';
 import '../../../core/localization/app_localizations.dart';
+import '../../../core/platform/task_browser_surface_controller.dart';
 import '../../../core/widgets/app_controls.dart';
 import '../../pomodoro/domain/pomodoro_controller.dart';
 import '../../pomodoro/domain/pomodoro_models.dart';
 import '../../tasks/application/task_action_controller.dart';
+
+Future<void> showAccountDevicesDialog(BuildContext context) async {
+  final services = AppServices.of(context);
+  services.feedbackService.playUiClick();
+  await showDialog<void>(
+    context: context,
+    builder: (dialogContext) {
+      return AlertDialog(
+        title: Text(dialogContext.text('activeSessions')),
+        content: SizedBox(
+          width: 560,
+          child: FutureBuilder<List<AppDeviceSession>>(
+            future: services.supabaseService.listDeviceSessions(),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState != ConnectionState.done) {
+                return const SizedBox(
+                  height: 120,
+                  child: Center(child: CircularProgressIndicator()),
+                );
+              }
+              final devices = snapshot.data ?? const [];
+              if (devices.isEmpty) {
+                return Text(context.text('activeSessionsBackendManaged'));
+              }
+              return ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 420),
+                child: ListView.separated(
+                  shrinkWrap: true,
+                  itemCount: devices.length,
+                  separatorBuilder: (_, _) => const Divider(height: 1),
+                  itemBuilder: (context, index) {
+                    final device = devices[index];
+                    final pending = device.logoutRequestedAt != null;
+                    return ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(
+                        device.platform == 'android'
+                            ? Icons.phone_android_outlined
+                            : Icons.desktop_windows_outlined,
+                      ),
+                      title: Text(device.displayName),
+                      subtitle: Text(_deviceSessionSubtitle(context, device)),
+                      trailing: AppButton.outlined(
+                        onPressed: pending
+                            ? null
+                            : () async {
+                                final error = await services.supabaseService
+                                    .requestDeviceLogout(device.id);
+                                if (!context.mounted) return;
+                                if (error == null) {
+                                  services.notificationService.showSuccess(
+                                    context.text('deviceLogoutRequested'),
+                                  );
+                                  Navigator.of(context).pop();
+                                } else {
+                                  services.notificationService.showError(error);
+                                }
+                              },
+                        icon: const Icon(Icons.logout_outlined),
+                        label: Text(
+                          pending
+                              ? context.text('deviceLogoutPending')
+                              : context.text('logOutDevice'),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              );
+            },
+          ),
+        ),
+        actions: [
+          AppButton.text(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            label: Text(dialogContext.text('close')),
+          ),
+        ],
+      );
+    },
+  );
+}
+
+String _deviceSessionSubtitle(BuildContext context, AppDeviceSession device) {
+  final parts = <String>[
+    if (device.platform.isNotEmpty) device.platform,
+    if (device.platformVersion.trim().isNotEmpty) device.platformVersion.trim(),
+    if (device.lastSeenAt != null)
+      '${context.text('lastSeen')}: '
+          '${MaterialLocalizations.of(context).formatShortDate(device.lastSeenAt!.toLocal())} '
+          '${MaterialLocalizations.of(context).formatTimeOfDay(TimeOfDay.fromDateTime(device.lastSeenAt!.toLocal()))}',
+  ];
+  return parts.join(' · ');
+}
 
 class AccountProfileScreen extends StatefulWidget {
   const AccountProfileScreen({
@@ -41,11 +138,13 @@ class _AccountProfileScreenState extends State<AccountProfileScreen> {
   bool _savingIdentity = false;
   bool _savingEmail = false;
   bool _avatarBusy = false;
+  bool _identityDirty = false;
   SupabaseService? _listeningService;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    unawaited(TaskBrowserSurfaceController.hideAll());
     final service = AppServices.of(context).supabaseService;
     if (_listeningService != service) {
       _listeningService?.removeListener(_handleProfileChanged);
@@ -124,7 +223,7 @@ class _AccountProfileScreenState extends State<AccountProfileScreen> {
                   controller: _displayNameController,
                   maxLength: 80,
                   textInputAction: TextInputAction.next,
-                  onChanged: (_) => setState(() {}),
+                  onChanged: (_) => _markIdentityDirty(),
                   decoration: InputDecoration(
                     labelText: context.text('profileDisplayName'),
                     helperText: context.text('profileDisplayNameHelp'),
@@ -135,7 +234,7 @@ class _AccountProfileScreenState extends State<AccountProfileScreen> {
                   controller: _usernameController,
                   maxLength: 30,
                   textInputAction: TextInputAction.done,
-                  onChanged: (_) => setState(() {}),
+                  onChanged: (_) => _markIdentityDirty(),
                   decoration: InputDecoration(
                     labelText: context.text('profileUsername'),
                     helperText: context.text('profileUsernameHelp'),
@@ -161,6 +260,7 @@ class _AccountProfileScreenState extends State<AccountProfileScreen> {
                   ],
                   onChanged: (value) {
                     setState(() {
+                      _identityDirty = true;
                       _selectedSex = value ?? '';
                       if (_selectedSex != UserSex.female.storageValue &&
                           !_cycleTrackingEnabled) {
@@ -178,6 +278,7 @@ class _AccountProfileScreenState extends State<AccountProfileScreen> {
                     subtitle: Text(context.text('enableCycleTrackingHelp')),
                     onChanged: (value) {
                       setState(() {
+                        _identityDirty = true;
                         _cycleTrackingEnabled = value;
                         if (!value) _cycleDataSyncEnabled = false;
                       });
@@ -189,7 +290,10 @@ class _AccountProfileScreenState extends State<AccountProfileScreen> {
                     subtitle: Text(context.text('syncCycleDataHelp')),
                     onChanged: _cycleTrackingEnabled
                         ? (value) =>
-                              setState(() => _cycleDataSyncEnabled = value)
+                              setState(() {
+                                _identityDirty = true;
+                                _cycleDataSyncEnabled = value;
+                              })
                         : null,
                   ),
                 ],
@@ -266,7 +370,7 @@ class _AccountProfileScreenState extends State<AccountProfileScreen> {
                   leading: const Icon(Icons.devices_outlined),
                   title: Text(context.text('activeSessions')),
                   subtitle: Text(context.text('activeSessionsHelp')),
-                  onTap: _showActiveSessionsInfo,
+                  onTap: () => showAccountDevicesDialog(context),
                 ),
                 ListTile(
                   contentPadding: EdgeInsets.zero,
@@ -329,6 +433,8 @@ class _AccountProfileScreenState extends State<AccountProfileScreen> {
     }
     setState(() => _savingIdentity = false);
     if (error == null) {
+      setState(() => _identityDirty = false);
+      _syncControllers(services.supabaseService.profile, force: true);
       services.notificationService.showSuccess(context.text('profileSaved'));
     } else if (error.toLowerCase().contains('username')) {
       services.notificationService.showError(
@@ -356,7 +462,8 @@ class _AccountProfileScreenState extends State<AccountProfileScreen> {
             RegExp(r'\s').hasMatch(username))) {
       return false;
     }
-    return displayName != profile.displayName.trim() ||
+    return _identityDirty ||
+        displayName != profile.displayName.trim() ||
         username != (profile.username ?? '').trim() ||
         _selectedSex != (profile.sex?.storageValue ?? '') ||
         _cycleTrackingEnabled != profile.cycleTrackingEnabled ||
@@ -513,22 +620,6 @@ class _AccountProfileScreenState extends State<AccountProfileScreen> {
     }
   }
 
-  Future<void> _showActiveSessionsInfo() async {
-    await showDialog<void>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(context.text('activeSessions')),
-        content: Text(context.text('activeSessionsBackendManaged')),
-        actions: [
-          AppButton.text(
-            onPressed: () => Navigator.of(context).pop(),
-            label: Text(context.text('close')),
-          ),
-        ],
-      ),
-    );
-  }
-
   Future<void> _confirmAndSignOut() async {
     final services = AppServices.of(context);
     final action = await _resolveActiveSessionBeforeLogout();
@@ -625,6 +716,7 @@ class _AccountProfileScreenState extends State<AccountProfileScreen> {
         _selectedSex = '';
         _cycleTrackingEnabled = false;
         _cycleDataSyncEnabled = false;
+        _identityDirty = false;
       }
       return;
     }
@@ -632,7 +724,7 @@ class _AccountProfileScreenState extends State<AccountProfileScreen> {
         '${profile.id}:${profile.displayName}:${profile.username ?? ''}:'
         '${profile.sex?.storageValue ?? ''}:${profile.cycleTrackingEnabled}:'
         '${profile.cycleDataSyncEnabled}';
-    if (!force && _loadedProfileId == key) {
+    if (!force && (_identityDirty || _loadedProfileId == key)) {
       return;
     }
     _loadedProfileId = key;
@@ -641,6 +733,15 @@ class _AccountProfileScreenState extends State<AccountProfileScreen> {
     _selectedSex = profile.sex?.storageValue ?? '';
     _cycleTrackingEnabled = profile.cycleTrackingEnabled;
     _cycleDataSyncEnabled = profile.cycleDataSyncEnabled;
+    _identityDirty = false;
+  }
+
+  void _markIdentityDirty() {
+    if (_identityDirty) {
+      setState(() {});
+      return;
+    }
+    setState(() => _identityDirty = true);
   }
 }
 

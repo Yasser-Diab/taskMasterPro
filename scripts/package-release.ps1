@@ -2,6 +2,8 @@ $ErrorActionPreference = "Stop"
 
 $root = Resolve-Path (Join-Path $PSScriptRoot "..")
 $releaseDir = Join-Path $root "release"
+$rebuildSql = Join-Path $root "supabase\taskmaster_clean_rebuild.sql"
+$baselineSql = Join-Path $root "supabase\migrations\20260723000000_taskmaster_clean_baseline.sql"
 $flutter = $env:FLUTTER_BIN
 $iscc = $env:ISCC_BIN
 $supabaseUrl = if ([string]::IsNullOrWhiteSpace($env:SUPABASE_URL)) { "https://iejbogkqknldxoyepvun.supabase.co" } else { $env:SUPABASE_URL }
@@ -79,6 +81,41 @@ Push-Location $root
 try {
   New-Item -ItemType Directory -Force -Path $releaseDir | Out-Null
   Get-ChildItem -Path $releaseDir -File | Remove-Item -Force
+  $wipeHeader = @'
+-- TaskMaster Pro clean rebuild schema for Supabase.
+-- WARNING: This script intentionally wipes the app-owned public/private schemas.
+-- Run this only on a new TaskMaster Pro Supabase project or a project whose public app data may be deleted.
+-- It preserves Supabase managed schemas such as auth, storage, realtime, extensions, and vault.
+
+-- Best-effort cleanup for TaskMaster Pro storage policies that may already exist.
+do $$
+begin
+  if to_regclass('storage.objects') is not null then
+    begin
+      drop policy if exists taskmaster_storage_select_own on storage.objects;
+      drop policy if exists taskmaster_storage_insert_own on storage.objects;
+      drop policy if exists taskmaster_storage_update_own on storage.objects;
+      drop policy if exists taskmaster_storage_delete_own on storage.objects;
+    exception
+      when insufficient_privilege then null;
+    end;
+  end if;
+end $$;
+
+-- Wipe every old app table, trigger, function, policy, and view in public/private.
+drop schema if exists public cascade;
+drop schema if exists private cascade;
+create schema public;
+
+-- Restore Supabase-compatible privileges for the recreated public schema.
+grant usage on schema public to postgres, anon, authenticated, service_role;
+grant all on schema public to postgres, service_role;
+alter default privileges in schema public grant all on tables to postgres, anon, authenticated, service_role;
+alter default privileges in schema public grant all on routines to postgres, anon, authenticated, service_role;
+alter default privileges in schema public grant all on sequences to postgres, anon, authenticated, service_role;
+
+'@
+  Set-Content -Path $rebuildSql -Value ($wipeHeader + (Get-Content -Raw $baselineSql)) -Encoding UTF8
 
   powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root "scripts\generate-brand-assets.ps1")
   if ($LASTEXITCODE -ne 0) {
@@ -116,6 +153,7 @@ try {
   if (!(Test-Path $apkTarget)) {
     throw "Android APK was not created: $apkTarget"
   }
+  Copy-Item -LiteralPath $rebuildSql -Destination (Join-Path $releaseDir "TaskMasterPro-supabase-clean-rebuild.sql") -Force
 
   Write-Host ""
   Write-Host "Release package complete:"

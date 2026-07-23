@@ -1,14 +1,12 @@
 import 'dart:async';
-import 'dart:io';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../../../app/app_services.dart';
 import '../../../core/config/supabase_service.dart';
 import '../../../core/localization/app_localizations.dart';
 import '../../../core/platform/app_lifecycle_service.dart';
+import '../../../core/platform/task_browser_surface_controller.dart';
 import '../../../core/theme/app_brand.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/time/time_zone_service.dart';
@@ -37,10 +35,6 @@ class HomeShell extends StatefulWidget {
 }
 
 class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
-  static const _taskBrowserChannel = MethodChannel(
-    'taskmasterpro/task_browser',
-  );
-
   int _selectedIndex = 0;
   late final TaskActionController _taskController;
   late final PomodoroController _pomodoroController;
@@ -190,7 +184,14 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
                             controller: _taskController,
                             onView: _openRunningTask,
                           ),
-                          Expanded(child: page),
+                          Expanded(
+                            child: ColoredBox(
+                              color: Theme.of(
+                                context,
+                              ).scaffoldBackgroundColor,
+                              child: page,
+                            ),
+                          ),
                         ],
                       ),
                     ),
@@ -206,7 +207,12 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
                     controller: _taskController,
                     onView: _openRunningTask,
                   ),
-                  Expanded(child: page),
+                  Expanded(
+                    child: ColoredBox(
+                      color: Theme.of(context).scaffoldBackgroundColor,
+                      child: page,
+                    ),
+                  ),
                   _MobileRunningTaskBar(
                     controller: _taskController,
                     onOpen: _openRunningTask,
@@ -384,14 +390,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   }
 
   Future<void> _hideTaskBrowserSurface() async {
-    if (kIsWeb || !(Platform.isWindows || Platform.isAndroid)) {
-      return;
-    }
-    try {
-      await _taskBrowserChannel.invokeMethod<void>('hide');
-    } on Object {
-      // The browser surface is optional; navigation should never be blocked.
-    }
+    await TaskBrowserSurfaceController.hideAll();
   }
 
   Future<void> _handleExitRequest() async {

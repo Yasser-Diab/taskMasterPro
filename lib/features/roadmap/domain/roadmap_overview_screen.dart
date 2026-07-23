@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../../../app/app_services.dart';
 import '../../../core/localization/app_localizations.dart';
 import '../../../core/platform/app_notification_service.dart';
+import '../../../core/platform/task_browser_surface_controller.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/app_controls.dart';
 import '../../sessions/application/time_analytics_service.dart';
@@ -72,6 +73,7 @@ class _RoadmapOverviewScreenState extends State<RoadmapOverviewScreen> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    unawaited(TaskBrowserSurfaceController.hideAll());
     final nextRepository = RoadmapRepository(
       AppServices.of(context).supabaseService,
     );
@@ -151,40 +153,46 @@ class _RoadmapOverviewScreenState extends State<RoadmapOverviewScreen> {
             ],
           ),
         ),
-        body: SafeArea(
-          child: _loadingRoadmaps
-              ? const Center(child: CircularProgressIndicator())
-              : _roadmaps.isEmpty && activePhases.isEmpty
-              ? _EmptyRoadmap(onCreate: _showCreateRoadmapDialog)
-              : TabBarView(
-                  children: [
-                    _OverviewTab(
-                      summary: summary,
-                      roadmap: _selectedRoadmap,
-                      phases: activePhases,
-                      tasks: roadmapTasks,
-                      sessions: roadmapSessions,
-                      controller: widget.taskController,
-                      onOpenPhase: _openPhase,
-                    ),
-                    _TimelineTab(phases: activePhases, summary: summary),
-                    _PhasesTab(
-                      phases: activePhases,
-                      summary: summary,
-                      tasks: roadmapTasks,
-                      sessions: roadmapSessions,
-                      onOpenPhase: _openPhase,
-                      onEditPhase: _showEditPhaseDialog,
-                      onDuplicatePhase: _duplicatePhase,
-                      onMovePhase: _movePhase,
-                      onArchivePhase: _archivePhase,
-                      onAddPhase: _showAddPhaseDialog,
-                    ),
-                    _AnalyticsTab(summary: summary, sessions: roadmapSessions),
-                    _RecommendationsTab(summary: summary),
-                    _ActivityTab(summary: summary),
-                  ],
-                ),
+        body: ColoredBox(
+          color: Theme.of(context).scaffoldBackgroundColor,
+          child: SafeArea(
+            child: _loadingRoadmaps
+                ? const Center(child: CircularProgressIndicator())
+                : _roadmaps.isEmpty && activePhases.isEmpty
+                ? _EmptyRoadmap(onCreate: _showCreateRoadmapDialog)
+                : TabBarView(
+                    children: [
+                      _OverviewTab(
+                        summary: summary,
+                        roadmap: _selectedRoadmap,
+                        phases: activePhases,
+                        tasks: roadmapTasks,
+                        sessions: roadmapSessions,
+                        controller: widget.taskController,
+                        onOpenPhase: _openPhase,
+                      ),
+                      _TimelineTab(phases: activePhases, summary: summary),
+                      _PhasesTab(
+                        phases: activePhases,
+                        summary: summary,
+                        tasks: roadmapTasks,
+                        sessions: roadmapSessions,
+                        onOpenPhase: _openPhase,
+                        onEditPhase: _showEditPhaseDialog,
+                        onDuplicatePhase: _duplicatePhase,
+                        onMovePhase: _movePhase,
+                        onArchivePhase: _archivePhase,
+                        onAddPhase: _showAddPhaseDialog,
+                      ),
+                      _AnalyticsTab(
+                        summary: summary,
+                        sessions: roadmapSessions,
+                      ),
+                      _RecommendationsTab(summary: summary),
+                      _ActivityTab(summary: summary),
+                    ],
+                  ),
+          ),
         ),
       ),
     );
@@ -427,10 +435,19 @@ class _RoadmapOverviewScreenState extends State<RoadmapOverviewScreen> {
     if (repository == null) {
       return;
     }
-    final roadmaps = await repository.loadRoadmaps();
+    final roadmaps = <RoadmapPlan>[];
     final phases = <String, List<RoadmapPhase>>{};
-    for (final roadmap in roadmaps) {
-      phases[roadmap.id] = await repository.loadPhases(roadmap.id);
+    try {
+      roadmaps.addAll(await repository.loadRoadmaps());
+      for (final roadmap in roadmaps) {
+        phases[roadmap.id] = await repository.loadPhases(roadmap.id);
+      }
+    } on Object {
+      if (mounted) {
+        AppServices.of(context).notificationService.showWarning(
+          context.text('accountDataRefreshFailed'),
+        );
+      }
     }
     if (!mounted) {
       return;

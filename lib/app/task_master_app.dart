@@ -60,6 +60,15 @@ class _TaskMasterAppState extends State<TaskMasterApp>
   bool _loadingRemoteSettings = false;
   bool _applyingRemoteSettings = false;
   Timer? _settingsRefreshDebounce;
+  Timer? _configPersistDebounce;
+  AppConfig? _pendingConfigPersist;
+  bool _pendingTimeZoneSync = false;
+  DateTime? _lastRemoteSettingsLoadAt;
+  String? _lastRemoteSettingsUserId;
+  String? _lastSyncedSettingsSignature;
+  String? _lastDeviceUpsertSignature;
+  DateTime? _lastDeviceUpsertAt;
+  bool _handlingDeviceLogout = false;
 
   @override
   void initState() {
@@ -76,6 +85,8 @@ class _TaskMasterAppState extends State<TaskMasterApp>
     WidgetsBinding.instance.removeObserver(this);
     widget.supabaseService.removeListener(_handleSupabaseStateChanged);
     _settingsRefreshDebounce?.cancel();
+    _configPersistDebounce?.cancel();
+    unawaited(_flushPendingConfigPersist());
     unawaited(_removeSettingsSubscription());
     super.dispose();
   }
@@ -89,32 +100,74 @@ class _TaskMasterAppState extends State<TaskMasterApp>
               widget.timeZoneService.configure(_config, locale: _config.locale),
         ),
       );
+    } else if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
+      unawaited(_flushPendingConfigPersist());
     }
   }
 
   Future<String?> _updateConfig(AppConfig config) async {
+    final previous = _config;
     final timeZoneChanged =
-        config.timeZoneMode != _config.timeZoneMode ||
-        config.fixedTimeZoneId != _config.fixedTimeZoneId ||
-        config.homeTimeZoneId != _config.homeTimeZoneId ||
-        config.travelTimeZoneBehavior != _config.travelTimeZoneBehavior ||
+        config.timeZoneMode != previous.timeZoneMode ||
+        config.fixedTimeZoneId != previous.fixedTimeZoneId ||
+        config.homeTimeZoneId != previous.homeTimeZoneId ||
+        config.travelTimeZoneBehavior != previous.travelTimeZoneBehavior ||
         config.askBeforeAdjustingTimeZone !=
-            _config.askBeforeAdjustingTimeZone ||
+            previous.askBeforeAdjustingTimeZone ||
         config.keepHomeTimeZoneWhileTravelling !=
-            _config.keepHomeTimeZoneWhileTravelling;
-    await widget.settingsStore.save(config);
-    await widget.feedbackService.updateConfig(config);
-    await widget.lifecycleService.applyWindowPreferences(config);
-    widget.healthDataService.keepDataLocal = config.healthDataLocalOnly;
-    widget.timeZoneService.configure(config, locale: config.locale);
+            previous.keepHomeTimeZoneWhileTravelling;
     if (mounted) {
       setState(() => _config = config);
     }
-    if (!_applyingRemoteSettings) {
-      unawaited(_syncRemoteSettings(config));
+    if (_feedbackPreferencesChanged(previous, config)) {
+      unawaited(widget.feedbackService.updateConfig(config));
     }
-    if (timeZoneChanged) unawaited(_syncTimeZoneSettings(config));
+    if (_windowPreferencesChanged(previous, config)) {
+      unawaited(widget.lifecycleService.applyWindowPreferences(config));
+    }
+    if (previous.healthDataLocalOnly != config.healthDataLocalOnly) {
+      widget.healthDataService.keepDataLocal = config.healthDataLocalOnly;
+    }
+    if (previous.locale != config.locale || timeZoneChanged) {
+      widget.timeZoneService.configure(config, locale: config.locale);
+    }
+    _scheduleConfigPersist(config, syncTimeZone: timeZoneChanged);
     return null;
+  }
+
+  void _scheduleConfigPersist(AppConfig config, {required bool syncTimeZone}) {
+    _pendingConfigPersist = config;
+    _pendingTimeZoneSync = _pendingTimeZoneSync || syncTimeZone;
+    _configPersistDebounce?.cancel();
+    _configPersistDebounce = Timer(
+      const Duration(milliseconds: 450),
+      () => unawaited(_flushPendingConfigPersist()),
+    );
+  }
+
+  Future<void> _flushPendingConfigPersist() async {
+    final config = _pendingConfigPersist;
+    if (config == null) return;
+    final syncTimeZone = _pendingTimeZoneSync;
+    _pendingConfigPersist = null;
+    _pendingTimeZoneSync = false;
+    _configPersistDebounce?.cancel();
+    _configPersistDebounce = null;
+    try {
+      await widget.settingsStore.save(config);
+      if (!_applyingRemoteSettings) {
+        await _syncRemoteSettings(config);
+      }
+      if (syncTimeZone) {
+        await _syncTimeZoneSettings(config);
+      }
+    } on Object {
+      // The visible config remains in memory; the next preference edit retries.
+      _pendingConfigPersist ??= config;
+      _pendingTimeZoneSync = _pendingTimeZoneSync || syncTimeZone;
+    }
   }
 
   Future<void> _handleSupabaseStateChanged() async {
@@ -125,7 +178,18 @@ class _TaskMasterAppState extends State<TaskMasterApp>
       return;
     }
     unawaited(_ensureSettingsSubscription());
-    unawaited(_loadRemoteSettings());
+    if (_shouldLoadRemoteSettings(user.id)) {
+      unawaited(_loadRemoteSettings());
+    }
+  }
+
+  bool _shouldLoadRemoteSettings(String userId) {
+    final lastLoadedAt = _lastRemoteSettingsLoadAt;
+    if (_lastRemoteSettingsUserId != userId || lastLoadedAt == null) {
+      return true;
+    }
+    return DateTime.now().toUtc().difference(lastLoadedAt) >
+        const Duration(minutes: 5);
   }
 
   Future<void> _ensureSettingsSubscription() async {
@@ -157,13 +221,38 @@ class _TaskMasterAppState extends State<TaskMasterApp>
             );
           },
         )
+        .onBroadcast(
+          event: 'device_logout_requested',
+          callback: (payload) {
+            final body = _jsonMap(payload['payload']);
+            final targetDeviceId =
+                body['device_id']?.toString() ??
+                payload['device_id']?.toString();
+            if (targetDeviceId != deviceId) return;
+            unawaited(
+              _checkDeviceLogoutRequest(
+                client: client,
+                user: user,
+                deviceId: deviceId,
+              ),
+            );
+          },
+        )
         .subscribe();
+    unawaited(
+      _checkDeviceLogoutRequest(client: client, user: user, deviceId: deviceId),
+    );
   }
 
   Future<void> _removeSettingsSubscription() async {
     final channel = _settingsChannel;
     _settingsChannel = null;
     _settingsUserId = null;
+    _lastRemoteSettingsUserId = null;
+    _lastRemoteSettingsLoadAt = null;
+    _lastSyncedSettingsSignature = null;
+    _lastDeviceUpsertSignature = null;
+    _lastDeviceUpsertAt = null;
     if (channel == null) return;
     try {
       await widget.supabaseService.clientOrNull?.removeChannel(channel);
@@ -177,6 +266,7 @@ class _TaskMasterAppState extends State<TaskMasterApp>
     final client = widget.supabaseService.clientOrNull;
     final user = widget.supabaseService.currentUser;
     if (client == null || user == null) return;
+    if (!force && !_shouldLoadRemoteSettings(user.id)) return;
     _loadingRemoteSettings = true;
     try {
       final deviceId = await _ensureRemoteDeviceRow(client: client, user: user);
@@ -200,18 +290,25 @@ class _TaskMasterAppState extends State<TaskMasterApp>
       final deviceSettings = results[1] is Map
           ? Map<String, dynamic>.from(results[1] as Map)
           : null;
+      _lastRemoteSettingsUserId = user.id;
+      _lastRemoteSettingsLoadAt = DateTime.now().toUtc();
       if (userSettings == null && deviceSettings == null) return;
       final next = _configWithRemoteSettings(
         _config,
         userSettings,
         deviceSettings,
       );
-      if (_settingsSignature(next) == _settingsSignature(_config)) return;
+      final nextSignature = _settingsSignature(next);
+      if (nextSignature == _settingsSignature(_config)) {
+        _lastSyncedSettingsSignature = nextSignature;
+        return;
+      }
       _applyingRemoteSettings = true;
       await widget.settingsStore.save(next);
       await widget.feedbackService.updateConfig(next);
       await widget.lifecycleService.applyWindowPreferences(next);
       widget.healthDataService.keepDataLocal = next.healthDataLocalOnly;
+      _lastSyncedSettingsSignature = nextSignature;
       if (mounted) {
         setState(() => _config = next);
       }
@@ -228,6 +325,8 @@ class _TaskMasterAppState extends State<TaskMasterApp>
     final client = widget.supabaseService.clientOrNull;
     final user = widget.supabaseService.currentUser;
     if (client == null || user == null) return;
+    final signature = _settingsSignature(config);
+    if (signature == _lastSyncedSettingsSignature) return;
     try {
       final deviceId = await _ensureRemoteDeviceRow(client: client, user: user);
       if (deviceId == null) return;
@@ -243,6 +342,7 @@ class _TaskMasterAppState extends State<TaskMasterApp>
           ...platformRow,
         }, onConflict: 'user_id,device_id');
       }
+      _lastSyncedSettingsSignature = signature;
       await _broadcastSettingsChanged(deviceId);
     } on Object {
       // Local settings stay authoritative until the next explicit save.
@@ -277,6 +377,16 @@ class _TaskMasterAppState extends State<TaskMasterApp>
       final deviceId =
           _settingsDeviceId ?? await _settingsLocalStore.loadDeviceId();
       _settingsDeviceId = deviceId;
+      final now = DateTime.now().toUtc();
+      final signature =
+          '$deviceId|${user.id}|${Platform.localHostname}|$_settingsPlatform|'
+          '${Platform.operatingSystemVersion}|${_config.notificationSounds}';
+      if (_lastDeviceUpsertSignature == signature &&
+          _lastDeviceUpsertAt != null &&
+          now.difference(_lastDeviceUpsertAt!) <
+              const Duration(minutes: 10)) {
+        return deviceId;
+      }
       await client.from('devices').upsert({
         'id': deviceId,
         'user_id': user.id,
@@ -285,12 +395,49 @@ class _TaskMasterAppState extends State<TaskMasterApp>
         'platform_version': Platform.operatingSystemVersion,
         'app_version': '',
         'build_number': '',
-        'last_seen_at': DateTime.now().toUtc().toIso8601String(),
+        'last_seen_at': now.toIso8601String(),
         'notification_enabled': _config.notificationSounds,
       }, onConflict: 'id');
+      _lastDeviceUpsertSignature = signature;
+      _lastDeviceUpsertAt = now;
       return deviceId;
     } on Object {
       return null;
+    }
+  }
+
+  Future<void> _checkDeviceLogoutRequest({
+    required SupabaseClient client,
+    required User user,
+    required String deviceId,
+  }) async {
+    if (_handlingDeviceLogout) return;
+    try {
+      final row = await client
+          .from('devices')
+          .select('logout_requested_at')
+          .eq('id', deviceId)
+          .eq('user_id', user.id)
+          .maybeSingle();
+      if (row == null ||
+          row['logout_requested_at'] == null ||
+          row['logout_requested_at'].toString().isEmpty) {
+        return;
+      }
+      _handlingDeviceLogout = true;
+      await client
+          .from('devices')
+          .update({
+            'logout_requested_at': null,
+            'logout_requested_by_device_id': null,
+          })
+          .eq('id', deviceId)
+          .eq('user_id', user.id);
+      await widget.supabaseService.signOut();
+    } on Object {
+      // Older schemas do not have logout columns yet; the clean baseline does.
+    } finally {
+      _handlingDeviceLogout = false;
     }
   }
 
@@ -314,7 +461,7 @@ class _TaskMasterAppState extends State<TaskMasterApp>
     return {
       'language': config.locale.languageCode,
       'theme': config.themeChoice.storageValue,
-      'coaching_intensity': config.coachingIntensity,
+      'coaching_intensity': _cleanCoachingIntensity(config.coachingIntensity),
       'focus_duration_seconds': 1500,
       'short_break_duration_seconds': 300,
       'long_break_duration_seconds': 900,
@@ -325,6 +472,10 @@ class _TaskMasterAppState extends State<TaskMasterApp>
       'idle_threshold_seconds': 30,
       'default_search_engine': _cleanSearchEngine(config.defaultSearchEngine),
       'browser_sync_enabled': config.syncBrowserTabsAndUrls,
+      'browser_cookie_sync_enabled': config.saveCookiesAndSessions,
+      'browser_password_sync_enabled': config.saveWebsitePasswords,
+      'browser_password_autofill_enabled': config.passwordAutofill,
+      'browser_form_autofill_enabled': config.formAutofill,
       'bookmark_sync_enabled': true,
       'health_sync_enabled': !config.healthDataLocalOnly,
       'cycle_sync_enabled':
@@ -365,7 +516,9 @@ class _TaskMasterAppState extends State<TaskMasterApp>
           ? null
           : AppThemeChoiceLabel.fromStorage(common?['theme']?.toString()),
       coachingIntensity:
-          common?['coaching_intensity']?.toString() ?? base.coachingIntensity,
+          _cleanCoachingIntensity(
+            common?['coaching_intensity']?.toString() ?? base.coachingIntensity,
+          ),
       timeZoneMode: common?['time_zone_mode']?.toString(),
       fixedTimeZoneId: common?['fixed_time_zone_id']?.toString(),
       quietHoursStart: quietStart,
@@ -373,6 +526,22 @@ class _TaskMasterAppState extends State<TaskMasterApp>
       syncBrowserTabsAndUrls: _boolSetting(
         common?['browser_sync_enabled'],
         base.syncBrowserTabsAndUrls,
+      ),
+      saveCookiesAndSessions: _boolSetting(
+        common?['browser_cookie_sync_enabled'],
+        base.saveCookiesAndSessions,
+      ),
+      saveWebsitePasswords: _boolSetting(
+        common?['browser_password_sync_enabled'],
+        base.saveWebsitePasswords,
+      ),
+      passwordAutofill: _boolSetting(
+        common?['browser_password_autofill_enabled'],
+        base.passwordAutofill,
+      ),
+      formAutofill: _boolSetting(
+        common?['browser_form_autofill_enabled'],
+        base.formAutofill,
       ),
       defaultSearchEngine:
           common?['default_search_engine']?.toString() ??
@@ -411,6 +580,16 @@ class _TaskMasterAppState extends State<TaskMasterApp>
       _commonSettingsRow(config).toString() +
       _platformSettingsRow(config).toString();
 
+  bool _feedbackPreferencesChanged(AppConfig previous, AppConfig next) {
+    return previous.uiClickSounds != next.uiClickSounds ||
+        previous.uiClickVolume != next.uiClickVolume;
+  }
+
+  bool _windowPreferencesChanged(AppConfig previous, AppConfig next) {
+    return previous.restoreWindowGeometry != next.restoreWindowGeometry ||
+        previous.restoreWindowMaximized != next.restoreWindowMaximized;
+  }
+
   String _normalizeLanguage(String value) {
     return switch (value) {
       'ar' => 'ar',
@@ -436,6 +615,17 @@ class _TaskMasterAppState extends State<TaskMasterApp>
       'duckduckgo' => 'duckduckgo',
       'brave' => 'brave',
       _ => 'google',
+    };
+  }
+
+  String _cleanCoachingIntensity(String value) {
+    return switch (value) {
+      'quiet' || 'off' => 'quiet',
+      'standard' || 'light' => 'standard',
+      'active' || 'balanced' => 'active',
+      'persistent' || 'direct' => 'persistent',
+      'custom' => 'custom',
+      _ => 'active',
     };
   }
 

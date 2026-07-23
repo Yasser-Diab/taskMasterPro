@@ -175,7 +175,7 @@ const _values = <String, Map<String, String>>{
     'saveCookiesSessions': 'Save cookies and website sessions',
     'syncBrowserTabsUrls': 'Sync task browser tabs and URLs',
     'passwordStorageSafety':
-        'TaskMaster Pro never stores website passwords in Supabase.',
+        'Passwords sync per user as encrypted vault items. They are never stored as readable Supabase rows.',
     'urlSyncPrivacy':
         'URLs may reveal private activity. Keep this off unless you want task tabs synced.',
     'clearBrowsingData': 'Clear browsing data',
@@ -608,9 +608,13 @@ const _values = <String, Map<String, String>>{
         'Send a secure password-reset email to your current account.',
     'activeSessions': 'Active Sessions',
     'activeSessionsHelp':
-        'Use global logout to invalidate sessions on other devices.',
+        'View your signed-in devices and request logout from a selected device.',
     'activeSessionsBackendManaged':
         'Supabase manages active authentication sessions. Use “Log out from all devices” to revoke them.',
+    'lastSeen': 'Last seen',
+    'logOutDevice': 'Log out',
+    'deviceLogoutRequested': 'Logout request sent to that device.',
+    'deviceLogoutPending': 'Pending',
     'exportMyData': 'Export My Data',
     'exportMyDataHelp':
         'Export synchronized profile, tasks, sessions, notes and history as JSON.',
@@ -1741,9 +1745,13 @@ const _values = <String, Map<String, String>>{
         'إرسال بريد آمن لإعادة تعيين كلمة المرور إلى حسابك الحالي.',
     'activeSessions': 'الجلسات النشطة',
     'activeSessionsHelp':
-        'استخدم تسجيل الخروج من كل الأجهزة لإلغاء الجلسات الأخرى.',
+        'اعرض الأجهزة المسجلة واختر جهازا لتسجيل الخروج منه.',
     'activeSessionsBackendManaged':
         'يدير Supabase جلسات تسجيل الدخول. استخدم "تسجيل الخروج من كل الأجهزة" لإلغائها.',
+    'lastSeen': 'آخر ظهور',
+    'logOutDevice': 'تسجيل الخروج',
+    'deviceLogoutRequested': 'تم إرسال طلب تسجيل الخروج إلى ذلك الجهاز.',
+    'deviceLogoutPending': 'قيد الانتظار',
     'logoutThisDevice': 'تسجيل الخروج من هذا الجهاز',
     'deleteAccount': 'حذف الحساب',
     'deleteAccountHelp': 'حذف بياناتك الشخصية المتزامنة نهائيا بعد التأكيد.',
@@ -2759,9 +2767,13 @@ const _values = <String, Map<String, String>>{
         'Sende eine sichere E-Mail zum Zurücksetzen des Passworts an dein aktuelles Konto.',
     'activeSessions': 'Aktive Sitzungen',
     'activeSessionsHelp':
-        'Mit globalem Abmelden kannst du Sitzungen auf anderen Geräten beenden.',
+        'Zeige deine angemeldeten Geräte an und melde ein ausgewähltes Gerät ab.',
     'activeSessionsBackendManaged':
         'Supabase verwaltet aktive Anmeldesitzungen. Nutze „Von allen Geräten abmelden“, um sie zu widerrufen.',
+    'lastSeen': 'Zuletzt gesehen',
+    'logOutDevice': 'Abmelden',
+    'deviceLogoutRequested': 'Abmeldeanfrage an dieses Gerät gesendet.',
+    'deviceLogoutPending': 'Ausstehend',
     'logoutThisDevice': 'Von diesem Gerät abmelden',
     'deleteAccount': 'Konto löschen',
     'deleteAccountHelp':

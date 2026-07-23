@@ -113,6 +113,8 @@ class TaskRepository {
 
   final SupabaseService _supabaseService;
   final TaskLocalStore _localStore;
+  String? _lastDeviceUpsertSignature;
+  DateTime? _lastDeviceUpsertAt;
 
   String? get currentUserId => _supabaseService.currentUser?.id;
   SupabaseClient? get clientOrNull => _supabaseService.clientOrNull;
@@ -221,17 +223,29 @@ class TaskRepository {
     User user,
     String deviceId,
   ) async {
+    final now = DateTime.now().toUtc();
+    final platform = Platform.isAndroid ? 'android' : 'windows';
+    final signature =
+        '$deviceId|${user.id}|${Platform.localHostname}|$platform|'
+        '${Platform.operatingSystemVersion}';
+    if (_lastDeviceUpsertSignature == signature &&
+        _lastDeviceUpsertAt != null &&
+        now.difference(_lastDeviceUpsertAt!) < const Duration(minutes: 10)) {
+      return;
+    }
     await client.from('devices').upsert({
       'id': deviceId,
       'user_id': user.id,
       'device_name': Platform.localHostname,
-      'platform': Platform.isAndroid ? 'android' : 'windows',
+      'platform': platform,
       'platform_version': Platform.operatingSystemVersion,
       'app_version': '',
       'build_number': '',
-      'last_seen_at': DateTime.now().toUtc().toIso8601String(),
+      'last_seen_at': now.toIso8601String(),
       'notification_enabled': false,
     }, onConflict: 'id');
+    _lastDeviceUpsertSignature = signature;
+    _lastDeviceUpsertAt = now;
   }
 
   Future<void> recordWidgetActionEvent({

@@ -66,6 +66,8 @@ create table public.devices (
   build_number text not null default '',
   last_seen_at timestamptz not null default now(),
   notification_enabled boolean not null default true,
+  logout_requested_at timestamptz,
+  logout_requested_by_device_id uuid references public.devices(id) on delete set null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   revision bigint not null default 0
@@ -75,8 +77,13 @@ create table public.user_settings (
   user_id uuid primary key references public.profiles(id) on delete cascade,
   theme text not null default 'dark_blue',
   language text not null default 'en' check (language in ('en', 'ar', 'de')),
-  coaching_intensity text not null default 'balanced'
-    check (coaching_intensity in ('off', 'light', 'balanced', 'direct')),
+  coaching_intensity text not null default 'active'
+    check (
+      coaching_intensity in (
+        'quiet', 'standard', 'active', 'persistent', 'custom',
+        'off', 'light', 'balanced', 'direct'
+      )
+    ),
   focus_duration_seconds integer not null default 1500
     check (focus_duration_seconds between 60 and 21600),
   short_break_duration_seconds integer not null default 300
@@ -93,6 +100,10 @@ create table public.user_settings (
   default_search_engine text not null default 'google'
     check (default_search_engine in ('google', 'bing', 'duckduckgo', 'brave')),
   browser_sync_enabled boolean not null default false,
+  browser_cookie_sync_enabled boolean not null default false,
+  browser_password_sync_enabled boolean not null default false,
+  browser_password_autofill_enabled boolean not null default true,
+  browser_form_autofill_enabled boolean not null default true,
   bookmark_sync_enabled boolean not null default true,
   health_sync_enabled boolean not null default false,
   cycle_sync_enabled boolean not null default false,
@@ -607,6 +618,26 @@ create table public.closed_browser_tabs (
   created_at timestamptz not null default now()
 );
 
+create table public.browser_vault_items (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  origin text not null,
+  item_type text not null
+    check (item_type in ('password', 'form_profile', 'payment_hint', 'cookie_bundle')),
+  display_name text not null default '',
+  username_hint text,
+  encrypted_payload text not null,
+  encryption_scheme text not null default 'xchacha20poly1305_v1',
+  key_version integer not null default 1 check (key_version > 0),
+  device_created_id uuid references public.devices(id) on delete set null,
+  last_used_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  deleted_at timestamptz,
+  revision bigint not null default 0,
+  unique (user_id, origin, item_type, username_hint)
+);
+
 create table public.task_reminders (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references public.profiles(id) on delete cascade,
@@ -720,6 +751,22 @@ create table public.health_daily_summaries (
   updated_at timestamptz not null default now(),
   revision bigint not null default 0,
   unique (user_id, summary_date)
+);
+
+create table public.cycle_preferences (
+  user_id uuid primary key references public.profiles(id) on delete cascade,
+  last_period_start date,
+  last_period_end date,
+  cycle_length_days integer not null default 28
+    check (cycle_length_days between 18 and 45),
+  period_length_days integer not null default 5
+    check (period_length_days between 1 and 12),
+  reduce_before_period boolean not null default true,
+  reduce_first_days boolean not null default true,
+  gentle_coaching boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  revision bigint not null default 0
 );
 
 create table public.cycle_entries (
@@ -985,23 +1032,33 @@ $$;
 -- Defaults for new users
 -- ---------------------------------------------------------------------------
 
-create or replace function public.ensure_user_defaults(p_user_id uuid, p_email text default null)
+create or replace function public.ensure_user_defaults(
+  p_user_id uuid,
+  p_email text default null,
+  p_display_name text default null,
+  p_preferred_language text default null
+)
 returns void
 language plpgsql
 security definer
 set search_path = public
 as $$
+declare
+  v_language text := case
+    when p_preferred_language in ('en', 'ar', 'de') then p_preferred_language
+    else 'en'
+  end;
+  v_display_name text := coalesce(
+    nullif(btrim(p_display_name), ''),
+    nullif(split_part(coalesce(p_email, ''), '@', 1), '')
+  );
 begin
   insert into public.profiles (id, display_name, preferred_language)
-  values (
-    p_user_id,
-    nullif(split_part(coalesce(p_email, ''), '@', 1), ''),
-    'en'
-  )
+  values (p_user_id, v_display_name, v_language)
   on conflict (id) do nothing;
 
-  insert into public.user_settings (user_id)
-  values (p_user_id)
+  insert into public.user_settings (user_id, language)
+  values (p_user_id, v_language)
   on conflict (user_id) do nothing;
 
   insert into public.task_domains (user_id, name, icon, color, sort_order, is_template)
@@ -1026,7 +1083,12 @@ security definer
 set search_path = public
 as $$
 begin
-  perform public.ensure_user_defaults(new.id, new.email);
+  perform public.ensure_user_defaults(
+    new.id,
+    new.email,
+    new.raw_user_meta_data->>'full_name',
+    new.raw_user_meta_data->>'preferred_language'
+  );
   return new;
 end;
 $$;
@@ -1045,13 +1107,27 @@ as $$
 declare
   v_user_id uuid := auth.uid();
   v_email text;
+  v_display_name text;
+  v_preferred_language text;
 begin
   if v_user_id is null then
     raise exception 'Authentication required';
   end if;
 
-  select email into v_email from auth.users where id = v_user_id;
-  perform public.ensure_user_defaults(v_user_id, v_email);
+  select
+    email,
+    raw_user_meta_data->>'full_name',
+    raw_user_meta_data->>'preferred_language'
+  into v_email, v_display_name, v_preferred_language
+  from auth.users
+  where id = v_user_id;
+
+  perform public.ensure_user_defaults(
+    v_user_id,
+    v_email,
+    v_display_name,
+    v_preferred_language
+  );
 
   return jsonb_build_object(
     'profile', (select to_jsonb(p) from public.profiles p where p.id = v_user_id),
@@ -1489,9 +1565,11 @@ begin
     'task_resources',
     'resource_annotations',
     'browser_tabs',
+    'browser_vault_items',
     'task_reminders',
     'health_connections',
     'health_daily_summaries',
+    'cycle_preferences',
     'cycle_entries',
     'user_behavior_features',
     'coaching_recommendations',
@@ -1607,12 +1685,14 @@ begin
     'resource_annotations',
     'browser_tabs',
     'closed_browser_tabs',
+    'browser_vault_items',
     'task_reminders',
     'reading_sessions',
     'task_notes',
     'health_connections',
     'health_records',
     'health_daily_summaries',
+    'cycle_preferences',
     'cycle_entries',
     'user_behavior_features',
     'coaching_recommendations'

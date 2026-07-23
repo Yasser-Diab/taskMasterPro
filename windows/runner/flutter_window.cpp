@@ -1276,6 +1276,9 @@ void FlutterWindow::ShowDockedBrowser(double x,
                        WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS |
                            WS_CLIPCHILDREN);
     }
+    if (browser_controller_) {
+      browser_controller_->put_IsVisible(TRUE);
+    }
     ShowWindow(browser_host_window_, SW_SHOW);
     PositionBrowser(x, y, width, height);
   }
@@ -1310,8 +1313,13 @@ void FlutterWindow::PositionBrowser(double x,
 }
 
 void FlutterWindow::HideBrowser() {
+  if (browser_controller_) {
+    browser_controller_->put_IsVisible(FALSE);
+  }
   if (browser_host_window_ != nullptr) {
-    ShowWindow(browser_host_window_, SW_HIDE);
+    SetWindowPos(
+        browser_host_window_, HWND_BOTTOM, -32000, -32000, 1, 1,
+        SWP_HIDEWINDOW | SWP_NOACTIVATE | SWP_NOOWNERZORDER);
   }
 }
 

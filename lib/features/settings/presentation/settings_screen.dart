@@ -5,6 +5,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:supabase/supabase.dart';
 
 import '../../../app/app_services.dart';
 import '../../../core/config/app_config.dart';
@@ -13,6 +14,7 @@ import '../../../core/config/supabase_service.dart';
 import '../../../core/localization/app_localizations.dart';
 import '../../../core/platform/app_lifecycle_service.dart';
 import '../../../core/platform/health_data_service.dart';
+import '../../../core/platform/task_browser_surface_controller.dart';
 import '../../../core/platform/task_reminder_scheduler.dart';
 import '../../../core/widgets/app_controls.dart';
 import '../../pomodoro/domain/pomodoro_controller.dart';
@@ -36,7 +38,8 @@ class SettingsScreen extends StatelessWidget {
     final services = AppServices.of(context);
     final config = services.config;
 
-    return Scaffold(
+    return _TaskBrowserHidden(
+      child: Scaffold(
       resizeToAvoidBottomInset: true,
       appBar: AppBar(
         title: Text(context.text('settings')),
@@ -117,7 +120,7 @@ class SettingsScreen extends StatelessWidget {
                       leading: const Icon(Icons.devices_outlined),
                       title: Text(context.text('activeSessions')),
                       subtitle: Text(context.text('activeSessionsHelp')),
-                      onTap: () => _showActiveSessionsInfo(context),
+                      onTap: () => showAccountDevicesDialog(context),
                     ),
                     ListTile(
                       contentPadding: EdgeInsets.zero,
@@ -354,6 +357,7 @@ class SettingsScreen extends StatelessWidget {
           ),
         ),
       ),
+      ),
     );
   }
 
@@ -375,23 +379,6 @@ class SettingsScreen extends StatelessWidget {
     } else {
       services.notificationService.showError(error);
     }
-  }
-
-  Future<void> _showActiveSessionsInfo(BuildContext context) async {
-    AppServices.of(context).feedbackService.playUiClick();
-    await showDialog<void>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(context.text('activeSessions')),
-        content: Text(context.text('activeSessionsBackendManaged')),
-        actions: [
-          AppButton.text(
-            onPressed: () => Navigator.of(context).pop(),
-            label: Text(context.text('close')),
-          ),
-        ],
-      ),
-    );
   }
 
   Future<void> _fullAccountRefresh(BuildContext context) async {
@@ -613,6 +600,7 @@ class _ScheduleSettingsGroup extends StatelessWidget {
     final services = AppServices.of(context);
     return _SettingsGroup(
       title: context.text('scheduleAvailability'),
+      compact: true,
       children: [
         _TimeGrid(
           children: [
@@ -646,15 +634,17 @@ class _ScheduleSettingsGroup extends StatelessWidget {
             ),
           ],
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 10),
         Text(context.text('workdays')),
-        const SizedBox(height: 8),
+        const SizedBox(height: 6),
         Wrap(
-          spacing: 8,
-          runSpacing: 8,
+          spacing: 6,
+          runSpacing: 6,
           children: [
             for (final day in _dayOptions)
               FilterChip(
+                visualDensity: VisualDensity.compact,
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 selected: config.workdays.contains(day.value),
                 label: Text(context.text(day.labelKey)),
                 onSelected: (selected) {
@@ -671,7 +661,7 @@ class _ScheduleSettingsGroup extends StatelessWidget {
               ),
           ],
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 10),
         _NumberGrid(
           children: [
             _SettingNumberField(
@@ -721,7 +711,7 @@ class _ScheduleSettingsGroup extends StatelessWidget {
             ),
           ],
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 10),
         _WeeklyReviewTimeField(
           label: context.text('weeklyReviewTime'),
           value: config.weeklyReviewTime,
@@ -729,7 +719,7 @@ class _ScheduleSettingsGroup extends StatelessWidget {
             services.updateConfig(config.copyWith(weeklyReviewTime: value));
           },
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 10),
         _TimeGrid(
           children: [
             _SettingTimeField(
@@ -1926,6 +1916,26 @@ String _formatHealthMinutes(int minutes) {
   return rest == 0 ? '${hours}h' : '${hours}h ${rest}m';
 }
 
+class _TaskBrowserHidden extends StatefulWidget {
+  const _TaskBrowserHidden({required this.child});
+
+  final Widget child;
+
+  @override
+  State<_TaskBrowserHidden> createState() => _TaskBrowserHiddenState();
+}
+
+class _TaskBrowserHiddenState extends State<_TaskBrowserHidden> {
+  @override
+  void initState() {
+    super.initState();
+    unawaited(TaskBrowserSurfaceController.hideAll());
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
+}
+
 class _CycleWellbeingSettingsGroup extends StatefulWidget {
   const _CycleWellbeingSettingsGroup({this.onOpenProfile});
 
@@ -1941,15 +1951,25 @@ class _CycleWellbeingSettingsGroupState
   final _store = _CycleSettingsStore();
   CycleSettings _settings = const CycleSettings();
   bool _loaded = false;
+  String? _loadedForUserId;
 
   @override
-  void initState() {
-    super.initState();
-    unawaited(_load());
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final userId = AppServices.of(context).supabaseService.currentUser?.id;
+    if (_loadedForUserId == userId) return;
+    _loadedForUserId = userId;
+    _loaded = false;
+    unawaited(_load(userId));
   }
 
-  Future<void> _load() async {
-    final loaded = await _store.load();
+  Future<void> _load(String? userId) async {
+    final service = AppServices.of(context).supabaseService;
+    final loaded = await _store.load(
+      userId: userId,
+      client: service.clientOrNull,
+      syncEnabled: service.profile?.cycleDataSyncEnabled == true,
+    );
     if (!mounted) return;
     setState(() {
       _settings = loaded;
@@ -1958,8 +1978,15 @@ class _CycleWellbeingSettingsGroupState
   }
 
   Future<void> _save(CycleSettings settings) async {
+    final service = AppServices.of(context).supabaseService;
+    final userId = service.currentUser?.id;
     setState(() => _settings = settings);
-    await _store.save(settings);
+    await _store.save(
+      settings,
+      userId: userId,
+      client: service.clientOrNull,
+      syncEnabled: service.profile?.cycleDataSyncEnabled == true,
+    );
   }
 
   @override
@@ -1969,6 +1996,8 @@ class _CycleWellbeingSettingsGroupState
     final sexAllowsPrompt = profile?.sex == UserSex.female || enabled;
     final nextPeriod = _settings.estimatedNextPeriod;
     final tolerance = _settings.toleranceWindow;
+    final hasCycleDates =
+        _settings.lastPeriodStart != null || _settings.lastPeriodEnd != null;
     final today = DateTime.now();
     final inTolerance =
         tolerance != null &&
@@ -2013,12 +2042,16 @@ class _CycleWellbeingSettingsGroupState
             title: Text(
               inTolerance
                   ? context.text('gentleWorkloadActive')
-                  : context.text('cycleCalendarReady'),
+                  : hasCycleDates
+                  ? context.text('cycleCalendarReady')
+                  : context.text('lastPeriodStart'),
             ),
             subtitle: Text(
               inTolerance
                   ? context.text('gentleWorkloadActiveHelp')
-                  : context.text('cycleCalendarHelp'),
+                  : hasCycleDates
+                  ? context.text('cycleCalendarHelp')
+                  : context.text('enableCycleTrackingHelp'),
             ),
           ),
           Wrap(
@@ -2261,6 +2294,20 @@ class CycleSettings {
     );
   }
 
+  factory CycleSettings.fromRemote(Map<String, dynamic> row) {
+    DateTime? date(String key) =>
+        DateTime.tryParse(row[key]?.toString() ?? '');
+    return CycleSettings(
+      lastPeriodStart: date('last_period_start'),
+      lastPeriodEnd: date('last_period_end'),
+      cycleLengthDays: (row['cycle_length_days'] as num?)?.round() ?? 28,
+      periodLengthDays: (row['period_length_days'] as num?)?.round() ?? 5,
+      reduceBeforePeriod: row['reduce_before_period'] as bool? ?? true,
+      reduceFirstDays: row['reduce_first_days'] as bool? ?? true,
+      gentleCoaching: row['gentle_coaching'] as bool? ?? true,
+    );
+  }
+
   Map<String, dynamic> toJson() => {
     'lastPeriodStart': lastPeriodStart?.toIso8601String(),
     'lastPeriodEnd': lastPeriodEnd?.toIso8601String(),
@@ -2270,12 +2317,49 @@ class CycleSettings {
     'reduceFirstDays': reduceFirstDays,
     'gentleCoaching': gentleCoaching,
   };
+
+  Map<String, Object?> toRemoteJson(String userId) => {
+    'user_id': userId,
+    'last_period_start': _dateOnly(lastPeriodStart),
+    'last_period_end': _dateOnly(lastPeriodEnd),
+    'cycle_length_days': cycleLengthDays,
+    'period_length_days': periodLengthDays,
+    'reduce_before_period': reduceBeforePeriod,
+    'reduce_first_days': reduceFirstDays,
+    'gentle_coaching': gentleCoaching,
+  };
+
+  static String? _dateOnly(DateTime? value) {
+    if (value == null) return null;
+    final local = value.toLocal();
+    return '${local.year.toString().padLeft(4, '0')}-'
+        '${local.month.toString().padLeft(2, '0')}-'
+        '${local.day.toString().padLeft(2, '0')}';
+  }
 }
 
 class _CycleSettingsStore {
-  Future<CycleSettings> load() async {
+  Future<CycleSettings> load({
+    required String? userId,
+    required SupabaseClient? client,
+    required bool syncEnabled,
+  }) async {
+    if (syncEnabled && client != null && userId != null) {
+      try {
+        final row = await client
+            .from('cycle_preferences')
+            .select()
+            .eq('user_id', userId)
+            .maybeSingle();
+        if (row != null) {
+          return CycleSettings.fromRemote(Map<String, dynamic>.from(row));
+        }
+      } on Object {
+        // Fall back to the per-user local cache while offline or migrating.
+      }
+    }
     try {
-      final file = await _file();
+      final file = await _file(userId);
       if (!await file.exists()) return const CycleSettings();
       final decoded = jsonDecode(await file.readAsString());
       if (decoded is Map<String, dynamic>) {
@@ -2290,19 +2374,36 @@ class _CycleSettingsStore {
     return const CycleSettings();
   }
 
-  Future<void> save(CycleSettings settings) async {
-    final file = await _file();
+  Future<void> save(
+    CycleSettings settings, {
+    required String? userId,
+    required SupabaseClient? client,
+    required bool syncEnabled,
+  }) async {
+    final file = await _file(userId);
     await file.parent.create(recursive: true);
     await file.writeAsString(jsonEncode(settings.toJson()));
+    if (!syncEnabled || client == null || userId == null) return;
+    try {
+      await client
+          .from('cycle_preferences')
+          .upsert(settings.toRemoteJson(userId), onConflict: 'user_id');
+    } on Object {
+      // The local copy is authoritative until the next edit after reconnect.
+    }
   }
 
-  Future<File> _file() async {
+  Future<File> _file(String? userId) async {
     final base = Platform.isWindows
         ? (Platform.environment['APPDATA'] ?? Directory.systemTemp.path)
         : Directory.systemTemp.path;
+    final owner = (userId == null || userId.isEmpty)
+        ? 'local'
+        : userId.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
     return File(
       '$base${Platform.pathSeparator}TaskMasterPro'
-      '${Platform.pathSeparator}cycle_settings.json',
+      '${Platform.pathSeparator}cycle'
+      '${Platform.pathSeparator}$owner.json',
     );
   }
 }
@@ -2883,23 +2984,28 @@ class _BackendAdministrationScreenState
 }
 
 class _SettingsGroup extends StatelessWidget {
-  const _SettingsGroup({required this.title, required this.children});
+  const _SettingsGroup({
+    required this.title,
+    required this.children,
+    this.compact = false,
+  });
 
   final String title;
   final List<Widget> children;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 18),
+      padding: EdgeInsets.only(bottom: compact ? 12 : 18),
       child: Card(
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: EdgeInsets.all(compact ? 12 : 16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(title, style: Theme.of(context).textTheme.titleMedium),
-              const SizedBox(height: 12),
+              SizedBox(height: compact ? 8 : 12),
               ...children,
             ],
           ),
@@ -2944,10 +3050,12 @@ class _SettingTimeField extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return TextFormField(
+      key: ValueKey('time-field-$label-$value'),
       readOnly: true,
-      controller: TextEditingController(text: value),
+      initialValue: value,
       decoration: InputDecoration(
         labelText: label,
+        isDense: true,
         suffixIcon: const Icon(Icons.schedule_outlined),
       ),
       onTap: () => _pickTime(context),
@@ -2976,10 +3084,12 @@ class _WeeklyReviewTimeField extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return TextFormField(
+      key: ValueKey('weekly-review-$value'),
       readOnly: true,
-      controller: TextEditingController(text: _localizedWeeklyValue(context)),
+      initialValue: _localizedWeeklyValue(context),
       decoration: InputDecoration(
         labelText: label,
+        isDense: true,
         suffixIcon: const Icon(Icons.event_outlined),
       ),
       onTap: () => _pick(context),
@@ -3040,9 +3150,10 @@ class _SettingNumberField extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return TextFormField(
+      key: ValueKey('number-field-$label-$value'),
       initialValue: value.toString(),
       keyboardType: TextInputType.number,
-      decoration: InputDecoration(labelText: label),
+      decoration: InputDecoration(labelText: label, isDense: true),
       onChanged: (value) {
         final parsed = int.tryParse(value);
         if (parsed != null) {
@@ -3084,15 +3195,26 @@ class _ResponsiveGrid extends StatelessWidget {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final columns = constraints.maxWidth >= 720 ? 2 : 1;
-        return GridView.count(
-          crossAxisCount: columns,
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          crossAxisSpacing: 12,
-          mainAxisSpacing: 12,
-          childAspectRatio: columns == 1 ? 5.6 : 4.2,
-          children: children,
+        final width = constraints.maxWidth;
+        final columns = width >= 1100
+            ? 4
+            : width >= 760
+            ? 3
+            : width >= 520
+            ? 2
+            : 1;
+        return Wrap(
+          spacing: 10,
+          runSpacing: 10,
+          children: [
+            for (final child in children)
+              SizedBox(
+                width: columns == 1
+                    ? width
+                    : (width - (10 * (columns - 1))) / columns,
+                child: child,
+              ),
+          ],
         );
       },
     );
