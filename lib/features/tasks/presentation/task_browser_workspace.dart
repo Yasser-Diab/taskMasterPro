@@ -16,6 +16,16 @@ import '../domain/task_item.dart';
 import '../domain/task_support_models.dart';
 import '../domain/task_workspace_config.dart';
 
+const _taskBrowserGoogleStartUrl = 'https://www.google.com';
+
+String _restoreBrowserUrl(Object? value) {
+  final text = value?.toString().trim() ?? '';
+  if (text.isEmpty || text == 'about:blank') {
+    return _taskBrowserGoogleStartUrl;
+  }
+  return text;
+}
+
 class TaskBrowserWorkspace extends StatefulWidget {
   const TaskBrowserWorkspace({
     required this.task,
@@ -61,6 +71,7 @@ class TaskBrowserWorkspace extends StatefulWidget {
 class _TaskBrowserWorkspaceState extends State<TaskBrowserWorkspace>
     with AutomaticKeepAliveClientMixin, WidgetsBindingObserver {
   static const _channel = MethodChannel('taskmasterpro/task_browser');
+  static const _googleStartUrl = _taskBrowserGoogleStartUrl;
 
   final _surfaceKey = GlobalKey();
   late final TextEditingController _urlController;
@@ -70,8 +81,8 @@ class _TaskBrowserWorkspaceState extends State<TaskBrowserWorkspace>
   final List<_BrowserTabState> _tabs = [];
   final List<_BrowserTabState> _closedTabs = [];
 
-  String _currentLoadedUrl = 'about:blank';
-  String _startingUrl = 'about:blank';
+  String _currentLoadedUrl = _googleStartUrl;
+  String _startingUrl = _googleStartUrl;
   String _profileId = 'signed-out';
   String? _title;
   String? _error;
@@ -167,13 +178,7 @@ class _TaskBrowserWorkspaceState extends State<TaskBrowserWorkspace>
   @override
   Widget build(BuildContext context) {
     super.build(context);
-    if (_currentLoadedUrl == 'about:blank') {
-      _hidePlatformSurface(resetSurface: true);
-    } else {
-      WidgetsBinding.instance.addPostFrameCallback(
-        (_) => _syncWindowsSurface(),
-      );
-    }
+    WidgetsBinding.instance.addPostFrameCallback((_) => _syncWindowsSurface());
 
     return Column(
       children: [
@@ -273,7 +278,7 @@ class _TaskBrowserWorkspaceState extends State<TaskBrowserWorkspace>
           '',
       allowBlank: true,
     );
-    _startingUrl = starting.isEmpty ? 'about:blank' : starting;
+    _startingUrl = starting.isEmpty ? _googleStartUrl : starting;
 
     final saved = widget.task.workspaceRestoreBrowserSession
         ? await _store.load(_profileId, widget.task.id)
@@ -304,7 +309,7 @@ class _TaskBrowserWorkspaceState extends State<TaskBrowserWorkspace>
             .url,
       lastUrl,
       _startingUrl,
-      'about:blank',
+      _googleStartUrl,
     ]);
     String? externalMessage;
     if (await _sitePreferenceStore.shouldOpenExternally(
@@ -312,7 +317,7 @@ class _TaskBrowserWorkspaceState extends State<TaskBrowserWorkspace>
       url: initialUrl,
     )) {
       await _openExternal(_externalSiteEntryUrl(initialUrl));
-      initialUrl = 'about:blank';
+      initialUrl = _googleStartUrl;
       externalMessage = mounted
           ? context.text('websiteOpenedExternally')
           : null;
@@ -326,7 +331,12 @@ class _TaskBrowserWorkspaceState extends State<TaskBrowserWorkspace>
         ..clear()
         ..addAll(
           restoredTabs.isEmpty
-              ? [_BrowserTabState(url: initialUrl, title: 'New tab')]
+              ? [
+                  _BrowserTabState(
+                    url: initialUrl,
+                    title: _titleForUrl(initialUrl),
+                  ),
+                ]
               : restoredTabs,
         );
       _selectedTab =
@@ -403,16 +413,15 @@ class _TaskBrowserWorkspaceState extends State<TaskBrowserWorkspace>
   }
 
   Future<void> _goHome() async {
-    if (_startingUrl == 'about:blank') {
-      return;
-    }
     await _navigate(_startingUrl);
   }
 
   Future<void> _resetWorkspace() async {
     _tabs
       ..clear()
-      ..add(_BrowserTabState(url: _startingUrl, title: 'Home'));
+      ..add(
+        _BrowserTabState(url: _startingUrl, title: _titleForUrl(_startingUrl)),
+      );
     _selectedTab = 0;
     await _navigate(_startingUrl);
   }
@@ -570,7 +579,7 @@ class _TaskBrowserWorkspaceState extends State<TaskBrowserWorkspace>
   }
 
   void _openBlankTab() {
-    _openTab(_startingUrl == 'about:blank' ? 'about:blank' : _startingUrl);
+    _openTab(_startingUrl);
   }
 
   void _openTab(String url, {String? title}) {
@@ -767,7 +776,7 @@ class _TaskBrowserWorkspaceState extends State<TaskBrowserWorkspace>
   String _normalizeUrl(String input, {bool allowBlank = false}) {
     final trimmed = input.trim();
     if (trimmed.isEmpty) {
-      return allowBlank ? '' : 'about:blank';
+      return allowBlank ? '' : _googleStartUrl;
     }
     final uri = Uri.tryParse(trimmed);
     if (uri != null && uri.hasScheme) {
@@ -810,7 +819,7 @@ class _TaskBrowserWorkspaceState extends State<TaskBrowserWorkspace>
 
   String _titleForUrl(String url) {
     if (url == 'about:blank') {
-      return 'New tab';
+      return 'Google';
     }
     final uri = Uri.tryParse(url);
     final host = uri?.host;
@@ -820,7 +829,7 @@ class _TaskBrowserWorkspaceState extends State<TaskBrowserWorkspace>
     if (url.trim().isNotEmpty) {
       return url.trim();
     }
-    return 'New tab';
+    return 'Google';
   }
 
   String _searchUrl(String query) {
@@ -841,7 +850,7 @@ class _TaskBrowserWorkspaceState extends State<TaskBrowserWorkspace>
         return _normalizeUrl(url);
       }
     }
-    return 'about:blank';
+    return _googleStartUrl;
   }
 
   void _scheduleSave() {
@@ -954,9 +963,6 @@ class _TaskBrowserWorkspaceState extends State<TaskBrowserWorkspace>
 
   String _externalSiteEntryUrl(String openerUrl, {String? popupUrl}) {
     final opener = Uri.tryParse(openerUrl);
-    if (opener != null && opener.host.toLowerCase().contains('duolingo.com')) {
-      return 'https://www.duolingo.com/log-in';
-    }
     final popup = Uri.tryParse(popupUrl ?? '');
     if (popup != null &&
         (popup.scheme == 'http' || popup.scheme == 'https') &&
@@ -972,9 +978,7 @@ class _TaskBrowserWorkspaceState extends State<TaskBrowserWorkspace>
     if (popup != null && popup.host.toLowerCase() == 'accounts.google.com') {
       return 'https://www.google.com';
     }
-    return _startingUrl == 'about:blank'
-        ? 'https://www.google.com'
-        : _startingUrl;
+    return _startingUrl;
   }
 }
 
@@ -1344,7 +1348,7 @@ class _TaskBrowserSessionState {
     final rawTabs = json['tabs'];
     return _TaskBrowserSessionState(
       selectedTab: json['selectedTab'] is int ? json['selectedTab'] as int : 0,
-      selectedUrl: json['selectedUrl']?.toString() ?? 'about:blank',
+      selectedUrl: _restoreBrowserUrl(json['selectedUrl']),
       title: json['title']?.toString(),
       detached: json['detached'] == true,
       fullWorkspace: json['fullWorkspace'] == true,
@@ -1405,7 +1409,7 @@ class _BrowserTabState {
     if (pageTitle != null && pageTitle.isNotEmpty) {
       return pageTitle;
     }
-    return host.isNotEmpty ? host : 'New tab';
+    return host.isNotEmpty ? host : 'Google';
   }
 
   _BrowserTabState copyWith({
@@ -1430,7 +1434,7 @@ class _BrowserTabState {
   factory _BrowserTabState.fromJson(Map<String, dynamic> json) {
     return _BrowserTabState(
       id: json['id']?.toString(),
-      url: json['url']?.toString() ?? 'about:blank',
+      url: _restoreBrowserUrl(json['url']),
       title: json['title']?.toString(),
       customTitle: json['customTitle']?.toString(),
     );

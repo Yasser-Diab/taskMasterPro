@@ -79,13 +79,7 @@ class PomodoroController extends ChangeNotifier {
     final activity = _breakActivity;
     final normalized = domain.toLowerCase().replaceFirst(RegExp(r'^www\.'), '');
     if (activity == null || normalized.isEmpty) return;
-    final suggestedUse = switch (normalized) {
-      'duolingo.com' || 'de.duolingo.com' => PomodoroBreakUse.learning,
-      'read.amazon.com' || 'books.google.com' => PomodoroBreakUse.reading,
-      _ => activity.use,
-    };
     _breakActivity = activity.copyWith(
-      use: suggestedUse,
       evidenceDomain: normalized,
       relatedTaskId: relatedTaskId,
     );

@@ -3226,26 +3226,12 @@ Future<void> _showBreakActivityDialog(
 }
 
 TaskItem? _suggestBreakRelatedTask(PomodoroBreakUse use, List<TaskItem> tasks) {
-  bool matches(TaskItem task, List<String> terms) {
-    final value = '${task.title} ${task.category}'.toLowerCase();
-    return terms.any(value.contains);
-  }
-
   return switch (use) {
     PomodoroBreakUse.learning =>
       tasks
           .where(
             (task) =>
-                task.taskType == TaskType.focus &&
-                matches(task, const [
-                  'learn',
-                  'learning',
-                  'study',
-                  'practice',
-                  'تعلم',
-                  'lernen',
-                  'üben',
-                ]),
+                task.taskDomain == TaskDomain.learning && !task.isCompleted,
           )
           .firstOrNull,
     PomodoroBreakUse.reading =>
@@ -3253,34 +3239,14 @@ TaskItem? _suggestBreakRelatedTask(PomodoroBreakUse use, List<TaskItem> tasks) {
           .where(
             (task) =>
                 task.taskType == TaskType.reading ||
-                matches(task, const ['reading', 'book', 'قراءة', 'lesen']),
+                task.taskDomain == TaskDomain.reading,
           )
           .firstOrNull,
     PomodoroBreakUse.exercise =>
-      tasks
-          .where(
-            (task) => matches(task, const [
-              'exercise',
-              'workout',
-              'تمرين',
-              'training',
-            ]),
-          )
-          .firstOrNull,
+      tasks.where((task) => task.taskDomain == TaskDomain.sport).firstOrNull,
     PomodoroBreakUse.housework =>
       tasks
-          .where(
-            (task) => matches(task, const [
-              'house',
-              'home',
-              'clean',
-              'laundry',
-              'chores',
-              'منزل',
-              'تنظيف',
-              'haushalt',
-            ]),
-          )
+          .where((task) => task.taskDomain == TaskDomain.household)
           .firstOrNull,
     PomodoroBreakUse.anotherTask =>
       tasks.where((task) => !task.isCompleted).firstOrNull,

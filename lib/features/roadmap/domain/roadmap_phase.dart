@@ -234,6 +234,6 @@ const baselineRoadmapPhases = <RoadmapPhase>[
     period: '2030',
     objective: 'Interview and employment preparation',
     exitEvidence:
-        'Interview readiness, portfolio, CV, German interviews and targeted applications.',
+        'Interview readiness, portfolio, CV, technical interviews and targeted applications.',
   ),
 ];

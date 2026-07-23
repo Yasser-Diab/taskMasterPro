@@ -441,24 +441,12 @@ String? _suggestRelatedTaskForEvidence(
 }
 
 String? _suggestRelatedTask(PomodoroBreakUse use, List<TaskItem> tasks) {
-  bool matches(TaskItem task, List<String> terms) {
-    final value = '${task.title} ${task.category}'.toLowerCase();
-    return terms.any(value.contains);
-  }
-
   return switch (use) {
     PomodoroBreakUse.learning =>
       tasks
           .where(
-            (task) => matches(task, const [
-              'learn',
-              'learning',
-              'study',
-              'practice',
-              'تعلم',
-              'lernen',
-              'üben',
-            ]),
+            (task) =>
+                task.taskDomain == TaskDomain.learning && !task.isCompleted,
           )
           .firstOrNull
           ?.id,
@@ -467,36 +455,18 @@ String? _suggestRelatedTask(PomodoroBreakUse use, List<TaskItem> tasks) {
           .where(
             (task) =>
                 task.taskType == TaskType.reading ||
-                matches(task, const ['reading', 'book', 'قراءة', 'lesen']),
+                task.taskDomain == TaskDomain.reading,
           )
           .firstOrNull
           ?.id,
     PomodoroBreakUse.exercise =>
       tasks
-          .where(
-            (task) => matches(task, const [
-              'exercise',
-              'workout',
-              'تمرين',
-              'training',
-            ]),
-          )
+          .where((task) => task.taskDomain == TaskDomain.sport)
           .firstOrNull
           ?.id,
     PomodoroBreakUse.housework =>
       tasks
-          .where(
-            (task) => matches(task, const [
-              'house',
-              'home',
-              'clean',
-              'laundry',
-              'chores',
-              'منزل',
-              'تنظيف',
-              'haushalt',
-            ]),
-          )
+          .where((task) => task.taskDomain == TaskDomain.household)
           .firstOrNull
           ?.id,
     _ => null,
