@@ -1,0 +1,17 @@
+project_id = "personal-task-manager"
+
+[api]
+enabled = true
+schemas = ["public", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[auth]
+enabled = true
+site_url = "taskmasterpro://auth/callback"
+additional_redirect_urls = ["taskmasterpro://auth/callback", "taskmasterpro://auth/**"]
+jwt_expiry = 3600
+enable_signup = true
+
+[db]
+major_version = 17

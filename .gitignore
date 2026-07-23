@@ -1,0 +1,29 @@
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+build/
+release/
+coverage/
+**/flutter/ephemeral/
+android/.gradle/
+android/app/.cxx/
+
+# The native Windows browser host links against the vendored WebView2 SDK.
+!windows/third_party/webview2/sdk/build/
+!windows/third_party/webview2/sdk/build/**
+
+# Local environment and credentials
+.env
+.env.*
+!.env.example
+supabase/.temp/
+
+# IDE and OS noise
+.idea/
+.vscode/
+*.iml
+Thumbs.db
+Desktop.ini
