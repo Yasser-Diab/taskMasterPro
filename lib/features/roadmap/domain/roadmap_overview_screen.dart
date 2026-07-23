@@ -1648,17 +1648,15 @@ class _PhaseCard extends StatelessWidget {
     final phaseTasks = tasks
         .where((task) => _taskBelongsToPhase(task, phase))
         .toList();
-    final completed = phaseTasks.where((task) => task.isCompleted).length;
-    final double progress = phaseTasks.isEmpty
-        ? (phase.phase < (summary.activePhase?.phase ?? 1)
-              ? 100.0
-              : phase.phase == summary.activePhase?.phase
-              ? summary.overallProgress
-              : 0.0)
-        : completed / phaseTasks.length * 100;
     final activeSeconds = sessions
         .where((session) => phaseTasks.any((task) => task.id == session.taskId))
         .fold<int>(0, (total, session) => total + session.activeSeconds);
+    final progress = _PhaseProgressBreakdown.from(
+      phase: phase,
+      summary: summary,
+      tasks: phaseTasks,
+      activeSeconds: activeSeconds,
+    );
 
     return Card(
       elevation: prominent ? 5 : 1,
@@ -1696,7 +1694,7 @@ class _PhaseCard extends StatelessWidget {
                     crossAxisAlignment: WrapCrossAlignment.center,
                     children: [
                       _StatusBadge(
-                        status: _phaseStatus(phase, summary, progress),
+                        status: _phaseStatus(phase, summary, progress.percent),
                       ),
                       if (onEdit != null)
                         IconButton(
@@ -1753,7 +1751,7 @@ class _PhaseCard extends StatelessWidget {
               ),
               const SizedBox(height: 12),
               LinearProgressIndicator(
-                value: (progress / 100).clamp(0.0, 1.0).toDouble(),
+                value: (progress.percent / 100).clamp(0.0, 1.0).toDouble(),
               ),
               const SizedBox(height: 12),
               Wrap(
@@ -1762,15 +1760,18 @@ class _PhaseCard extends StatelessWidget {
                 children: [
                   _MetricChip(
                     label: context.text('progress'),
-                    value: '${progress.round()}%',
+                    value: '${progress.percent.round()}%',
+                  ),
+                  _MetricChip(
+                    label: context.text('tasks'),
+                    value:
+                        '${progress.completedTasks} / ${progress.totalTasks}',
                   ),
                   _MetricChip(
                     label: context.text('focusedTime'),
-                    value: formatDurationCompact(activeSeconds),
-                  ),
-                  _MetricChip(
-                    label: context.text('milestones'),
-                    value: '$completed / ${phaseTasks.length}',
+                    value:
+                        '${formatDurationCompact(progress.focusedSeconds)} / '
+                        '${formatDurationCompact(progress.focusTargetSeconds)}',
                   ),
                   _MetricChip(
                     label: context.text('forecastFinish'),
@@ -1834,6 +1835,72 @@ class _PhaseCard extends StatelessWidget {
       return RoadmapStatus.notStarted;
     }
     return summary.status;
+  }
+}
+
+class _PhaseProgressBreakdown {
+  const _PhaseProgressBreakdown({
+    required this.percent,
+    required this.completedTasks,
+    required this.totalTasks,
+    required this.focusedSeconds,
+    required this.focusTargetSeconds,
+  });
+
+  final double percent;
+  final int completedTasks;
+  final int totalTasks;
+  final int focusedSeconds;
+  final int focusTargetSeconds;
+
+  static _PhaseProgressBreakdown from({
+    required RoadmapPhase phase,
+    required _RoadmapSummary summary,
+    required List<TaskItem> tasks,
+    required int activeSeconds,
+  }) {
+    final completed = tasks.where((task) => task.isCompleted).length;
+    final totalWeight = tasks.fold<int>(
+      0,
+      (sum, task) => sum + task.estimatedMinutes.clamp(1, 1000000),
+    );
+    final linkedTaskProgress = totalWeight <= 0
+        ? _fallbackPhaseProgress(phase, summary)
+        : tasks.fold<double>(
+                0,
+                (sum, task) =>
+                    sum +
+                    task.estimatedMinutes.clamp(1, 1000000) *
+                        (task.progressPercentage.clamp(0, 100) / 100),
+              ) /
+              totalWeight *
+              100;
+    final focusTarget = totalWeight * 60;
+    final focusedProgress = focusTarget <= 0
+        ? linkedTaskProgress
+        : (activeSeconds / focusTarget * 100).clamp(0.0, 100.0);
+    final percent = tasks.isEmpty
+        ? linkedTaskProgress
+        : (linkedTaskProgress * 0.7) + (focusedProgress * 0.3);
+    return _PhaseProgressBreakdown(
+      percent: percent.clamp(0.0, 100.0),
+      completedTasks: completed,
+      totalTasks: tasks.length,
+      focusedSeconds: activeSeconds,
+      focusTargetSeconds: focusTarget,
+    );
+  }
+
+  static double _fallbackPhaseProgress(
+    RoadmapPhase phase,
+    _RoadmapSummary summary,
+  ) {
+    if (phase.status == 'completed') return 100;
+    if (phase.phase < (summary.activePhase?.phase ?? 1)) return 0;
+    if (phase.phase == summary.activePhase?.phase) {
+      return summary.overallProgress;
+    }
+    return 0;
   }
 }
 
