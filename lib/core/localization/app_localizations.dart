@@ -1,0 +1,303 @@
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+
+class AppLocalizations {
+  const AppLocalizations(this.locale);
+
+  final Locale locale;
+
+  static const supportedLocales = [Locale('en'), Locale('ar'), Locale('de')];
+
+  static AppLocalizations of(BuildContext context) {
+    return Localizations.of<AppLocalizations>(context, AppLocalizations) ??
+        const AppLocalizations(Locale('en'));
+  }
+
+  String text(String key) {
+    return _translations[locale.languageCode]?[key] ??
+        _translations['en']![key] ??
+        key;
+  }
+
+  static const delegate = _AppLocalizationsDelegate();
+
+  static const _translations = <String, Map<String, String>>{
+    'en': {
+      'app_name': 'TaskMaster Pro',
+      'dashboard': 'Dashboard',
+      'tasks': 'Tasks',
+      'roadmaps': 'Roadmaps',
+      'activity': 'Activity',
+      'settings': 'Settings',
+      'today': 'Today',
+      'quick_add': 'Quick add',
+      'active_task': 'Active task',
+      'next_task': 'Recommended next',
+      'daily_performance': 'Daily performance',
+      'planned': 'Planned',
+      'active_work': 'Active work',
+      'completed': 'Completed',
+      'overdue': 'Overdue',
+      'start': 'Start',
+      'pause': 'Pause',
+      'resume': 'Resume',
+      'complete': 'Complete',
+      'delete': 'Delete',
+      'cancel': 'Cancel',
+      'save': 'Save',
+      'add_task': 'Add task',
+      'task_title': 'Task title',
+      'description': 'Description',
+      'execution_mode': 'Execution mode',
+      'duration': 'Duration',
+      'priority': 'Priority',
+      'empty_tasks': 'Your local plan is clear.',
+      'empty_tasks_hint': 'Add a responsibility when you are ready.',
+      'sync_offline': 'Offline — changes are safe on this device',
+      'sync_idle': 'Up to date',
+      'sync_syncing': 'Synchronizing',
+      'sync_attention': 'Sync needs attention',
+      'continue_google': 'Continue with Google',
+      'email': 'Email',
+      'password': 'Password',
+      'sign_in': 'Sign in',
+      'create_account': 'Create account',
+      'email_code': 'Email verification code',
+      'forgot_password': 'Forgot password?',
+      'generic_email_response': 'Check your email for the next step.',
+      'display_name': 'Display name',
+      'confirm_password': 'Confirm password',
+      'accept_terms': 'I accept the Terms of Service and Privacy Policy',
+      'onboarding_title': 'Build the system around your life',
+      'onboarding_subtitle':
+          'No universal schedule. You choose the structure and coaching style.',
+      'language': 'Language',
+      'theme': 'Theme',
+      'goal': 'Main goal',
+      'finish_setup': 'Finish setup',
+      'light': 'Light',
+      'dark': 'Dark',
+      'golden': 'Golden',
+      'system': 'System',
+      'notification_sound': 'Notification sound',
+      'activity_attribution': 'Activity attribution',
+      'detect_break_activity': 'Detect useful activity during breaks',
+      'detect_cross_task': 'Detect cross-task activity',
+      'automatic_trusted_rules': 'Automatically apply trusted rules',
+      'retain_unclassified': 'Retain unclassified activity',
+      'retain_idle': 'Retain technical idle for review',
+      'unreviewed_activity': 'Unreviewed activity',
+      'review_empty': 'No activity needs review.',
+      'credit_suggestion': 'Credit suggestion',
+      'mark_unrelated': 'Mark unrelated',
+      'mark_distraction': 'Mark distraction',
+      'roadmap_progress': 'Roadmap progress',
+      'forecast': 'Forecast',
+      'risk': 'Risk',
+      'no_roadmaps': 'No roadmap yet',
+      'no_roadmaps_hint': 'Onboarding can create an editable starter roadmap.',
+      'sign_out': 'Sign out',
+      'profile': 'Profile',
+      'offline_first': 'Local-first',
+      'offline_first_detail':
+          'Actions update SQLite immediately and sync in the background.',
+      'appearance': 'Appearance',
+      'notifications': 'Notifications',
+      'privacy': 'Privacy',
+      'search': 'Search',
+    },
+    'ar': {
+      'app_name': 'تاسك ماستر برو',
+      'dashboard': 'لوحة التحكم',
+      'tasks': 'المهام',
+      'roadmaps': 'خرائط الطريق',
+      'activity': 'النشاط',
+      'settings': 'الإعدادات',
+      'today': 'اليوم',
+      'quick_add': 'إضافة سريعة',
+      'active_task': 'المهمة النشطة',
+      'next_task': 'التالي المقترح',
+      'daily_performance': 'أداء اليوم',
+      'planned': 'المخطط',
+      'active_work': 'العمل الفعلي',
+      'completed': 'مكتمل',
+      'overdue': 'متأخر',
+      'start': 'ابدأ',
+      'pause': 'إيقاف مؤقت',
+      'resume': 'استئناف',
+      'complete': 'إكمال',
+      'delete': 'حذف',
+      'cancel': 'إلغاء',
+      'save': 'حفظ',
+      'add_task': 'إضافة مهمة',
+      'task_title': 'عنوان المهمة',
+      'description': 'الوصف',
+      'execution_mode': 'أسلوب التنفيذ',
+      'duration': 'المدة',
+      'priority': 'الأولوية',
+      'empty_tasks': 'خطتك المحلية خالية الآن.',
+      'empty_tasks_hint': 'أضف مسؤولية عندما تكون مستعداً.',
+      'sync_offline': 'غير متصل — تغييراتك محفوظة على هذا الجهاز',
+      'sync_idle': 'محدّث',
+      'sync_syncing': 'جارٍ المزامنة',
+      'sync_attention': 'المزامنة تحتاج مراجعة',
+      'continue_google': 'المتابعة باستخدام Google',
+      'email': 'البريد الإلكتروني',
+      'password': 'كلمة المرور',
+      'sign_in': 'تسجيل الدخول',
+      'create_account': 'إنشاء حساب',
+      'email_code': 'رمز التحقق بالبريد',
+      'forgot_password': 'نسيت كلمة المرور؟',
+      'generic_email_response': 'تحقق من بريدك للخطوة التالية.',
+      'display_name': 'الاسم المعروض',
+      'confirm_password': 'تأكيد كلمة المرور',
+      'accept_terms': 'أوافق على شروط الخدمة وسياسة الخصوصية',
+      'onboarding_title': 'ابنِ النظام حول حياتك',
+      'onboarding_subtitle':
+          'لا يوجد جدول موحد. أنت تختار الهيكل وأسلوب التوجيه.',
+      'language': 'اللغة',
+      'theme': 'السمة',
+      'goal': 'الهدف الرئيسي',
+      'finish_setup': 'إنهاء الإعداد',
+      'light': 'فاتح',
+      'dark': 'داكن',
+      'golden': 'ذهبي',
+      'system': 'النظام',
+      'notification_sound': 'صوت الإشعار',
+      'activity_attribution': 'إسناد النشاط',
+      'detect_break_activity': 'اكتشاف النشاط المفيد أثناء الاستراحات',
+      'detect_cross_task': 'اكتشاف العمل بين المهام',
+      'automatic_trusted_rules': 'تطبيق القواعد الموثوقة تلقائياً',
+      'retain_unclassified': 'الاحتفاظ بالنشاط غير المصنف',
+      'retain_idle': 'الاحتفاظ بالخمول التقني للمراجعة',
+      'unreviewed_activity': 'نشاط غير مُراجع',
+      'review_empty': 'لا يوجد نشاط يحتاج إلى مراجعة.',
+      'credit_suggestion': 'اعتماد الاقتراح',
+      'mark_unrelated': 'تحديد كغير مرتبط',
+      'mark_distraction': 'تحديد كمشتت',
+      'roadmap_progress': 'تقدم خريطة الطريق',
+      'forecast': 'التوقع',
+      'risk': 'المخاطر',
+      'no_roadmaps': 'لا توجد خريطة طريق بعد',
+      'no_roadmaps_hint': 'يمكن للإعداد إنشاء خريطة بداية قابلة للتعديل.',
+      'sign_out': 'تسجيل الخروج',
+      'profile': 'الملف الشخصي',
+      'offline_first': 'محلي أولاً',
+      'offline_first_detail': 'تُحدَّث SQLite فوراً وتتم المزامنة في الخلفية.',
+      'appearance': 'المظهر',
+      'notifications': 'الإشعارات',
+      'privacy': 'الخصوصية',
+      'search': 'بحث',
+    },
+    'de': {
+      'app_name': 'TaskMaster Pro',
+      'dashboard': 'Übersicht',
+      'tasks': 'Aufgaben',
+      'roadmaps': 'Roadmaps',
+      'activity': 'Aktivität',
+      'settings': 'Einstellungen',
+      'today': 'Heute',
+      'quick_add': 'Schnell hinzufügen',
+      'active_task': 'Aktive Aufgabe',
+      'next_task': 'Nächste Empfehlung',
+      'daily_performance': 'Tagesleistung',
+      'planned': 'Geplant',
+      'active_work': 'Aktive Arbeit',
+      'completed': 'Erledigt',
+      'overdue': 'Überfällig',
+      'start': 'Starten',
+      'pause': 'Pausieren',
+      'resume': 'Fortsetzen',
+      'complete': 'Abschließen',
+      'delete': 'Löschen',
+      'cancel': 'Abbrechen',
+      'save': 'Speichern',
+      'add_task': 'Aufgabe hinzufügen',
+      'task_title': 'Aufgabentitel',
+      'description': 'Beschreibung',
+      'execution_mode': 'Ausführungsmodus',
+      'duration': 'Dauer',
+      'priority': 'Priorität',
+      'empty_tasks': 'Dein lokaler Plan ist frei.',
+      'empty_tasks_hint': 'Füge eine Verantwortung hinzu, wenn du bereit bist.',
+      'sync_offline': 'Offline — Änderungen sind auf diesem Gerät sicher',
+      'sync_idle': 'Aktuell',
+      'sync_syncing': 'Synchronisierung',
+      'sync_attention': 'Synchronisierung prüfen',
+      'continue_google': 'Mit Google fortfahren',
+      'email': 'E-Mail',
+      'password': 'Passwort',
+      'sign_in': 'Anmelden',
+      'create_account': 'Konto erstellen',
+      'email_code': 'E-Mail-Bestätigungscode',
+      'forgot_password': 'Passwort vergessen?',
+      'generic_email_response': 'Prüfe deine E-Mail für den nächsten Schritt.',
+      'display_name': 'Anzeigename',
+      'confirm_password': 'Passwort bestätigen',
+      'accept_terms':
+          'Ich akzeptiere Nutzungsbedingungen und Datenschutzrichtlinie',
+      'onboarding_title': 'Baue das System um dein Leben',
+      'onboarding_subtitle':
+          'Kein universeller Zeitplan. Du bestimmst Struktur und Coaching.',
+      'language': 'Sprache',
+      'theme': 'Design',
+      'goal': 'Hauptziel',
+      'finish_setup': 'Einrichtung abschließen',
+      'light': 'Hell',
+      'dark': 'Dunkel',
+      'golden': 'Golden',
+      'system': 'System',
+      'notification_sound': 'Benachrichtigungston',
+      'activity_attribution': 'Aktivitätszuordnung',
+      'detect_break_activity': 'Nützliche Aktivität in Pausen erkennen',
+      'detect_cross_task': 'Aufgabenübergreifende Aktivität erkennen',
+      'automatic_trusted_rules': 'Vertrauensregeln automatisch anwenden',
+      'retain_unclassified': 'Nicht klassifizierte Aktivität behalten',
+      'retain_idle': 'Technische Inaktivität zur Prüfung behalten',
+      'unreviewed_activity': 'Ungeprüfte Aktivität',
+      'review_empty': 'Keine Aktivität muss geprüft werden.',
+      'credit_suggestion': 'Vorschlag anrechnen',
+      'mark_unrelated': 'Als nicht zugehörig markieren',
+      'mark_distraction': 'Als Ablenkung markieren',
+      'roadmap_progress': 'Roadmap-Fortschritt',
+      'forecast': 'Prognose',
+      'risk': 'Risiko',
+      'no_roadmaps': 'Noch keine Roadmap',
+      'no_roadmaps_hint':
+          'Das Onboarding kann eine bearbeitbare Roadmap erstellen.',
+      'sign_out': 'Abmelden',
+      'profile': 'Profil',
+      'offline_first': 'Local-first',
+      'offline_first_detail':
+          'Aktionen aktualisieren SQLite sofort und synchronisieren im Hintergrund.',
+      'appearance': 'Darstellung',
+      'notifications': 'Benachrichtigungen',
+      'privacy': 'Datenschutz',
+      'search': 'Suchen',
+    },
+  };
+}
+
+class _AppLocalizationsDelegate
+    extends LocalizationsDelegate<AppLocalizations> {
+  const _AppLocalizationsDelegate();
+
+  @override
+  bool isSupported(Locale locale) {
+    return AppLocalizations.supportedLocales.any(
+      (supported) => supported.languageCode == locale.languageCode,
+    );
+  }
+
+  @override
+  Future<AppLocalizations> load(Locale locale) {
+    return SynchronousFuture(AppLocalizations(locale));
+  }
+
+  @override
+  bool shouldReload(_AppLocalizationsDelegate old) => false;
+}
+
+extension AppLocalizationsBuildContext on BuildContext {
+  AppLocalizations get l10n => AppLocalizations.of(this);
+}
