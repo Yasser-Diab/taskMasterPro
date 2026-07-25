@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/localization/app_localizations.dart';
 import '../core/providers.dart';
 import '../core/theme/app_theme.dart';
+import '../core/updates/update_prompt.dart';
 import '../features/auth/presentation/auth_gate.dart';
 
 class TaskMasterApp extends ConsumerWidget {
@@ -53,7 +54,7 @@ class TaskMasterApp extends ConsumerWidget {
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
-      home: AuthGate(themeKey: themeKey),
+      home: UpdatePrompt(child: AuthGate(themeKey: themeKey)),
     );
   }
 }

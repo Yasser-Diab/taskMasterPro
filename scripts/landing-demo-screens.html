@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>TaskMaster Pro fictional product screenshots</title>
+    <style>
+      :root {
+        font-family: "Segoe UI", Arial, sans-serif;
+        color: #eef7ff;
+        background: #020812;
+      }
+      * { box-sizing: border-box; }
+      body { margin: 0; display: grid; gap: 80px; padding: 40px; }
+      .shot {
+        position: relative;
+        width: 1440px;
+        height: 900px;
+        overflow: hidden;
+        background:
+          radial-gradient(circle at 65% -10%, rgba(39, 151, 240, .14), transparent 520px),
+          #081421;
+      }
+      .app {
+        display: grid;
+        grid-template-columns: 228px 1fr;
+        height: 100%;
+      }
+      .sidebar {
+        padding: 26px 18px;
+        border-right: 1px solid rgba(160, 194, 223, .12);
+        background: #0a1828;
+      }
+      .brand { display: flex; align-items: center; gap: 12px; margin: 0 8px 38px; }
+      .brand-mark {
+        display: grid; width: 42px; height: 42px; place-items: center;
+        border-radius: 13px; background: linear-gradient(135deg, #2ca7ff, #44d99d);
+        font-weight: 900; color: #06101c;
+      }
+      .brand strong { display: block; font-size: 17px; }
+      .brand span { color: #8298ae; font-size: 10px; }
+      .nav { display: grid; gap: 7px; }
+      .nav div {
+        display: flex; align-items: center; gap: 12px; padding: 11px 13px;
+        border-radius: 11px; color: #8fa5b9; font-size: 13px;
+      }
+      .nav div.active {
+        background: rgba(54, 163, 255, .13); color: #77c3ff;
+        box-shadow: inset 2px 0 #36a3ff;
+      }
+      .nav b { width: 22px; text-align: center; color: inherit; }
+      .sidebar-foot {
+        position: absolute; bottom: 25px; left: 18px; width: 192px;
+        padding: 13px; border: 1px solid rgba(160,194,223,.12); border-radius: 12px;
+        background: rgba(18,36,58,.55);
+      }
+      .sidebar-foot span { display: block; color: #8298ae; font-size: 10px; }
+      .sidebar-foot strong { font-size: 12px; }
+      .main { padding: 28px 34px 34px; overflow: hidden; }
+      .topbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 26px; }
+      .topbar h1 { margin: 0 0 4px; font-size: 25px; letter-spacing: -.7px; }
+      .topbar p { margin: 0; color: #8298ae; font-size: 12px; }
+      .top-actions { display: flex; align-items: center; gap: 10px; }
+      .status {
+        display: flex; align-items: center; gap: 7px; padding: 8px 11px;
+        border: 1px solid rgba(160,194,223,.12); border-radius: 10px;
+        background: rgba(18,36,58,.55); color: #aabdd0; font-size: 11px;
+      }
+      .dot { width: 7px; height: 7px; border-radius: 50%; background: #4ed49c; }
+      .add {
+        padding: 9px 13px; border-radius: 10px; background: #2698f3;
+        color: white; font-size: 11px; font-weight: 700;
+      }
+      .dashboard-grid { display: grid; grid-template-columns: 1.45fr .9fr; gap: 18px; }
+      .stack { display: grid; gap: 18px; }
+      .card {
+        border: 1px solid rgba(160,194,223,.13); border-radius: 16px;
+        background: rgba(16,34,55,.82); box-shadow: 0 18px 50px rgba(0,0,0,.16);
+      }
+      .active-card { padding: 23px; background: linear-gradient(145deg, rgba(34,128,205,.16), transparent 45%), rgba(16,34,55,.9); }
+      .card-label { color: #7690a9; font-size: 10px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; }
+      .active-title { display: flex; align-items: flex-start; justify-content: space-between; margin-top: 12px; }
+      .active-title h2 { margin: 0; font-size: 19px; }
+      .active-title span { padding: 5px 8px; border-radius: 8px; background: rgba(54,163,255,.12); color: #62b9ff; font-size: 9px; }
+      .timer { margin: 21px 0; font-size: 44px; font-weight: 700; letter-spacing: 1px; }
+      .timer small { color: #7890a7; font-size: 13px; font-weight: 500; }
+      .progress { height: 6px; overflow: hidden; border-radius: 20px; background: rgba(255,255,255,.07); }
+      .progress i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg,#36a3ff,#4ed49c); }
+      .active-meta { display: grid; grid-template-columns: repeat(4,1fr); margin-top: 20px; gap: 10px; }
+      .active-meta div { padding: 10px; border-radius: 10px; background: rgba(255,255,255,.025); }
+      .active-meta span,.active-meta strong { display: block; }
+      .active-meta span { color: #718aa2; font-size: 9px; }
+      .active-meta strong { margin-top: 3px; font-size: 11px; }
+      .buttons { display: flex; gap: 8px; margin-top: 19px; }
+      .buttons span { padding: 9px 16px; border-radius: 9px; background: rgba(255,255,255,.05); color: #b9cad9; font-size: 10px; font-weight: 700; }
+      .buttons span.primary { background: #258fdf; color: white; }
+      .schedule { padding: 20px 22px; }
+      .card-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+      .card-head h3 { margin: 0; font-size: 14px; }
+      .card-head span { color: #5bb6ff; font-size: 10px; }
+      .task-row { display: grid; grid-template-columns: 55px 1fr auto; align-items: center; min-height: 51px; border-top: 1px solid rgba(160,194,223,.08); }
+      .task-time { color: #758ba0; font-size: 10px; }
+      .task-name strong,.task-name span { display: block; }
+      .task-name strong { font-size: 11px; }
+      .task-name span { color: #71879d; font-size: 9px; }
+      .tag { padding: 4px 7px; border-radius: 7px; font-size: 8px; background: rgba(54,163,255,.1); color: #60b9ff; }
+      .tag.green { background: rgba(78,212,156,.1); color: #4ed49c; }
+      .tag.amber { background: rgba(242,184,75,.1); color: #f2b84b; }
+      .metric-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 10px; }
+      .metric { padding: 16px; }
+      .metric span { color: #748ba2; font-size: 9px; }
+      .metric strong { display: block; margin: 7px 0 3px; font-size: 20px; }
+      .metric small { color: #4ed49c; font-size: 8px; }
+      .roadmap-card,.coach-card { padding: 20px; }
+      .roadmap-card h3,.coach-card h3 { margin: 9px 0 3px; font-size: 14px; }
+      .roadmap-card p,.coach-card p { margin: 0; color: #7c92a7; font-size: 10px; line-height: 1.5; }
+      .roadmap-percent { display: flex; justify-content: space-between; margin: 17px 0 8px; font-size: 10px; }
+      .roadmap-percent strong { color: #4ed49c; }
+      .coach-card { border-color: rgba(54,163,255,.23); }
+      .coach-card blockquote { margin: 14px 0 11px; color: #dce9f4; font-size: 12px; line-height: 1.5; }
+      .coach-card blockquote strong { color: #5ab6ff; }
+      .coach-foot { display: flex; gap: 7px; margin-top: 14px; }
+      .coach-foot span { padding: 6px 8px; border-radius: 7px; background: rgba(255,255,255,.04); color: #879db2; font-size: 8px; }
+
+      .roadmap-layout { display: grid; grid-template-columns: 1fr 330px; gap: 18px; }
+      .roadmap-board { padding: 20px; }
+      .roadmap-summary { display: grid; grid-template-columns: repeat(4,1fr); gap: 10px; margin: 18px 0; }
+      .summary-box { padding: 13px; border-radius: 11px; background: rgba(255,255,255,.025); }
+      .summary-box span,.summary-box strong { display:block; }
+      .summary-box span { color:#758da4;font-size:9px;}.summary-box strong{margin-top:4px;font-size:14px}
+      .phase { display:grid;grid-template-columns:46px 1fr 130px 60px;align-items:center;gap:13px;padding:16px 10px;border-top:1px solid rgba(160,194,223,.08) }
+      .phase-num { display:grid;width:34px;height:34px;place-items:center;border-radius:10px;background:rgba(54,163,255,.1);color:#5fb8ff;font-size:10px;font-weight:800 }
+      .phase h3 { margin:0 0 3px;font-size:12px }.phase p{margin:0;color:#738aa0;font-size:9px}.phase em{color:#849bb0;font-size:9px;font-style:normal}.phase strong{font-size:11px;text-align:right}
+      .phase.active { margin: 0 -10px; padding-inline:20px; border:1px solid rgba(54,163,255,.2);border-radius:12px;background:rgba(54,163,255,.055) }
+      .milestones { display:grid;gap:11px;padding:20px }.milestone{padding:14px;border:1px solid rgba(160,194,223,.1);border-radius:11px}.milestone span{color:#758da4;font-size:9px}.milestone strong{display:block;margin:3px 0 9px;font-size:11px}
+      .forecast-panel { padding:18px;border-color:rgba(242,184,75,.22);background:rgba(242,184,75,.045) }.forecast-panel h3{margin:9px 0;font-size:13px}.forecast-panel p{color:#94a7b9;font-size:9px;line-height:1.55}.forecast-facts{display:grid;grid-template-columns:1fr 1fr;gap:8px}.forecast-facts div{padding:9px;border-radius:8px;background:rgba(0,0,0,.12)}.forecast-facts span,.forecast-facts strong{display:block}.forecast-facts span{color:#7d92a7;font-size:8px}.forecast-facts strong{font-size:10px;margin-top:3px}
+
+      .active-layout { display:grid;grid-template-columns:1.35fr .65fr;gap:18px }.focus-panel{display:grid;grid-template-rows:auto 1fr auto;padding:25px}.focus-header{display:flex;justify-content:space-between}.focus-header h2{margin:7px 0;font-size:20px}.focus-header p{margin:0;color:#8197ac;font-size:10px}.live{color:#4ed49c;font-size:9px}.big-timer{display:grid;place-items:center;text-align:center}.big-timer strong{display:block;font-size:74px;letter-spacing:2px}.big-timer span{color:#8196aa;font-size:11px}.cycle-row{display:flex;justify-content:center;gap:8px;margin-top:20px}.cycle-row i{width:38px;height:5px;border-radius:9px;background:rgba(255,255,255,.08)}.cycle-row i.done{background:#36a3ff}.focus-actions{display:flex;justify-content:center;gap:10px}.focus-actions span{padding:11px 25px;border-radius:10px;background:rgba(255,255,255,.05);font-size:11px}.focus-actions span.primary{background:#2698f3}.context-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:18px}.context-card{padding:17px}.context-card h3{margin:0 0 12px;font-size:12px}.context-row{display:flex;justify-content:space-between;padding:9px 0;border-top:1px solid rgba(160,194,223,.08);font-size:9px;color:#8499ad}.context-row strong{color:#dbe8f3}
+      .note-panel,.interruption-panel{padding:18px}.note-panel h3,.interruption-panel h3{margin:0 0 12px;font-size:12px}.note{padding:12px;border-radius:10px;background:rgba(255,255,255,.025);color:#98aabc;font-size:9px;line-height:1.55}.interrupt{display:flex;gap:10px;padding:10px 0;border-top:1px solid rgba(160,194,223,.08)}.interrupt b{color:#f2b84b;font-size:10px}.interrupt div span,.interrupt div strong{display:block}.interrupt div span{color:#7a90a5;font-size:8px}.interrupt div strong{font-size:9px}
+
+      .reports-layout { display:grid;grid-template-columns:repeat(12,1fr);gap:14px}.report-summary{grid-column:span 3;padding:18px}.report-summary span{color:#7890a6;font-size:9px}.report-summary strong{display:block;margin:7px 0;font-size:24px}.report-summary small{font-size:8px;color:#4ed49c}.chart-card{grid-column:span 8;padding:20px}.donut-card{grid-column:span 4;padding:20px}.wide-chart{grid-column:span 7;padding:20px}.contrib-card{grid-column:span 5;padding:20px}.chart-title{display:flex;justify-content:space-between;align-items:center}.chart-title h3{margin:0;font-size:13px}.chart-title span{color:#7e94a8;font-size:9px}.bars{display:flex;align-items:flex-end;gap:18px;height:180px;margin-top:25px;padding:0 10px;border-bottom:1px solid rgba(160,194,223,.12)}.bar-group{display:flex;align-items:flex-end;justify-content:center;flex:1;gap:4px;height:100%;position:relative}.bar{width:12px;border-radius:4px 4px 0 0;background:#36a3ff}.bar.alt{background:#4ed49c}.bar-group label{position:absolute;bottom:-24px;color:#758ca1;font-size:8px}.donut{position:relative;width:160px;height:160px;margin:28px auto 18px;border-radius:50%;background:conic-gradient(#36a3ff 0 64%,#4ed49c 64% 81%,#f2b84b 81% 92%,#52667a 92%)}.donut:after{position:absolute;inset:30px;border-radius:50%;background:#102238;content:""}.donut-label{position:absolute;inset:0;z-index:1;display:grid;place-content:center;text-align:center}.donut-label strong{font-size:23px}.donut-label span{color:#7e94a9;font-size:8px}.legend{display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:8px;color:#8ca1b5}.legend i{display:inline-block;width:7px;height:7px;margin-right:5px;border-radius:2px}.line-chart{position:relative;height:180px;margin-top:23px;border-left:1px solid rgba(160,194,223,.1);border-bottom:1px solid rgba(160,194,223,.1)}.line-chart svg{width:100%;height:100%}.contribution-row{display:grid;grid-template-columns:1fr auto;gap:10px;padding:14px 0;border-top:1px solid rgba(160,194,223,.08)}.contribution-row strong,.contribution-row span{display:block}.contribution-row strong{font-size:10px}.contribution-row span{color:#788fa4;font-size:8px}.contribution-row em{color:#4ed49c;font-size:10px;font-style:normal}
+    </style>
+  </head>
+  <body>
+    <section id="dashboard" class="shot">
+      <div class="app">
+        <aside class="sidebar">
+          <div class="brand"><div class="brand-mark">✓</div><div><strong>TaskMaster Pro</strong><span>Execution workspace</span></div></div>
+          <div class="nav"><div class="active"><b>⌂</b>Dashboard</div><div><b>✓</b>Tasks</div><div><b>↝</b>Roadmaps</div><div><b>◷</b>Activity</div><div><b>▥</b>Reports</div><div><b>⚙</b>Settings</div></div>
+          <div class="sidebar-foot"><span>Current focus</span><strong>Build sync engine · 42m</strong></div>
+        </aside>
+        <main class="main">
+          <header class="topbar"><div><h1>Good morning, Alex</h1><p>Friday, 25 July · A focused day with room to adjust</p></div><div class="top-actions"><div class="status"><i class="dot"></i>All changes saved</div><div class="add">＋ Add responsibility</div></div></header>
+          <div class="dashboard-grid">
+            <div class="stack">
+              <article class="card active-card"><span class="card-label">Active task</span><div class="active-title"><div><h2>Build synchronization engine</h2><span class="tag">Development · Core architecture</span></div><span>Focus cycle 2 of 4</span></div><div class="timer">00:42:18 <small>active work</small></div><div class="progress"><i style="width:68%"></i></div><div class="active-meta"><div><span>Remaining</span><strong>38 minutes</strong></div><div><span>Paused</span><strong>04:12</strong></div><div><span>Idle</span><strong>02:08</strong></div><div><span>Overtime</span><strong>None</strong></div></div><div class="buttons"><span class="primary">Pause</span><span>Finish task</span><span>Add note</span><span>Interruption</span></div></article>
+              <article class="card schedule"><div class="card-head"><h3>Today’s schedule</h3><span>View all responsibilities</span></div><div class="task-row"><span class="task-time">08:30</span><div class="task-name"><strong>Review client quotation</strong><span>Work · 45m</span></div><span class="tag green">Complete</span></div><div class="task-row"><span class="task-time">10:00</span><div class="task-name"><strong>Build synchronization engine</strong><span>Development · 80m</span></div><span class="tag">In focus</span></div><div class="task-row"><span class="task-time">12:15</span><div class="task-name"><strong>German language practice</strong><span>Learning · 25m</span></div><span class="tag amber">Next</span></div><div class="task-row"><span class="task-time">18:00</span><div class="task-name"><strong>Family time</strong><span>Personal · 90m</span></div><span class="tag">Later</span></div><div class="task-row"><span class="task-time">20:00</span><div class="task-name"><strong>Laundry</strong><span>Home · 30m</span></div><span class="tag">Later</span></div></article>
+            </div>
+            <div class="stack">
+              <div class="metric-grid"><article class="card metric"><span>Completed</span><strong>6</strong><small>2 more than usual</small></article><article class="card metric"><span>Active work</span><strong>2h 41m</strong><small>68% of plan</small></article><article class="card metric"><span>Needs review</span><strong>3</strong><small style="color:#f2b84b">Activity items</small></article></div>
+              <article class="card roadmap-card"><span class="card-label">Roadmap progress</span><h3>Flutter Application Development</h3><p>Phase 2 — Core Architecture</p><div class="roadmap-percent"><span>Current progress</span><strong>68%</strong></div><div class="progress"><i style="width:68%"></i></div><div class="active-meta" style="grid-template-columns:1fr 1fr 1fr"><div><span>Milestones</span><strong>3 of 4</strong></div><div><span>Checkpoints</span><strong>8 of 12</strong></div><div><span>Forecast</span><strong>19 Oct</strong></div></div></article>
+              <article class="card coach-card"><span class="card-label">Coaching preview · Planned</span><h3>Prepare the workspace earlier</h3><blockquote>You usually begin development tasks <strong>18 minutes late</strong>. Preparing the required applications 10 minutes earlier may help you start on time</blockquote><p>Based on 12 comparable sessions · High confidence</p><div class="coach-foot"><span>Apply suggestion</span><span>Helpful</span><span>Not helpful</span></div></article>
+            </div>
+          </div>
+        </main>
+      </div>
+    </section>
+
+    <section id="roadmap" class="shot">
+      <div class="app"><aside class="sidebar"><div class="brand"><div class="brand-mark">✓</div><div><strong>TaskMaster Pro</strong><span>Execution workspace</span></div></div><div class="nav"><div><b>⌂</b>Dashboard</div><div><b>✓</b>Tasks</div><div class="active"><b>↝</b>Roadmaps</div><div><b>◷</b>Activity</div><div><b>▥</b>Reports</div></div></aside>
+      <main class="main"><header class="topbar"><div><h1>Flutter Application Development</h1><p>Build a reliable cross-platform productivity application</p></div><div class="top-actions"><div class="status"><i class="dot"></i>On track</div><div class="add">Edit roadmap</div></div></header>
+      <div class="roadmap-layout"><article class="card roadmap-board"><div class="card-head"><h3>Roadmap phases</h3><span>68% overall progress</span></div><div class="roadmap-summary"><div class="summary-box"><span>Target</span><strong>12 Oct</strong></div><div class="summary-box"><span>Forecast</span><strong>16 Oct</strong></div><div class="summary-box"><span>Effort logged</span><strong>41h 20m</strong></div><div class="summary-box"><span>Weekly pace</span><strong>6.5h</strong></div></div>
+      <div class="phase"><span class="phase-num">01</span><div><h3>Foundation and architecture</h3><p>Project structure, identity, local data and security</p></div><em>4 milestones · 12 checkpoints</em><strong style="color:#4ed49c">100%</strong></div>
+      <div class="phase active"><span class="phase-num">02</span><div><h3>Core productivity engine</h3><p>Tasks, execution, recurrence and cross-device state</p></div><em>3 milestones · 8 checkpoints</em><strong style="color:#36a3ff">68%</strong></div>
+      <div class="phase"><span class="phase-num">03</span><div><h3>Roadmaps and coaching</h3><p>Forecasting, evidence and planning recommendations</p></div><em>5 milestones · 14 checkpoints</em><strong>22%</strong></div>
+      <div class="phase"><span class="phase-num">04</span><div><h3>Native activity insights</h3><p>Windows and Android platform tracking</p></div><em>4 milestones · 10 checkpoints</em><strong>0%</strong></div>
+      <div class="phase"><span class="phase-num">05</span><div><h3>Workspaces and resources</h3><p>Documents, browser context and reading</p></div><em>3 milestones · 9 checkpoints</em><strong>0%</strong></div>
+      </article>
+      <div class="stack"><article class="card milestones"><div class="card-head"><h3>Active phase</h3><span>Phase 2</span></div><div class="milestone"><span>Milestone</span><strong>Local-first task commands</strong><div class="progress"><i style="width:100%"></i></div></div><div class="milestone"><span>Milestone</span><strong>Cross-device timer state</strong><div class="progress"><i style="width:72%"></i></div></div><div class="milestone"><span>Checkpoint</span><strong>Conflict recovery tests</strong><div class="progress"><i style="width:38%"></i></div></div></article><article class="card forecast-panel"><span class="card-label" style="color:#f2b84b">Explainable forecast · Planned</span><h3>Expected completion moved by four days</h3><p>Three tasks required more time than estimated and two planned sessions were postponed</p><div class="forecast-facts"><div><span>Confidence</span><strong>Medium</strong></div><div><span>Evidence</span><strong>11 sessions</strong></div></div></article></div>
+      </div></main></div>
+    </section>
+
+    <section id="active-task" class="shot">
+      <div class="app"><aside class="sidebar"><div class="brand"><div class="brand-mark">✓</div><div><strong>TaskMaster Pro</strong><span>Execution workspace</span></div></div><div class="nav"><div><b>⌂</b>Dashboard</div><div class="active"><b>▶</b>Active task</div><div><b>✓</b>Tasks</div><div><b>↝</b>Roadmaps</div><div><b>◷</b>Activity</div></div></aside>
+      <main class="main"><header class="topbar"><div><h1>Build synchronization engine</h1><p>Development · TaskMaster Pro · Phase 2 Core Architecture</p></div><div class="top-actions"><div class="status"><i class="dot"></i>Focus running</div><div class="add">Finish task</div></div></header>
+      <div class="active-layout"><div><article class="card focus-panel" style="height:500px"><div class="focus-header"><div><span class="card-label">Pomodoro focus</span><h2>Implement revision-aware command retry</h2><p>Cycle 2 of 4 · Planned focus 50 minutes</p></div><span class="live">● LIVE</span></div><div class="big-timer"><div><strong>00:42:18</strong><span>7 minutes 42 seconds remaining</span><div class="cycle-row"><i class="done"></i><i class="done"></i><i></i><i></i></div></div></div><div class="focus-actions"><span class="primary">Pause focus</span><span>Add interruption</span><span>Add note</span></div></article>
+      <div class="context-grid"><article class="card context-card"><h3>Applications in this session</h3><div class="context-row"><strong>Visual Studio Code</strong><span>31m 44s · Primary</span></div><div class="context-row"><strong>Microsoft Edge</strong><span>8m 12s · Research</span></div><div class="context-row"><strong>Terminal</strong><span>2m 22s · Supporting</span></div></article><article class="card context-card"><h3>Task progress</h3><div class="context-row"><strong>Command idempotency</strong><span>Complete</span></div><div class="context-row"><strong>Revision conflict</strong><span>In progress</span></div><div class="context-row"><strong>Recovery tests</strong><span>Next</span></div></article></div></div>
+      <div class="stack"><article class="card note-panel"><h3>Working note</h3><div class="note">Keep timer state event-driven. Devices calculate display seconds locally and only send commands on meaningful transitions</div></article><article class="card interruption-panel"><h3>Interruptions</h3><div class="interrupt"><b>03:12</b><div><span>Context switch</span><strong>Reviewed authentication callback</strong></div></div><div class="interrupt"><b>01:08</b><div><span>Technical idle</span><strong>Confirmed as planning</strong></div></div></article><article class="card roadmap-card"><span class="card-label">Roadmap effect · Beta</span><h3>Core Architecture</h3><p>Approved focus contributes to required engineering effort</p><div class="roadmap-percent"><span>Phase progress</span><strong>68%</strong></div><div class="progress"><i style="width:68%"></i></div></article></div>
+      </div></main></div>
+    </section>
+
+    <section id="reports" class="shot">
+      <div class="app"><aside class="sidebar"><div class="brand"><div class="brand-mark">✓</div><div><strong>TaskMaster Pro</strong><span>Execution workspace</span></div></div><div class="nav"><div><b>⌂</b>Dashboard</div><div><b>✓</b>Tasks</div><div><b>↝</b>Roadmaps</div><div><b>◷</b>Activity</div><div class="active"><b>▥</b>Reports</div></div></aside>
+      <main class="main"><header class="topbar"><div><h1>Performance overview</h1><p>This week · Fictional demonstration account</p></div><div class="top-actions"><div class="status">Last 7 days</div><div class="add">Export report</div></div></header>
+      <div class="reports-layout"><article class="card report-summary"><span>Active work</span><strong>24h 18m</strong><small>↑ 8% from last week</small></article><article class="card report-summary"><span>Completed tasks</span><strong>31</strong><small>86% completion rate</small></article><article class="card report-summary"><span>Focus quality</span><strong>78%</strong><small>↑ 4 points</small></article><article class="card report-summary"><span>Roadmap effort</span><strong>9h 42m</strong><small>3 active roadmaps</small></article>
+      <article class="card chart-card"><div class="chart-title"><h3>Planned and active work</h3><span>Hours by day</span></div><div class="bars"><div class="bar-group"><i class="bar" style="height:62%"></i><i class="bar alt" style="height:54%"></i><label>Mon</label></div><div class="bar-group"><i class="bar" style="height:78%"></i><i class="bar alt" style="height:69%"></i><label>Tue</label></div><div class="bar-group"><i class="bar" style="height:55%"></i><i class="bar alt" style="height:46%"></i><label>Wed</label></div><div class="bar-group"><i class="bar" style="height:88%"></i><i class="bar alt" style="height:82%"></i><label>Thu</label></div><div class="bar-group"><i class="bar" style="height:72%"></i><i class="bar alt" style="height:68%"></i><label>Fri</label></div><div class="bar-group"><i class="bar" style="height:42%"></i><i class="bar alt" style="height:36%"></i><label>Sat</label></div><div class="bar-group"><i class="bar" style="height:38%"></i><i class="bar alt" style="height:31%"></i><label>Sun</label></div></div></article>
+      <article class="card donut-card"><div class="chart-title"><h3>Application distribution</h3><span>Planned</span></div><div class="donut"><div class="donut-label"><strong>18h</strong><span>classified</span></div></div><div class="legend"><span><i style="background:#36a3ff"></i>Productive 64%</span><span><i style="background:#4ed49c"></i>Research 17%</span><span><i style="background:#f2b84b"></i>Communication 11%</span><span><i style="background:#52667a"></i>Review 8%</span></div></article>
+      <article class="card wide-chart"><div class="chart-title"><h3>Completion trend</h3><span>Four-week view</span></div><div class="line-chart"><svg viewBox="0 0 600 180" preserveAspectRatio="none"><defs><linearGradient id="area" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#36a3ff" stop-opacity=".3"/><stop offset="1" stop-color="#36a3ff" stop-opacity="0"/></linearGradient></defs><path d="M0 145 C80 130 95 100 160 112 S255 80 310 87 S390 65 445 73 S530 35 600 42 L600 180 L0 180 Z" fill="url(#area)"/><path d="M0 145 C80 130 95 100 160 112 S255 80 310 87 S390 65 445 73 S530 35 600 42" fill="none" stroke="#36a3ff" stroke-width="4"/></svg></div></article>
+      <article class="card contrib-card"><div class="chart-title"><h3>Roadmap contribution</h3><span>Approved effort</span></div><div class="contribution-row"><div><strong>Flutter Application Development</strong><span>Scheduled and unscheduled work</span></div><em>6h 14m</em></div><div class="contribution-row"><div><strong>Reach German B1</strong><span>Practice and reading</span></div><em>2h 08m</em></div><div class="contribution-row"><div><strong>Reading routine</strong><span>Pages and duration</span></div><em>1h 20m</em></div></article>
+      </div></main></div>
+    </section>
+  </body>
+</html>

@@ -31,7 +31,30 @@ class _AuthGateState extends ConsumerState<AuthGate> {
     _preparedUserId = user.id;
     _preparation = () async {
       await settings.ensureLocalAccount(user);
-      await ref.read(syncServiceProvider).start();
+      // Remote registration, realtime and outbox draining must never block an
+      // already authenticated user from opening their local workspace.
+      unawaited(() async {
+        try {
+          await ref.read(syncServiceProvider).start();
+        } catch (_) {
+          // The periodic connectivity listener retries when the network or
+          // Supabase becomes available again.
+        }
+      }());
+      unawaited(() async {
+        try {
+          final generated = await ref
+              .read(recurrenceServiceProvider)
+              .generateUpcoming();
+          if (generated > 0) {
+            unawaited(ref.read(syncServiceProvider).drainOutbox());
+          }
+          await ref.read(activityCaptureServiceProvider).start();
+        } catch (_) {
+          // Recurrence generation and permission-dependent capture retry on
+          // the next launch without holding the local workspace hostage.
+        }
+      }());
     }();
     return _preparation!;
   }

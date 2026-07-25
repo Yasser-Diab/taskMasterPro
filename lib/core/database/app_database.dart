@@ -10,6 +10,7 @@ class LocalProfiles extends Table {
   TextColumn get displayName => text().withDefault(const Constant(''))();
   TextColumn get email => text().nullable()();
   TextColumn get imagePath => text().nullable()();
+  TextColumn get genderIdentity => text().nullable()();
   BoolColumn get onboardingCompleted =>
       boolean().withDefault(const Constant(false))();
   IntColumn get revision => integer().withDefault(const Constant(1))();
@@ -35,6 +36,22 @@ class LocalAppSettings extends Table {
   TextColumn get clockFormat => text().withDefault(const Constant('24h'))();
   TextColumn get notificationSoundKey =>
       text().withDefault(const Constant('system'))();
+  BoolColumn get healthConnectEnabled =>
+      boolean().withDefault(const Constant(false))();
+  BoolColumn get cycleTrackingEnabled =>
+      boolean().withDefault(const Constant(false))();
+  TextColumn get cycleStorageMode =>
+      text().withDefault(const Constant('local_only'))();
+  BoolColumn get calendarShowCompleted =>
+      boolean().withDefault(const Constant(true))();
+  BoolColumn get applicationTrackingEnabled =>
+      boolean().withDefault(const Constant(false))();
+  BoolColumn get windowTitleTrackingEnabled =>
+      boolean().withDefault(const Constant(false))();
+  BoolColumn get idleDetectionEnabled =>
+      boolean().withDefault(const Constant(true))();
+  IntColumn get idleThresholdSeconds =>
+      integer().withDefault(const Constant(30))();
   BoolColumn get detectBreakActivity =>
       boolean().withDefault(const Constant(true))();
   BoolColumn get detectCrossTaskActivity =>
@@ -45,6 +62,8 @@ class LocalAppSettings extends Table {
       boolean().withDefault(const Constant(true))();
   BoolColumn get automaticTrustedRules =>
       boolean().withDefault(const Constant(false))();
+  BoolColumn get activitySyncEnabled =>
+      boolean().withDefault(const Constant(true))();
   RealColumn get automaticConfidenceThreshold =>
       real().withDefault(const Constant(0.9))();
   IntColumn get minimumSuggestionDurationMs =>
@@ -106,6 +125,8 @@ class LocalTasks extends Table {
   RealColumn get progress => real().withDefault(const Constant(0))();
   TextColumn get roadmapId => text().nullable()();
   TextColumn get roadmapPhaseId => text().nullable()();
+  TextColumn get occurrenceKey => text().nullable()();
+  TextColumn get dataJson => text().withDefault(const Constant('{}'))();
   IntColumn get revision => integer().withDefault(const Constant(1))();
   DateTimeColumn get createdAt => dateTime()();
   DateTimeColumn get updatedAt => dateTime()();
@@ -145,12 +166,16 @@ class LocalRoadmaps extends Table {
   TextColumn get title => text()();
   TextColumn get description => text().withDefault(const Constant(''))();
   TextColumn get status => text().withDefault(const Constant('active'))();
+  DateTimeColumn get plannedStart => dateTime().nullable()();
   DateTimeColumn get originalTargetDate => dateTime().nullable()();
   DateTimeColumn get forecastTargetDate => dateTime().nullable()();
+  TextColumn get finalOutcome => text().withDefault(const Constant(''))();
   RealColumn get progress => real().withDefault(const Constant(0))();
   IntColumn get requiredEffortMs => integer().nullable()();
   IntColumn get completedEffortMs => integer().withDefault(const Constant(0))();
   TextColumn get riskLevel => text().withDefault(const Constant('low'))();
+  TextColumn get forecastConfidence =>
+      text().withDefault(const Constant('low'))();
   IntColumn get revision => integer().withDefault(const Constant(1))();
   DateTimeColumn get createdAt => dateTime()();
   DateTimeColumn get updatedAt => dateTime()();
@@ -260,6 +285,29 @@ class LocalActivityReviews extends Table {
   Set<Column<Object>> get primaryKey => {id};
 }
 
+@DataClassName('LocalEntityRecord')
+class LocalEntityRecords extends Table {
+  TextColumn get id => text()();
+  TextColumn get userId => text()();
+  TextColumn get entityType => text()();
+  TextColumn get parentId => text().nullable()();
+  TextColumn get secondaryParentId => text().nullable()();
+  TextColumn get title => text().withDefault(const Constant(''))();
+  TextColumn get status => text().withDefault(const Constant('active'))();
+  RealColumn get position => real().withDefault(const Constant(0))();
+  TextColumn get dataJson => text().withDefault(const Constant('{}'))();
+  IntColumn get revision => integer().withDefault(const Constant(1))();
+  DateTimeColumn get createdAt => dateTime()();
+  DateTimeColumn get updatedAt => dateTime()();
+  TextColumn get createdByDeviceId => text().nullable()();
+  TextColumn get updatedByDeviceId => text().nullable()();
+  TextColumn get lastCommandId => text().nullable()();
+  DateTimeColumn get deletedAt => dateTime().nullable()();
+
+  @override
+  Set<Column<Object>> get primaryKey => {id};
+}
+
 @DataClassName('LocalOutboxCommand')
 class LocalOutboxCommands extends Table {
   TextColumn get commandId => text()();
@@ -287,6 +335,18 @@ class LocalOutboxCommands extends Table {
   ];
 }
 
+@DataClassName('LocalSyncState')
+class LocalSyncStates extends Table {
+  TextColumn get id => text()();
+  TextColumn get userId => text()();
+  IntColumn get lastChangeSequence =>
+      integer().withDefault(const Constant(0))();
+  DateTimeColumn get updatedAt => dateTime()();
+
+  @override
+  Set<Column<Object>> get primaryKey => {id};
+}
+
 @DriftDatabase(
   tables: [
     LocalProfiles,
@@ -299,7 +359,9 @@ class LocalOutboxCommands extends Table {
     LocalAttributions,
     LocalContributions,
     LocalActivityReviews,
+    LocalEntityRecords,
     LocalOutboxCommands,
+    LocalSyncStates,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -307,12 +369,77 @@ class AppDatabase extends _$AppDatabase {
     : super(executor ?? driftDatabase(name: 'taskmaster_pro'));
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 9;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
     onCreate: (migrator) async {
       await migrator.createAll();
+    },
+    onUpgrade: (migrator, from, to) async {
+      if (from < 2) {
+        await migrator.createTable(localEntityRecords);
+      }
+      if (from < 3) {
+        await migrator.addColumn(localProfiles, localProfiles.genderIdentity);
+        await migrator.addColumn(
+          localAppSettings,
+          localAppSettings.healthConnectEnabled,
+        );
+        await migrator.addColumn(
+          localAppSettings,
+          localAppSettings.cycleTrackingEnabled,
+        );
+        await migrator.addColumn(
+          localAppSettings,
+          localAppSettings.cycleStorageMode,
+        );
+        await migrator.addColumn(
+          localAppSettings,
+          localAppSettings.calendarShowCompleted,
+        );
+      }
+      if (from < 4) {
+        await migrator.createTable(localSyncStates);
+      }
+      if (from < 5) {
+        await migrator.addColumn(localRoadmaps, localRoadmaps.plannedStart);
+        await migrator.addColumn(localRoadmaps, localRoadmaps.finalOutcome);
+        await migrator.addColumn(
+          localRoadmaps,
+          localRoadmaps.forecastConfidence,
+        );
+      }
+      if (from < 6) {
+        await migrator.addColumn(localTasks, localTasks.dataJson);
+      }
+      if (from < 7) {
+        await migrator.addColumn(localTasks, localTasks.occurrenceKey);
+      }
+      if (from < 8) {
+        await migrator.addColumn(
+          localAppSettings,
+          localAppSettings.applicationTrackingEnabled,
+        );
+        await migrator.addColumn(
+          localAppSettings,
+          localAppSettings.windowTitleTrackingEnabled,
+        );
+        await migrator.addColumn(
+          localAppSettings,
+          localAppSettings.idleDetectionEnabled,
+        );
+        await migrator.addColumn(
+          localAppSettings,
+          localAppSettings.idleThresholdSeconds,
+        );
+      }
+      if (from < 9) {
+        await migrator.addColumn(
+          localAppSettings,
+          localAppSettings.activitySyncEnabled,
+        );
+      }
     },
     beforeOpen: (details) async {
       await customStatement('PRAGMA foreign_keys = ON');

@@ -1,17 +1,23 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/localization/app_localizations.dart';
+import '../../../core/notifications/notification_sounds.dart';
 import '../../../core/providers.dart';
 import '../../../core/sync/sync_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/theme/brand_logo.dart';
 import '../../activity/presentation/activity_review_screen.dart';
+import '../../calendar/presentation/planning_calendar_screen.dart';
 import '../../dashboard/presentation/dashboard_screen.dart';
 import '../../roadmaps/presentation/roadmaps_screen.dart';
 import '../../settings/presentation/settings_screen.dart';
 import '../../tasks/presentation/tasks_screen.dart';
+import '../../tasks/presentation/task_workspace_screen.dart';
 
 final syncHealthProvider = StreamProvider<SyncHealth>(
   (ref) => ref.watch(syncServiceProvider).health,
@@ -29,6 +35,72 @@ class HomeShell extends ConsumerStatefulWidget {
 
 class _HomeShellState extends ConsumerState<HomeShell> {
   int _selectedIndex = 0;
+  final List<StreamSubscription<NotificationResponse>> _notificationResponses =
+      [];
+
+  @override
+  void initState() {
+    super.initState();
+    _notificationResponses
+      ..add(
+        LocalNotificationService.responses.stream.listen(
+          _handleNotificationResponse,
+        ),
+      )
+      ..add(
+        LocalNotificationService.backgroundResponses.stream.listen(
+          _handleNotificationResponse,
+        ),
+      );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final launchResponse = localNotificationService.takeLaunchResponse();
+      if (launchResponse != null) {
+        unawaited(_handleNotificationResponse(launchResponse));
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    for (final subscription in _notificationResponses) {
+      unawaited(subscription.cancel());
+    }
+    super.dispose();
+  }
+
+  Future<void> _handleNotificationResponse(
+    NotificationResponse response,
+  ) async {
+    final payload = response.payload;
+    if (payload == null || !payload.startsWith('task/')) return;
+    final taskId = payload.substring('task/'.length);
+    final repository = ref.read(taskRepositoryProvider);
+    final task = await repository.getTask(taskId);
+    if (task == null) return;
+    switch (response.actionId) {
+      case 'start':
+        await repository.start(task);
+      case 'complete':
+        await repository.complete(task);
+      case 'snooze':
+        final soundKey =
+            ref.read(appSettingsProvider).value?.notificationSoundKey ??
+            'system';
+        await localNotificationService.scheduleTaskReminder(
+          id: '${task.id}:snooze'.hashCode & 0x7fffffff,
+          taskId: task.id,
+          taskTitle: task.title,
+          reminderType: 'snooze',
+          scheduledAtUtc: DateTime.now().toUtc().add(
+            const Duration(minutes: 10),
+          ),
+          sound: NotificationSounds.byKey(soundKey),
+        );
+      default:
+        if (mounted) await TaskWorkspaceScreen.open(context, task);
+    }
+    unawaited(ref.read(syncServiceProvider).drainOutbox());
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -36,6 +108,11 @@ class _HomeShellState extends ConsumerState<HomeShell> {
     final destinations = [
       (Icons.dashboard_outlined, Icons.dashboard, l10n.text('dashboard')),
       (Icons.task_alt_outlined, Icons.task_alt, l10n.text('tasks')),
+      (
+        Icons.calendar_month_outlined,
+        Icons.calendar_month,
+        l10n.text('calendar'),
+      ),
       (Icons.route_outlined, Icons.route, l10n.text('roadmaps')),
       (Icons.insights_outlined, Icons.insights, l10n.text('activity')),
       (Icons.settings_outlined, Icons.settings, l10n.text('settings')),
@@ -43,6 +120,7 @@ class _HomeShellState extends ConsumerState<HomeShell> {
     final pages = [
       DashboardScreen(user: widget.user),
       const TasksScreen(),
+      PlanningCalendarScreen(user: widget.user),
       const RoadmapsScreen(),
       const ActivityReviewScreen(),
       SettingsScreen(user: widget.user),
@@ -188,38 +266,46 @@ class _CompactActiveTaskBar extends ConsumerWidget {
         if (runtime == null || runtime.activeTaskId == null) {
           return const SizedBox.shrink();
         }
-        return Padding(
-          padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-          child: Material(
-            color: Theme.of(context).colorScheme.primaryContainer,
-            borderRadius: BorderRadius.circular(14),
-            child: InkWell(
-              borderRadius: BorderRadius.circular(14),
-              onTap: () {},
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Row(
-                  children: [
-                    Icon(
-                      runtime.state == 'running'
-                          ? Icons.play_circle
-                          : Icons.pause_circle,
-                      color: Theme.of(context).colorScheme.primary,
+        return FutureBuilder(
+          future: repository.getTask(runtime.activeTaskId!),
+          builder: (context, taskSnapshot) {
+            final task = taskSnapshot.data;
+            return Padding(
+              padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+              child: Material(
+                color: Theme.of(context).colorScheme.primaryContainer,
+                borderRadius: BorderRadius.circular(14),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(14),
+                  onTap: task == null
+                      ? null
+                      : () => TaskWorkspaceScreen.open(context, task),
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Row(
+                      children: [
+                        Icon(
+                          runtime.state == 'running'
+                              ? Icons.play_circle
+                              : Icons.pause_circle,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            task?.title ?? 'Active execution',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        const Icon(Icons.chevron_right, size: 18),
+                      ],
                     ),
-                    const SizedBox(width: 8),
-                    const Expanded(
-                      child: Text(
-                        'Active execution',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    const Icon(Icons.chevron_right, size: 18),
-                  ],
+                  ),
                 ),
               ),
-            ),
-          ),
+            );
+          },
         );
       },
     );

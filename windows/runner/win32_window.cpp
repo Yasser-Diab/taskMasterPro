@@ -1,5 +1,7 @@
 #include "win32_window.h"
 
+#include <app_links/app_links_plugin_c_api.h>
+
 #include <dwmapi.h>
 #include <flutter_windows.h>
 
@@ -123,6 +125,10 @@ Win32Window::~Win32Window() {
 bool Win32Window::Create(const std::wstring& title,
                          const Point& origin,
                          const Size& size) {
+  if (SendAppLinkToInstance()) {
+    return false;
+  }
+
   Destroy();
 
   const wchar_t* window_class =

@@ -6,6 +6,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/database/app_database.dart';
 import '../../../core/localization/app_localizations.dart';
 import '../../../core/providers.dart';
+import 'task_editor_dialog.dart';
+import 'task_workspace_screen.dart';
 
 class TaskCard extends ConsumerWidget {
   const TaskCard({required this.task, this.compact = false, super.key});
@@ -29,7 +31,7 @@ class TaskCard extends ConsumerWidget {
     return Card(
       child: InkWell(
         borderRadius: BorderRadius.circular(20),
-        onTap: () {},
+        onTap: () => TaskWorkspaceScreen.open(context, task),
         child: Padding(
           padding: EdgeInsets.all(compact ? 14 : 18),
           child: Row(
@@ -109,6 +111,15 @@ class TaskCard extends ConsumerWidget {
                 tooltip: 'Task actions',
                 onSelected: (action) async {
                   switch (action) {
+                    case 'open':
+                      await TaskWorkspaceScreen.open(context, task);
+                    case 'edit':
+                      await TaskEditorDialog.show(context, task: task);
+                    case 'duplicate':
+                      await _run(
+                        ref,
+                        () => ref.read(taskRepositoryProvider).duplicate(task),
+                      );
                     case 'complete':
                       await _run(
                         ref,
@@ -122,6 +133,30 @@ class TaskCard extends ConsumerWidget {
                   }
                 },
                 itemBuilder: (context) => [
+                  PopupMenuItem(
+                    value: 'open',
+                    child: const ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(Icons.open_in_new),
+                      title: Text('Open task workspace'),
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'edit',
+                    child: const ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(Icons.edit_outlined),
+                      title: Text('Edit task'),
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'duplicate',
+                    child: const ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(Icons.copy_outlined),
+                      title: Text('Duplicate'),
+                    ),
+                  ),
                   if (!completed)
                     PopupMenuItem(
                       value: 'complete',

@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../core/database/app_database.dart';
+import '../../../core/data/entity_record_repository.dart';
 import '../../../core/platform/device_identity.dart';
 
 class TaskDraft {
@@ -16,7 +17,14 @@ class TaskDraft {
     this.executionMode = 'manual',
     this.scheduledDate,
     this.plannedStart,
+    this.plannedEnd,
+    this.dueAt,
     this.estimatedDuration = const Duration(minutes: 30),
+    this.roadmapId,
+    this.roadmapPhaseId,
+    this.templateId,
+    this.occurrenceKey,
+    this.configuration = const {},
   });
 
   final String title;
@@ -26,7 +34,14 @@ class TaskDraft {
   final String executionMode;
   final DateTime? scheduledDate;
   final DateTime? plannedStart;
+  final DateTime? plannedEnd;
+  final DateTime? dueAt;
   final Duration estimatedDuration;
+  final String? roadmapId;
+  final String? roadmapPhaseId;
+  final String? templateId;
+  final String? occurrenceKey;
+  final Map<String, Object?> configuration;
 }
 
 class TaskRepository {
@@ -35,6 +50,10 @@ class TaskRepository {
   final AppDatabase database;
   final SupabaseClient client;
   static const _uuid = Uuid();
+  late final EntityRecordRepository entities = EntityRecordRepository(
+    database,
+    client,
+  );
 
   String get _userId => client.auth.currentUser?.id ?? 'local';
 
@@ -47,6 +66,12 @@ class TaskRepository {
         (row) => OrderingTerm.desc(row.priority),
       ]);
     return query.watch();
+  }
+
+  Future<LocalTask?> getTask(String taskId) {
+    return (database.select(database.localTasks)
+          ..where((row) => row.id.equals(taskId) & row.deletedAt.isNull()))
+        .getSingleOrNull();
   }
 
   Stream<List<LocalTask>> watchTodayTasks(DateTime day) {
@@ -132,7 +157,14 @@ class TaskRepository {
       'execution_mode': draft.executionMode,
       'scheduled_date': _dateOnly(scheduled),
       'planned_start': draft.plannedStart?.toUtc().toIso8601String(),
+      'planned_end': draft.plannedEnd?.toUtc().toIso8601String(),
+      'due_at': draft.dueAt?.toUtc().toIso8601String(),
       'estimated_duration_ms': draft.estimatedDuration.inMilliseconds,
+      'roadmap_id': draft.roadmapId,
+      'roadmap_phase_id': draft.roadmapPhaseId,
+      'template_id': draft.templateId,
+      'occurrence_key': draft.occurrenceKey,
+      'data': draft.configuration,
     };
 
     await database.transaction(() async {
@@ -142,6 +174,7 @@ class TaskRepository {
             LocalTasksCompanion.insert(
               id: taskId,
               userId: _userId,
+              templateId: Value(draft.templateId),
               title: title,
               description: Value(draft.description.trim()),
               domainId: Value(draft.domainId),
@@ -149,9 +182,15 @@ class TaskRepository {
               executionMode: Value(draft.executionMode),
               scheduledDate: Value(scheduled),
               plannedStart: Value(draft.plannedStart),
+              plannedEnd: Value(draft.plannedEnd),
+              dueAt: Value(draft.dueAt),
               estimatedDurationMs: Value(
                 draft.estimatedDuration.inMilliseconds,
               ),
+              roadmapId: Value(draft.roadmapId),
+              roadmapPhaseId: Value(draft.roadmapPhaseId),
+              occurrenceKey: Value(draft.occurrenceKey),
+              dataJson: Value(jsonEncode(draft.configuration)),
               createdAt: now,
               updatedAt: now,
               createdByDeviceId: Value(deviceId),
@@ -171,6 +210,203 @@ class TaskRepository {
       );
     });
     return taskId;
+  }
+
+  Future<void> updateTask(LocalTask task, TaskDraft draft) async {
+    final now = DateTime.now().toUtc();
+    final deviceId = await DeviceIdentity.id();
+    final sequence = await DeviceIdentity.nextSequence();
+    final commandId = _uuid.v4();
+    final scheduled = draft.scheduledDate ?? task.scheduledDate;
+    final payload = <String, Object?>{
+      'title': draft.title.trim(),
+      'description': draft.description.trim(),
+      'domain_id': draft.domainId,
+      'priority': draft.priority,
+      'execution_mode': draft.executionMode,
+      'scheduled_date': scheduled == null ? null : _dateOnly(scheduled),
+      'planned_start': draft.plannedStart?.toUtc().toIso8601String(),
+      'planned_end': draft.plannedEnd?.toUtc().toIso8601String(),
+      'due_at': draft.dueAt?.toUtc().toIso8601String(),
+      'estimated_duration_ms': draft.estimatedDuration.inMilliseconds,
+      'roadmap_id': draft.roadmapId,
+      'roadmap_phase_id': draft.roadmapPhaseId,
+      'template_id': draft.templateId ?? task.templateId,
+      'occurrence_key': draft.occurrenceKey ?? task.occurrenceKey,
+      'data': draft.configuration,
+    };
+    await database.transaction(() async {
+      await (database.update(
+        database.localTasks,
+      )..where((row) => row.id.equals(task.id))).write(
+        LocalTasksCompanion(
+          title: Value(draft.title.trim()),
+          description: Value(draft.description.trim()),
+          domainId: Value(draft.domainId),
+          priority: Value(draft.priority),
+          executionMode: Value(draft.executionMode),
+          scheduledDate: Value(scheduled),
+          plannedStart: Value(draft.plannedStart),
+          plannedEnd: Value(draft.plannedEnd),
+          dueAt: Value(draft.dueAt),
+          estimatedDurationMs: Value(draft.estimatedDuration.inMilliseconds),
+          roadmapId: Value(draft.roadmapId),
+          roadmapPhaseId: Value(draft.roadmapPhaseId),
+          templateId: Value(draft.templateId ?? task.templateId),
+          occurrenceKey: Value(draft.occurrenceKey ?? task.occurrenceKey),
+          dataJson: Value(jsonEncode(draft.configuration)),
+          revision: Value(task.revision + 1),
+          updatedAt: Value(now),
+          updatedByDeviceId: Value(deviceId),
+          lastCommandId: Value(commandId),
+        ),
+      );
+      await _enqueue(
+        commandId: commandId,
+        deviceId: deviceId,
+        sequence: sequence,
+        entityId: task.id,
+        commandType: 'update',
+        baseRevision: task.revision,
+        payload: payload,
+        now: now,
+      );
+    });
+  }
+
+  Future<void> updateRelationships(
+    LocalTask task, {
+    String? roadmapId,
+    String? roadmapPhaseId,
+  }) async {
+    final latest = await (database.select(
+      database.localTasks,
+    )..where((row) => row.id.equals(task.id))).getSingle();
+    await updateTask(
+      latest,
+      TaskDraft(
+        title: latest.title,
+        description: latest.description,
+        domainId: latest.domainId,
+        priority: latest.priority,
+        executionMode: latest.executionMode,
+        scheduledDate: latest.scheduledDate,
+        plannedStart: latest.plannedStart,
+        plannedEnd: latest.plannedEnd,
+        dueAt: latest.dueAt,
+        estimatedDuration: Duration(milliseconds: latest.estimatedDurationMs),
+        roadmapId: roadmapId,
+        roadmapPhaseId: roadmapPhaseId,
+        templateId: latest.templateId,
+        occurrenceKey: latest.occurrenceKey,
+        configuration: _configuration(latest),
+      ),
+    );
+  }
+
+  Future<void> updateConfiguration(
+    LocalTask task,
+    Map<String, Object?> configuration,
+  ) async {
+    final latest = await getTask(task.id);
+    if (latest == null) return;
+    await updateTask(
+      latest,
+      TaskDraft(
+        title: latest.title,
+        description: latest.description,
+        domainId: latest.domainId,
+        priority: latest.priority,
+        executionMode: latest.executionMode,
+        scheduledDate: latest.scheduledDate,
+        plannedStart: latest.plannedStart,
+        plannedEnd: latest.plannedEnd,
+        dueAt: latest.dueAt,
+        estimatedDuration: Duration(milliseconds: latest.estimatedDurationMs),
+        roadmapId: latest.roadmapId,
+        roadmapPhaseId: latest.roadmapPhaseId,
+        templateId: latest.templateId,
+        occurrenceKey: latest.occurrenceKey,
+        configuration: configuration,
+      ),
+    );
+  }
+
+  Future<void> attachTemplate({
+    required String taskId,
+    required String templateId,
+    required String occurrenceKey,
+  }) async {
+    final task = await getTask(taskId);
+    if (task == null) return;
+    await updateTask(
+      task,
+      TaskDraft(
+        title: task.title,
+        description: task.description,
+        domainId: task.domainId,
+        priority: task.priority,
+        executionMode: task.executionMode,
+        scheduledDate: task.scheduledDate,
+        plannedStart: task.plannedStart,
+        plannedEnd: task.plannedEnd,
+        dueAt: task.dueAt,
+        estimatedDuration: Duration(milliseconds: task.estimatedDurationMs),
+        roadmapId: task.roadmapId,
+        roadmapPhaseId: task.roadmapPhaseId,
+        templateId: templateId,
+        occurrenceKey: occurrenceKey,
+        configuration: _configuration(task),
+      ),
+    );
+  }
+
+  Future<String> duplicate(LocalTask task) {
+    return createTask(
+      TaskDraft(
+        title: '${task.title} copy',
+        description: task.description,
+        domainId: task.domainId,
+        priority: task.priority,
+        executionMode: task.executionMode,
+        scheduledDate: task.scheduledDate,
+        plannedStart: task.plannedStart,
+        plannedEnd: task.plannedEnd,
+        dueAt: task.dueAt,
+        estimatedDuration: Duration(milliseconds: task.estimatedDurationMs),
+        roadmapId: task.roadmapId,
+        roadmapPhaseId: task.roadmapPhaseId,
+        templateId: task.templateId,
+        occurrenceKey: task.occurrenceKey,
+        configuration: _configuration(task),
+      ),
+    );
+  }
+
+  Future<void> reschedule(LocalTask task, DateTime date) async {
+    final latest = await (database.select(
+      database.localTasks,
+    )..where((row) => row.id.equals(task.id))).getSingle();
+    await updateTask(
+      latest,
+      TaskDraft(
+        title: latest.title,
+        description: latest.description,
+        domainId: latest.domainId,
+        priority: latest.priority,
+        executionMode: latest.executionMode,
+        scheduledDate: date,
+        plannedStart: latest.plannedStart,
+        plannedEnd: latest.plannedEnd,
+        dueAt: latest.dueAt,
+        estimatedDuration: Duration(milliseconds: latest.estimatedDurationMs),
+        roadmapId: latest.roadmapId,
+        roadmapPhaseId: latest.roadmapPhaseId,
+        templateId: latest.templateId,
+        occurrenceKey: latest.occurrenceKey,
+        configuration: _configuration(latest),
+      ),
+    );
   }
 
   Future<void> changeStatus(LocalTask task, String status) async {
@@ -214,8 +450,30 @@ class TaskRepository {
 
   Future<void> start(LocalTask task) async {
     final now = DateTime.now().toUtc();
-    final sessionId = _uuid.v4();
-    await changeStatus(task, 'in_progress');
+    final previousRuntime = await (database.select(
+      database.localRuntimeStates,
+    )..where((row) => row.id.equals('runtime'))).getSingleOrNull();
+    if (previousRuntime?.activeTaskId != null &&
+        previousRuntime!.activeTaskId != task.id) {
+      final previousTask = await getTask(previousRuntime.activeTaskId!);
+      if (previousTask != null) {
+        await changeStatus(previousTask, 'paused');
+        await _recordInterruption(
+          sessionId: previousRuntime.sessionId,
+          taskId: previousTask.id,
+          targetTaskId: task.id,
+          startedAt: now,
+        );
+        await _updateExecutionSession(
+          previousRuntime,
+          state: 'paused',
+          now: now,
+        );
+      }
+    }
+    final sessionId = await _createExecutionSession(task, now);
+    final latest = await getTask(task.id) ?? task;
+    await changeStatus(latest, 'in_progress');
     await database
         .into(database.localRuntimeStates)
         .insertOnConflictUpdate(
@@ -229,6 +487,12 @@ class TaskRepository {
             updatedAt: now,
           ),
         );
+    await _recordSessionEvent(
+      taskId: task.id,
+      sessionId: sessionId,
+      eventType: 'started',
+      occurredAt: now,
+    );
   }
 
   Future<void> pause(LocalTask task) async {
@@ -253,6 +517,16 @@ class TaskRepository {
         updatedAt: Value(now),
       ),
     );
+    await _updateExecutionSession(runtime, state: 'paused', now: now);
+    if (runtime?.sessionId != null) {
+      await _recordSessionEvent(
+        taskId: task.id,
+        sessionId: runtime!.sessionId!,
+        eventType: 'paused',
+        occurredAt: now,
+        durationMs: elapsed,
+      );
+    }
   }
 
   Future<void> resume(LocalTask task) async {
@@ -271,6 +545,15 @@ class TaskRepository {
         updatedAt: Value(now),
       ),
     );
+    await _updateExecutionSession(runtime, state: 'running', now: now);
+    if (runtime?.sessionId != null) {
+      await _recordSessionEvent(
+        taskId: task.id,
+        sessionId: runtime!.sessionId!,
+        eventType: 'resumed',
+        occurredAt: now,
+      );
+    }
   }
 
   Future<void> complete(LocalTask task) async {
@@ -282,7 +565,13 @@ class TaskRepository {
         runtime?.state == 'running' && runtime?.segmentStartedAt != null
         ? now.difference(runtime!.segmentStartedAt!).inMilliseconds
         : 0;
-    await changeStatus(task, 'completed');
+    final latest = await getTask(task.id) ?? task;
+    final totalActive = (runtime?.accumulatedActiveMs ?? 0) + runningElapsed;
+    await changeStatus(latest, 'completed');
+    final completedTask = await getTask(task.id);
+    if (completedTask != null) {
+      await _updateActualDuration(completedTask, totalActive);
+    }
     await (database.update(
       database.localRuntimeStates,
     )..where((row) => row.id.equals('runtime'))).write(
@@ -298,6 +587,205 @@ class TaskRepository {
         updatedAt: Value(now),
       ),
     );
+    await _updateExecutionSession(
+      runtime,
+      state: 'completed',
+      now: now,
+      finishedAt: now,
+      accumulatedActiveMs: totalActive,
+    );
+    if (runtime?.sessionId != null) {
+      await _recordSessionEvent(
+        taskId: task.id,
+        sessionId: runtime!.sessionId!,
+        eventType: 'completed',
+        occurredAt: now,
+        durationMs: totalActive,
+      );
+    }
+  }
+
+  Future<String> _createExecutionSession(LocalTask task, DateTime now) {
+    return entities.create(
+      EntityRecordDraft(
+        entityType: 'execution_sessions',
+        parentId: task.id,
+        title: '${task.title} session',
+        status: 'running',
+        data: {
+          'task_occurrence_id': task.id,
+          'mode': task.executionMode,
+          'state': 'running',
+          'started_at': now.toIso8601String(),
+          'active_segment_started_at': now.toIso8601String(),
+          'accumulated_active_ms': 0,
+          'accumulated_paused_ms': 0,
+          'accumulated_idle_ms': 0,
+          'current_cycle': 0,
+          'is_unscheduled': task.scheduledDate == null,
+        },
+        syncPayload: {
+          'task_occurrence_id': task.id,
+          'mode': task.executionMode,
+          'state': 'running',
+          'started_at': now.toIso8601String(),
+          'finished_at': null,
+          'active_segment_started_at': now.toIso8601String(),
+          'accumulated_active_ms': 0,
+          'accumulated_paused_ms': 0,
+          'accumulated_idle_ms': 0,
+          'current_pomodoro_segment': task.executionMode == 'pomodoro'
+              ? 'focus'
+              : null,
+          'current_cycle': 0,
+          'is_unscheduled': task.scheduledDate == null,
+          'data': <String, Object?>{},
+        },
+      ),
+    );
+  }
+
+  Future<void> _updateExecutionSession(
+    LocalRuntime? runtime, {
+    required String state,
+    required DateTime now,
+    DateTime? finishedAt,
+    int? accumulatedActiveMs,
+  }) async {
+    final sessionId = runtime?.sessionId;
+    if (sessionId == null) return;
+    final session = await entities.get(sessionId);
+    if (session == null) return;
+    final data = entities.decode(session);
+    final segmentElapsed =
+        runtime?.state == 'running' && runtime?.segmentStartedAt != null
+        ? now.difference(runtime!.segmentStartedAt!).inMilliseconds
+        : 0;
+    final active =
+        accumulatedActiveMs ??
+        ((data['accumulated_active_ms'] as num?)?.toInt() ?? 0) +
+            segmentElapsed;
+    data
+      ..['state'] = state
+      ..['active_segment_started_at'] = state == 'running'
+          ? now.toIso8601String()
+          : null
+      ..['finished_at'] = finishedAt?.toIso8601String()
+      ..['accumulated_active_ms'] = active;
+    await entities.update(
+      session,
+      status: state,
+      data: data,
+      syncPayload: {
+        'state': state,
+        'active_segment_started_at': data['active_segment_started_at'],
+        'finished_at': data['finished_at'],
+        'accumulated_active_ms': active,
+      },
+    );
+  }
+
+  Future<void> _recordSessionEvent({
+    required String taskId,
+    required String sessionId,
+    required String eventType,
+    required DateTime occurredAt,
+    int? durationMs,
+  }) async {
+    final deviceId = await DeviceIdentity.id();
+    await entities.create(
+      EntityRecordDraft(
+        entityType: 'session_events',
+        parentId: taskId,
+        secondaryParentId: sessionId,
+        title: eventType,
+        status: eventType,
+        data: {
+          'session_id': sessionId,
+          'task_occurrence_id': taskId,
+          'event_type': eventType,
+          'occurred_at': occurredAt.toIso8601String(),
+          'duration_ms': durationMs,
+          'source_device_id': deviceId,
+        },
+        syncPayload: {
+          'session_id': sessionId,
+          'event_type': eventType,
+          'occurred_at': occurredAt.toIso8601String(),
+          'duration_ms': durationMs,
+          'source_device_id': deviceId,
+          'event_payload': {'task_occurrence_id': taskId},
+          'data': <String, Object?>{},
+        },
+      ),
+    );
+  }
+
+  Future<void> _recordInterruption({
+    required String? sessionId,
+    required String taskId,
+    required String targetTaskId,
+    required DateTime startedAt,
+  }) async {
+    if (sessionId == null) return;
+    await entities.create(
+      EntityRecordDraft(
+        entityType: 'interruptions',
+        parentId: taskId,
+        secondaryParentId: targetTaskId,
+        title: 'Context switch to another task',
+        status: 'open',
+        data: {
+          'session_id': sessionId,
+          'task_occurrence_id': taskId,
+          'started_at': startedAt.toIso8601String(),
+          'interruption_type': 'cross_task',
+          'target_task_id': targetTaskId,
+        },
+        syncPayload: {
+          'session_id': sessionId,
+          'task_occurrence_id': taskId,
+          'started_at': startedAt.toIso8601String(),
+          'ended_at': null,
+          'interruption_type': 'cross_task',
+          'target_task_id': targetTaskId,
+          'notes': null,
+        },
+      ),
+    );
+  }
+
+  Future<void> _updateActualDuration(
+    LocalTask task,
+    int activeDurationMs,
+  ) async {
+    final now = DateTime.now().toUtc();
+    final deviceId = await DeviceIdentity.id();
+    final sequence = await DeviceIdentity.nextSequence();
+    final commandId = _uuid.v4();
+    await database.transaction(() async {
+      await (database.update(
+        database.localTasks,
+      )..where((row) => row.id.equals(task.id))).write(
+        LocalTasksCompanion(
+          activeDurationMs: Value(activeDurationMs),
+          revision: Value(task.revision + 1),
+          updatedAt: Value(now),
+          updatedByDeviceId: Value(deviceId),
+          lastCommandId: Value(commandId),
+        ),
+      );
+      await _enqueue(
+        commandId: commandId,
+        deviceId: deviceId,
+        sequence: sequence,
+        entityId: task.id,
+        commandType: 'update',
+        baseRevision: task.revision,
+        payload: {'actual_duration_ms': activeDurationMs},
+        now: now,
+      );
+    });
   }
 
   Future<void> softDelete(LocalTask task) async {
@@ -364,5 +852,12 @@ class TaskRepository {
     final month = value.month.toString().padLeft(2, '0');
     final day = value.day.toString().padLeft(2, '0');
     return '$year-$month-$day';
+  }
+
+  Map<String, Object?> _configuration(LocalTask task) {
+    final value = jsonDecode(task.dataJson);
+    return value is Map
+        ? Map<String, Object?>.from(value)
+        : <String, Object?>{};
   }
 }

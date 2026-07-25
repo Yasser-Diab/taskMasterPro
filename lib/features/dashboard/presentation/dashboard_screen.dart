@@ -5,9 +5,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../../core/data/entity_record_repository.dart';
 import '../../../core/database/app_database.dart';
 import '../../../core/localization/app_localizations.dart';
 import '../../../core/providers.dart';
+import '../../activity/data/activity_repository.dart';
+import '../../activity/presentation/activity_review_screen.dart';
 import '../../tasks/presentation/task_card.dart';
 import '../../tasks/presentation/task_editor_dialog.dart';
 
@@ -132,36 +135,47 @@ class _DashboardHeader extends StatelessWidget {
       < 18 => 'Good afternoon',
       _ => 'Good evening',
     };
-    return Row(
+    final title = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                DateFormat.yMMMMEEEEd(
-                  Localizations.localeOf(context).toLanguageTag(),
-                ).format(now),
-                style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                '$greeting${displayName.isEmpty ? '' : ', $displayName'}',
-                style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-            ],
+        Text(
+          DateFormat.yMMMMEEEEd(
+            Localizations.localeOf(context).toLanguageTag(),
+          ).format(now),
+          style: Theme.of(context).textTheme.labelLarge?.copyWith(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
           ),
         ),
-        FilledButton.icon(
-          onPressed: onQuickAdd,
-          icon: const Icon(Icons.add),
-          label: Text(context.l10n.text('quick_add')),
+        const SizedBox(height: 4),
+        Text(
+          '$greeting${displayName.isEmpty ? '' : ', $displayName'}',
+          style: Theme.of(
+            context,
+          ).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w800),
         ),
       ],
+    );
+    final add = FilledButton.icon(
+      onPressed: onQuickAdd,
+      icon: const Icon(Icons.add),
+      label: Text(context.l10n.text('quick_add')),
+    );
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth < 560) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [title, const SizedBox(height: 14), add],
+          );
+        }
+        return Row(
+          children: [
+            Expanded(child: title),
+            const SizedBox(width: 16),
+            add,
+          ],
+        );
+      },
     );
   }
 }
@@ -244,12 +258,12 @@ class _ActiveTaskPanel extends ConsumerWidget {
                 ),
                 IconButton.outlined(
                   tooltip: 'Add interruption',
-                  onPressed: () {},
+                  onPressed: () => _addInterruption(context, ref),
                   icon: const Icon(Icons.flash_on_outlined),
                 ),
                 IconButton.outlined(
                   tooltip: 'Add note',
-                  onPressed: () {},
+                  onPressed: () => _addNote(context, ref),
                   icon: const Icon(Icons.note_add_outlined),
                 ),
               ],
@@ -278,6 +292,77 @@ class _ActiveTaskPanel extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  Future<void> _addInterruption(BuildContext context, WidgetRef ref) async {
+    final reason = await _askDashboardText(
+      context,
+      title: 'Record interruption',
+      label: 'What interrupted this task?',
+    );
+    if (reason == null || reason.trim().isEmpty) return;
+    final now = DateTime.now().toUtc();
+    await ref
+        .read(entityRecordRepositoryProvider)
+        .create(
+          EntityRecordDraft(
+            entityType: 'interruptions',
+            parentId: task.id,
+            secondaryParentId: runtime.sessionId,
+            title: reason.trim(),
+            status: 'recorded',
+            data: {
+              'task_occurrence_id': task.id,
+              'session_id': runtime.sessionId,
+              'started_at': now.toIso8601String(),
+              'ended_at': now.toIso8601String(),
+              'interruption_type': 'manual',
+              'notes': reason.trim(),
+            },
+            syncPayload: {
+              'task_occurrence_id': task.id,
+              'session_id': runtime.sessionId,
+              'started_at': now.toIso8601String(),
+              'ended_at': now.toIso8601String(),
+              'interruption_type': 'manual',
+              'notes': reason.trim(),
+            },
+          ),
+        );
+    unawaited(ref.read(syncServiceProvider).drainOutbox());
+  }
+
+  Future<void> _addNote(BuildContext context, WidgetRef ref) async {
+    final body = await _askDashboardText(
+      context,
+      title: 'Add task note',
+      label: 'Note, decision or next step',
+      lines: 4,
+    );
+    if (body == null || body.trim().isEmpty) return;
+    await ref
+        .read(entityRecordRepositoryProvider)
+        .create(
+          EntityRecordDraft(
+            entityType: 'task_notes',
+            parentId: task.id,
+            title: body.trim().split('\n').first,
+            data: {
+              'task_occurrence_id': task.id,
+              'body': body.trim(),
+              'note_version': 1,
+            },
+            syncPayload: {
+              'task_occurrence_id': task.id,
+              'task_template_id': null,
+              'session_id': runtime.sessionId,
+              'body': body.trim(),
+              'note_version': 1,
+              'conflicting_copy_of': null,
+            },
+          ),
+        );
+    unawaited(ref.read(syncServiceProvider).drainOutbox());
   }
 }
 
@@ -414,11 +499,34 @@ class _NextTaskCard extends StatelessWidget {
   }
 }
 
-class _AttentionCard extends StatelessWidget {
+class _AttentionCard extends ConsumerWidget {
   const _AttentionCard();
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final reviews =
+        ref.watch(activityReviewProvider).value ??
+        const <ActivityReviewEntry>[];
+    final crossTask = reviews
+        .where(
+          (entry) =>
+              entry.review.reviewReason.contains('cross') ||
+              entry.review.suggestedTargetType == 'task_occurrence',
+        )
+        .length;
+    final idle = reviews
+        .where(
+          (entry) =>
+              entry.review.reviewReason.contains('idle') ||
+              entry.segment.idleState != null,
+        )
+        .length;
+    void openReview() {
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(builder: (_) => const ActivityReviewScreen()),
+      );
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -428,18 +536,22 @@ class _AttentionCard extends StatelessWidget {
           child: Column(
             children: [
               ListTile(
-                onTap: () {},
+                onTap: openReview,
                 leading: const Icon(Icons.compare_arrows),
                 title: const Text('Cross-task work'),
-                subtitle: const Text('0 detected today'),
+                subtitle: Text('$crossTask awaiting review'),
                 trailing: const Icon(Icons.chevron_right),
               ),
               const Divider(height: 1),
               ListTile(
-                onTap: () {},
+                onTap: openReview,
                 leading: const Icon(Icons.hourglass_empty),
                 title: const Text('Technical idle'),
-                subtitle: const Text('Nothing awaiting review'),
+                subtitle: Text(
+                  idle == 0
+                      ? 'Nothing awaiting review'
+                      : '$idle awaiting review',
+                ),
                 trailing: const Icon(Icons.chevron_right),
               ),
             ],
@@ -683,4 +795,40 @@ String _clockLabel(Duration duration) {
   final minutes = duration.inMinutes.remainder(60).toString().padLeft(2, '0');
   final seconds = duration.inSeconds.remainder(60).toString().padLeft(2, '0');
   return '$hours:$minutes:$seconds';
+}
+
+Future<String?> _askDashboardText(
+  BuildContext context, {
+  required String title,
+  required String label,
+  int lines = 2,
+}) async {
+  final controller = TextEditingController();
+  try {
+    return await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(title),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          minLines: lines,
+          maxLines: lines,
+          decoration: InputDecoration(labelText: label),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, controller.text),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+  } finally {
+    controller.dispose();
+  }
 }

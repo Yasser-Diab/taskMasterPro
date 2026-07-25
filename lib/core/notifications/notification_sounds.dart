@@ -1,6 +1,16 @@
+import 'dart:async';
+
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:timezone/data/latest.dart' as tz_data;
+import 'package:timezone/timezone.dart' as tz;
+
+@pragma('vm:entry-point')
+void taskMasterNotificationBackgroundResponse(NotificationResponse response) {
+  LocalNotificationService.backgroundResponses.add(response);
+}
 
 class NotificationSoundChoice {
   const NotificationSoundChoice({
@@ -19,6 +29,7 @@ class NotificationSoundChoice {
 abstract final class NotificationSounds {
   static const choices = [
     NotificationSoundChoice(key: 'system', label: 'System default'),
+    NotificationSoundChoice(key: 'silent', label: 'Silent'),
     NotificationSoundChoice(
       key: 'alert',
       label: 'Alert',
@@ -72,7 +83,8 @@ abstract final class NotificationSounds {
 }
 
 class NotificationSoundPreview {
-  final AudioPlayer _player = AudioPlayer();
+  final AudioPlayer _player = AudioPlayer()
+    ..audioCache = AudioCache(prefix: '');
 
   Future<void> play(NotificationSoundChoice choice) async {
     if (choice.assetPath == null) {
@@ -87,10 +99,19 @@ class NotificationSoundPreview {
 }
 
 class LocalNotificationService {
+  static const _nativeChannel = MethodChannel('taskmasterpro/notifications');
+  static final backgroundResponses =
+      StreamController<NotificationResponse>.broadcast();
+  static final responses = StreamController<NotificationResponse>.broadcast();
+
   final FlutterLocalNotificationsPlugin _plugin =
       FlutterLocalNotificationsPlugin();
+  bool _initialized = false;
+  NotificationResponse? _launchResponse;
 
   Future<void> initialize() async {
+    if (_initialized) return;
+    tz_data.initializeTimeZones();
     const settings = InitializationSettings(
       android: AndroidInitializationSettings('@mipmap/ic_launcher'),
       windows: WindowsInitializationSettings(
@@ -99,7 +120,23 @@ class LocalNotificationService {
         guid: '1d4219a0-d2e8-4b11-b478-aa8bb9870d9c',
       ),
     );
-    await _plugin.initialize(settings: settings);
+    await _plugin.initialize(
+      settings: settings,
+      onDidReceiveNotificationResponse: responses.add,
+      onDidReceiveBackgroundNotificationResponse:
+          taskMasterNotificationBackgroundResponse,
+    );
+    final launchDetails = await _plugin.getNotificationAppLaunchDetails();
+    if (launchDetails?.didNotificationLaunchApp == true) {
+      _launchResponse = launchDetails?.notificationResponse;
+    }
+    _initialized = true;
+  }
+
+  NotificationResponse? takeLaunchResponse() {
+    final response = _launchResponse;
+    _launchResponse = null;
+    return response;
   }
 
   Future<void> requestPermission() async {
@@ -111,7 +148,27 @@ class LocalNotificationService {
         ?.requestNotificationsPermission();
   }
 
+  Future<void> openAndroidSystemSoundSettings() async {
+    if (defaultTargetPlatform != TargetPlatform.android) return;
+    await initialize();
+    const channel = AndroidNotificationChannel(
+      'taskmaster_system',
+      'TaskMaster Pro — System default',
+      description: 'Task reminders using a sound selected on this device',
+      importance: Importance.high,
+    );
+    await _plugin
+        .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin
+        >()
+        ?.createNotificationChannel(channel);
+    await _nativeChannel.invokeMethod<void>('openNotificationChannelSettings', {
+      'channelId': channel.id,
+    });
+  }
+
   Future<void> showTest(NotificationSoundChoice sound) async {
+    await initialize();
     final androidSound = sound.androidResource == null
         ? null
         : RawResourceAndroidNotificationSound(sound.androidResource!);
@@ -129,8 +186,12 @@ class LocalNotificationService {
           playSound: true,
           sound: androidSound,
           actions: const [
-            AndroidNotificationAction('open', 'Open'),
-            AndroidNotificationAction('snooze', 'Snooze'),
+            AndroidNotificationAction('open', 'Open', showsUserInterface: true),
+            AndroidNotificationAction(
+              'snooze',
+              'Snooze',
+              showsUserInterface: true,
+            ),
           ],
         ),
         windows: const WindowsNotificationDetails(),
@@ -138,4 +199,75 @@ class LocalNotificationService {
       payload: 'settings/notifications',
     );
   }
+
+  Future<void> scheduleTaskReminder({
+    required int id,
+    required String taskId,
+    required String taskTitle,
+    required String reminderType,
+    required DateTime scheduledAtUtc,
+    required NotificationSoundChoice sound,
+  }) async {
+    await initialize();
+    final androidSound = sound.androidResource == null
+        ? null
+        : RawResourceAndroidNotificationSound(sound.androidResource!);
+    await _plugin.zonedSchedule(
+      id: id,
+      title: taskTitle,
+      body: _bodyFor(reminderType),
+      scheduledDate: tz.TZDateTime.from(scheduledAtUtc.toUtc(), tz.UTC),
+      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      notificationDetails: NotificationDetails(
+        android: AndroidNotificationDetails(
+          'taskmaster_${sound.key}',
+          'TaskMaster Pro — ${sound.label}',
+          channelDescription: 'Task reminders and execution events',
+          importance: Importance.high,
+          priority: Priority.high,
+          playSound: sound.key != 'silent',
+          sound: androidSound,
+          actions: const [
+            AndroidNotificationAction(
+              'start',
+              'Start',
+              showsUserInterface: true,
+            ),
+            AndroidNotificationAction(
+              'complete',
+              'Complete',
+              showsUserInterface: true,
+            ),
+            AndroidNotificationAction(
+              'snooze',
+              'Snooze',
+              showsUserInterface: true,
+            ),
+          ],
+        ),
+        windows: const WindowsNotificationDetails(),
+      ),
+      payload: 'task/$taskId',
+    );
+  }
+
+  Future<void> cancel(int id) async {
+    await initialize();
+    await _plugin.cancel(id: id);
+  }
+
+  String _bodyFor(String type) {
+    return switch (type) {
+      'before_start' => 'Prepare now so you can begin on time',
+      'start' => 'Your planned start time has arrived',
+      'planned_end' =>
+        'Review progress and decide whether to finish or continue',
+      'due' => 'This task is due',
+      'overdue' => 'This task is overdue and needs a decision',
+      'missed' => 'This task was not started as planned',
+      _ => 'Open TaskMaster Pro to review this task',
+    };
+  }
 }
+
+final localNotificationService = LocalNotificationService();

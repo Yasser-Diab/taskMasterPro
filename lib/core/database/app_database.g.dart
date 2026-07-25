@@ -59,6 +59,17 @@ class $LocalProfilesTable extends LocalProfiles
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _genderIdentityMeta = const VerificationMeta(
+    'genderIdentity',
+  );
+  @override
+  late final GeneratedColumn<String> genderIdentity = GeneratedColumn<String>(
+    'gender_identity',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _onboardingCompletedMeta =
       const VerificationMeta('onboardingCompleted');
   @override
@@ -148,6 +159,7 @@ class $LocalProfilesTable extends LocalProfiles
     displayName,
     email,
     imagePath,
+    genderIdentity,
     onboardingCompleted,
     revision,
     createdAt,
@@ -200,6 +212,15 @@ class $LocalProfilesTable extends LocalProfiles
       context.handle(
         _imagePathMeta,
         imagePath.isAcceptableOrUnknown(data['image_path']!, _imagePathMeta),
+      );
+    }
+    if (data.containsKey('gender_identity')) {
+      context.handle(
+        _genderIdentityMeta,
+        genderIdentity.isAcceptableOrUnknown(
+          data['gender_identity']!,
+          _genderIdentityMeta,
+        ),
       );
     }
     if (data.containsKey('onboarding_completed')) {
@@ -286,6 +307,10 @@ class $LocalProfilesTable extends LocalProfiles
         DriftSqlType.string,
         data['${effectivePrefix}image_path'],
       ),
+      genderIdentity: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}gender_identity'],
+      ),
       onboardingCompleted: attachedDatabase.typeMapping.read(
         DriftSqlType.bool,
         data['${effectivePrefix}onboarding_completed'],
@@ -329,6 +354,7 @@ class LocalProfile extends DataClass implements Insertable<LocalProfile> {
   final String displayName;
   final String? email;
   final String? imagePath;
+  final String? genderIdentity;
   final bool onboardingCompleted;
   final int revision;
   final DateTime createdAt;
@@ -342,6 +368,7 @@ class LocalProfile extends DataClass implements Insertable<LocalProfile> {
     required this.displayName,
     this.email,
     this.imagePath,
+    this.genderIdentity,
     required this.onboardingCompleted,
     required this.revision,
     required this.createdAt,
@@ -361,6 +388,9 @@ class LocalProfile extends DataClass implements Insertable<LocalProfile> {
     }
     if (!nullToAbsent || imagePath != null) {
       map['image_path'] = Variable<String>(imagePath);
+    }
+    if (!nullToAbsent || genderIdentity != null) {
+      map['gender_identity'] = Variable<String>(genderIdentity);
     }
     map['onboarding_completed'] = Variable<bool>(onboardingCompleted);
     map['revision'] = Variable<int>(revision);
@@ -389,6 +419,9 @@ class LocalProfile extends DataClass implements Insertable<LocalProfile> {
       imagePath: imagePath == null && nullToAbsent
           ? const Value.absent()
           : Value(imagePath),
+      genderIdentity: genderIdentity == null && nullToAbsent
+          ? const Value.absent()
+          : Value(genderIdentity),
       onboardingCompleted: Value(onboardingCompleted),
       revision: Value(revision),
       createdAt: Value(createdAt),
@@ -416,6 +449,7 @@ class LocalProfile extends DataClass implements Insertable<LocalProfile> {
       displayName: serializer.fromJson<String>(json['displayName']),
       email: serializer.fromJson<String?>(json['email']),
       imagePath: serializer.fromJson<String?>(json['imagePath']),
+      genderIdentity: serializer.fromJson<String?>(json['genderIdentity']),
       onboardingCompleted: serializer.fromJson<bool>(
         json['onboardingCompleted'],
       ),
@@ -438,6 +472,7 @@ class LocalProfile extends DataClass implements Insertable<LocalProfile> {
       'displayName': serializer.toJson<String>(displayName),
       'email': serializer.toJson<String?>(email),
       'imagePath': serializer.toJson<String?>(imagePath),
+      'genderIdentity': serializer.toJson<String?>(genderIdentity),
       'onboardingCompleted': serializer.toJson<bool>(onboardingCompleted),
       'revision': serializer.toJson<int>(revision),
       'createdAt': serializer.toJson<DateTime>(createdAt),
@@ -454,6 +489,7 @@ class LocalProfile extends DataClass implements Insertable<LocalProfile> {
     String? displayName,
     Value<String?> email = const Value.absent(),
     Value<String?> imagePath = const Value.absent(),
+    Value<String?> genderIdentity = const Value.absent(),
     bool? onboardingCompleted,
     int? revision,
     DateTime? createdAt,
@@ -467,6 +503,9 @@ class LocalProfile extends DataClass implements Insertable<LocalProfile> {
     displayName: displayName ?? this.displayName,
     email: email.present ? email.value : this.email,
     imagePath: imagePath.present ? imagePath.value : this.imagePath,
+    genderIdentity: genderIdentity.present
+        ? genderIdentity.value
+        : this.genderIdentity,
     onboardingCompleted: onboardingCompleted ?? this.onboardingCompleted,
     revision: revision ?? this.revision,
     createdAt: createdAt ?? this.createdAt,
@@ -488,6 +527,9 @@ class LocalProfile extends DataClass implements Insertable<LocalProfile> {
           : this.displayName,
       email: data.email.present ? data.email.value : this.email,
       imagePath: data.imagePath.present ? data.imagePath.value : this.imagePath,
+      genderIdentity: data.genderIdentity.present
+          ? data.genderIdentity.value
+          : this.genderIdentity,
       onboardingCompleted: data.onboardingCompleted.present
           ? data.onboardingCompleted.value
           : this.onboardingCompleted,
@@ -512,6 +554,7 @@ class LocalProfile extends DataClass implements Insertable<LocalProfile> {
           ..write('displayName: $displayName, ')
           ..write('email: $email, ')
           ..write('imagePath: $imagePath, ')
+          ..write('genderIdentity: $genderIdentity, ')
           ..write('onboardingCompleted: $onboardingCompleted, ')
           ..write('revision: $revision, ')
           ..write('createdAt: $createdAt, ')
@@ -530,6 +573,7 @@ class LocalProfile extends DataClass implements Insertable<LocalProfile> {
     displayName,
     email,
     imagePath,
+    genderIdentity,
     onboardingCompleted,
     revision,
     createdAt,
@@ -547,6 +591,7 @@ class LocalProfile extends DataClass implements Insertable<LocalProfile> {
           other.displayName == this.displayName &&
           other.email == this.email &&
           other.imagePath == this.imagePath &&
+          other.genderIdentity == this.genderIdentity &&
           other.onboardingCompleted == this.onboardingCompleted &&
           other.revision == this.revision &&
           other.createdAt == this.createdAt &&
@@ -562,6 +607,7 @@ class LocalProfilesCompanion extends UpdateCompanion<LocalProfile> {
   final Value<String> displayName;
   final Value<String?> email;
   final Value<String?> imagePath;
+  final Value<String?> genderIdentity;
   final Value<bool> onboardingCompleted;
   final Value<int> revision;
   final Value<DateTime> createdAt;
@@ -576,6 +622,7 @@ class LocalProfilesCompanion extends UpdateCompanion<LocalProfile> {
     this.displayName = const Value.absent(),
     this.email = const Value.absent(),
     this.imagePath = const Value.absent(),
+    this.genderIdentity = const Value.absent(),
     this.onboardingCompleted = const Value.absent(),
     this.revision = const Value.absent(),
     this.createdAt = const Value.absent(),
@@ -591,6 +638,7 @@ class LocalProfilesCompanion extends UpdateCompanion<LocalProfile> {
     this.displayName = const Value.absent(),
     this.email = const Value.absent(),
     this.imagePath = const Value.absent(),
+    this.genderIdentity = const Value.absent(),
     this.onboardingCompleted = const Value.absent(),
     this.revision = const Value.absent(),
     required DateTime createdAt,
@@ -609,6 +657,7 @@ class LocalProfilesCompanion extends UpdateCompanion<LocalProfile> {
     Expression<String>? displayName,
     Expression<String>? email,
     Expression<String>? imagePath,
+    Expression<String>? genderIdentity,
     Expression<bool>? onboardingCompleted,
     Expression<int>? revision,
     Expression<DateTime>? createdAt,
@@ -624,6 +673,7 @@ class LocalProfilesCompanion extends UpdateCompanion<LocalProfile> {
       if (displayName != null) 'display_name': displayName,
       if (email != null) 'email': email,
       if (imagePath != null) 'image_path': imagePath,
+      if (genderIdentity != null) 'gender_identity': genderIdentity,
       if (onboardingCompleted != null)
         'onboarding_completed': onboardingCompleted,
       if (revision != null) 'revision': revision,
@@ -642,6 +692,7 @@ class LocalProfilesCompanion extends UpdateCompanion<LocalProfile> {
     Value<String>? displayName,
     Value<String?>? email,
     Value<String?>? imagePath,
+    Value<String?>? genderIdentity,
     Value<bool>? onboardingCompleted,
     Value<int>? revision,
     Value<DateTime>? createdAt,
@@ -657,6 +708,7 @@ class LocalProfilesCompanion extends UpdateCompanion<LocalProfile> {
       displayName: displayName ?? this.displayName,
       email: email ?? this.email,
       imagePath: imagePath ?? this.imagePath,
+      genderIdentity: genderIdentity ?? this.genderIdentity,
       onboardingCompleted: onboardingCompleted ?? this.onboardingCompleted,
       revision: revision ?? this.revision,
       createdAt: createdAt ?? this.createdAt,
@@ -685,6 +737,9 @@ class LocalProfilesCompanion extends UpdateCompanion<LocalProfile> {
     }
     if (imagePath.present) {
       map['image_path'] = Variable<String>(imagePath.value);
+    }
+    if (genderIdentity.present) {
+      map['gender_identity'] = Variable<String>(genderIdentity.value);
     }
     if (onboardingCompleted.present) {
       map['onboarding_completed'] = Variable<bool>(onboardingCompleted.value);
@@ -721,6 +776,7 @@ class LocalProfilesCompanion extends UpdateCompanion<LocalProfile> {
           ..write('displayName: $displayName, ')
           ..write('email: $email, ')
           ..write('imagePath: $imagePath, ')
+          ..write('genderIdentity: $genderIdentity, ')
           ..write('onboardingCompleted: $onboardingCompleted, ')
           ..write('revision: $revision, ')
           ..write('createdAt: $createdAt, ')
@@ -831,6 +887,116 @@ class $LocalAppSettingsTable extends LocalAppSettings
         requiredDuringInsert: false,
         defaultValue: const Constant('system'),
       );
+  static const VerificationMeta _healthConnectEnabledMeta =
+      const VerificationMeta('healthConnectEnabled');
+  @override
+  late final GeneratedColumn<bool> healthConnectEnabled = GeneratedColumn<bool>(
+    'health_connect_enabled',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("health_connect_enabled" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _cycleTrackingEnabledMeta =
+      const VerificationMeta('cycleTrackingEnabled');
+  @override
+  late final GeneratedColumn<bool> cycleTrackingEnabled = GeneratedColumn<bool>(
+    'cycle_tracking_enabled',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("cycle_tracking_enabled" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _cycleStorageModeMeta = const VerificationMeta(
+    'cycleStorageMode',
+  );
+  @override
+  late final GeneratedColumn<String> cycleStorageMode = GeneratedColumn<String>(
+    'cycle_storage_mode',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('local_only'),
+  );
+  static const VerificationMeta _calendarShowCompletedMeta =
+      const VerificationMeta('calendarShowCompleted');
+  @override
+  late final GeneratedColumn<bool> calendarShowCompleted =
+      GeneratedColumn<bool>(
+        'calendar_show_completed',
+        aliasedName,
+        false,
+        type: DriftSqlType.bool,
+        requiredDuringInsert: false,
+        defaultConstraints: GeneratedColumn.constraintIsAlways(
+          'CHECK ("calendar_show_completed" IN (0, 1))',
+        ),
+        defaultValue: const Constant(true),
+      );
+  static const VerificationMeta _applicationTrackingEnabledMeta =
+      const VerificationMeta('applicationTrackingEnabled');
+  @override
+  late final GeneratedColumn<bool> applicationTrackingEnabled =
+      GeneratedColumn<bool>(
+        'application_tracking_enabled',
+        aliasedName,
+        false,
+        type: DriftSqlType.bool,
+        requiredDuringInsert: false,
+        defaultConstraints: GeneratedColumn.constraintIsAlways(
+          'CHECK ("application_tracking_enabled" IN (0, 1))',
+        ),
+        defaultValue: const Constant(false),
+      );
+  static const VerificationMeta _windowTitleTrackingEnabledMeta =
+      const VerificationMeta('windowTitleTrackingEnabled');
+  @override
+  late final GeneratedColumn<bool> windowTitleTrackingEnabled =
+      GeneratedColumn<bool>(
+        'window_title_tracking_enabled',
+        aliasedName,
+        false,
+        type: DriftSqlType.bool,
+        requiredDuringInsert: false,
+        defaultConstraints: GeneratedColumn.constraintIsAlways(
+          'CHECK ("window_title_tracking_enabled" IN (0, 1))',
+        ),
+        defaultValue: const Constant(false),
+      );
+  static const VerificationMeta _idleDetectionEnabledMeta =
+      const VerificationMeta('idleDetectionEnabled');
+  @override
+  late final GeneratedColumn<bool> idleDetectionEnabled = GeneratedColumn<bool>(
+    'idle_detection_enabled',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("idle_detection_enabled" IN (0, 1))',
+    ),
+    defaultValue: const Constant(true),
+  );
+  static const VerificationMeta _idleThresholdSecondsMeta =
+      const VerificationMeta('idleThresholdSeconds');
+  @override
+  late final GeneratedColumn<int> idleThresholdSeconds = GeneratedColumn<int>(
+    'idle_threshold_seconds',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(30),
+  );
   static const VerificationMeta _detectBreakActivityMeta =
       const VerificationMeta('detectBreakActivity');
   @override
@@ -904,6 +1070,20 @@ class $LocalAppSettingsTable extends LocalAppSettings
         ),
         defaultValue: const Constant(false),
       );
+  static const VerificationMeta _activitySyncEnabledMeta =
+      const VerificationMeta('activitySyncEnabled');
+  @override
+  late final GeneratedColumn<bool> activitySyncEnabled = GeneratedColumn<bool>(
+    'activity_sync_enabled',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("activity_sync_enabled" IN (0, 1))',
+    ),
+    defaultValue: const Constant(true),
+  );
   static const VerificationMeta _automaticConfidenceThresholdMeta =
       const VerificationMeta('automaticConfidenceThreshold');
   @override
@@ -994,11 +1174,20 @@ class $LocalAppSettingsTable extends LocalAppSettings
     timeZone,
     clockFormat,
     notificationSoundKey,
+    healthConnectEnabled,
+    cycleTrackingEnabled,
+    cycleStorageMode,
+    calendarShowCompleted,
+    applicationTrackingEnabled,
+    windowTitleTrackingEnabled,
+    idleDetectionEnabled,
+    idleThresholdSeconds,
     detectBreakActivity,
     detectCrossTaskActivity,
     retainUnclassifiedActivity,
     retainTechnicalIdle,
     automaticTrustedRules,
+    activitySyncEnabled,
     automaticConfidenceThreshold,
     minimumSuggestionDurationMs,
     revision,
@@ -1075,6 +1264,78 @@ class $LocalAppSettingsTable extends LocalAppSettings
         ),
       );
     }
+    if (data.containsKey('health_connect_enabled')) {
+      context.handle(
+        _healthConnectEnabledMeta,
+        healthConnectEnabled.isAcceptableOrUnknown(
+          data['health_connect_enabled']!,
+          _healthConnectEnabledMeta,
+        ),
+      );
+    }
+    if (data.containsKey('cycle_tracking_enabled')) {
+      context.handle(
+        _cycleTrackingEnabledMeta,
+        cycleTrackingEnabled.isAcceptableOrUnknown(
+          data['cycle_tracking_enabled']!,
+          _cycleTrackingEnabledMeta,
+        ),
+      );
+    }
+    if (data.containsKey('cycle_storage_mode')) {
+      context.handle(
+        _cycleStorageModeMeta,
+        cycleStorageMode.isAcceptableOrUnknown(
+          data['cycle_storage_mode']!,
+          _cycleStorageModeMeta,
+        ),
+      );
+    }
+    if (data.containsKey('calendar_show_completed')) {
+      context.handle(
+        _calendarShowCompletedMeta,
+        calendarShowCompleted.isAcceptableOrUnknown(
+          data['calendar_show_completed']!,
+          _calendarShowCompletedMeta,
+        ),
+      );
+    }
+    if (data.containsKey('application_tracking_enabled')) {
+      context.handle(
+        _applicationTrackingEnabledMeta,
+        applicationTrackingEnabled.isAcceptableOrUnknown(
+          data['application_tracking_enabled']!,
+          _applicationTrackingEnabledMeta,
+        ),
+      );
+    }
+    if (data.containsKey('window_title_tracking_enabled')) {
+      context.handle(
+        _windowTitleTrackingEnabledMeta,
+        windowTitleTrackingEnabled.isAcceptableOrUnknown(
+          data['window_title_tracking_enabled']!,
+          _windowTitleTrackingEnabledMeta,
+        ),
+      );
+    }
+    if (data.containsKey('idle_detection_enabled')) {
+      context.handle(
+        _idleDetectionEnabledMeta,
+        idleDetectionEnabled.isAcceptableOrUnknown(
+          data['idle_detection_enabled']!,
+          _idleDetectionEnabledMeta,
+        ),
+      );
+    }
+    if (data.containsKey('idle_threshold_seconds')) {
+      context.handle(
+        _idleThresholdSecondsMeta,
+        idleThresholdSeconds.isAcceptableOrUnknown(
+          data['idle_threshold_seconds']!,
+          _idleThresholdSecondsMeta,
+        ),
+      );
+    }
     if (data.containsKey('detect_break_activity')) {
       context.handle(
         _detectBreakActivityMeta,
@@ -1117,6 +1378,15 @@ class $LocalAppSettingsTable extends LocalAppSettings
         automaticTrustedRules.isAcceptableOrUnknown(
           data['automatic_trusted_rules']!,
           _automaticTrustedRulesMeta,
+        ),
+      );
+    }
+    if (data.containsKey('activity_sync_enabled')) {
+      context.handle(
+        _activitySyncEnabledMeta,
+        activitySyncEnabled.isAcceptableOrUnknown(
+          data['activity_sync_enabled']!,
+          _activitySyncEnabledMeta,
         ),
       );
     }
@@ -1216,6 +1486,38 @@ class $LocalAppSettingsTable extends LocalAppSettings
         DriftSqlType.string,
         data['${effectivePrefix}notification_sound_key'],
       )!,
+      healthConnectEnabled: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}health_connect_enabled'],
+      )!,
+      cycleTrackingEnabled: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}cycle_tracking_enabled'],
+      )!,
+      cycleStorageMode: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}cycle_storage_mode'],
+      )!,
+      calendarShowCompleted: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}calendar_show_completed'],
+      )!,
+      applicationTrackingEnabled: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}application_tracking_enabled'],
+      )!,
+      windowTitleTrackingEnabled: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}window_title_tracking_enabled'],
+      )!,
+      idleDetectionEnabled: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}idle_detection_enabled'],
+      )!,
+      idleThresholdSeconds: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}idle_threshold_seconds'],
+      )!,
       detectBreakActivity: attachedDatabase.typeMapping.read(
         DriftSqlType.bool,
         data['${effectivePrefix}detect_break_activity'],
@@ -1235,6 +1537,10 @@ class $LocalAppSettingsTable extends LocalAppSettings
       automaticTrustedRules: attachedDatabase.typeMapping.read(
         DriftSqlType.bool,
         data['${effectivePrefix}automatic_trusted_rules'],
+      )!,
+      activitySyncEnabled: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}activity_sync_enabled'],
       )!,
       automaticConfidenceThreshold: attachedDatabase.typeMapping.read(
         DriftSqlType.double,
@@ -1282,11 +1588,20 @@ class LocalAppSetting extends DataClass implements Insertable<LocalAppSetting> {
   final String timeZone;
   final String clockFormat;
   final String notificationSoundKey;
+  final bool healthConnectEnabled;
+  final bool cycleTrackingEnabled;
+  final String cycleStorageMode;
+  final bool calendarShowCompleted;
+  final bool applicationTrackingEnabled;
+  final bool windowTitleTrackingEnabled;
+  final bool idleDetectionEnabled;
+  final int idleThresholdSeconds;
   final bool detectBreakActivity;
   final bool detectCrossTaskActivity;
   final bool retainUnclassifiedActivity;
   final bool retainTechnicalIdle;
   final bool automaticTrustedRules;
+  final bool activitySyncEnabled;
   final double automaticConfidenceThreshold;
   final int minimumSuggestionDurationMs;
   final int revision;
@@ -1303,11 +1618,20 @@ class LocalAppSetting extends DataClass implements Insertable<LocalAppSetting> {
     required this.timeZone,
     required this.clockFormat,
     required this.notificationSoundKey,
+    required this.healthConnectEnabled,
+    required this.cycleTrackingEnabled,
+    required this.cycleStorageMode,
+    required this.calendarShowCompleted,
+    required this.applicationTrackingEnabled,
+    required this.windowTitleTrackingEnabled,
+    required this.idleDetectionEnabled,
+    required this.idleThresholdSeconds,
     required this.detectBreakActivity,
     required this.detectCrossTaskActivity,
     required this.retainUnclassifiedActivity,
     required this.retainTechnicalIdle,
     required this.automaticTrustedRules,
+    required this.activitySyncEnabled,
     required this.automaticConfidenceThreshold,
     required this.minimumSuggestionDurationMs,
     required this.revision,
@@ -1327,6 +1651,18 @@ class LocalAppSetting extends DataClass implements Insertable<LocalAppSetting> {
     map['time_zone'] = Variable<String>(timeZone);
     map['clock_format'] = Variable<String>(clockFormat);
     map['notification_sound_key'] = Variable<String>(notificationSoundKey);
+    map['health_connect_enabled'] = Variable<bool>(healthConnectEnabled);
+    map['cycle_tracking_enabled'] = Variable<bool>(cycleTrackingEnabled);
+    map['cycle_storage_mode'] = Variable<String>(cycleStorageMode);
+    map['calendar_show_completed'] = Variable<bool>(calendarShowCompleted);
+    map['application_tracking_enabled'] = Variable<bool>(
+      applicationTrackingEnabled,
+    );
+    map['window_title_tracking_enabled'] = Variable<bool>(
+      windowTitleTrackingEnabled,
+    );
+    map['idle_detection_enabled'] = Variable<bool>(idleDetectionEnabled);
+    map['idle_threshold_seconds'] = Variable<int>(idleThresholdSeconds);
     map['detect_break_activity'] = Variable<bool>(detectBreakActivity);
     map['detect_cross_task_activity'] = Variable<bool>(detectCrossTaskActivity);
     map['retain_unclassified_activity'] = Variable<bool>(
@@ -1334,6 +1670,7 @@ class LocalAppSetting extends DataClass implements Insertable<LocalAppSetting> {
     );
     map['retain_technical_idle'] = Variable<bool>(retainTechnicalIdle);
     map['automatic_trusted_rules'] = Variable<bool>(automaticTrustedRules);
+    map['activity_sync_enabled'] = Variable<bool>(activitySyncEnabled);
     map['automatic_confidence_threshold'] = Variable<double>(
       automaticConfidenceThreshold,
     );
@@ -1362,11 +1699,20 @@ class LocalAppSetting extends DataClass implements Insertable<LocalAppSetting> {
       timeZone: Value(timeZone),
       clockFormat: Value(clockFormat),
       notificationSoundKey: Value(notificationSoundKey),
+      healthConnectEnabled: Value(healthConnectEnabled),
+      cycleTrackingEnabled: Value(cycleTrackingEnabled),
+      cycleStorageMode: Value(cycleStorageMode),
+      calendarShowCompleted: Value(calendarShowCompleted),
+      applicationTrackingEnabled: Value(applicationTrackingEnabled),
+      windowTitleTrackingEnabled: Value(windowTitleTrackingEnabled),
+      idleDetectionEnabled: Value(idleDetectionEnabled),
+      idleThresholdSeconds: Value(idleThresholdSeconds),
       detectBreakActivity: Value(detectBreakActivity),
       detectCrossTaskActivity: Value(detectCrossTaskActivity),
       retainUnclassifiedActivity: Value(retainUnclassifiedActivity),
       retainTechnicalIdle: Value(retainTechnicalIdle),
       automaticTrustedRules: Value(automaticTrustedRules),
+      activitySyncEnabled: Value(activitySyncEnabled),
       automaticConfidenceThreshold: Value(automaticConfidenceThreshold),
       minimumSuggestionDurationMs: Value(minimumSuggestionDurationMs),
       revision: Value(revision),
@@ -1397,6 +1743,28 @@ class LocalAppSetting extends DataClass implements Insertable<LocalAppSetting> {
       notificationSoundKey: serializer.fromJson<String>(
         json['notificationSoundKey'],
       ),
+      healthConnectEnabled: serializer.fromJson<bool>(
+        json['healthConnectEnabled'],
+      ),
+      cycleTrackingEnabled: serializer.fromJson<bool>(
+        json['cycleTrackingEnabled'],
+      ),
+      cycleStorageMode: serializer.fromJson<String>(json['cycleStorageMode']),
+      calendarShowCompleted: serializer.fromJson<bool>(
+        json['calendarShowCompleted'],
+      ),
+      applicationTrackingEnabled: serializer.fromJson<bool>(
+        json['applicationTrackingEnabled'],
+      ),
+      windowTitleTrackingEnabled: serializer.fromJson<bool>(
+        json['windowTitleTrackingEnabled'],
+      ),
+      idleDetectionEnabled: serializer.fromJson<bool>(
+        json['idleDetectionEnabled'],
+      ),
+      idleThresholdSeconds: serializer.fromJson<int>(
+        json['idleThresholdSeconds'],
+      ),
       detectBreakActivity: serializer.fromJson<bool>(
         json['detectBreakActivity'],
       ),
@@ -1411,6 +1779,9 @@ class LocalAppSetting extends DataClass implements Insertable<LocalAppSetting> {
       ),
       automaticTrustedRules: serializer.fromJson<bool>(
         json['automaticTrustedRules'],
+      ),
+      activitySyncEnabled: serializer.fromJson<bool>(
+        json['activitySyncEnabled'],
       ),
       automaticConfidenceThreshold: serializer.fromJson<double>(
         json['automaticConfidenceThreshold'],
@@ -1437,6 +1808,18 @@ class LocalAppSetting extends DataClass implements Insertable<LocalAppSetting> {
       'timeZone': serializer.toJson<String>(timeZone),
       'clockFormat': serializer.toJson<String>(clockFormat),
       'notificationSoundKey': serializer.toJson<String>(notificationSoundKey),
+      'healthConnectEnabled': serializer.toJson<bool>(healthConnectEnabled),
+      'cycleTrackingEnabled': serializer.toJson<bool>(cycleTrackingEnabled),
+      'cycleStorageMode': serializer.toJson<String>(cycleStorageMode),
+      'calendarShowCompleted': serializer.toJson<bool>(calendarShowCompleted),
+      'applicationTrackingEnabled': serializer.toJson<bool>(
+        applicationTrackingEnabled,
+      ),
+      'windowTitleTrackingEnabled': serializer.toJson<bool>(
+        windowTitleTrackingEnabled,
+      ),
+      'idleDetectionEnabled': serializer.toJson<bool>(idleDetectionEnabled),
+      'idleThresholdSeconds': serializer.toJson<int>(idleThresholdSeconds),
       'detectBreakActivity': serializer.toJson<bool>(detectBreakActivity),
       'detectCrossTaskActivity': serializer.toJson<bool>(
         detectCrossTaskActivity,
@@ -1446,6 +1829,7 @@ class LocalAppSetting extends DataClass implements Insertable<LocalAppSetting> {
       ),
       'retainTechnicalIdle': serializer.toJson<bool>(retainTechnicalIdle),
       'automaticTrustedRules': serializer.toJson<bool>(automaticTrustedRules),
+      'activitySyncEnabled': serializer.toJson<bool>(activitySyncEnabled),
       'automaticConfidenceThreshold': serializer.toJson<double>(
         automaticConfidenceThreshold,
       ),
@@ -1469,11 +1853,20 @@ class LocalAppSetting extends DataClass implements Insertable<LocalAppSetting> {
     String? timeZone,
     String? clockFormat,
     String? notificationSoundKey,
+    bool? healthConnectEnabled,
+    bool? cycleTrackingEnabled,
+    String? cycleStorageMode,
+    bool? calendarShowCompleted,
+    bool? applicationTrackingEnabled,
+    bool? windowTitleTrackingEnabled,
+    bool? idleDetectionEnabled,
+    int? idleThresholdSeconds,
     bool? detectBreakActivity,
     bool? detectCrossTaskActivity,
     bool? retainUnclassifiedActivity,
     bool? retainTechnicalIdle,
     bool? automaticTrustedRules,
+    bool? activitySyncEnabled,
     double? automaticConfidenceThreshold,
     int? minimumSuggestionDurationMs,
     int? revision,
@@ -1490,6 +1883,16 @@ class LocalAppSetting extends DataClass implements Insertable<LocalAppSetting> {
     timeZone: timeZone ?? this.timeZone,
     clockFormat: clockFormat ?? this.clockFormat,
     notificationSoundKey: notificationSoundKey ?? this.notificationSoundKey,
+    healthConnectEnabled: healthConnectEnabled ?? this.healthConnectEnabled,
+    cycleTrackingEnabled: cycleTrackingEnabled ?? this.cycleTrackingEnabled,
+    cycleStorageMode: cycleStorageMode ?? this.cycleStorageMode,
+    calendarShowCompleted: calendarShowCompleted ?? this.calendarShowCompleted,
+    applicationTrackingEnabled:
+        applicationTrackingEnabled ?? this.applicationTrackingEnabled,
+    windowTitleTrackingEnabled:
+        windowTitleTrackingEnabled ?? this.windowTitleTrackingEnabled,
+    idleDetectionEnabled: idleDetectionEnabled ?? this.idleDetectionEnabled,
+    idleThresholdSeconds: idleThresholdSeconds ?? this.idleThresholdSeconds,
     detectBreakActivity: detectBreakActivity ?? this.detectBreakActivity,
     detectCrossTaskActivity:
         detectCrossTaskActivity ?? this.detectCrossTaskActivity,
@@ -1497,6 +1900,7 @@ class LocalAppSetting extends DataClass implements Insertable<LocalAppSetting> {
         retainUnclassifiedActivity ?? this.retainUnclassifiedActivity,
     retainTechnicalIdle: retainTechnicalIdle ?? this.retainTechnicalIdle,
     automaticTrustedRules: automaticTrustedRules ?? this.automaticTrustedRules,
+    activitySyncEnabled: activitySyncEnabled ?? this.activitySyncEnabled,
     automaticConfidenceThreshold:
         automaticConfidenceThreshold ?? this.automaticConfidenceThreshold,
     minimumSuggestionDurationMs:
@@ -1527,6 +1931,30 @@ class LocalAppSetting extends DataClass implements Insertable<LocalAppSetting> {
       notificationSoundKey: data.notificationSoundKey.present
           ? data.notificationSoundKey.value
           : this.notificationSoundKey,
+      healthConnectEnabled: data.healthConnectEnabled.present
+          ? data.healthConnectEnabled.value
+          : this.healthConnectEnabled,
+      cycleTrackingEnabled: data.cycleTrackingEnabled.present
+          ? data.cycleTrackingEnabled.value
+          : this.cycleTrackingEnabled,
+      cycleStorageMode: data.cycleStorageMode.present
+          ? data.cycleStorageMode.value
+          : this.cycleStorageMode,
+      calendarShowCompleted: data.calendarShowCompleted.present
+          ? data.calendarShowCompleted.value
+          : this.calendarShowCompleted,
+      applicationTrackingEnabled: data.applicationTrackingEnabled.present
+          ? data.applicationTrackingEnabled.value
+          : this.applicationTrackingEnabled,
+      windowTitleTrackingEnabled: data.windowTitleTrackingEnabled.present
+          ? data.windowTitleTrackingEnabled.value
+          : this.windowTitleTrackingEnabled,
+      idleDetectionEnabled: data.idleDetectionEnabled.present
+          ? data.idleDetectionEnabled.value
+          : this.idleDetectionEnabled,
+      idleThresholdSeconds: data.idleThresholdSeconds.present
+          ? data.idleThresholdSeconds.value
+          : this.idleThresholdSeconds,
       detectBreakActivity: data.detectBreakActivity.present
           ? data.detectBreakActivity.value
           : this.detectBreakActivity,
@@ -1542,6 +1970,9 @@ class LocalAppSetting extends DataClass implements Insertable<LocalAppSetting> {
       automaticTrustedRules: data.automaticTrustedRules.present
           ? data.automaticTrustedRules.value
           : this.automaticTrustedRules,
+      activitySyncEnabled: data.activitySyncEnabled.present
+          ? data.activitySyncEnabled.value
+          : this.activitySyncEnabled,
       automaticConfidenceThreshold: data.automaticConfidenceThreshold.present
           ? data.automaticConfidenceThreshold.value
           : this.automaticConfidenceThreshold,
@@ -1569,11 +2000,20 @@ class LocalAppSetting extends DataClass implements Insertable<LocalAppSetting> {
           ..write('timeZone: $timeZone, ')
           ..write('clockFormat: $clockFormat, ')
           ..write('notificationSoundKey: $notificationSoundKey, ')
+          ..write('healthConnectEnabled: $healthConnectEnabled, ')
+          ..write('cycleTrackingEnabled: $cycleTrackingEnabled, ')
+          ..write('cycleStorageMode: $cycleStorageMode, ')
+          ..write('calendarShowCompleted: $calendarShowCompleted, ')
+          ..write('applicationTrackingEnabled: $applicationTrackingEnabled, ')
+          ..write('windowTitleTrackingEnabled: $windowTitleTrackingEnabled, ')
+          ..write('idleDetectionEnabled: $idleDetectionEnabled, ')
+          ..write('idleThresholdSeconds: $idleThresholdSeconds, ')
           ..write('detectBreakActivity: $detectBreakActivity, ')
           ..write('detectCrossTaskActivity: $detectCrossTaskActivity, ')
           ..write('retainUnclassifiedActivity: $retainUnclassifiedActivity, ')
           ..write('retainTechnicalIdle: $retainTechnicalIdle, ')
           ..write('automaticTrustedRules: $automaticTrustedRules, ')
+          ..write('activitySyncEnabled: $activitySyncEnabled, ')
           ..write(
             'automaticConfidenceThreshold: $automaticConfidenceThreshold, ',
           )
@@ -1588,7 +2028,7 @@ class LocalAppSetting extends DataClass implements Insertable<LocalAppSetting> {
   }
 
   @override
-  int get hashCode => Object.hash(
+  int get hashCode => Object.hashAll([
     id,
     userId,
     localeCode,
@@ -1597,11 +2037,20 @@ class LocalAppSetting extends DataClass implements Insertable<LocalAppSetting> {
     timeZone,
     clockFormat,
     notificationSoundKey,
+    healthConnectEnabled,
+    cycleTrackingEnabled,
+    cycleStorageMode,
+    calendarShowCompleted,
+    applicationTrackingEnabled,
+    windowTitleTrackingEnabled,
+    idleDetectionEnabled,
+    idleThresholdSeconds,
     detectBreakActivity,
     detectCrossTaskActivity,
     retainUnclassifiedActivity,
     retainTechnicalIdle,
     automaticTrustedRules,
+    activitySyncEnabled,
     automaticConfidenceThreshold,
     minimumSuggestionDurationMs,
     revision,
@@ -1609,7 +2058,7 @@ class LocalAppSetting extends DataClass implements Insertable<LocalAppSetting> {
     updatedAt,
     lastCommandId,
     deletedAt,
-  );
+  ]);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -1622,11 +2071,20 @@ class LocalAppSetting extends DataClass implements Insertable<LocalAppSetting> {
           other.timeZone == this.timeZone &&
           other.clockFormat == this.clockFormat &&
           other.notificationSoundKey == this.notificationSoundKey &&
+          other.healthConnectEnabled == this.healthConnectEnabled &&
+          other.cycleTrackingEnabled == this.cycleTrackingEnabled &&
+          other.cycleStorageMode == this.cycleStorageMode &&
+          other.calendarShowCompleted == this.calendarShowCompleted &&
+          other.applicationTrackingEnabled == this.applicationTrackingEnabled &&
+          other.windowTitleTrackingEnabled == this.windowTitleTrackingEnabled &&
+          other.idleDetectionEnabled == this.idleDetectionEnabled &&
+          other.idleThresholdSeconds == this.idleThresholdSeconds &&
           other.detectBreakActivity == this.detectBreakActivity &&
           other.detectCrossTaskActivity == this.detectCrossTaskActivity &&
           other.retainUnclassifiedActivity == this.retainUnclassifiedActivity &&
           other.retainTechnicalIdle == this.retainTechnicalIdle &&
           other.automaticTrustedRules == this.automaticTrustedRules &&
+          other.activitySyncEnabled == this.activitySyncEnabled &&
           other.automaticConfidenceThreshold ==
               this.automaticConfidenceThreshold &&
           other.minimumSuggestionDurationMs ==
@@ -1647,11 +2105,20 @@ class LocalAppSettingsCompanion extends UpdateCompanion<LocalAppSetting> {
   final Value<String> timeZone;
   final Value<String> clockFormat;
   final Value<String> notificationSoundKey;
+  final Value<bool> healthConnectEnabled;
+  final Value<bool> cycleTrackingEnabled;
+  final Value<String> cycleStorageMode;
+  final Value<bool> calendarShowCompleted;
+  final Value<bool> applicationTrackingEnabled;
+  final Value<bool> windowTitleTrackingEnabled;
+  final Value<bool> idleDetectionEnabled;
+  final Value<int> idleThresholdSeconds;
   final Value<bool> detectBreakActivity;
   final Value<bool> detectCrossTaskActivity;
   final Value<bool> retainUnclassifiedActivity;
   final Value<bool> retainTechnicalIdle;
   final Value<bool> automaticTrustedRules;
+  final Value<bool> activitySyncEnabled;
   final Value<double> automaticConfidenceThreshold;
   final Value<int> minimumSuggestionDurationMs;
   final Value<int> revision;
@@ -1669,11 +2136,20 @@ class LocalAppSettingsCompanion extends UpdateCompanion<LocalAppSetting> {
     this.timeZone = const Value.absent(),
     this.clockFormat = const Value.absent(),
     this.notificationSoundKey = const Value.absent(),
+    this.healthConnectEnabled = const Value.absent(),
+    this.cycleTrackingEnabled = const Value.absent(),
+    this.cycleStorageMode = const Value.absent(),
+    this.calendarShowCompleted = const Value.absent(),
+    this.applicationTrackingEnabled = const Value.absent(),
+    this.windowTitleTrackingEnabled = const Value.absent(),
+    this.idleDetectionEnabled = const Value.absent(),
+    this.idleThresholdSeconds = const Value.absent(),
     this.detectBreakActivity = const Value.absent(),
     this.detectCrossTaskActivity = const Value.absent(),
     this.retainUnclassifiedActivity = const Value.absent(),
     this.retainTechnicalIdle = const Value.absent(),
     this.automaticTrustedRules = const Value.absent(),
+    this.activitySyncEnabled = const Value.absent(),
     this.automaticConfidenceThreshold = const Value.absent(),
     this.minimumSuggestionDurationMs = const Value.absent(),
     this.revision = const Value.absent(),
@@ -1692,11 +2168,20 @@ class LocalAppSettingsCompanion extends UpdateCompanion<LocalAppSetting> {
     this.timeZone = const Value.absent(),
     this.clockFormat = const Value.absent(),
     this.notificationSoundKey = const Value.absent(),
+    this.healthConnectEnabled = const Value.absent(),
+    this.cycleTrackingEnabled = const Value.absent(),
+    this.cycleStorageMode = const Value.absent(),
+    this.calendarShowCompleted = const Value.absent(),
+    this.applicationTrackingEnabled = const Value.absent(),
+    this.windowTitleTrackingEnabled = const Value.absent(),
+    this.idleDetectionEnabled = const Value.absent(),
+    this.idleThresholdSeconds = const Value.absent(),
     this.detectBreakActivity = const Value.absent(),
     this.detectCrossTaskActivity = const Value.absent(),
     this.retainUnclassifiedActivity = const Value.absent(),
     this.retainTechnicalIdle = const Value.absent(),
     this.automaticTrustedRules = const Value.absent(),
+    this.activitySyncEnabled = const Value.absent(),
     this.automaticConfidenceThreshold = const Value.absent(),
     this.minimumSuggestionDurationMs = const Value.absent(),
     this.revision = const Value.absent(),
@@ -1717,11 +2202,20 @@ class LocalAppSettingsCompanion extends UpdateCompanion<LocalAppSetting> {
     Expression<String>? timeZone,
     Expression<String>? clockFormat,
     Expression<String>? notificationSoundKey,
+    Expression<bool>? healthConnectEnabled,
+    Expression<bool>? cycleTrackingEnabled,
+    Expression<String>? cycleStorageMode,
+    Expression<bool>? calendarShowCompleted,
+    Expression<bool>? applicationTrackingEnabled,
+    Expression<bool>? windowTitleTrackingEnabled,
+    Expression<bool>? idleDetectionEnabled,
+    Expression<int>? idleThresholdSeconds,
     Expression<bool>? detectBreakActivity,
     Expression<bool>? detectCrossTaskActivity,
     Expression<bool>? retainUnclassifiedActivity,
     Expression<bool>? retainTechnicalIdle,
     Expression<bool>? automaticTrustedRules,
+    Expression<bool>? activitySyncEnabled,
     Expression<double>? automaticConfidenceThreshold,
     Expression<int>? minimumSuggestionDurationMs,
     Expression<int>? revision,
@@ -1741,6 +2235,21 @@ class LocalAppSettingsCompanion extends UpdateCompanion<LocalAppSetting> {
       if (clockFormat != null) 'clock_format': clockFormat,
       if (notificationSoundKey != null)
         'notification_sound_key': notificationSoundKey,
+      if (healthConnectEnabled != null)
+        'health_connect_enabled': healthConnectEnabled,
+      if (cycleTrackingEnabled != null)
+        'cycle_tracking_enabled': cycleTrackingEnabled,
+      if (cycleStorageMode != null) 'cycle_storage_mode': cycleStorageMode,
+      if (calendarShowCompleted != null)
+        'calendar_show_completed': calendarShowCompleted,
+      if (applicationTrackingEnabled != null)
+        'application_tracking_enabled': applicationTrackingEnabled,
+      if (windowTitleTrackingEnabled != null)
+        'window_title_tracking_enabled': windowTitleTrackingEnabled,
+      if (idleDetectionEnabled != null)
+        'idle_detection_enabled': idleDetectionEnabled,
+      if (idleThresholdSeconds != null)
+        'idle_threshold_seconds': idleThresholdSeconds,
       if (detectBreakActivity != null)
         'detect_break_activity': detectBreakActivity,
       if (detectCrossTaskActivity != null)
@@ -1751,6 +2260,8 @@ class LocalAppSettingsCompanion extends UpdateCompanion<LocalAppSetting> {
         'retain_technical_idle': retainTechnicalIdle,
       if (automaticTrustedRules != null)
         'automatic_trusted_rules': automaticTrustedRules,
+      if (activitySyncEnabled != null)
+        'activity_sync_enabled': activitySyncEnabled,
       if (automaticConfidenceThreshold != null)
         'automatic_confidence_threshold': automaticConfidenceThreshold,
       if (minimumSuggestionDurationMs != null)
@@ -1773,11 +2284,20 @@ class LocalAppSettingsCompanion extends UpdateCompanion<LocalAppSetting> {
     Value<String>? timeZone,
     Value<String>? clockFormat,
     Value<String>? notificationSoundKey,
+    Value<bool>? healthConnectEnabled,
+    Value<bool>? cycleTrackingEnabled,
+    Value<String>? cycleStorageMode,
+    Value<bool>? calendarShowCompleted,
+    Value<bool>? applicationTrackingEnabled,
+    Value<bool>? windowTitleTrackingEnabled,
+    Value<bool>? idleDetectionEnabled,
+    Value<int>? idleThresholdSeconds,
     Value<bool>? detectBreakActivity,
     Value<bool>? detectCrossTaskActivity,
     Value<bool>? retainUnclassifiedActivity,
     Value<bool>? retainTechnicalIdle,
     Value<bool>? automaticTrustedRules,
+    Value<bool>? activitySyncEnabled,
     Value<double>? automaticConfidenceThreshold,
     Value<int>? minimumSuggestionDurationMs,
     Value<int>? revision,
@@ -1796,6 +2316,17 @@ class LocalAppSettingsCompanion extends UpdateCompanion<LocalAppSetting> {
       timeZone: timeZone ?? this.timeZone,
       clockFormat: clockFormat ?? this.clockFormat,
       notificationSoundKey: notificationSoundKey ?? this.notificationSoundKey,
+      healthConnectEnabled: healthConnectEnabled ?? this.healthConnectEnabled,
+      cycleTrackingEnabled: cycleTrackingEnabled ?? this.cycleTrackingEnabled,
+      cycleStorageMode: cycleStorageMode ?? this.cycleStorageMode,
+      calendarShowCompleted:
+          calendarShowCompleted ?? this.calendarShowCompleted,
+      applicationTrackingEnabled:
+          applicationTrackingEnabled ?? this.applicationTrackingEnabled,
+      windowTitleTrackingEnabled:
+          windowTitleTrackingEnabled ?? this.windowTitleTrackingEnabled,
+      idleDetectionEnabled: idleDetectionEnabled ?? this.idleDetectionEnabled,
+      idleThresholdSeconds: idleThresholdSeconds ?? this.idleThresholdSeconds,
       detectBreakActivity: detectBreakActivity ?? this.detectBreakActivity,
       detectCrossTaskActivity:
           detectCrossTaskActivity ?? this.detectCrossTaskActivity,
@@ -1804,6 +2335,7 @@ class LocalAppSettingsCompanion extends UpdateCompanion<LocalAppSetting> {
       retainTechnicalIdle: retainTechnicalIdle ?? this.retainTechnicalIdle,
       automaticTrustedRules:
           automaticTrustedRules ?? this.automaticTrustedRules,
+      activitySyncEnabled: activitySyncEnabled ?? this.activitySyncEnabled,
       automaticConfidenceThreshold:
           automaticConfidenceThreshold ?? this.automaticConfidenceThreshold,
       minimumSuggestionDurationMs:
@@ -1846,6 +2378,42 @@ class LocalAppSettingsCompanion extends UpdateCompanion<LocalAppSetting> {
         notificationSoundKey.value,
       );
     }
+    if (healthConnectEnabled.present) {
+      map['health_connect_enabled'] = Variable<bool>(
+        healthConnectEnabled.value,
+      );
+    }
+    if (cycleTrackingEnabled.present) {
+      map['cycle_tracking_enabled'] = Variable<bool>(
+        cycleTrackingEnabled.value,
+      );
+    }
+    if (cycleStorageMode.present) {
+      map['cycle_storage_mode'] = Variable<String>(cycleStorageMode.value);
+    }
+    if (calendarShowCompleted.present) {
+      map['calendar_show_completed'] = Variable<bool>(
+        calendarShowCompleted.value,
+      );
+    }
+    if (applicationTrackingEnabled.present) {
+      map['application_tracking_enabled'] = Variable<bool>(
+        applicationTrackingEnabled.value,
+      );
+    }
+    if (windowTitleTrackingEnabled.present) {
+      map['window_title_tracking_enabled'] = Variable<bool>(
+        windowTitleTrackingEnabled.value,
+      );
+    }
+    if (idleDetectionEnabled.present) {
+      map['idle_detection_enabled'] = Variable<bool>(
+        idleDetectionEnabled.value,
+      );
+    }
+    if (idleThresholdSeconds.present) {
+      map['idle_threshold_seconds'] = Variable<int>(idleThresholdSeconds.value);
+    }
     if (detectBreakActivity.present) {
       map['detect_break_activity'] = Variable<bool>(detectBreakActivity.value);
     }
@@ -1866,6 +2434,9 @@ class LocalAppSettingsCompanion extends UpdateCompanion<LocalAppSetting> {
       map['automatic_trusted_rules'] = Variable<bool>(
         automaticTrustedRules.value,
       );
+    }
+    if (activitySyncEnabled.present) {
+      map['activity_sync_enabled'] = Variable<bool>(activitySyncEnabled.value);
     }
     if (automaticConfidenceThreshold.present) {
       map['automatic_confidence_threshold'] = Variable<double>(
@@ -1909,11 +2480,20 @@ class LocalAppSettingsCompanion extends UpdateCompanion<LocalAppSetting> {
           ..write('timeZone: $timeZone, ')
           ..write('clockFormat: $clockFormat, ')
           ..write('notificationSoundKey: $notificationSoundKey, ')
+          ..write('healthConnectEnabled: $healthConnectEnabled, ')
+          ..write('cycleTrackingEnabled: $cycleTrackingEnabled, ')
+          ..write('cycleStorageMode: $cycleStorageMode, ')
+          ..write('calendarShowCompleted: $calendarShowCompleted, ')
+          ..write('applicationTrackingEnabled: $applicationTrackingEnabled, ')
+          ..write('windowTitleTrackingEnabled: $windowTitleTrackingEnabled, ')
+          ..write('idleDetectionEnabled: $idleDetectionEnabled, ')
+          ..write('idleThresholdSeconds: $idleThresholdSeconds, ')
           ..write('detectBreakActivity: $detectBreakActivity, ')
           ..write('detectCrossTaskActivity: $detectCrossTaskActivity, ')
           ..write('retainUnclassifiedActivity: $retainUnclassifiedActivity, ')
           ..write('retainTechnicalIdle: $retainTechnicalIdle, ')
           ..write('automaticTrustedRules: $automaticTrustedRules, ')
+          ..write('activitySyncEnabled: $activitySyncEnabled, ')
           ..write(
             'automaticConfidenceThreshold: $automaticConfidenceThreshold, ',
           )
@@ -3002,6 +3582,29 @@ class $LocalTasksTable extends LocalTasks
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _occurrenceKeyMeta = const VerificationMeta(
+    'occurrenceKey',
+  );
+  @override
+  late final GeneratedColumn<String> occurrenceKey = GeneratedColumn<String>(
+    'occurrence_key',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _dataJsonMeta = const VerificationMeta(
+    'dataJson',
+  );
+  @override
+  late final GeneratedColumn<String> dataJson = GeneratedColumn<String>(
+    'data_json',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('{}'),
+  );
   static const VerificationMeta _revisionMeta = const VerificationMeta(
     'revision',
   );
@@ -3106,6 +3709,8 @@ class $LocalTasksTable extends LocalTasks
     progress,
     roadmapId,
     roadmapPhaseId,
+    occurrenceKey,
+    dataJson,
     revision,
     createdAt,
     updatedAt,
@@ -3294,6 +3899,21 @@ class $LocalTasksTable extends LocalTasks
         ),
       );
     }
+    if (data.containsKey('occurrence_key')) {
+      context.handle(
+        _occurrenceKeyMeta,
+        occurrenceKey.isAcceptableOrUnknown(
+          data['occurrence_key']!,
+          _occurrenceKeyMeta,
+        ),
+      );
+    }
+    if (data.containsKey('data_json')) {
+      context.handle(
+        _dataJsonMeta,
+        dataJson.isAcceptableOrUnknown(data['data_json']!, _dataJsonMeta),
+      );
+    }
     if (data.containsKey('revision')) {
       context.handle(
         _revisionMeta,
@@ -3446,6 +4066,14 @@ class $LocalTasksTable extends LocalTasks
         DriftSqlType.string,
         data['${effectivePrefix}roadmap_phase_id'],
       ),
+      occurrenceKey: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}occurrence_key'],
+      ),
+      dataJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}data_json'],
+      )!,
       revision: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}revision'],
@@ -3506,6 +4134,8 @@ class LocalTask extends DataClass implements Insertable<LocalTask> {
   final double progress;
   final String? roadmapId;
   final String? roadmapPhaseId;
+  final String? occurrenceKey;
+  final String dataJson;
   final int revision;
   final DateTime createdAt;
   final DateTime updatedAt;
@@ -3536,6 +4166,8 @@ class LocalTask extends DataClass implements Insertable<LocalTask> {
     required this.progress,
     this.roadmapId,
     this.roadmapPhaseId,
+    this.occurrenceKey,
+    required this.dataJson,
     required this.revision,
     required this.createdAt,
     required this.updatedAt,
@@ -3589,6 +4221,10 @@ class LocalTask extends DataClass implements Insertable<LocalTask> {
     if (!nullToAbsent || roadmapPhaseId != null) {
       map['roadmap_phase_id'] = Variable<String>(roadmapPhaseId);
     }
+    if (!nullToAbsent || occurrenceKey != null) {
+      map['occurrence_key'] = Variable<String>(occurrenceKey);
+    }
+    map['data_json'] = Variable<String>(dataJson);
     map['revision'] = Variable<int>(revision);
     map['created_at'] = Variable<DateTime>(createdAt);
     map['updated_at'] = Variable<DateTime>(updatedAt);
@@ -3651,6 +4287,10 @@ class LocalTask extends DataClass implements Insertable<LocalTask> {
       roadmapPhaseId: roadmapPhaseId == null && nullToAbsent
           ? const Value.absent()
           : Value(roadmapPhaseId),
+      occurrenceKey: occurrenceKey == null && nullToAbsent
+          ? const Value.absent()
+          : Value(occurrenceKey),
+      dataJson: Value(dataJson),
       revision: Value(revision),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
@@ -3699,6 +4339,8 @@ class LocalTask extends DataClass implements Insertable<LocalTask> {
       progress: serializer.fromJson<double>(json['progress']),
       roadmapId: serializer.fromJson<String?>(json['roadmapId']),
       roadmapPhaseId: serializer.fromJson<String?>(json['roadmapPhaseId']),
+      occurrenceKey: serializer.fromJson<String?>(json['occurrenceKey']),
+      dataJson: serializer.fromJson<String>(json['dataJson']),
       revision: serializer.fromJson<int>(json['revision']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
@@ -3738,6 +4380,8 @@ class LocalTask extends DataClass implements Insertable<LocalTask> {
       'progress': serializer.toJson<double>(progress),
       'roadmapId': serializer.toJson<String?>(roadmapId),
       'roadmapPhaseId': serializer.toJson<String?>(roadmapPhaseId),
+      'occurrenceKey': serializer.toJson<String?>(occurrenceKey),
+      'dataJson': serializer.toJson<String>(dataJson),
       'revision': serializer.toJson<int>(revision),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
@@ -3771,6 +4415,8 @@ class LocalTask extends DataClass implements Insertable<LocalTask> {
     double? progress,
     Value<String?> roadmapId = const Value.absent(),
     Value<String?> roadmapPhaseId = const Value.absent(),
+    Value<String?> occurrenceKey = const Value.absent(),
+    String? dataJson,
     int? revision,
     DateTime? createdAt,
     DateTime? updatedAt,
@@ -3805,6 +4451,10 @@ class LocalTask extends DataClass implements Insertable<LocalTask> {
     roadmapPhaseId: roadmapPhaseId.present
         ? roadmapPhaseId.value
         : this.roadmapPhaseId,
+    occurrenceKey: occurrenceKey.present
+        ? occurrenceKey.value
+        : this.occurrenceKey,
+    dataJson: dataJson ?? this.dataJson,
     revision: revision ?? this.revision,
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
@@ -3869,6 +4519,10 @@ class LocalTask extends DataClass implements Insertable<LocalTask> {
       roadmapPhaseId: data.roadmapPhaseId.present
           ? data.roadmapPhaseId.value
           : this.roadmapPhaseId,
+      occurrenceKey: data.occurrenceKey.present
+          ? data.occurrenceKey.value
+          : this.occurrenceKey,
+      dataJson: data.dataJson.present ? data.dataJson.value : this.dataJson,
       revision: data.revision.present ? data.revision.value : this.revision,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
@@ -3910,6 +4564,8 @@ class LocalTask extends DataClass implements Insertable<LocalTask> {
           ..write('progress: $progress, ')
           ..write('roadmapId: $roadmapId, ')
           ..write('roadmapPhaseId: $roadmapPhaseId, ')
+          ..write('occurrenceKey: $occurrenceKey, ')
+          ..write('dataJson: $dataJson, ')
           ..write('revision: $revision, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
@@ -3945,6 +4601,8 @@ class LocalTask extends DataClass implements Insertable<LocalTask> {
     progress,
     roadmapId,
     roadmapPhaseId,
+    occurrenceKey,
+    dataJson,
     revision,
     createdAt,
     updatedAt,
@@ -3979,6 +4637,8 @@ class LocalTask extends DataClass implements Insertable<LocalTask> {
           other.progress == this.progress &&
           other.roadmapId == this.roadmapId &&
           other.roadmapPhaseId == this.roadmapPhaseId &&
+          other.occurrenceKey == this.occurrenceKey &&
+          other.dataJson == this.dataJson &&
           other.revision == this.revision &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt &&
@@ -4011,6 +4671,8 @@ class LocalTasksCompanion extends UpdateCompanion<LocalTask> {
   final Value<double> progress;
   final Value<String?> roadmapId;
   final Value<String?> roadmapPhaseId;
+  final Value<String?> occurrenceKey;
+  final Value<String> dataJson;
   final Value<int> revision;
   final Value<DateTime> createdAt;
   final Value<DateTime> updatedAt;
@@ -4042,6 +4704,8 @@ class LocalTasksCompanion extends UpdateCompanion<LocalTask> {
     this.progress = const Value.absent(),
     this.roadmapId = const Value.absent(),
     this.roadmapPhaseId = const Value.absent(),
+    this.occurrenceKey = const Value.absent(),
+    this.dataJson = const Value.absent(),
     this.revision = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
@@ -4074,6 +4738,8 @@ class LocalTasksCompanion extends UpdateCompanion<LocalTask> {
     this.progress = const Value.absent(),
     this.roadmapId = const Value.absent(),
     this.roadmapPhaseId = const Value.absent(),
+    this.occurrenceKey = const Value.absent(),
+    this.dataJson = const Value.absent(),
     this.revision = const Value.absent(),
     required DateTime createdAt,
     required DateTime updatedAt,
@@ -4110,6 +4776,8 @@ class LocalTasksCompanion extends UpdateCompanion<LocalTask> {
     Expression<double>? progress,
     Expression<String>? roadmapId,
     Expression<String>? roadmapPhaseId,
+    Expression<String>? occurrenceKey,
+    Expression<String>? dataJson,
     Expression<int>? revision,
     Expression<DateTime>? createdAt,
     Expression<DateTime>? updatedAt,
@@ -4143,6 +4811,8 @@ class LocalTasksCompanion extends UpdateCompanion<LocalTask> {
       if (progress != null) 'progress': progress,
       if (roadmapId != null) 'roadmap_id': roadmapId,
       if (roadmapPhaseId != null) 'roadmap_phase_id': roadmapPhaseId,
+      if (occurrenceKey != null) 'occurrence_key': occurrenceKey,
+      if (dataJson != null) 'data_json': dataJson,
       if (revision != null) 'revision': revision,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
@@ -4177,6 +4847,8 @@ class LocalTasksCompanion extends UpdateCompanion<LocalTask> {
     Value<double>? progress,
     Value<String?>? roadmapId,
     Value<String?>? roadmapPhaseId,
+    Value<String?>? occurrenceKey,
+    Value<String>? dataJson,
     Value<int>? revision,
     Value<DateTime>? createdAt,
     Value<DateTime>? updatedAt,
@@ -4209,6 +4881,8 @@ class LocalTasksCompanion extends UpdateCompanion<LocalTask> {
       progress: progress ?? this.progress,
       roadmapId: roadmapId ?? this.roadmapId,
       roadmapPhaseId: roadmapPhaseId ?? this.roadmapPhaseId,
+      occurrenceKey: occurrenceKey ?? this.occurrenceKey,
+      dataJson: dataJson ?? this.dataJson,
       revision: revision ?? this.revision,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
@@ -4289,6 +4963,12 @@ class LocalTasksCompanion extends UpdateCompanion<LocalTask> {
     if (roadmapPhaseId.present) {
       map['roadmap_phase_id'] = Variable<String>(roadmapPhaseId.value);
     }
+    if (occurrenceKey.present) {
+      map['occurrence_key'] = Variable<String>(occurrenceKey.value);
+    }
+    if (dataJson.present) {
+      map['data_json'] = Variable<String>(dataJson.value);
+    }
     if (revision.present) {
       map['revision'] = Variable<int>(revision.value);
     }
@@ -4341,6 +5021,8 @@ class LocalTasksCompanion extends UpdateCompanion<LocalTask> {
           ..write('progress: $progress, ')
           ..write('roadmapId: $roadmapId, ')
           ..write('roadmapPhaseId: $roadmapPhaseId, ')
+          ..write('occurrenceKey: $occurrenceKey, ')
+          ..write('dataJson: $dataJson, ')
           ..write('revision: $revision, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
@@ -5093,6 +5775,17 @@ class $LocalRoadmapsTable extends LocalRoadmaps
     requiredDuringInsert: false,
     defaultValue: const Constant('active'),
   );
+  static const VerificationMeta _plannedStartMeta = const VerificationMeta(
+    'plannedStart',
+  );
+  @override
+  late final GeneratedColumn<DateTime> plannedStart = GeneratedColumn<DateTime>(
+    'planned_start',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _originalTargetDateMeta =
       const VerificationMeta('originalTargetDate');
   @override
@@ -5115,6 +5808,18 @@ class $LocalRoadmapsTable extends LocalRoadmaps
         type: DriftSqlType.dateTime,
         requiredDuringInsert: false,
       );
+  static const VerificationMeta _finalOutcomeMeta = const VerificationMeta(
+    'finalOutcome',
+  );
+  @override
+  late final GeneratedColumn<String> finalOutcome = GeneratedColumn<String>(
+    'final_outcome',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(''),
+  );
   static const VerificationMeta _progressMeta = const VerificationMeta(
     'progress',
   );
@@ -5162,6 +5867,18 @@ class $LocalRoadmapsTable extends LocalRoadmaps
     requiredDuringInsert: false,
     defaultValue: const Constant('low'),
   );
+  static const VerificationMeta _forecastConfidenceMeta =
+      const VerificationMeta('forecastConfidence');
+  @override
+  late final GeneratedColumn<String> forecastConfidence =
+      GeneratedColumn<String>(
+        'forecast_confidence',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+        defaultValue: const Constant('low'),
+      );
   static const VerificationMeta _revisionMeta = const VerificationMeta(
     'revision',
   );
@@ -5237,12 +5954,15 @@ class $LocalRoadmapsTable extends LocalRoadmaps
     title,
     description,
     status,
+    plannedStart,
     originalTargetDate,
     forecastTargetDate,
+    finalOutcome,
     progress,
     requiredEffortMs,
     completedEffortMs,
     riskLevel,
+    forecastConfidence,
     revision,
     createdAt,
     updatedAt,
@@ -5298,6 +6018,15 @@ class $LocalRoadmapsTable extends LocalRoadmaps
         status.isAcceptableOrUnknown(data['status']!, _statusMeta),
       );
     }
+    if (data.containsKey('planned_start')) {
+      context.handle(
+        _plannedStartMeta,
+        plannedStart.isAcceptableOrUnknown(
+          data['planned_start']!,
+          _plannedStartMeta,
+        ),
+      );
+    }
     if (data.containsKey('original_target_date')) {
       context.handle(
         _originalTargetDateMeta,
@@ -5313,6 +6042,15 @@ class $LocalRoadmapsTable extends LocalRoadmaps
         forecastTargetDate.isAcceptableOrUnknown(
           data['forecast_target_date']!,
           _forecastTargetDateMeta,
+        ),
+      );
+    }
+    if (data.containsKey('final_outcome')) {
+      context.handle(
+        _finalOutcomeMeta,
+        finalOutcome.isAcceptableOrUnknown(
+          data['final_outcome']!,
+          _finalOutcomeMeta,
         ),
       );
     }
@@ -5344,6 +6082,15 @@ class $LocalRoadmapsTable extends LocalRoadmaps
       context.handle(
         _riskLevelMeta,
         riskLevel.isAcceptableOrUnknown(data['risk_level']!, _riskLevelMeta),
+      );
+    }
+    if (data.containsKey('forecast_confidence')) {
+      context.handle(
+        _forecastConfidenceMeta,
+        forecastConfidence.isAcceptableOrUnknown(
+          data['forecast_confidence']!,
+          _forecastConfidenceMeta,
+        ),
       );
     }
     if (data.containsKey('revision')) {
@@ -5421,6 +6168,10 @@ class $LocalRoadmapsTable extends LocalRoadmaps
         DriftSqlType.string,
         data['${effectivePrefix}status'],
       )!,
+      plannedStart: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}planned_start'],
+      ),
       originalTargetDate: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}original_target_date'],
@@ -5429,6 +6180,10 @@ class $LocalRoadmapsTable extends LocalRoadmaps
         DriftSqlType.dateTime,
         data['${effectivePrefix}forecast_target_date'],
       ),
+      finalOutcome: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}final_outcome'],
+      )!,
       progress: attachedDatabase.typeMapping.read(
         DriftSqlType.double,
         data['${effectivePrefix}progress'],
@@ -5444,6 +6199,10 @@ class $LocalRoadmapsTable extends LocalRoadmaps
       riskLevel: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}risk_level'],
+      )!,
+      forecastConfidence: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}forecast_confidence'],
       )!,
       revision: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
@@ -5484,12 +6243,15 @@ class LocalRoadmap extends DataClass implements Insertable<LocalRoadmap> {
   final String title;
   final String description;
   final String status;
+  final DateTime? plannedStart;
   final DateTime? originalTargetDate;
   final DateTime? forecastTargetDate;
+  final String finalOutcome;
   final double progress;
   final int? requiredEffortMs;
   final int completedEffortMs;
   final String riskLevel;
+  final String forecastConfidence;
   final int revision;
   final DateTime createdAt;
   final DateTime updatedAt;
@@ -5502,12 +6264,15 @@ class LocalRoadmap extends DataClass implements Insertable<LocalRoadmap> {
     required this.title,
     required this.description,
     required this.status,
+    this.plannedStart,
     this.originalTargetDate,
     this.forecastTargetDate,
+    required this.finalOutcome,
     required this.progress,
     this.requiredEffortMs,
     required this.completedEffortMs,
     required this.riskLevel,
+    required this.forecastConfidence,
     required this.revision,
     required this.createdAt,
     required this.updatedAt,
@@ -5523,18 +6288,23 @@ class LocalRoadmap extends DataClass implements Insertable<LocalRoadmap> {
     map['title'] = Variable<String>(title);
     map['description'] = Variable<String>(description);
     map['status'] = Variable<String>(status);
+    if (!nullToAbsent || plannedStart != null) {
+      map['planned_start'] = Variable<DateTime>(plannedStart);
+    }
     if (!nullToAbsent || originalTargetDate != null) {
       map['original_target_date'] = Variable<DateTime>(originalTargetDate);
     }
     if (!nullToAbsent || forecastTargetDate != null) {
       map['forecast_target_date'] = Variable<DateTime>(forecastTargetDate);
     }
+    map['final_outcome'] = Variable<String>(finalOutcome);
     map['progress'] = Variable<double>(progress);
     if (!nullToAbsent || requiredEffortMs != null) {
       map['required_effort_ms'] = Variable<int>(requiredEffortMs);
     }
     map['completed_effort_ms'] = Variable<int>(completedEffortMs);
     map['risk_level'] = Variable<String>(riskLevel);
+    map['forecast_confidence'] = Variable<String>(forecastConfidence);
     map['revision'] = Variable<int>(revision);
     map['created_at'] = Variable<DateTime>(createdAt);
     map['updated_at'] = Variable<DateTime>(updatedAt);
@@ -5557,18 +6327,23 @@ class LocalRoadmap extends DataClass implements Insertable<LocalRoadmap> {
       title: Value(title),
       description: Value(description),
       status: Value(status),
+      plannedStart: plannedStart == null && nullToAbsent
+          ? const Value.absent()
+          : Value(plannedStart),
       originalTargetDate: originalTargetDate == null && nullToAbsent
           ? const Value.absent()
           : Value(originalTargetDate),
       forecastTargetDate: forecastTargetDate == null && nullToAbsent
           ? const Value.absent()
           : Value(forecastTargetDate),
+      finalOutcome: Value(finalOutcome),
       progress: Value(progress),
       requiredEffortMs: requiredEffortMs == null && nullToAbsent
           ? const Value.absent()
           : Value(requiredEffortMs),
       completedEffortMs: Value(completedEffortMs),
       riskLevel: Value(riskLevel),
+      forecastConfidence: Value(forecastConfidence),
       revision: Value(revision),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
@@ -5595,16 +6370,21 @@ class LocalRoadmap extends DataClass implements Insertable<LocalRoadmap> {
       title: serializer.fromJson<String>(json['title']),
       description: serializer.fromJson<String>(json['description']),
       status: serializer.fromJson<String>(json['status']),
+      plannedStart: serializer.fromJson<DateTime?>(json['plannedStart']),
       originalTargetDate: serializer.fromJson<DateTime?>(
         json['originalTargetDate'],
       ),
       forecastTargetDate: serializer.fromJson<DateTime?>(
         json['forecastTargetDate'],
       ),
+      finalOutcome: serializer.fromJson<String>(json['finalOutcome']),
       progress: serializer.fromJson<double>(json['progress']),
       requiredEffortMs: serializer.fromJson<int?>(json['requiredEffortMs']),
       completedEffortMs: serializer.fromJson<int>(json['completedEffortMs']),
       riskLevel: serializer.fromJson<String>(json['riskLevel']),
+      forecastConfidence: serializer.fromJson<String>(
+        json['forecastConfidence'],
+      ),
       revision: serializer.fromJson<int>(json['revision']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
@@ -5624,12 +6404,15 @@ class LocalRoadmap extends DataClass implements Insertable<LocalRoadmap> {
       'title': serializer.toJson<String>(title),
       'description': serializer.toJson<String>(description),
       'status': serializer.toJson<String>(status),
+      'plannedStart': serializer.toJson<DateTime?>(plannedStart),
       'originalTargetDate': serializer.toJson<DateTime?>(originalTargetDate),
       'forecastTargetDate': serializer.toJson<DateTime?>(forecastTargetDate),
+      'finalOutcome': serializer.toJson<String>(finalOutcome),
       'progress': serializer.toJson<double>(progress),
       'requiredEffortMs': serializer.toJson<int?>(requiredEffortMs),
       'completedEffortMs': serializer.toJson<int>(completedEffortMs),
       'riskLevel': serializer.toJson<String>(riskLevel),
+      'forecastConfidence': serializer.toJson<String>(forecastConfidence),
       'revision': serializer.toJson<int>(revision),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
@@ -5645,12 +6428,15 @@ class LocalRoadmap extends DataClass implements Insertable<LocalRoadmap> {
     String? title,
     String? description,
     String? status,
+    Value<DateTime?> plannedStart = const Value.absent(),
     Value<DateTime?> originalTargetDate = const Value.absent(),
     Value<DateTime?> forecastTargetDate = const Value.absent(),
+    String? finalOutcome,
     double? progress,
     Value<int?> requiredEffortMs = const Value.absent(),
     int? completedEffortMs,
     String? riskLevel,
+    String? forecastConfidence,
     int? revision,
     DateTime? createdAt,
     DateTime? updatedAt,
@@ -5663,18 +6449,21 @@ class LocalRoadmap extends DataClass implements Insertable<LocalRoadmap> {
     title: title ?? this.title,
     description: description ?? this.description,
     status: status ?? this.status,
+    plannedStart: plannedStart.present ? plannedStart.value : this.plannedStart,
     originalTargetDate: originalTargetDate.present
         ? originalTargetDate.value
         : this.originalTargetDate,
     forecastTargetDate: forecastTargetDate.present
         ? forecastTargetDate.value
         : this.forecastTargetDate,
+    finalOutcome: finalOutcome ?? this.finalOutcome,
     progress: progress ?? this.progress,
     requiredEffortMs: requiredEffortMs.present
         ? requiredEffortMs.value
         : this.requiredEffortMs,
     completedEffortMs: completedEffortMs ?? this.completedEffortMs,
     riskLevel: riskLevel ?? this.riskLevel,
+    forecastConfidence: forecastConfidence ?? this.forecastConfidence,
     revision: revision ?? this.revision,
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
@@ -5695,12 +6484,18 @@ class LocalRoadmap extends DataClass implements Insertable<LocalRoadmap> {
           ? data.description.value
           : this.description,
       status: data.status.present ? data.status.value : this.status,
+      plannedStart: data.plannedStart.present
+          ? data.plannedStart.value
+          : this.plannedStart,
       originalTargetDate: data.originalTargetDate.present
           ? data.originalTargetDate.value
           : this.originalTargetDate,
       forecastTargetDate: data.forecastTargetDate.present
           ? data.forecastTargetDate.value
           : this.forecastTargetDate,
+      finalOutcome: data.finalOutcome.present
+          ? data.finalOutcome.value
+          : this.finalOutcome,
       progress: data.progress.present ? data.progress.value : this.progress,
       requiredEffortMs: data.requiredEffortMs.present
           ? data.requiredEffortMs.value
@@ -5709,6 +6504,9 @@ class LocalRoadmap extends DataClass implements Insertable<LocalRoadmap> {
           ? data.completedEffortMs.value
           : this.completedEffortMs,
       riskLevel: data.riskLevel.present ? data.riskLevel.value : this.riskLevel,
+      forecastConfidence: data.forecastConfidence.present
+          ? data.forecastConfidence.value
+          : this.forecastConfidence,
       revision: data.revision.present ? data.revision.value : this.revision,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
@@ -5730,12 +6528,15 @@ class LocalRoadmap extends DataClass implements Insertable<LocalRoadmap> {
           ..write('title: $title, ')
           ..write('description: $description, ')
           ..write('status: $status, ')
+          ..write('plannedStart: $plannedStart, ')
           ..write('originalTargetDate: $originalTargetDate, ')
           ..write('forecastTargetDate: $forecastTargetDate, ')
+          ..write('finalOutcome: $finalOutcome, ')
           ..write('progress: $progress, ')
           ..write('requiredEffortMs: $requiredEffortMs, ')
           ..write('completedEffortMs: $completedEffortMs, ')
           ..write('riskLevel: $riskLevel, ')
+          ..write('forecastConfidence: $forecastConfidence, ')
           ..write('revision: $revision, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
@@ -5753,12 +6554,15 @@ class LocalRoadmap extends DataClass implements Insertable<LocalRoadmap> {
     title,
     description,
     status,
+    plannedStart,
     originalTargetDate,
     forecastTargetDate,
+    finalOutcome,
     progress,
     requiredEffortMs,
     completedEffortMs,
     riskLevel,
+    forecastConfidence,
     revision,
     createdAt,
     updatedAt,
@@ -5775,12 +6579,15 @@ class LocalRoadmap extends DataClass implements Insertable<LocalRoadmap> {
           other.title == this.title &&
           other.description == this.description &&
           other.status == this.status &&
+          other.plannedStart == this.plannedStart &&
           other.originalTargetDate == this.originalTargetDate &&
           other.forecastTargetDate == this.forecastTargetDate &&
+          other.finalOutcome == this.finalOutcome &&
           other.progress == this.progress &&
           other.requiredEffortMs == this.requiredEffortMs &&
           other.completedEffortMs == this.completedEffortMs &&
           other.riskLevel == this.riskLevel &&
+          other.forecastConfidence == this.forecastConfidence &&
           other.revision == this.revision &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt &&
@@ -5795,12 +6602,15 @@ class LocalRoadmapsCompanion extends UpdateCompanion<LocalRoadmap> {
   final Value<String> title;
   final Value<String> description;
   final Value<String> status;
+  final Value<DateTime?> plannedStart;
   final Value<DateTime?> originalTargetDate;
   final Value<DateTime?> forecastTargetDate;
+  final Value<String> finalOutcome;
   final Value<double> progress;
   final Value<int?> requiredEffortMs;
   final Value<int> completedEffortMs;
   final Value<String> riskLevel;
+  final Value<String> forecastConfidence;
   final Value<int> revision;
   final Value<DateTime> createdAt;
   final Value<DateTime> updatedAt;
@@ -5814,12 +6624,15 @@ class LocalRoadmapsCompanion extends UpdateCompanion<LocalRoadmap> {
     this.title = const Value.absent(),
     this.description = const Value.absent(),
     this.status = const Value.absent(),
+    this.plannedStart = const Value.absent(),
     this.originalTargetDate = const Value.absent(),
     this.forecastTargetDate = const Value.absent(),
+    this.finalOutcome = const Value.absent(),
     this.progress = const Value.absent(),
     this.requiredEffortMs = const Value.absent(),
     this.completedEffortMs = const Value.absent(),
     this.riskLevel = const Value.absent(),
+    this.forecastConfidence = const Value.absent(),
     this.revision = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
@@ -5834,12 +6647,15 @@ class LocalRoadmapsCompanion extends UpdateCompanion<LocalRoadmap> {
     required String title,
     this.description = const Value.absent(),
     this.status = const Value.absent(),
+    this.plannedStart = const Value.absent(),
     this.originalTargetDate = const Value.absent(),
     this.forecastTargetDate = const Value.absent(),
+    this.finalOutcome = const Value.absent(),
     this.progress = const Value.absent(),
     this.requiredEffortMs = const Value.absent(),
     this.completedEffortMs = const Value.absent(),
     this.riskLevel = const Value.absent(),
+    this.forecastConfidence = const Value.absent(),
     this.revision = const Value.absent(),
     required DateTime createdAt,
     required DateTime updatedAt,
@@ -5858,12 +6674,15 @@ class LocalRoadmapsCompanion extends UpdateCompanion<LocalRoadmap> {
     Expression<String>? title,
     Expression<String>? description,
     Expression<String>? status,
+    Expression<DateTime>? plannedStart,
     Expression<DateTime>? originalTargetDate,
     Expression<DateTime>? forecastTargetDate,
+    Expression<String>? finalOutcome,
     Expression<double>? progress,
     Expression<int>? requiredEffortMs,
     Expression<int>? completedEffortMs,
     Expression<String>? riskLevel,
+    Expression<String>? forecastConfidence,
     Expression<int>? revision,
     Expression<DateTime>? createdAt,
     Expression<DateTime>? updatedAt,
@@ -5878,14 +6697,17 @@ class LocalRoadmapsCompanion extends UpdateCompanion<LocalRoadmap> {
       if (title != null) 'title': title,
       if (description != null) 'description': description,
       if (status != null) 'status': status,
+      if (plannedStart != null) 'planned_start': plannedStart,
       if (originalTargetDate != null)
         'original_target_date': originalTargetDate,
       if (forecastTargetDate != null)
         'forecast_target_date': forecastTargetDate,
+      if (finalOutcome != null) 'final_outcome': finalOutcome,
       if (progress != null) 'progress': progress,
       if (requiredEffortMs != null) 'required_effort_ms': requiredEffortMs,
       if (completedEffortMs != null) 'completed_effort_ms': completedEffortMs,
       if (riskLevel != null) 'risk_level': riskLevel,
+      if (forecastConfidence != null) 'forecast_confidence': forecastConfidence,
       if (revision != null) 'revision': revision,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
@@ -5902,12 +6724,15 @@ class LocalRoadmapsCompanion extends UpdateCompanion<LocalRoadmap> {
     Value<String>? title,
     Value<String>? description,
     Value<String>? status,
+    Value<DateTime?>? plannedStart,
     Value<DateTime?>? originalTargetDate,
     Value<DateTime?>? forecastTargetDate,
+    Value<String>? finalOutcome,
     Value<double>? progress,
     Value<int?>? requiredEffortMs,
     Value<int>? completedEffortMs,
     Value<String>? riskLevel,
+    Value<String>? forecastConfidence,
     Value<int>? revision,
     Value<DateTime>? createdAt,
     Value<DateTime>? updatedAt,
@@ -5922,12 +6747,15 @@ class LocalRoadmapsCompanion extends UpdateCompanion<LocalRoadmap> {
       title: title ?? this.title,
       description: description ?? this.description,
       status: status ?? this.status,
+      plannedStart: plannedStart ?? this.plannedStart,
       originalTargetDate: originalTargetDate ?? this.originalTargetDate,
       forecastTargetDate: forecastTargetDate ?? this.forecastTargetDate,
+      finalOutcome: finalOutcome ?? this.finalOutcome,
       progress: progress ?? this.progress,
       requiredEffortMs: requiredEffortMs ?? this.requiredEffortMs,
       completedEffortMs: completedEffortMs ?? this.completedEffortMs,
       riskLevel: riskLevel ?? this.riskLevel,
+      forecastConfidence: forecastConfidence ?? this.forecastConfidence,
       revision: revision ?? this.revision,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
@@ -5956,6 +6784,9 @@ class LocalRoadmapsCompanion extends UpdateCompanion<LocalRoadmap> {
     if (status.present) {
       map['status'] = Variable<String>(status.value);
     }
+    if (plannedStart.present) {
+      map['planned_start'] = Variable<DateTime>(plannedStart.value);
+    }
     if (originalTargetDate.present) {
       map['original_target_date'] = Variable<DateTime>(
         originalTargetDate.value,
@@ -5965,6 +6796,9 @@ class LocalRoadmapsCompanion extends UpdateCompanion<LocalRoadmap> {
       map['forecast_target_date'] = Variable<DateTime>(
         forecastTargetDate.value,
       );
+    }
+    if (finalOutcome.present) {
+      map['final_outcome'] = Variable<String>(finalOutcome.value);
     }
     if (progress.present) {
       map['progress'] = Variable<double>(progress.value);
@@ -5977,6 +6811,9 @@ class LocalRoadmapsCompanion extends UpdateCompanion<LocalRoadmap> {
     }
     if (riskLevel.present) {
       map['risk_level'] = Variable<String>(riskLevel.value);
+    }
+    if (forecastConfidence.present) {
+      map['forecast_confidence'] = Variable<String>(forecastConfidence.value);
     }
     if (revision.present) {
       map['revision'] = Variable<int>(revision.value);
@@ -6010,12 +6847,15 @@ class LocalRoadmapsCompanion extends UpdateCompanion<LocalRoadmap> {
           ..write('title: $title, ')
           ..write('description: $description, ')
           ..write('status: $status, ')
+          ..write('plannedStart: $plannedStart, ')
           ..write('originalTargetDate: $originalTargetDate, ')
           ..write('forecastTargetDate: $forecastTargetDate, ')
+          ..write('finalOutcome: $finalOutcome, ')
           ..write('progress: $progress, ')
           ..write('requiredEffortMs: $requiredEffortMs, ')
           ..write('completedEffortMs: $completedEffortMs, ')
           ..write('riskLevel: $riskLevel, ')
+          ..write('forecastConfidence: $forecastConfidence, ')
           ..write('revision: $revision, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
@@ -9886,6 +10726,932 @@ class LocalActivityReviewsCompanion
   }
 }
 
+class $LocalEntityRecordsTable extends LocalEntityRecords
+    with TableInfo<$LocalEntityRecordsTable, LocalEntityRecord> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $LocalEntityRecordsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _userIdMeta = const VerificationMeta('userId');
+  @override
+  late final GeneratedColumn<String> userId = GeneratedColumn<String>(
+    'user_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _entityTypeMeta = const VerificationMeta(
+    'entityType',
+  );
+  @override
+  late final GeneratedColumn<String> entityType = GeneratedColumn<String>(
+    'entity_type',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _parentIdMeta = const VerificationMeta(
+    'parentId',
+  );
+  @override
+  late final GeneratedColumn<String> parentId = GeneratedColumn<String>(
+    'parent_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _secondaryParentIdMeta = const VerificationMeta(
+    'secondaryParentId',
+  );
+  @override
+  late final GeneratedColumn<String> secondaryParentId =
+      GeneratedColumn<String>(
+        'secondary_parent_id',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      );
+  static const VerificationMeta _titleMeta = const VerificationMeta('title');
+  @override
+  late final GeneratedColumn<String> title = GeneratedColumn<String>(
+    'title',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(''),
+  );
+  static const VerificationMeta _statusMeta = const VerificationMeta('status');
+  @override
+  late final GeneratedColumn<String> status = GeneratedColumn<String>(
+    'status',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('active'),
+  );
+  static const VerificationMeta _positionMeta = const VerificationMeta(
+    'position',
+  );
+  @override
+  late final GeneratedColumn<double> position = GeneratedColumn<double>(
+    'position',
+    aliasedName,
+    false,
+    type: DriftSqlType.double,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _dataJsonMeta = const VerificationMeta(
+    'dataJson',
+  );
+  @override
+  late final GeneratedColumn<String> dataJson = GeneratedColumn<String>(
+    'data_json',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('{}'),
+  );
+  static const VerificationMeta _revisionMeta = const VerificationMeta(
+    'revision',
+  );
+  @override
+  late final GeneratedColumn<int> revision = GeneratedColumn<int>(
+    'revision',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(1),
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _createdByDeviceIdMeta = const VerificationMeta(
+    'createdByDeviceId',
+  );
+  @override
+  late final GeneratedColumn<String> createdByDeviceId =
+      GeneratedColumn<String>(
+        'created_by_device_id',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      );
+  static const VerificationMeta _updatedByDeviceIdMeta = const VerificationMeta(
+    'updatedByDeviceId',
+  );
+  @override
+  late final GeneratedColumn<String> updatedByDeviceId =
+      GeneratedColumn<String>(
+        'updated_by_device_id',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      );
+  static const VerificationMeta _lastCommandIdMeta = const VerificationMeta(
+    'lastCommandId',
+  );
+  @override
+  late final GeneratedColumn<String> lastCommandId = GeneratedColumn<String>(
+    'last_command_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _deletedAtMeta = const VerificationMeta(
+    'deletedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> deletedAt = GeneratedColumn<DateTime>(
+    'deleted_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    userId,
+    entityType,
+    parentId,
+    secondaryParentId,
+    title,
+    status,
+    position,
+    dataJson,
+    revision,
+    createdAt,
+    updatedAt,
+    createdByDeviceId,
+    updatedByDeviceId,
+    lastCommandId,
+    deletedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'local_entity_records';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<LocalEntityRecord> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('user_id')) {
+      context.handle(
+        _userIdMeta,
+        userId.isAcceptableOrUnknown(data['user_id']!, _userIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_userIdMeta);
+    }
+    if (data.containsKey('entity_type')) {
+      context.handle(
+        _entityTypeMeta,
+        entityType.isAcceptableOrUnknown(data['entity_type']!, _entityTypeMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_entityTypeMeta);
+    }
+    if (data.containsKey('parent_id')) {
+      context.handle(
+        _parentIdMeta,
+        parentId.isAcceptableOrUnknown(data['parent_id']!, _parentIdMeta),
+      );
+    }
+    if (data.containsKey('secondary_parent_id')) {
+      context.handle(
+        _secondaryParentIdMeta,
+        secondaryParentId.isAcceptableOrUnknown(
+          data['secondary_parent_id']!,
+          _secondaryParentIdMeta,
+        ),
+      );
+    }
+    if (data.containsKey('title')) {
+      context.handle(
+        _titleMeta,
+        title.isAcceptableOrUnknown(data['title']!, _titleMeta),
+      );
+    }
+    if (data.containsKey('status')) {
+      context.handle(
+        _statusMeta,
+        status.isAcceptableOrUnknown(data['status']!, _statusMeta),
+      );
+    }
+    if (data.containsKey('position')) {
+      context.handle(
+        _positionMeta,
+        position.isAcceptableOrUnknown(data['position']!, _positionMeta),
+      );
+    }
+    if (data.containsKey('data_json')) {
+      context.handle(
+        _dataJsonMeta,
+        dataJson.isAcceptableOrUnknown(data['data_json']!, _dataJsonMeta),
+      );
+    }
+    if (data.containsKey('revision')) {
+      context.handle(
+        _revisionMeta,
+        revision.isAcceptableOrUnknown(data['revision']!, _revisionMeta),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_updatedAtMeta);
+    }
+    if (data.containsKey('created_by_device_id')) {
+      context.handle(
+        _createdByDeviceIdMeta,
+        createdByDeviceId.isAcceptableOrUnknown(
+          data['created_by_device_id']!,
+          _createdByDeviceIdMeta,
+        ),
+      );
+    }
+    if (data.containsKey('updated_by_device_id')) {
+      context.handle(
+        _updatedByDeviceIdMeta,
+        updatedByDeviceId.isAcceptableOrUnknown(
+          data['updated_by_device_id']!,
+          _updatedByDeviceIdMeta,
+        ),
+      );
+    }
+    if (data.containsKey('last_command_id')) {
+      context.handle(
+        _lastCommandIdMeta,
+        lastCommandId.isAcceptableOrUnknown(
+          data['last_command_id']!,
+          _lastCommandIdMeta,
+        ),
+      );
+    }
+    if (data.containsKey('deleted_at')) {
+      context.handle(
+        _deletedAtMeta,
+        deletedAt.isAcceptableOrUnknown(data['deleted_at']!, _deletedAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  LocalEntityRecord map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return LocalEntityRecord(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      userId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}user_id'],
+      )!,
+      entityType: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}entity_type'],
+      )!,
+      parentId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}parent_id'],
+      ),
+      secondaryParentId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}secondary_parent_id'],
+      ),
+      title: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}title'],
+      )!,
+      status: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}status'],
+      )!,
+      position: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}position'],
+      )!,
+      dataJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}data_json'],
+      )!,
+      revision: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}revision'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}updated_at'],
+      )!,
+      createdByDeviceId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}created_by_device_id'],
+      ),
+      updatedByDeviceId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}updated_by_device_id'],
+      ),
+      lastCommandId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}last_command_id'],
+      ),
+      deletedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}deleted_at'],
+      ),
+    );
+  }
+
+  @override
+  $LocalEntityRecordsTable createAlias(String alias) {
+    return $LocalEntityRecordsTable(attachedDatabase, alias);
+  }
+}
+
+class LocalEntityRecord extends DataClass
+    implements Insertable<LocalEntityRecord> {
+  final String id;
+  final String userId;
+  final String entityType;
+  final String? parentId;
+  final String? secondaryParentId;
+  final String title;
+  final String status;
+  final double position;
+  final String dataJson;
+  final int revision;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+  final String? createdByDeviceId;
+  final String? updatedByDeviceId;
+  final String? lastCommandId;
+  final DateTime? deletedAt;
+  const LocalEntityRecord({
+    required this.id,
+    required this.userId,
+    required this.entityType,
+    this.parentId,
+    this.secondaryParentId,
+    required this.title,
+    required this.status,
+    required this.position,
+    required this.dataJson,
+    required this.revision,
+    required this.createdAt,
+    required this.updatedAt,
+    this.createdByDeviceId,
+    this.updatedByDeviceId,
+    this.lastCommandId,
+    this.deletedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['user_id'] = Variable<String>(userId);
+    map['entity_type'] = Variable<String>(entityType);
+    if (!nullToAbsent || parentId != null) {
+      map['parent_id'] = Variable<String>(parentId);
+    }
+    if (!nullToAbsent || secondaryParentId != null) {
+      map['secondary_parent_id'] = Variable<String>(secondaryParentId);
+    }
+    map['title'] = Variable<String>(title);
+    map['status'] = Variable<String>(status);
+    map['position'] = Variable<double>(position);
+    map['data_json'] = Variable<String>(dataJson);
+    map['revision'] = Variable<int>(revision);
+    map['created_at'] = Variable<DateTime>(createdAt);
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    if (!nullToAbsent || createdByDeviceId != null) {
+      map['created_by_device_id'] = Variable<String>(createdByDeviceId);
+    }
+    if (!nullToAbsent || updatedByDeviceId != null) {
+      map['updated_by_device_id'] = Variable<String>(updatedByDeviceId);
+    }
+    if (!nullToAbsent || lastCommandId != null) {
+      map['last_command_id'] = Variable<String>(lastCommandId);
+    }
+    if (!nullToAbsent || deletedAt != null) {
+      map['deleted_at'] = Variable<DateTime>(deletedAt);
+    }
+    return map;
+  }
+
+  LocalEntityRecordsCompanion toCompanion(bool nullToAbsent) {
+    return LocalEntityRecordsCompanion(
+      id: Value(id),
+      userId: Value(userId),
+      entityType: Value(entityType),
+      parentId: parentId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(parentId),
+      secondaryParentId: secondaryParentId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(secondaryParentId),
+      title: Value(title),
+      status: Value(status),
+      position: Value(position),
+      dataJson: Value(dataJson),
+      revision: Value(revision),
+      createdAt: Value(createdAt),
+      updatedAt: Value(updatedAt),
+      createdByDeviceId: createdByDeviceId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(createdByDeviceId),
+      updatedByDeviceId: updatedByDeviceId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(updatedByDeviceId),
+      lastCommandId: lastCommandId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(lastCommandId),
+      deletedAt: deletedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(deletedAt),
+    );
+  }
+
+  factory LocalEntityRecord.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return LocalEntityRecord(
+      id: serializer.fromJson<String>(json['id']),
+      userId: serializer.fromJson<String>(json['userId']),
+      entityType: serializer.fromJson<String>(json['entityType']),
+      parentId: serializer.fromJson<String?>(json['parentId']),
+      secondaryParentId: serializer.fromJson<String?>(
+        json['secondaryParentId'],
+      ),
+      title: serializer.fromJson<String>(json['title']),
+      status: serializer.fromJson<String>(json['status']),
+      position: serializer.fromJson<double>(json['position']),
+      dataJson: serializer.fromJson<String>(json['dataJson']),
+      revision: serializer.fromJson<int>(json['revision']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+      createdByDeviceId: serializer.fromJson<String?>(
+        json['createdByDeviceId'],
+      ),
+      updatedByDeviceId: serializer.fromJson<String?>(
+        json['updatedByDeviceId'],
+      ),
+      lastCommandId: serializer.fromJson<String?>(json['lastCommandId']),
+      deletedAt: serializer.fromJson<DateTime?>(json['deletedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'userId': serializer.toJson<String>(userId),
+      'entityType': serializer.toJson<String>(entityType),
+      'parentId': serializer.toJson<String?>(parentId),
+      'secondaryParentId': serializer.toJson<String?>(secondaryParentId),
+      'title': serializer.toJson<String>(title),
+      'status': serializer.toJson<String>(status),
+      'position': serializer.toJson<double>(position),
+      'dataJson': serializer.toJson<String>(dataJson),
+      'revision': serializer.toJson<int>(revision),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+      'createdByDeviceId': serializer.toJson<String?>(createdByDeviceId),
+      'updatedByDeviceId': serializer.toJson<String?>(updatedByDeviceId),
+      'lastCommandId': serializer.toJson<String?>(lastCommandId),
+      'deletedAt': serializer.toJson<DateTime?>(deletedAt),
+    };
+  }
+
+  LocalEntityRecord copyWith({
+    String? id,
+    String? userId,
+    String? entityType,
+    Value<String?> parentId = const Value.absent(),
+    Value<String?> secondaryParentId = const Value.absent(),
+    String? title,
+    String? status,
+    double? position,
+    String? dataJson,
+    int? revision,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+    Value<String?> createdByDeviceId = const Value.absent(),
+    Value<String?> updatedByDeviceId = const Value.absent(),
+    Value<String?> lastCommandId = const Value.absent(),
+    Value<DateTime?> deletedAt = const Value.absent(),
+  }) => LocalEntityRecord(
+    id: id ?? this.id,
+    userId: userId ?? this.userId,
+    entityType: entityType ?? this.entityType,
+    parentId: parentId.present ? parentId.value : this.parentId,
+    secondaryParentId: secondaryParentId.present
+        ? secondaryParentId.value
+        : this.secondaryParentId,
+    title: title ?? this.title,
+    status: status ?? this.status,
+    position: position ?? this.position,
+    dataJson: dataJson ?? this.dataJson,
+    revision: revision ?? this.revision,
+    createdAt: createdAt ?? this.createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+    createdByDeviceId: createdByDeviceId.present
+        ? createdByDeviceId.value
+        : this.createdByDeviceId,
+    updatedByDeviceId: updatedByDeviceId.present
+        ? updatedByDeviceId.value
+        : this.updatedByDeviceId,
+    lastCommandId: lastCommandId.present
+        ? lastCommandId.value
+        : this.lastCommandId,
+    deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
+  );
+  LocalEntityRecord copyWithCompanion(LocalEntityRecordsCompanion data) {
+    return LocalEntityRecord(
+      id: data.id.present ? data.id.value : this.id,
+      userId: data.userId.present ? data.userId.value : this.userId,
+      entityType: data.entityType.present
+          ? data.entityType.value
+          : this.entityType,
+      parentId: data.parentId.present ? data.parentId.value : this.parentId,
+      secondaryParentId: data.secondaryParentId.present
+          ? data.secondaryParentId.value
+          : this.secondaryParentId,
+      title: data.title.present ? data.title.value : this.title,
+      status: data.status.present ? data.status.value : this.status,
+      position: data.position.present ? data.position.value : this.position,
+      dataJson: data.dataJson.present ? data.dataJson.value : this.dataJson,
+      revision: data.revision.present ? data.revision.value : this.revision,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+      createdByDeviceId: data.createdByDeviceId.present
+          ? data.createdByDeviceId.value
+          : this.createdByDeviceId,
+      updatedByDeviceId: data.updatedByDeviceId.present
+          ? data.updatedByDeviceId.value
+          : this.updatedByDeviceId,
+      lastCommandId: data.lastCommandId.present
+          ? data.lastCommandId.value
+          : this.lastCommandId,
+      deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('LocalEntityRecord(')
+          ..write('id: $id, ')
+          ..write('userId: $userId, ')
+          ..write('entityType: $entityType, ')
+          ..write('parentId: $parentId, ')
+          ..write('secondaryParentId: $secondaryParentId, ')
+          ..write('title: $title, ')
+          ..write('status: $status, ')
+          ..write('position: $position, ')
+          ..write('dataJson: $dataJson, ')
+          ..write('revision: $revision, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('createdByDeviceId: $createdByDeviceId, ')
+          ..write('updatedByDeviceId: $updatedByDeviceId, ')
+          ..write('lastCommandId: $lastCommandId, ')
+          ..write('deletedAt: $deletedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    userId,
+    entityType,
+    parentId,
+    secondaryParentId,
+    title,
+    status,
+    position,
+    dataJson,
+    revision,
+    createdAt,
+    updatedAt,
+    createdByDeviceId,
+    updatedByDeviceId,
+    lastCommandId,
+    deletedAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is LocalEntityRecord &&
+          other.id == this.id &&
+          other.userId == this.userId &&
+          other.entityType == this.entityType &&
+          other.parentId == this.parentId &&
+          other.secondaryParentId == this.secondaryParentId &&
+          other.title == this.title &&
+          other.status == this.status &&
+          other.position == this.position &&
+          other.dataJson == this.dataJson &&
+          other.revision == this.revision &&
+          other.createdAt == this.createdAt &&
+          other.updatedAt == this.updatedAt &&
+          other.createdByDeviceId == this.createdByDeviceId &&
+          other.updatedByDeviceId == this.updatedByDeviceId &&
+          other.lastCommandId == this.lastCommandId &&
+          other.deletedAt == this.deletedAt);
+}
+
+class LocalEntityRecordsCompanion extends UpdateCompanion<LocalEntityRecord> {
+  final Value<String> id;
+  final Value<String> userId;
+  final Value<String> entityType;
+  final Value<String?> parentId;
+  final Value<String?> secondaryParentId;
+  final Value<String> title;
+  final Value<String> status;
+  final Value<double> position;
+  final Value<String> dataJson;
+  final Value<int> revision;
+  final Value<DateTime> createdAt;
+  final Value<DateTime> updatedAt;
+  final Value<String?> createdByDeviceId;
+  final Value<String?> updatedByDeviceId;
+  final Value<String?> lastCommandId;
+  final Value<DateTime?> deletedAt;
+  final Value<int> rowid;
+  const LocalEntityRecordsCompanion({
+    this.id = const Value.absent(),
+    this.userId = const Value.absent(),
+    this.entityType = const Value.absent(),
+    this.parentId = const Value.absent(),
+    this.secondaryParentId = const Value.absent(),
+    this.title = const Value.absent(),
+    this.status = const Value.absent(),
+    this.position = const Value.absent(),
+    this.dataJson = const Value.absent(),
+    this.revision = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.createdByDeviceId = const Value.absent(),
+    this.updatedByDeviceId = const Value.absent(),
+    this.lastCommandId = const Value.absent(),
+    this.deletedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  LocalEntityRecordsCompanion.insert({
+    required String id,
+    required String userId,
+    required String entityType,
+    this.parentId = const Value.absent(),
+    this.secondaryParentId = const Value.absent(),
+    this.title = const Value.absent(),
+    this.status = const Value.absent(),
+    this.position = const Value.absent(),
+    this.dataJson = const Value.absent(),
+    this.revision = const Value.absent(),
+    required DateTime createdAt,
+    required DateTime updatedAt,
+    this.createdByDeviceId = const Value.absent(),
+    this.updatedByDeviceId = const Value.absent(),
+    this.lastCommandId = const Value.absent(),
+    this.deletedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       userId = Value(userId),
+       entityType = Value(entityType),
+       createdAt = Value(createdAt),
+       updatedAt = Value(updatedAt);
+  static Insertable<LocalEntityRecord> custom({
+    Expression<String>? id,
+    Expression<String>? userId,
+    Expression<String>? entityType,
+    Expression<String>? parentId,
+    Expression<String>? secondaryParentId,
+    Expression<String>? title,
+    Expression<String>? status,
+    Expression<double>? position,
+    Expression<String>? dataJson,
+    Expression<int>? revision,
+    Expression<DateTime>? createdAt,
+    Expression<DateTime>? updatedAt,
+    Expression<String>? createdByDeviceId,
+    Expression<String>? updatedByDeviceId,
+    Expression<String>? lastCommandId,
+    Expression<DateTime>? deletedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (userId != null) 'user_id': userId,
+      if (entityType != null) 'entity_type': entityType,
+      if (parentId != null) 'parent_id': parentId,
+      if (secondaryParentId != null) 'secondary_parent_id': secondaryParentId,
+      if (title != null) 'title': title,
+      if (status != null) 'status': status,
+      if (position != null) 'position': position,
+      if (dataJson != null) 'data_json': dataJson,
+      if (revision != null) 'revision': revision,
+      if (createdAt != null) 'created_at': createdAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (createdByDeviceId != null) 'created_by_device_id': createdByDeviceId,
+      if (updatedByDeviceId != null) 'updated_by_device_id': updatedByDeviceId,
+      if (lastCommandId != null) 'last_command_id': lastCommandId,
+      if (deletedAt != null) 'deleted_at': deletedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  LocalEntityRecordsCompanion copyWith({
+    Value<String>? id,
+    Value<String>? userId,
+    Value<String>? entityType,
+    Value<String?>? parentId,
+    Value<String?>? secondaryParentId,
+    Value<String>? title,
+    Value<String>? status,
+    Value<double>? position,
+    Value<String>? dataJson,
+    Value<int>? revision,
+    Value<DateTime>? createdAt,
+    Value<DateTime>? updatedAt,
+    Value<String?>? createdByDeviceId,
+    Value<String?>? updatedByDeviceId,
+    Value<String?>? lastCommandId,
+    Value<DateTime?>? deletedAt,
+    Value<int>? rowid,
+  }) {
+    return LocalEntityRecordsCompanion(
+      id: id ?? this.id,
+      userId: userId ?? this.userId,
+      entityType: entityType ?? this.entityType,
+      parentId: parentId ?? this.parentId,
+      secondaryParentId: secondaryParentId ?? this.secondaryParentId,
+      title: title ?? this.title,
+      status: status ?? this.status,
+      position: position ?? this.position,
+      dataJson: dataJson ?? this.dataJson,
+      revision: revision ?? this.revision,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      createdByDeviceId: createdByDeviceId ?? this.createdByDeviceId,
+      updatedByDeviceId: updatedByDeviceId ?? this.updatedByDeviceId,
+      lastCommandId: lastCommandId ?? this.lastCommandId,
+      deletedAt: deletedAt ?? this.deletedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (userId.present) {
+      map['user_id'] = Variable<String>(userId.value);
+    }
+    if (entityType.present) {
+      map['entity_type'] = Variable<String>(entityType.value);
+    }
+    if (parentId.present) {
+      map['parent_id'] = Variable<String>(parentId.value);
+    }
+    if (secondaryParentId.present) {
+      map['secondary_parent_id'] = Variable<String>(secondaryParentId.value);
+    }
+    if (title.present) {
+      map['title'] = Variable<String>(title.value);
+    }
+    if (status.present) {
+      map['status'] = Variable<String>(status.value);
+    }
+    if (position.present) {
+      map['position'] = Variable<double>(position.value);
+    }
+    if (dataJson.present) {
+      map['data_json'] = Variable<String>(dataJson.value);
+    }
+    if (revision.present) {
+      map['revision'] = Variable<int>(revision.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    if (createdByDeviceId.present) {
+      map['created_by_device_id'] = Variable<String>(createdByDeviceId.value);
+    }
+    if (updatedByDeviceId.present) {
+      map['updated_by_device_id'] = Variable<String>(updatedByDeviceId.value);
+    }
+    if (lastCommandId.present) {
+      map['last_command_id'] = Variable<String>(lastCommandId.value);
+    }
+    if (deletedAt.present) {
+      map['deleted_at'] = Variable<DateTime>(deletedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('LocalEntityRecordsCompanion(')
+          ..write('id: $id, ')
+          ..write('userId: $userId, ')
+          ..write('entityType: $entityType, ')
+          ..write('parentId: $parentId, ')
+          ..write('secondaryParentId: $secondaryParentId, ')
+          ..write('title: $title, ')
+          ..write('status: $status, ')
+          ..write('position: $position, ')
+          ..write('dataJson: $dataJson, ')
+          ..write('revision: $revision, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('createdByDeviceId: $createdByDeviceId, ')
+          ..write('updatedByDeviceId: $updatedByDeviceId, ')
+          ..write('lastCommandId: $lastCommandId, ')
+          ..write('deletedAt: $deletedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $LocalOutboxCommandsTable extends LocalOutboxCommands
     with TableInfo<$LocalOutboxCommandsTable, LocalOutboxCommand> {
   @override
@@ -10779,6 +12545,322 @@ class LocalOutboxCommandsCompanion extends UpdateCompanion<LocalOutboxCommand> {
   }
 }
 
+class $LocalSyncStatesTable extends LocalSyncStates
+    with TableInfo<$LocalSyncStatesTable, LocalSyncState> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $LocalSyncStatesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _userIdMeta = const VerificationMeta('userId');
+  @override
+  late final GeneratedColumn<String> userId = GeneratedColumn<String>(
+    'user_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _lastChangeSequenceMeta =
+      const VerificationMeta('lastChangeSequence');
+  @override
+  late final GeneratedColumn<int> lastChangeSequence = GeneratedColumn<int>(
+    'last_change_sequence',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    userId,
+    lastChangeSequence,
+    updatedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'local_sync_states';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<LocalSyncState> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('user_id')) {
+      context.handle(
+        _userIdMeta,
+        userId.isAcceptableOrUnknown(data['user_id']!, _userIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_userIdMeta);
+    }
+    if (data.containsKey('last_change_sequence')) {
+      context.handle(
+        _lastChangeSequenceMeta,
+        lastChangeSequence.isAcceptableOrUnknown(
+          data['last_change_sequence']!,
+          _lastChangeSequenceMeta,
+        ),
+      );
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_updatedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  LocalSyncState map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return LocalSyncState(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      userId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}user_id'],
+      )!,
+      lastChangeSequence: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}last_change_sequence'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}updated_at'],
+      )!,
+    );
+  }
+
+  @override
+  $LocalSyncStatesTable createAlias(String alias) {
+    return $LocalSyncStatesTable(attachedDatabase, alias);
+  }
+}
+
+class LocalSyncState extends DataClass implements Insertable<LocalSyncState> {
+  final String id;
+  final String userId;
+  final int lastChangeSequence;
+  final DateTime updatedAt;
+  const LocalSyncState({
+    required this.id,
+    required this.userId,
+    required this.lastChangeSequence,
+    required this.updatedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['user_id'] = Variable<String>(userId);
+    map['last_change_sequence'] = Variable<int>(lastChangeSequence);
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    return map;
+  }
+
+  LocalSyncStatesCompanion toCompanion(bool nullToAbsent) {
+    return LocalSyncStatesCompanion(
+      id: Value(id),
+      userId: Value(userId),
+      lastChangeSequence: Value(lastChangeSequence),
+      updatedAt: Value(updatedAt),
+    );
+  }
+
+  factory LocalSyncState.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return LocalSyncState(
+      id: serializer.fromJson<String>(json['id']),
+      userId: serializer.fromJson<String>(json['userId']),
+      lastChangeSequence: serializer.fromJson<int>(json['lastChangeSequence']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'userId': serializer.toJson<String>(userId),
+      'lastChangeSequence': serializer.toJson<int>(lastChangeSequence),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+    };
+  }
+
+  LocalSyncState copyWith({
+    String? id,
+    String? userId,
+    int? lastChangeSequence,
+    DateTime? updatedAt,
+  }) => LocalSyncState(
+    id: id ?? this.id,
+    userId: userId ?? this.userId,
+    lastChangeSequence: lastChangeSequence ?? this.lastChangeSequence,
+    updatedAt: updatedAt ?? this.updatedAt,
+  );
+  LocalSyncState copyWithCompanion(LocalSyncStatesCompanion data) {
+    return LocalSyncState(
+      id: data.id.present ? data.id.value : this.id,
+      userId: data.userId.present ? data.userId.value : this.userId,
+      lastChangeSequence: data.lastChangeSequence.present
+          ? data.lastChangeSequence.value
+          : this.lastChangeSequence,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('LocalSyncState(')
+          ..write('id: $id, ')
+          ..write('userId: $userId, ')
+          ..write('lastChangeSequence: $lastChangeSequence, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, userId, lastChangeSequence, updatedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is LocalSyncState &&
+          other.id == this.id &&
+          other.userId == this.userId &&
+          other.lastChangeSequence == this.lastChangeSequence &&
+          other.updatedAt == this.updatedAt);
+}
+
+class LocalSyncStatesCompanion extends UpdateCompanion<LocalSyncState> {
+  final Value<String> id;
+  final Value<String> userId;
+  final Value<int> lastChangeSequence;
+  final Value<DateTime> updatedAt;
+  final Value<int> rowid;
+  const LocalSyncStatesCompanion({
+    this.id = const Value.absent(),
+    this.userId = const Value.absent(),
+    this.lastChangeSequence = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  LocalSyncStatesCompanion.insert({
+    required String id,
+    required String userId,
+    this.lastChangeSequence = const Value.absent(),
+    required DateTime updatedAt,
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       userId = Value(userId),
+       updatedAt = Value(updatedAt);
+  static Insertable<LocalSyncState> custom({
+    Expression<String>? id,
+    Expression<String>? userId,
+    Expression<int>? lastChangeSequence,
+    Expression<DateTime>? updatedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (userId != null) 'user_id': userId,
+      if (lastChangeSequence != null)
+        'last_change_sequence': lastChangeSequence,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  LocalSyncStatesCompanion copyWith({
+    Value<String>? id,
+    Value<String>? userId,
+    Value<int>? lastChangeSequence,
+    Value<DateTime>? updatedAt,
+    Value<int>? rowid,
+  }) {
+    return LocalSyncStatesCompanion(
+      id: id ?? this.id,
+      userId: userId ?? this.userId,
+      lastChangeSequence: lastChangeSequence ?? this.lastChangeSequence,
+      updatedAt: updatedAt ?? this.updatedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (userId.present) {
+      map['user_id'] = Variable<String>(userId.value);
+    }
+    if (lastChangeSequence.present) {
+      map['last_change_sequence'] = Variable<int>(lastChangeSequence.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('LocalSyncStatesCompanion(')
+          ..write('id: $id, ')
+          ..write('userId: $userId, ')
+          ..write('lastChangeSequence: $lastChangeSequence, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -10799,8 +12881,13 @@ abstract class _$AppDatabase extends GeneratedDatabase {
       $LocalContributionsTable(this);
   late final $LocalActivityReviewsTable localActivityReviews =
       $LocalActivityReviewsTable(this);
+  late final $LocalEntityRecordsTable localEntityRecords =
+      $LocalEntityRecordsTable(this);
   late final $LocalOutboxCommandsTable localOutboxCommands =
       $LocalOutboxCommandsTable(this);
+  late final $LocalSyncStatesTable localSyncStates = $LocalSyncStatesTable(
+    this,
+  );
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -10816,7 +12903,9 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     localAttributions,
     localContributions,
     localActivityReviews,
+    localEntityRecords,
     localOutboxCommands,
+    localSyncStates,
   ];
 }
 
@@ -10827,6 +12916,7 @@ typedef $$LocalProfilesTableCreateCompanionBuilder =
       Value<String> displayName,
       Value<String?> email,
       Value<String?> imagePath,
+      Value<String?> genderIdentity,
       Value<bool> onboardingCompleted,
       Value<int> revision,
       required DateTime createdAt,
@@ -10843,6 +12933,7 @@ typedef $$LocalProfilesTableUpdateCompanionBuilder =
       Value<String> displayName,
       Value<String?> email,
       Value<String?> imagePath,
+      Value<String?> genderIdentity,
       Value<bool> onboardingCompleted,
       Value<int> revision,
       Value<DateTime> createdAt,
@@ -10884,6 +12975,11 @@ class $$LocalProfilesTableFilterComposer
 
   ColumnFilters<String> get imagePath => $composableBuilder(
     column: $table.imagePath,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get genderIdentity => $composableBuilder(
+    column: $table.genderIdentity,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -10957,6 +13053,11 @@ class $$LocalProfilesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get genderIdentity => $composableBuilder(
+    column: $table.genderIdentity,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<bool> get onboardingCompleted => $composableBuilder(
     column: $table.onboardingCompleted,
     builder: (column) => ColumnOrderings(column),
@@ -11018,6 +13119,11 @@ class $$LocalProfilesTableAnnotationComposer
 
   GeneratedColumn<String> get imagePath =>
       $composableBuilder(column: $table.imagePath, builder: (column) => column);
+
+  GeneratedColumn<String> get genderIdentity => $composableBuilder(
+    column: $table.genderIdentity,
+    builder: (column) => column,
+  );
 
   GeneratedColumn<bool> get onboardingCompleted => $composableBuilder(
     column: $table.onboardingCompleted,
@@ -11083,6 +13189,7 @@ class $$LocalProfilesTableTableManager
                 Value<String> displayName = const Value.absent(),
                 Value<String?> email = const Value.absent(),
                 Value<String?> imagePath = const Value.absent(),
+                Value<String?> genderIdentity = const Value.absent(),
                 Value<bool> onboardingCompleted = const Value.absent(),
                 Value<int> revision = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
@@ -11097,6 +13204,7 @@ class $$LocalProfilesTableTableManager
                 displayName: displayName,
                 email: email,
                 imagePath: imagePath,
+                genderIdentity: genderIdentity,
                 onboardingCompleted: onboardingCompleted,
                 revision: revision,
                 createdAt: createdAt,
@@ -11113,6 +13221,7 @@ class $$LocalProfilesTableTableManager
                 Value<String> displayName = const Value.absent(),
                 Value<String?> email = const Value.absent(),
                 Value<String?> imagePath = const Value.absent(),
+                Value<String?> genderIdentity = const Value.absent(),
                 Value<bool> onboardingCompleted = const Value.absent(),
                 Value<int> revision = const Value.absent(),
                 required DateTime createdAt,
@@ -11127,6 +13236,7 @@ class $$LocalProfilesTableTableManager
                 displayName: displayName,
                 email: email,
                 imagePath: imagePath,
+                genderIdentity: genderIdentity,
                 onboardingCompleted: onboardingCompleted,
                 revision: revision,
                 createdAt: createdAt,
@@ -11171,11 +13281,20 @@ typedef $$LocalAppSettingsTableCreateCompanionBuilder =
       Value<String> timeZone,
       Value<String> clockFormat,
       Value<String> notificationSoundKey,
+      Value<bool> healthConnectEnabled,
+      Value<bool> cycleTrackingEnabled,
+      Value<String> cycleStorageMode,
+      Value<bool> calendarShowCompleted,
+      Value<bool> applicationTrackingEnabled,
+      Value<bool> windowTitleTrackingEnabled,
+      Value<bool> idleDetectionEnabled,
+      Value<int> idleThresholdSeconds,
       Value<bool> detectBreakActivity,
       Value<bool> detectCrossTaskActivity,
       Value<bool> retainUnclassifiedActivity,
       Value<bool> retainTechnicalIdle,
       Value<bool> automaticTrustedRules,
+      Value<bool> activitySyncEnabled,
       Value<double> automaticConfidenceThreshold,
       Value<int> minimumSuggestionDurationMs,
       Value<int> revision,
@@ -11195,11 +13314,20 @@ typedef $$LocalAppSettingsTableUpdateCompanionBuilder =
       Value<String> timeZone,
       Value<String> clockFormat,
       Value<String> notificationSoundKey,
+      Value<bool> healthConnectEnabled,
+      Value<bool> cycleTrackingEnabled,
+      Value<String> cycleStorageMode,
+      Value<bool> calendarShowCompleted,
+      Value<bool> applicationTrackingEnabled,
+      Value<bool> windowTitleTrackingEnabled,
+      Value<bool> idleDetectionEnabled,
+      Value<int> idleThresholdSeconds,
       Value<bool> detectBreakActivity,
       Value<bool> detectCrossTaskActivity,
       Value<bool> retainUnclassifiedActivity,
       Value<bool> retainTechnicalIdle,
       Value<bool> automaticTrustedRules,
+      Value<bool> activitySyncEnabled,
       Value<double> automaticConfidenceThreshold,
       Value<int> minimumSuggestionDurationMs,
       Value<int> revision,
@@ -11259,6 +13387,46 @@ class $$LocalAppSettingsTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnFilters<bool> get healthConnectEnabled => $composableBuilder(
+    column: $table.healthConnectEnabled,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get cycleTrackingEnabled => $composableBuilder(
+    column: $table.cycleTrackingEnabled,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get cycleStorageMode => $composableBuilder(
+    column: $table.cycleStorageMode,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get calendarShowCompleted => $composableBuilder(
+    column: $table.calendarShowCompleted,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get applicationTrackingEnabled => $composableBuilder(
+    column: $table.applicationTrackingEnabled,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get windowTitleTrackingEnabled => $composableBuilder(
+    column: $table.windowTitleTrackingEnabled,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get idleDetectionEnabled => $composableBuilder(
+    column: $table.idleDetectionEnabled,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get idleThresholdSeconds => $composableBuilder(
+    column: $table.idleThresholdSeconds,
+    builder: (column) => ColumnFilters(column),
+  );
+
   ColumnFilters<bool> get detectBreakActivity => $composableBuilder(
     column: $table.detectBreakActivity,
     builder: (column) => ColumnFilters(column),
@@ -11281,6 +13449,11 @@ class $$LocalAppSettingsTableFilterComposer
 
   ColumnFilters<bool> get automaticTrustedRules => $composableBuilder(
     column: $table.automaticTrustedRules,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get activitySyncEnabled => $composableBuilder(
+    column: $table.activitySyncEnabled,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -11369,6 +13542,46 @@ class $$LocalAppSettingsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<bool> get healthConnectEnabled => $composableBuilder(
+    column: $table.healthConnectEnabled,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get cycleTrackingEnabled => $composableBuilder(
+    column: $table.cycleTrackingEnabled,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get cycleStorageMode => $composableBuilder(
+    column: $table.cycleStorageMode,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get calendarShowCompleted => $composableBuilder(
+    column: $table.calendarShowCompleted,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get applicationTrackingEnabled => $composableBuilder(
+    column: $table.applicationTrackingEnabled,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get windowTitleTrackingEnabled => $composableBuilder(
+    column: $table.windowTitleTrackingEnabled,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get idleDetectionEnabled => $composableBuilder(
+    column: $table.idleDetectionEnabled,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get idleThresholdSeconds => $composableBuilder(
+    column: $table.idleThresholdSeconds,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<bool> get detectBreakActivity => $composableBuilder(
     column: $table.detectBreakActivity,
     builder: (column) => ColumnOrderings(column),
@@ -11391,6 +13604,11 @@ class $$LocalAppSettingsTableOrderingComposer
 
   ColumnOrderings<bool> get automaticTrustedRules => $composableBuilder(
     column: $table.automaticTrustedRules,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get activitySyncEnabled => $composableBuilder(
+    column: $table.activitySyncEnabled,
     builder: (column) => ColumnOrderings(column),
   );
 
@@ -11472,6 +13690,46 @@ class $$LocalAppSettingsTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<bool> get healthConnectEnabled => $composableBuilder(
+    column: $table.healthConnectEnabled,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get cycleTrackingEnabled => $composableBuilder(
+    column: $table.cycleTrackingEnabled,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get cycleStorageMode => $composableBuilder(
+    column: $table.cycleStorageMode,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get calendarShowCompleted => $composableBuilder(
+    column: $table.calendarShowCompleted,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get applicationTrackingEnabled => $composableBuilder(
+    column: $table.applicationTrackingEnabled,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get windowTitleTrackingEnabled => $composableBuilder(
+    column: $table.windowTitleTrackingEnabled,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get idleDetectionEnabled => $composableBuilder(
+    column: $table.idleDetectionEnabled,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get idleThresholdSeconds => $composableBuilder(
+    column: $table.idleThresholdSeconds,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<bool> get detectBreakActivity => $composableBuilder(
     column: $table.detectBreakActivity,
     builder: (column) => column,
@@ -11494,6 +13752,11 @@ class $$LocalAppSettingsTableAnnotationComposer
 
   GeneratedColumn<bool> get automaticTrustedRules => $composableBuilder(
     column: $table.automaticTrustedRules,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get activitySyncEnabled => $composableBuilder(
+    column: $table.activitySyncEnabled,
     builder: (column) => column,
   );
 
@@ -11571,11 +13834,20 @@ class $$LocalAppSettingsTableTableManager
                 Value<String> timeZone = const Value.absent(),
                 Value<String> clockFormat = const Value.absent(),
                 Value<String> notificationSoundKey = const Value.absent(),
+                Value<bool> healthConnectEnabled = const Value.absent(),
+                Value<bool> cycleTrackingEnabled = const Value.absent(),
+                Value<String> cycleStorageMode = const Value.absent(),
+                Value<bool> calendarShowCompleted = const Value.absent(),
+                Value<bool> applicationTrackingEnabled = const Value.absent(),
+                Value<bool> windowTitleTrackingEnabled = const Value.absent(),
+                Value<bool> idleDetectionEnabled = const Value.absent(),
+                Value<int> idleThresholdSeconds = const Value.absent(),
                 Value<bool> detectBreakActivity = const Value.absent(),
                 Value<bool> detectCrossTaskActivity = const Value.absent(),
                 Value<bool> retainUnclassifiedActivity = const Value.absent(),
                 Value<bool> retainTechnicalIdle = const Value.absent(),
                 Value<bool> automaticTrustedRules = const Value.absent(),
+                Value<bool> activitySyncEnabled = const Value.absent(),
                 Value<double> automaticConfidenceThreshold =
                     const Value.absent(),
                 Value<int> minimumSuggestionDurationMs = const Value.absent(),
@@ -11594,11 +13866,20 @@ class $$LocalAppSettingsTableTableManager
                 timeZone: timeZone,
                 clockFormat: clockFormat,
                 notificationSoundKey: notificationSoundKey,
+                healthConnectEnabled: healthConnectEnabled,
+                cycleTrackingEnabled: cycleTrackingEnabled,
+                cycleStorageMode: cycleStorageMode,
+                calendarShowCompleted: calendarShowCompleted,
+                applicationTrackingEnabled: applicationTrackingEnabled,
+                windowTitleTrackingEnabled: windowTitleTrackingEnabled,
+                idleDetectionEnabled: idleDetectionEnabled,
+                idleThresholdSeconds: idleThresholdSeconds,
                 detectBreakActivity: detectBreakActivity,
                 detectCrossTaskActivity: detectCrossTaskActivity,
                 retainUnclassifiedActivity: retainUnclassifiedActivity,
                 retainTechnicalIdle: retainTechnicalIdle,
                 automaticTrustedRules: automaticTrustedRules,
+                activitySyncEnabled: activitySyncEnabled,
                 automaticConfidenceThreshold: automaticConfidenceThreshold,
                 minimumSuggestionDurationMs: minimumSuggestionDurationMs,
                 revision: revision,
@@ -11618,11 +13899,20 @@ class $$LocalAppSettingsTableTableManager
                 Value<String> timeZone = const Value.absent(),
                 Value<String> clockFormat = const Value.absent(),
                 Value<String> notificationSoundKey = const Value.absent(),
+                Value<bool> healthConnectEnabled = const Value.absent(),
+                Value<bool> cycleTrackingEnabled = const Value.absent(),
+                Value<String> cycleStorageMode = const Value.absent(),
+                Value<bool> calendarShowCompleted = const Value.absent(),
+                Value<bool> applicationTrackingEnabled = const Value.absent(),
+                Value<bool> windowTitleTrackingEnabled = const Value.absent(),
+                Value<bool> idleDetectionEnabled = const Value.absent(),
+                Value<int> idleThresholdSeconds = const Value.absent(),
                 Value<bool> detectBreakActivity = const Value.absent(),
                 Value<bool> detectCrossTaskActivity = const Value.absent(),
                 Value<bool> retainUnclassifiedActivity = const Value.absent(),
                 Value<bool> retainTechnicalIdle = const Value.absent(),
                 Value<bool> automaticTrustedRules = const Value.absent(),
+                Value<bool> activitySyncEnabled = const Value.absent(),
                 Value<double> automaticConfidenceThreshold =
                     const Value.absent(),
                 Value<int> minimumSuggestionDurationMs = const Value.absent(),
@@ -11641,11 +13931,20 @@ class $$LocalAppSettingsTableTableManager
                 timeZone: timeZone,
                 clockFormat: clockFormat,
                 notificationSoundKey: notificationSoundKey,
+                healthConnectEnabled: healthConnectEnabled,
+                cycleTrackingEnabled: cycleTrackingEnabled,
+                cycleStorageMode: cycleStorageMode,
+                calendarShowCompleted: calendarShowCompleted,
+                applicationTrackingEnabled: applicationTrackingEnabled,
+                windowTitleTrackingEnabled: windowTitleTrackingEnabled,
+                idleDetectionEnabled: idleDetectionEnabled,
+                idleThresholdSeconds: idleThresholdSeconds,
                 detectBreakActivity: detectBreakActivity,
                 detectCrossTaskActivity: detectCrossTaskActivity,
                 retainUnclassifiedActivity: retainUnclassifiedActivity,
                 retainTechnicalIdle: retainTechnicalIdle,
                 automaticTrustedRules: automaticTrustedRules,
+                activitySyncEnabled: activitySyncEnabled,
                 automaticConfidenceThreshold: automaticConfidenceThreshold,
                 minimumSuggestionDurationMs: minimumSuggestionDurationMs,
                 revision: revision,
@@ -12085,6 +14384,8 @@ typedef $$LocalTasksTableCreateCompanionBuilder =
       Value<double> progress,
       Value<String?> roadmapId,
       Value<String?> roadmapPhaseId,
+      Value<String?> occurrenceKey,
+      Value<String> dataJson,
       Value<int> revision,
       required DateTime createdAt,
       required DateTime updatedAt,
@@ -12118,6 +14419,8 @@ typedef $$LocalTasksTableUpdateCompanionBuilder =
       Value<double> progress,
       Value<String?> roadmapId,
       Value<String?> roadmapPhaseId,
+      Value<String?> occurrenceKey,
+      Value<String> dataJson,
       Value<int> revision,
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
@@ -12244,6 +14547,16 @@ class $$LocalTasksTableFilterComposer
 
   ColumnFilters<String> get roadmapPhaseId => $composableBuilder(
     column: $table.roadmapPhaseId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get occurrenceKey => $composableBuilder(
+    column: $table.occurrenceKey,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get dataJson => $composableBuilder(
+    column: $table.dataJson,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -12402,6 +14715,16 @@ class $$LocalTasksTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get occurrenceKey => $composableBuilder(
+    column: $table.occurrenceKey,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get dataJson => $composableBuilder(
+    column: $table.dataJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<int> get revision => $composableBuilder(
     column: $table.revision,
     builder: (column) => ColumnOrderings(column),
@@ -12539,6 +14862,14 @@ class $$LocalTasksTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<String> get occurrenceKey => $composableBuilder(
+    column: $table.occurrenceKey,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get dataJson =>
+      $composableBuilder(column: $table.dataJson, builder: (column) => column);
+
   GeneratedColumn<int> get revision =>
       $composableBuilder(column: $table.revision, builder: (column) => column);
 
@@ -12620,6 +14951,8 @@ class $$LocalTasksTableTableManager
                 Value<double> progress = const Value.absent(),
                 Value<String?> roadmapId = const Value.absent(),
                 Value<String?> roadmapPhaseId = const Value.absent(),
+                Value<String?> occurrenceKey = const Value.absent(),
+                Value<String> dataJson = const Value.absent(),
                 Value<int> revision = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
@@ -12651,6 +14984,8 @@ class $$LocalTasksTableTableManager
                 progress: progress,
                 roadmapId: roadmapId,
                 roadmapPhaseId: roadmapPhaseId,
+                occurrenceKey: occurrenceKey,
+                dataJson: dataJson,
                 revision: revision,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
@@ -12684,6 +15019,8 @@ class $$LocalTasksTableTableManager
                 Value<double> progress = const Value.absent(),
                 Value<String?> roadmapId = const Value.absent(),
                 Value<String?> roadmapPhaseId = const Value.absent(),
+                Value<String?> occurrenceKey = const Value.absent(),
+                Value<String> dataJson = const Value.absent(),
                 Value<int> revision = const Value.absent(),
                 required DateTime createdAt,
                 required DateTime updatedAt,
@@ -12715,6 +15052,8 @@ class $$LocalTasksTableTableManager
                 progress: progress,
                 roadmapId: roadmapId,
                 roadmapPhaseId: roadmapPhaseId,
+                occurrenceKey: occurrenceKey,
+                dataJson: dataJson,
                 revision: revision,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
@@ -13086,12 +15425,15 @@ typedef $$LocalRoadmapsTableCreateCompanionBuilder =
       required String title,
       Value<String> description,
       Value<String> status,
+      Value<DateTime?> plannedStart,
       Value<DateTime?> originalTargetDate,
       Value<DateTime?> forecastTargetDate,
+      Value<String> finalOutcome,
       Value<double> progress,
       Value<int?> requiredEffortMs,
       Value<int> completedEffortMs,
       Value<String> riskLevel,
+      Value<String> forecastConfidence,
       Value<int> revision,
       required DateTime createdAt,
       required DateTime updatedAt,
@@ -13107,12 +15449,15 @@ typedef $$LocalRoadmapsTableUpdateCompanionBuilder =
       Value<String> title,
       Value<String> description,
       Value<String> status,
+      Value<DateTime?> plannedStart,
       Value<DateTime?> originalTargetDate,
       Value<DateTime?> forecastTargetDate,
+      Value<String> finalOutcome,
       Value<double> progress,
       Value<int?> requiredEffortMs,
       Value<int> completedEffortMs,
       Value<String> riskLevel,
+      Value<String> forecastConfidence,
       Value<int> revision,
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
@@ -13156,6 +15501,11 @@ class $$LocalRoadmapsTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnFilters<DateTime> get plannedStart => $composableBuilder(
+    column: $table.plannedStart,
+    builder: (column) => ColumnFilters(column),
+  );
+
   ColumnFilters<DateTime> get originalTargetDate => $composableBuilder(
     column: $table.originalTargetDate,
     builder: (column) => ColumnFilters(column),
@@ -13163,6 +15513,11 @@ class $$LocalRoadmapsTableFilterComposer
 
   ColumnFilters<DateTime> get forecastTargetDate => $composableBuilder(
     column: $table.forecastTargetDate,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get finalOutcome => $composableBuilder(
+    column: $table.finalOutcome,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -13183,6 +15538,11 @@ class $$LocalRoadmapsTableFilterComposer
 
   ColumnFilters<String> get riskLevel => $composableBuilder(
     column: $table.riskLevel,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get forecastConfidence => $composableBuilder(
+    column: $table.forecastConfidence,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -13251,6 +15611,11 @@ class $$LocalRoadmapsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<DateTime> get plannedStart => $composableBuilder(
+    column: $table.plannedStart,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get originalTargetDate => $composableBuilder(
     column: $table.originalTargetDate,
     builder: (column) => ColumnOrderings(column),
@@ -13258,6 +15623,11 @@ class $$LocalRoadmapsTableOrderingComposer
 
   ColumnOrderings<DateTime> get forecastTargetDate => $composableBuilder(
     column: $table.forecastTargetDate,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get finalOutcome => $composableBuilder(
+    column: $table.finalOutcome,
     builder: (column) => ColumnOrderings(column),
   );
 
@@ -13278,6 +15648,11 @@ class $$LocalRoadmapsTableOrderingComposer
 
   ColumnOrderings<String> get riskLevel => $composableBuilder(
     column: $table.riskLevel,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get forecastConfidence => $composableBuilder(
+    column: $table.forecastConfidence,
     builder: (column) => ColumnOrderings(column),
   );
 
@@ -13338,6 +15713,11 @@ class $$LocalRoadmapsTableAnnotationComposer
   GeneratedColumn<String> get status =>
       $composableBuilder(column: $table.status, builder: (column) => column);
 
+  GeneratedColumn<DateTime> get plannedStart => $composableBuilder(
+    column: $table.plannedStart,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<DateTime> get originalTargetDate => $composableBuilder(
     column: $table.originalTargetDate,
     builder: (column) => column,
@@ -13345,6 +15725,11 @@ class $$LocalRoadmapsTableAnnotationComposer
 
   GeneratedColumn<DateTime> get forecastTargetDate => $composableBuilder(
     column: $table.forecastTargetDate,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get finalOutcome => $composableBuilder(
+    column: $table.finalOutcome,
     builder: (column) => column,
   );
 
@@ -13363,6 +15748,11 @@ class $$LocalRoadmapsTableAnnotationComposer
 
   GeneratedColumn<String> get riskLevel =>
       $composableBuilder(column: $table.riskLevel, builder: (column) => column);
+
+  GeneratedColumn<String> get forecastConfidence => $composableBuilder(
+    column: $table.forecastConfidence,
+    builder: (column) => column,
+  );
 
   GeneratedColumn<int> get revision =>
       $composableBuilder(column: $table.revision, builder: (column) => column);
@@ -13423,12 +15813,15 @@ class $$LocalRoadmapsTableTableManager
                 Value<String> title = const Value.absent(),
                 Value<String> description = const Value.absent(),
                 Value<String> status = const Value.absent(),
+                Value<DateTime?> plannedStart = const Value.absent(),
                 Value<DateTime?> originalTargetDate = const Value.absent(),
                 Value<DateTime?> forecastTargetDate = const Value.absent(),
+                Value<String> finalOutcome = const Value.absent(),
                 Value<double> progress = const Value.absent(),
                 Value<int?> requiredEffortMs = const Value.absent(),
                 Value<int> completedEffortMs = const Value.absent(),
                 Value<String> riskLevel = const Value.absent(),
+                Value<String> forecastConfidence = const Value.absent(),
                 Value<int> revision = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
@@ -13442,12 +15835,15 @@ class $$LocalRoadmapsTableTableManager
                 title: title,
                 description: description,
                 status: status,
+                plannedStart: plannedStart,
                 originalTargetDate: originalTargetDate,
                 forecastTargetDate: forecastTargetDate,
+                finalOutcome: finalOutcome,
                 progress: progress,
                 requiredEffortMs: requiredEffortMs,
                 completedEffortMs: completedEffortMs,
                 riskLevel: riskLevel,
+                forecastConfidence: forecastConfidence,
                 revision: revision,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
@@ -13463,12 +15859,15 @@ class $$LocalRoadmapsTableTableManager
                 required String title,
                 Value<String> description = const Value.absent(),
                 Value<String> status = const Value.absent(),
+                Value<DateTime?> plannedStart = const Value.absent(),
                 Value<DateTime?> originalTargetDate = const Value.absent(),
                 Value<DateTime?> forecastTargetDate = const Value.absent(),
+                Value<String> finalOutcome = const Value.absent(),
                 Value<double> progress = const Value.absent(),
                 Value<int?> requiredEffortMs = const Value.absent(),
                 Value<int> completedEffortMs = const Value.absent(),
                 Value<String> riskLevel = const Value.absent(),
+                Value<String> forecastConfidence = const Value.absent(),
                 Value<int> revision = const Value.absent(),
                 required DateTime createdAt,
                 required DateTime updatedAt,
@@ -13482,12 +15881,15 @@ class $$LocalRoadmapsTableTableManager
                 title: title,
                 description: description,
                 status: status,
+                plannedStart: plannedStart,
                 originalTargetDate: originalTargetDate,
                 forecastTargetDate: forecastTargetDate,
+                finalOutcome: finalOutcome,
                 progress: progress,
                 requiredEffortMs: requiredEffortMs,
                 completedEffortMs: completedEffortMs,
                 riskLevel: riskLevel,
+                forecastConfidence: forecastConfidence,
                 revision: revision,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
@@ -15318,6 +17720,438 @@ typedef $$LocalActivityReviewsTableProcessedTableManager =
       LocalActivityReview,
       PrefetchHooks Function()
     >;
+typedef $$LocalEntityRecordsTableCreateCompanionBuilder =
+    LocalEntityRecordsCompanion Function({
+      required String id,
+      required String userId,
+      required String entityType,
+      Value<String?> parentId,
+      Value<String?> secondaryParentId,
+      Value<String> title,
+      Value<String> status,
+      Value<double> position,
+      Value<String> dataJson,
+      Value<int> revision,
+      required DateTime createdAt,
+      required DateTime updatedAt,
+      Value<String?> createdByDeviceId,
+      Value<String?> updatedByDeviceId,
+      Value<String?> lastCommandId,
+      Value<DateTime?> deletedAt,
+      Value<int> rowid,
+    });
+typedef $$LocalEntityRecordsTableUpdateCompanionBuilder =
+    LocalEntityRecordsCompanion Function({
+      Value<String> id,
+      Value<String> userId,
+      Value<String> entityType,
+      Value<String?> parentId,
+      Value<String?> secondaryParentId,
+      Value<String> title,
+      Value<String> status,
+      Value<double> position,
+      Value<String> dataJson,
+      Value<int> revision,
+      Value<DateTime> createdAt,
+      Value<DateTime> updatedAt,
+      Value<String?> createdByDeviceId,
+      Value<String?> updatedByDeviceId,
+      Value<String?> lastCommandId,
+      Value<DateTime?> deletedAt,
+      Value<int> rowid,
+    });
+
+class $$LocalEntityRecordsTableFilterComposer
+    extends Composer<_$AppDatabase, $LocalEntityRecordsTable> {
+  $$LocalEntityRecordsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get userId => $composableBuilder(
+    column: $table.userId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get entityType => $composableBuilder(
+    column: $table.entityType,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get parentId => $composableBuilder(
+    column: $table.parentId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get secondaryParentId => $composableBuilder(
+    column: $table.secondaryParentId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get title => $composableBuilder(
+    column: $table.title,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get status => $composableBuilder(
+    column: $table.status,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get position => $composableBuilder(
+    column: $table.position,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get dataJson => $composableBuilder(
+    column: $table.dataJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get revision => $composableBuilder(
+    column: $table.revision,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get createdByDeviceId => $composableBuilder(
+    column: $table.createdByDeviceId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get updatedByDeviceId => $composableBuilder(
+    column: $table.updatedByDeviceId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get lastCommandId => $composableBuilder(
+    column: $table.lastCommandId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get deletedAt => $composableBuilder(
+    column: $table.deletedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$LocalEntityRecordsTableOrderingComposer
+    extends Composer<_$AppDatabase, $LocalEntityRecordsTable> {
+  $$LocalEntityRecordsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get userId => $composableBuilder(
+    column: $table.userId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get entityType => $composableBuilder(
+    column: $table.entityType,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get parentId => $composableBuilder(
+    column: $table.parentId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get secondaryParentId => $composableBuilder(
+    column: $table.secondaryParentId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get title => $composableBuilder(
+    column: $table.title,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get status => $composableBuilder(
+    column: $table.status,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get position => $composableBuilder(
+    column: $table.position,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get dataJson => $composableBuilder(
+    column: $table.dataJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get revision => $composableBuilder(
+    column: $table.revision,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get createdByDeviceId => $composableBuilder(
+    column: $table.createdByDeviceId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get updatedByDeviceId => $composableBuilder(
+    column: $table.updatedByDeviceId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get lastCommandId => $composableBuilder(
+    column: $table.lastCommandId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get deletedAt => $composableBuilder(
+    column: $table.deletedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$LocalEntityRecordsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $LocalEntityRecordsTable> {
+  $$LocalEntityRecordsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get userId =>
+      $composableBuilder(column: $table.userId, builder: (column) => column);
+
+  GeneratedColumn<String> get entityType => $composableBuilder(
+    column: $table.entityType,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get parentId =>
+      $composableBuilder(column: $table.parentId, builder: (column) => column);
+
+  GeneratedColumn<String> get secondaryParentId => $composableBuilder(
+    column: $table.secondaryParentId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get title =>
+      $composableBuilder(column: $table.title, builder: (column) => column);
+
+  GeneratedColumn<String> get status =>
+      $composableBuilder(column: $table.status, builder: (column) => column);
+
+  GeneratedColumn<double> get position =>
+      $composableBuilder(column: $table.position, builder: (column) => column);
+
+  GeneratedColumn<String> get dataJson =>
+      $composableBuilder(column: $table.dataJson, builder: (column) => column);
+
+  GeneratedColumn<int> get revision =>
+      $composableBuilder(column: $table.revision, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  GeneratedColumn<String> get createdByDeviceId => $composableBuilder(
+    column: $table.createdByDeviceId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get updatedByDeviceId => $composableBuilder(
+    column: $table.updatedByDeviceId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get lastCommandId => $composableBuilder(
+    column: $table.lastCommandId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get deletedAt =>
+      $composableBuilder(column: $table.deletedAt, builder: (column) => column);
+}
+
+class $$LocalEntityRecordsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $LocalEntityRecordsTable,
+          LocalEntityRecord,
+          $$LocalEntityRecordsTableFilterComposer,
+          $$LocalEntityRecordsTableOrderingComposer,
+          $$LocalEntityRecordsTableAnnotationComposer,
+          $$LocalEntityRecordsTableCreateCompanionBuilder,
+          $$LocalEntityRecordsTableUpdateCompanionBuilder,
+          (
+            LocalEntityRecord,
+            BaseReferences<
+              _$AppDatabase,
+              $LocalEntityRecordsTable,
+              LocalEntityRecord
+            >,
+          ),
+          LocalEntityRecord,
+          PrefetchHooks Function()
+        > {
+  $$LocalEntityRecordsTableTableManager(
+    _$AppDatabase db,
+    $LocalEntityRecordsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$LocalEntityRecordsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$LocalEntityRecordsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$LocalEntityRecordsTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> userId = const Value.absent(),
+                Value<String> entityType = const Value.absent(),
+                Value<String?> parentId = const Value.absent(),
+                Value<String?> secondaryParentId = const Value.absent(),
+                Value<String> title = const Value.absent(),
+                Value<String> status = const Value.absent(),
+                Value<double> position = const Value.absent(),
+                Value<String> dataJson = const Value.absent(),
+                Value<int> revision = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+                Value<String?> createdByDeviceId = const Value.absent(),
+                Value<String?> updatedByDeviceId = const Value.absent(),
+                Value<String?> lastCommandId = const Value.absent(),
+                Value<DateTime?> deletedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => LocalEntityRecordsCompanion(
+                id: id,
+                userId: userId,
+                entityType: entityType,
+                parentId: parentId,
+                secondaryParentId: secondaryParentId,
+                title: title,
+                status: status,
+                position: position,
+                dataJson: dataJson,
+                revision: revision,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                createdByDeviceId: createdByDeviceId,
+                updatedByDeviceId: updatedByDeviceId,
+                lastCommandId: lastCommandId,
+                deletedAt: deletedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String userId,
+                required String entityType,
+                Value<String?> parentId = const Value.absent(),
+                Value<String?> secondaryParentId = const Value.absent(),
+                Value<String> title = const Value.absent(),
+                Value<String> status = const Value.absent(),
+                Value<double> position = const Value.absent(),
+                Value<String> dataJson = const Value.absent(),
+                Value<int> revision = const Value.absent(),
+                required DateTime createdAt,
+                required DateTime updatedAt,
+                Value<String?> createdByDeviceId = const Value.absent(),
+                Value<String?> updatedByDeviceId = const Value.absent(),
+                Value<String?> lastCommandId = const Value.absent(),
+                Value<DateTime?> deletedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => LocalEntityRecordsCompanion.insert(
+                id: id,
+                userId: userId,
+                entityType: entityType,
+                parentId: parentId,
+                secondaryParentId: secondaryParentId,
+                title: title,
+                status: status,
+                position: position,
+                dataJson: dataJson,
+                revision: revision,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                createdByDeviceId: createdByDeviceId,
+                updatedByDeviceId: updatedByDeviceId,
+                lastCommandId: lastCommandId,
+                deletedAt: deletedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$LocalEntityRecordsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $LocalEntityRecordsTable,
+      LocalEntityRecord,
+      $$LocalEntityRecordsTableFilterComposer,
+      $$LocalEntityRecordsTableOrderingComposer,
+      $$LocalEntityRecordsTableAnnotationComposer,
+      $$LocalEntityRecordsTableCreateCompanionBuilder,
+      $$LocalEntityRecordsTableUpdateCompanionBuilder,
+      (
+        LocalEntityRecord,
+        BaseReferences<
+          _$AppDatabase,
+          $LocalEntityRecordsTable,
+          LocalEntityRecord
+        >,
+      ),
+      LocalEntityRecord,
+      PrefetchHooks Function()
+    >;
 typedef $$LocalOutboxCommandsTableCreateCompanionBuilder =
     LocalOutboxCommandsCompanion Function({
       required String commandId,
@@ -15740,6 +18574,195 @@ typedef $$LocalOutboxCommandsTableProcessedTableManager =
       LocalOutboxCommand,
       PrefetchHooks Function()
     >;
+typedef $$LocalSyncStatesTableCreateCompanionBuilder =
+    LocalSyncStatesCompanion Function({
+      required String id,
+      required String userId,
+      Value<int> lastChangeSequence,
+      required DateTime updatedAt,
+      Value<int> rowid,
+    });
+typedef $$LocalSyncStatesTableUpdateCompanionBuilder =
+    LocalSyncStatesCompanion Function({
+      Value<String> id,
+      Value<String> userId,
+      Value<int> lastChangeSequence,
+      Value<DateTime> updatedAt,
+      Value<int> rowid,
+    });
+
+class $$LocalSyncStatesTableFilterComposer
+    extends Composer<_$AppDatabase, $LocalSyncStatesTable> {
+  $$LocalSyncStatesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get userId => $composableBuilder(
+    column: $table.userId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get lastChangeSequence => $composableBuilder(
+    column: $table.lastChangeSequence,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$LocalSyncStatesTableOrderingComposer
+    extends Composer<_$AppDatabase, $LocalSyncStatesTable> {
+  $$LocalSyncStatesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get userId => $composableBuilder(
+    column: $table.userId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get lastChangeSequence => $composableBuilder(
+    column: $table.lastChangeSequence,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$LocalSyncStatesTableAnnotationComposer
+    extends Composer<_$AppDatabase, $LocalSyncStatesTable> {
+  $$LocalSyncStatesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get userId =>
+      $composableBuilder(column: $table.userId, builder: (column) => column);
+
+  GeneratedColumn<int> get lastChangeSequence => $composableBuilder(
+    column: $table.lastChangeSequence,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+}
+
+class $$LocalSyncStatesTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $LocalSyncStatesTable,
+          LocalSyncState,
+          $$LocalSyncStatesTableFilterComposer,
+          $$LocalSyncStatesTableOrderingComposer,
+          $$LocalSyncStatesTableAnnotationComposer,
+          $$LocalSyncStatesTableCreateCompanionBuilder,
+          $$LocalSyncStatesTableUpdateCompanionBuilder,
+          (
+            LocalSyncState,
+            BaseReferences<
+              _$AppDatabase,
+              $LocalSyncStatesTable,
+              LocalSyncState
+            >,
+          ),
+          LocalSyncState,
+          PrefetchHooks Function()
+        > {
+  $$LocalSyncStatesTableTableManager(
+    _$AppDatabase db,
+    $LocalSyncStatesTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$LocalSyncStatesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$LocalSyncStatesTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$LocalSyncStatesTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> userId = const Value.absent(),
+                Value<int> lastChangeSequence = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => LocalSyncStatesCompanion(
+                id: id,
+                userId: userId,
+                lastChangeSequence: lastChangeSequence,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String userId,
+                Value<int> lastChangeSequence = const Value.absent(),
+                required DateTime updatedAt,
+                Value<int> rowid = const Value.absent(),
+              }) => LocalSyncStatesCompanion.insert(
+                id: id,
+                userId: userId,
+                lastChangeSequence: lastChangeSequence,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$LocalSyncStatesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $LocalSyncStatesTable,
+      LocalSyncState,
+      $$LocalSyncStatesTableFilterComposer,
+      $$LocalSyncStatesTableOrderingComposer,
+      $$LocalSyncStatesTableAnnotationComposer,
+      $$LocalSyncStatesTableCreateCompanionBuilder,
+      $$LocalSyncStatesTableUpdateCompanionBuilder,
+      (
+        LocalSyncState,
+        BaseReferences<_$AppDatabase, $LocalSyncStatesTable, LocalSyncState>,
+      ),
+      LocalSyncState,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -15764,6 +18787,10 @@ class $AppDatabaseManager {
       $$LocalContributionsTableTableManager(_db, _db.localContributions);
   $$LocalActivityReviewsTableTableManager get localActivityReviews =>
       $$LocalActivityReviewsTableTableManager(_db, _db.localActivityReviews);
+  $$LocalEntityRecordsTableTableManager get localEntityRecords =>
+      $$LocalEntityRecordsTableTableManager(_db, _db.localEntityRecords);
   $$LocalOutboxCommandsTableTableManager get localOutboxCommands =>
       $$LocalOutboxCommandsTableTableManager(_db, _db.localOutboxCommands);
+  $$LocalSyncStatesTableTableManager get localSyncStates =>
+      $$LocalSyncStatesTableTableManager(_db, _db.localSyncStates);
 }

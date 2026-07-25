@@ -1,7 +1,7 @@
 name: taskmaster_pro
 description: Local-first execution, roadmap, and evidence-based coaching for Windows and Android.
 publish_to: none
-version: 0.1.0+1
+version: 0.0.25+25
 
 environment:
   sdk: ^3.12.2
@@ -26,6 +26,21 @@ dependencies:
   connectivity_plus: 7.3.1
   collection: 1.19.1
   timezone: 0.11.1
+  package_info_plus: 9.0.1
+  http: 1.6.0
+  path_provider: 2.1.6
+  path: 1.9.1
+  file_picker: 10.3.10
+  table_calendar: 3.2.0
+  health: 13.3.1
+  permission_handler: 12.0.3
+  webview_flutter: 4.14.1
+  webview_flutter_windows: 1.1.1
+  pdfrx: 2.4.7
+  open_filex: 4.7.0
+  crypto: 3.0.7
+  cryptography: 2.9.0
+  url_launcher: 6.3.2
 
 dev_dependencies:
   flutter_test:
