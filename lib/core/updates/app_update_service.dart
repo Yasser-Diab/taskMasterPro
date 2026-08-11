@@ -28,6 +28,8 @@ class AppRelease {
     required this.notes,
     required this.pageUrl,
     required this.assets,
+    this.publishedAt,
+    this.isComingSoon = false,
   });
 
   final String version;
@@ -35,6 +37,8 @@ class AppRelease {
   final String notes;
   final Uri pageUrl;
   final List<ReleaseAsset> assets;
+  final DateTime? publishedAt;
+  final bool isComingSoon;
 
   ReleaseAsset? installerForCurrentPlatform() {
     final extension = Platform.isAndroid ? '.apk' : '.exe';
@@ -107,6 +111,118 @@ class AppUpdateService {
           Uri.tryParse(json['html_url'] as String? ?? '') ??
           Uri.parse(ReleaseConfig.releasesPage),
       assets: assets,
+      publishedAt: DateTime.tryParse(json['published_at'] as String? ?? ''),
+    );
+  }
+
+  Future<AppRelease> releaseNotesForInstalledVersion({
+    String localeCode = 'en',
+  }) async {
+    final version = await currentVersion();
+    final tag = 'v$version';
+    final uri = Uri.parse(
+      'https://api.github.com/repos/Yasser-Diab/taskMasterPro/releases/tags/$tag',
+    );
+    final response = await _client
+        .get(
+          uri,
+          headers: const {
+            'Accept': 'application/vnd.github+json',
+            'X-GitHub-Api-Version': '2022-11-28',
+            'User-Agent': 'TaskMaster-Pro-Release-Notes',
+          },
+        )
+        .timeout(const Duration(seconds: 8));
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      final json = jsonDecode(response.body) as Map<String, dynamic>;
+      if (json['tag_name'] == tag &&
+          json['draft'] != true &&
+          json['prerelease'] != true) {
+        return _releaseFromJson(json, version);
+      }
+    }
+
+    if (response.statusCode == 404) {
+      final latestResponse = await _client
+          .get(
+            Uri.parse(ReleaseConfig.latestReleaseApi),
+            headers: const {
+              'Accept': 'application/vnd.github+json',
+              'X-GitHub-Api-Version': '2022-11-28',
+              'User-Agent': 'TaskMaster-Pro-Release-Notes',
+            },
+          )
+          .timeout(const Duration(seconds: 8));
+      if (latestResponse.statusCode == 404) {
+        // GitHub has no published release yet. The installed build is still
+        // valid, but its notes must not be guessed from a manifest or an
+        // unrelated fallback.
+        return _comingSoon(version, localeCode);
+      }
+      if (latestResponse.statusCode >= 200 && latestResponse.statusCode < 300) {
+        final latest = jsonDecode(latestResponse.body) as Map<String, dynamic>;
+        final latestTag = (latest['tag_name'] as String? ?? '').trim();
+        final latestVersion = latestTag.toLowerCase().startsWith('v')
+            ? latestTag.substring(1)
+            : latestTag;
+        if (latestVersion.isNotEmpty &&
+            _compareVersions(version, latestVersion) > 0) {
+          return _comingSoon(version, localeCode);
+        }
+      }
+    }
+    throw HttpException(
+      'Release notes are unavailable for the installed version',
+    );
+  }
+
+  AppRelease _comingSoon(String version, String localeCode) {
+    final notes = switch (localeCode) {
+      'ar' =>
+        '# قريبًا!\n\n'
+            'هذا الإصدار أحدث من أحدث إصدار منشور. ستظهر ملاحظات الإصدار هنا بمجرد نشرها.',
+      'de' =>
+        '# Demnächst!\n\n'
+            'Diese installierte Version ist neuer als die zuletzt veröffentlichte Version. Die Versionshinweise erscheinen hier, sobald sie veröffentlicht wurden.',
+      _ =>
+        '# Coming soon!\n\n'
+            'This installed version is newer than the latest published release. Its release notes will appear here as soon as they are published.',
+    };
+    return AppRelease(
+      version: version,
+      title: 'TaskMaster Pro v$version',
+      notes: notes,
+      pageUrl: Uri.parse(ReleaseConfig.releasesPage),
+      assets: const [],
+      isComingSoon: true,
+    );
+  }
+
+  AppRelease _releaseFromJson(Map<String, dynamic> json, String version) {
+    final assets = <ReleaseAsset>[];
+    for (final value in json['assets'] as List<dynamic>? ?? const []) {
+      final asset = value as Map<String, dynamic>;
+      final url = Uri.tryParse(asset['browser_download_url'] as String? ?? '');
+      if (url == null) continue;
+      assets.add(
+        ReleaseAsset(
+          name: asset['name'] as String? ?? 'download',
+          downloadUrl: url,
+          size: (asset['size'] as num?)?.toInt() ?? 0,
+        ),
+      );
+    }
+    return AppRelease(
+      version: version,
+      title: json['name'] as String? ?? 'TaskMaster Pro v$version',
+      notes: json['body'] as String? ?? '',
+      pageUrl:
+          Uri.tryParse(json['html_url'] as String? ?? '') ??
+          Uri.parse(
+            'https://github.com/Yasser-Diab/taskMasterPro/releases/tag/v$version',
+          ),
+      assets: assets,
+      publishedAt: DateTime.tryParse(json['published_at'] as String? ?? ''),
     );
   }
 

@@ -7,7 +7,9 @@ import 'package:intl/intl.dart';
 import '../../../core/database/app_database.dart';
 import '../../../core/localization/app_localizations.dart';
 import '../../../core/providers.dart';
+import '../../reports/presentation/performance_report_screen.dart';
 import '../../tasks/presentation/task_card.dart';
+import '../../tasks/presentation/task_editor_dialog.dart';
 import '../data/roadmap_repository.dart';
 
 final roadmapsProvider = StreamProvider<List<LocalRoadmap>>(
@@ -25,7 +27,7 @@ class RoadmapsScreen extends ConsumerWidget {
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _showRoadmapEditor(context, ref),
         icon: const Icon(Icons.add_road),
-        label: const Text('New roadmap'),
+        label: Text(context.l10n.text('roadmap_new')),
       ),
       body: CustomScrollView(
         slivers: [
@@ -43,7 +45,7 @@ class RoadmapsScreen extends ConsumerWidget {
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    'Turn long-term outcomes into phases, milestones, checkpoints, and linked executable work',
+                    context.l10n.text('roadmap_intro'),
                     style: TextStyle(
                       color: Theme.of(context).colorScheme.onSurfaceVariant,
                     ),
@@ -56,8 +58,10 @@ class RoadmapsScreen extends ConsumerWidget {
             loading: () => const SliverFillRemaining(
               child: Center(child: CircularProgressIndicator()),
             ),
-            error: (error, _) => SliverFillRemaining(
-              child: Center(child: Text(error.toString())),
+            error: (_, _) => SliverFillRemaining(
+              child: Center(
+                child: Text(context.l10n.text('roadmap_load_failed')),
+              ),
             ),
             data: (items) {
               if (items.isEmpty) {
@@ -167,21 +171,21 @@ class _RoadmapCard extends ConsumerWidget {
                       unawaited(ref.read(syncServiceProvider).drainOutbox());
                     },
                     itemBuilder: (_) => [
-                      const PopupMenuItem(
+                      PopupMenuItem(
                         value: 'edit',
-                        child: Text('Edit roadmap'),
+                        child: Text(context.l10n.text('roadmap_edit')),
                       ),
                       PopupMenuItem(
                         value: 'pause',
                         child: Text(
                           roadmap.status == 'paused'
-                              ? 'Resume roadmap'
-                              : 'Pause roadmap',
+                              ? context.l10n.text('roadmap_resume')
+                              : context.l10n.text('roadmap_pause'),
                         ),
                       ),
-                      const PopupMenuItem(
+                      PopupMenuItem(
                         value: 'archive',
-                        child: Text('Archive roadmap'),
+                        child: Text(context.l10n.text('roadmap_archive')),
                       ),
                     ],
                   ),
@@ -190,7 +194,7 @@ class _RoadmapCard extends ConsumerWidget {
               const SizedBox(height: 16),
               Text(
                 roadmap.description.isEmpty
-                    ? 'No description yet'
+                    ? context.l10n.text('roadmap_no_description')
                     : roadmap.description,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
@@ -223,13 +227,19 @@ class _RoadmapCard extends ConsumerWidget {
                   _Pill(
                     icon: Icons.flag_outlined,
                     label: target == null
-                        ? 'No target'
-                        : DateFormat.yMMMd().format(target),
+                        ? context.l10n.text('roadmap_no_target')
+                        : DateFormat.yMMMd(
+                            context.l10n.locale.toLanguageTag(),
+                          ).format(target),
                   ),
                   const SizedBox(width: 8),
                   _Pill(
                     icon: Icons.warning_amber_rounded,
-                    label: '${roadmap.riskLevel} risk',
+                    label: context.l10n.format('roadmap_risk_value', {
+                      'risk': context.l10n.text(
+                        'roadmap_risk_${roadmap.riskLevel}',
+                      ),
+                    }),
                     color: color,
                   ),
                   const Spacer(),
@@ -304,7 +314,14 @@ class _RoadmapDetailScreenState extends ConsumerState<RoadmapDetailScreen> {
                                 children: [
                                   Text(roadmap.title),
                                   Text(
-                                    '${(roadmap.progress * 100).round()}% complete · ${roadmap.riskLevel} risk',
+                                    context.l10n
+                                        .format('roadmap_progress_risk', {
+                                          'progress': (roadmap.progress * 100)
+                                              .round(),
+                                          'risk': context.l10n.text(
+                                            'roadmap_risk_${roadmap.riskLevel}',
+                                          ),
+                                        }),
                                     style: Theme.of(
                                       context,
                                     ).textTheme.bodySmall,
@@ -312,8 +329,179 @@ class _RoadmapDetailScreenState extends ConsumerState<RoadmapDetailScreen> {
                                 ],
                               ),
                               actions: [
+                                PopupMenuButton<String>(
+                                  tooltip: context.l10n.text(
+                                    'roadmap_add_to_roadmap',
+                                  ),
+                                  icon: const Icon(Icons.add_circle_outline),
+                                  onSelected: (action) async {
+                                    switch (action) {
+                                      case 'create_task':
+                                        await TaskEditorDialog.show(
+                                          context,
+                                          initialRoadmapId: roadmap.id,
+                                        );
+                                      case 'link_tasks':
+                                        await _showLinkTask(
+                                          context,
+                                          ref,
+                                          roadmap.id,
+                                          null,
+                                        );
+                                      case 'phase':
+                                        await _showPhaseEditor(
+                                          context,
+                                          ref,
+                                          roadmap.id,
+                                          phases.length.toDouble(),
+                                        );
+                                      case 'milestone':
+                                        await _showMilestoneEditor(
+                                          context,
+                                          ref,
+                                          roadmap.id,
+                                          null,
+                                        );
+                                      case 'checkpoint':
+                                        await _showCheckpointEditor(
+                                          context,
+                                          ref,
+                                          roadmap.id,
+                                          null,
+                                        );
+                                      case 'complete_programming_plan':
+                                        final result = await repository
+                                            .populateProgrammingLearningPlan(
+                                              roadmap.id,
+                                            );
+                                        await ref
+                                            .read(syncServiceProvider)
+                                            .drainOutbox();
+                                        if (!context.mounted) return;
+                                        ScaffoldMessenger.of(
+                                          context,
+                                        ).showSnackBar(
+                                          SnackBar(
+                                            content: Text(
+                                              context.l10n.format(
+                                                'roadmap_programming_plan_completed',
+                                                {
+                                                  'phases': result.phases,
+                                                  'milestones':
+                                                      result.milestones,
+                                                  'checkpoints':
+                                                      result.checkpoints,
+                                                  'tasks': result.tasks,
+                                                },
+                                              ),
+                                            ),
+                                          ),
+                                        );
+                                    }
+                                  },
+                                  itemBuilder: (_) => [
+                                    PopupMenuItem(
+                                      value: 'create_task',
+                                      child: ListTile(
+                                        leading: const Icon(
+                                          Icons.add_task_outlined,
+                                        ),
+                                        title: Text(
+                                          context.l10n.text(
+                                            'roadmap_create_new_task',
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    PopupMenuItem(
+                                      value: 'link_tasks',
+                                      child: ListTile(
+                                        leading: const Icon(Icons.add_link),
+                                        title: Text(
+                                          context.l10n.text(
+                                            'roadmap_link_existing_tasks',
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    PopupMenuItem(
+                                      value: 'phase',
+                                      child: ListTile(
+                                        leading: const Icon(
+                                          Icons.layers_outlined,
+                                        ),
+                                        title: Text(
+                                          context.l10n.text(
+                                            'roadmap_add_phase',
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    PopupMenuItem(
+                                      value: 'milestone',
+                                      child: ListTile(
+                                        leading: const Icon(
+                                          Icons.flag_outlined,
+                                        ),
+                                        title: Text(
+                                          context.l10n.text(
+                                            'roadmap_add_milestone',
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    PopupMenuItem(
+                                      value: 'checkpoint',
+                                      child: ListTile(
+                                        leading: const Icon(
+                                          Icons.fact_check_outlined,
+                                        ),
+                                        title: Text(
+                                          context.l10n.text(
+                                            'roadmap_add_checkpoint',
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    if (phases.length >= 9 &&
+                                        '${roadmap.title} ${roadmap.description}'
+                                            .toLowerCase()
+                                            .contains('program'))
+                                      PopupMenuItem(
+                                        value: 'complete_programming_plan',
+                                        child: ListTile(
+                                          leading: const Icon(
+                                            Icons.auto_awesome_outlined,
+                                          ),
+                                          title: Text(
+                                            context.l10n.text(
+                                              'roadmap_complete_programming_plan',
+                                            ),
+                                          ),
+                                          subtitle: Text(
+                                            context.l10n.text(
+                                              'roadmap_complete_programming_plan_detail',
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                  ],
+                                ),
                                 IconButton(
-                                  tooltip: 'Recalculate progress and forecast',
+                                  tooltip: context.l10n.text('roadmap_analyze'),
+                                  onPressed: () => Navigator.of(context).push(
+                                    MaterialPageRoute<void>(
+                                      builder: (_) => PerformanceReportScreen(
+                                        roadmapId: widget.roadmapId,
+                                      ),
+                                    ),
+                                  ),
+                                  icon: const Icon(Icons.analytics_outlined),
+                                ),
+                                IconButton(
+                                  tooltip: context.l10n.text(
+                                    'roadmap_recalculate',
+                                  ),
                                   onPressed: () => repository
                                       .recalculateProgress(widget.roadmapId),
                                   icon: const Icon(Icons.calculate_outlined),
@@ -334,40 +522,48 @@ class _RoadmapDetailScreenState extends ConsumerState<RoadmapDetailScreen> {
                                       );
                                     }
                                   },
-                                  itemBuilder: (_) => const [
+                                  itemBuilder: (_) => [
                                     PopupMenuItem(
                                       value: 'edit',
-                                      child: Text('Edit roadmap'),
+                                      child: Text(
+                                        context.l10n.text('roadmap_edit'),
+                                      ),
                                     ),
                                     PopupMenuItem(
                                       value: 'delete',
-                                      child: Text('Delete roadmap'),
+                                      child: Text(
+                                        context.l10n.text('roadmap_delete'),
+                                      ),
                                     ),
                                   ],
                                 ),
                               ],
-                              bottom: const TabBar(
+                              bottom: TabBar(
                                 isScrollable: true,
                                 tabs: [
                                   Tab(
-                                    icon: Icon(Icons.dashboard_outlined),
-                                    text: 'Overview',
+                                    icon: const Icon(Icons.dashboard_outlined),
+                                    text: context.l10n.text('roadmap_overview'),
                                   ),
                                   Tab(
-                                    icon: Icon(Icons.view_timeline_outlined),
-                                    text: 'Timeline',
+                                    icon: const Icon(
+                                      Icons.view_timeline_outlined,
+                                    ),
+                                    text: context.l10n.text('roadmap_timeline'),
                                   ),
                                   Tab(
-                                    icon: Icon(Icons.layers_outlined),
-                                    text: 'Phases',
+                                    icon: const Icon(Icons.layers_outlined),
+                                    text: context.l10n.text('roadmap_phases'),
                                   ),
                                   Tab(
-                                    icon: Icon(Icons.task_alt_outlined),
-                                    text: 'Linked work',
+                                    icon: const Icon(Icons.task_alt_outlined),
+                                    text: context.l10n.text(
+                                      'roadmap_linked_work',
+                                    ),
                                   ),
                                   Tab(
-                                    icon: Icon(Icons.insights_outlined),
-                                    text: 'Forecast',
+                                    icon: const Icon(Icons.insights_outlined),
+                                    text: context.l10n.text('forecast'),
                                   ),
                                 ],
                               ),
@@ -423,7 +619,7 @@ class _RoadmapDetailScreenState extends ConsumerState<RoadmapDetailScreen> {
   }
 }
 
-class _RoadmapOverview extends StatelessWidget {
+class _RoadmapOverview extends ConsumerWidget {
   const _RoadmapOverview({
     required this.roadmap,
     required this.phases,
@@ -439,7 +635,7 @@ class _RoadmapOverview extends StatelessWidget {
   final List<LocalTask> tasks;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final completedTasks = tasks.where((task) => task.status == 'completed');
     final completedMilestones = milestones.where(
       (item) => item.status == 'completed',
@@ -491,28 +687,57 @@ class _RoadmapOverview extends StatelessWidget {
                   children: [
                     _Pill(
                       icon: Icons.layers_outlined,
-                      label: '${phases.length} phases',
+                      label: context.l10n.format('roadmap_phase_count', {
+                        'count': phases.length,
+                      }),
                     ),
                     _Pill(
                       icon: Icons.flag_outlined,
-                      label:
-                          '${completedMilestones.length}/${milestones.length} milestones',
+                      label: context.l10n.format('roadmap_milestone_progress', {
+                        'completed': completedMilestones.length,
+                        'total': milestones.length,
+                      }),
                     ),
                     _Pill(
                       icon: Icons.fact_check_outlined,
-                      label:
-                          '${completedCheckpoints.length}/${checkpoints.length} checkpoints',
+                      label: context.l10n
+                          .format('roadmap_checkpoint_progress', {
+                            'completed': completedCheckpoints.length,
+                            'total': checkpoints.length,
+                          }),
                     ),
                     _Pill(
                       icon: Icons.task_alt_outlined,
-                      label:
-                          '${completedTasks.length}/${tasks.length} linked tasks',
+                      label: context.l10n.format('roadmap_task_progress', {
+                        'completed': completedTasks.length,
+                        'total': tasks.length,
+                      }),
                     ),
                   ],
                 ),
               ],
             ),
           ),
+        ),
+        const SizedBox(height: 16),
+        _RoadmapHierarchySection(
+          title: context.l10n.text('roadmap_milestones'),
+          emptyText: context.l10n.text('roadmap_no_milestones'),
+          icon: Icons.flag_outlined,
+          items: milestones
+              .where((item) => item.secondaryParentId == null)
+              .toList(),
+          onAdd: () => _showMilestoneEditor(context, ref, roadmap.id, null),
+        ),
+        const SizedBox(height: 16),
+        _RoadmapHierarchySection(
+          title: context.l10n.text('roadmap_checkpoints'),
+          emptyText: context.l10n.text('roadmap_no_checkpoints'),
+          icon: Icons.fact_check_outlined,
+          items: checkpoints
+              .where((item) => item.secondaryParentId == null)
+              .toList(),
+          onAdd: () => _showCheckpointEditor(context, ref, roadmap.id, null),
         ),
         const SizedBox(height: 16),
         _ProgressExplanation(
@@ -524,6 +749,97 @@ class _RoadmapOverview extends StatelessWidget {
       ],
     );
   }
+}
+
+class _RoadmapHierarchySection extends StatelessWidget {
+  const _RoadmapHierarchySection({
+    required this.title,
+    required this.emptyText,
+    required this.icon,
+    required this.items,
+    required this.onAdd,
+  });
+
+  final String title;
+  final String emptyText;
+  final IconData icon;
+  final List<LocalEntityRecord> items;
+  final VoidCallback onAdd;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Icon(icon, color: Theme.of(context).colorScheme.primary),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    title,
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+                FilledButton.tonalIcon(
+                  onPressed: onAdd,
+                  icon: const Icon(Icons.add),
+                  label: Text(context.l10n.text('add')),
+                ),
+              ],
+            ),
+            if (items.isEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 20),
+                child: Text(emptyText),
+              )
+            else
+              for (final item in items)
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(
+                    item.status == 'completed' ? Icons.check_circle : icon,
+                    color: item.status == 'completed'
+                        ? const Color(0xFF35A870)
+                        : null,
+                  ),
+                  title: Text(item.title),
+                  subtitle: Text(_hierarchyStatusLabel(context, item)),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => showModalBottomSheet<void>(
+                    context: context,
+                    showDragHandle: true,
+                    builder: (context) => SafeArea(
+                      child: ListTile(
+                        leading: Icon(icon),
+                        title: Text(item.title),
+                        subtitle: Text(_hierarchyStatusLabel(context, item)),
+                      ),
+                    ),
+                  ),
+                ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+String _hierarchyStatusLabel(BuildContext context, LocalEntityRecord item) {
+  final status = switch (item.status) {
+    'planned' => 'not_started',
+    'active' => 'in_progress',
+    final value => value,
+  };
+  final prefix = item.entityType == 'roadmap_checkpoints'
+      ? 'roadmap_checkpoint_status_'
+      : 'roadmap_milestone_status_';
+  return context.l10n.text('$prefix$status');
 }
 
 class _RoadmapTimeline extends ConsumerWidget {
@@ -542,7 +858,7 @@ class _RoadmapTimeline extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     if (phases.isEmpty) {
-      return const Center(child: Text('Add a phase to build the timeline'));
+      return Center(child: Text(context.l10n.text('roadmap_timeline_empty')));
     }
     return ListView.builder(
       padding: const EdgeInsets.all(20),
@@ -572,7 +888,9 @@ class _RoadmapTimeline extends ConsumerWidget {
                       backgroundColor: phase.status == 'completed'
                           ? const Color(0xFF35A870)
                           : Theme.of(context).colorScheme.primary,
-                      child: Text('${index + 1}'),
+                      child: Text(
+                        '${index + 1}',
+                      ), // localization-audit: allow — localized numeral rendering
                     ),
                     if (index != phases.length - 1)
                       Expanded(
@@ -605,15 +923,23 @@ class _RoadmapTimeline extends ConsumerWidget {
                           children: [
                             _Pill(
                               icon: Icons.flag_outlined,
-                              label: '${phaseMilestones.length} milestones',
+                              label: context.l10n.format(
+                                'roadmap_milestone_count',
+                                {'count': phaseMilestones.length},
+                              ),
                             ),
                             _Pill(
                               icon: Icons.fact_check_outlined,
-                              label: '${phaseCheckpoints.length} checkpoints',
+                              label: context.l10n.format(
+                                'roadmap_checkpoint_count',
+                                {'count': phaseCheckpoints.length},
+                              ),
                             ),
                             _Pill(
                               icon: Icons.task_alt_outlined,
-                              label: '${phaseTasks.length} tasks',
+                              label: context.l10n.format('roadmap_task_count', {
+                                'count': phaseTasks.length,
+                              }),
                             ),
                           ],
                         ),
@@ -653,11 +979,7 @@ class _RoadmapPhases extends ConsumerWidget {
           padding: const EdgeInsets.all(16),
           child: Row(
             children: [
-              const Expanded(
-                child: Text(
-                  'Drag phases to reorder them. Open a phase to manage its milestones, checkpoints, and linked tasks.',
-                ),
-              ),
+              Expanded(child: Text(context.l10n.text('roadmap_reorder_help'))),
               const SizedBox(width: 12),
               FilledButton.icon(
                 onPressed: () => _showPhaseEditor(
@@ -667,14 +989,14 @@ class _RoadmapPhases extends ConsumerWidget {
                   phases.length.toDouble(),
                 ),
                 icon: const Icon(Icons.add),
-                label: const Text('Add phase'),
+                label: Text(context.l10n.text('roadmap_add_phase')),
               ),
             ],
           ),
         ),
         Expanded(
           child: phases.isEmpty
-              ? const Center(child: Text('No phases yet'))
+              ? Center(child: Text(context.l10n.text('roadmap_no_phases')))
               : ReorderableListView.builder(
                   padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
                   itemCount: phases.length,
@@ -740,7 +1062,11 @@ class _PhaseExpansionCard extends ConsumerWidget {
           style: const TextStyle(fontWeight: FontWeight.w800),
         ),
         subtitle: Text(
-          '${milestones.length} milestones · ${checkpoints.length} checkpoints · ${tasks.length} tasks',
+          context.l10n.format('roadmap_phase_summary', {
+            'milestones': milestones.length,
+            'checkpoints': checkpoints.length,
+            'tasks': tasks.length,
+          }),
         ),
         trailing: Checkbox(
           value: phase.status == 'completed',
@@ -760,29 +1086,75 @@ class _PhaseExpansionCard extends ConsumerWidget {
             ),
           Padding(
             padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-            child: Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                OutlinedButton.icon(
-                  onPressed: () =>
-                      _showMilestoneEditor(context, ref, roadmapId, phase.id),
-                  icon: const Icon(Icons.flag_outlined),
-                  label: const Text('Milestone'),
+            child: Align(
+              alignment: AlignmentDirectional.centerStart,
+              child: PopupMenuButton<String>(
+                onSelected: (action) async {
+                  switch (action) {
+                    case 'create_task':
+                      await TaskEditorDialog.show(
+                        context,
+                        initialRoadmapId: roadmapId,
+                        initialRoadmapPhaseId: phase.id,
+                      );
+                    case 'link_tasks':
+                      await _showLinkTask(context, ref, roadmapId, phase.id);
+                    case 'milestone':
+                      await _showMilestoneEditor(
+                        context,
+                        ref,
+                        roadmapId,
+                        phase.id,
+                      );
+                    case 'checkpoint':
+                      await _showCheckpointEditor(
+                        context,
+                        ref,
+                        roadmapId,
+                        phase.id,
+                      );
+                  }
+                },
+                itemBuilder: (_) => [
+                  PopupMenuItem(
+                    value: 'create_task',
+                    child: ListTile(
+                      leading: const Icon(Icons.add_task_outlined),
+                      title: Text(context.l10n.text('roadmap_create_new_task')),
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'link_tasks',
+                    child: ListTile(
+                      leading: const Icon(Icons.add_link),
+                      title: Text(
+                        context.l10n.text('roadmap_link_existing_tasks'),
+                      ),
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'milestone',
+                    child: ListTile(
+                      leading: const Icon(Icons.flag_outlined),
+                      title: Text(context.l10n.text('roadmap_add_milestone')),
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'checkpoint',
+                    child: ListTile(
+                      leading: const Icon(Icons.fact_check_outlined),
+                      title: Text(context.l10n.text('roadmap_add_checkpoint')),
+                    ),
+                  ),
+                ],
+                child: IgnorePointer(
+                  child: FilledButton.tonalIcon(
+                    onPressed: () {},
+                    icon: const Icon(Icons.add),
+                    label: Text(context.l10n.text('roadmap_add_to_this_phase')),
+                  ),
                 ),
-                OutlinedButton.icon(
-                  onPressed: () =>
-                      _showCheckpointEditor(context, ref, roadmapId, phase.id),
-                  icon: const Icon(Icons.fact_check_outlined),
-                  label: const Text('Checkpoint'),
-                ),
-                OutlinedButton.icon(
-                  onPressed: () =>
-                      _showLinkTask(context, ref, roadmapId, phase.id),
-                  icon: const Icon(Icons.add_link),
-                  label: const Text('Link task'),
-                ),
-              ],
+              ),
             ),
           ),
           for (final item in [...milestones, ...checkpoints])
@@ -800,8 +1172,8 @@ class _PhaseExpansionCard extends ConsumerWidget {
               title: Text(item.title),
               subtitle: Text(
                 item.entityType == 'roadmap_milestones'
-                    ? 'Milestone'
-                    : 'Checkpoint',
+                    ? context.l10n.text('roadmap_milestone')
+                    : context.l10n.text('roadmap_checkpoint'),
               ),
             ),
           for (final task in tasks)
@@ -828,25 +1200,94 @@ class _LinkedWork extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final roadmapLevelTasks = tasks
+        .where((task) => task.roadmapPhaseId == null)
+        .toList();
+    final phaseTasks = tasks
+        .where((task) => task.roadmapPhaseId != null)
+        .toList();
     return Scaffold(
       backgroundColor: Colors.transparent,
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _showLinkTask(
-          context,
-          ref,
-          roadmapId,
-          phases.isEmpty ? null : phases.first.id,
-        ),
-        icon: const Icon(Icons.add_link),
-        label: const Text('Link task'),
-      ),
       body: tasks.isEmpty
-          ? const Center(child: Text('No tasks are linked to this roadmap yet'))
-          : ListView.separated(
+          ? Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(context.l10n.text('roadmap_no_linked_tasks')),
+                  const SizedBox(height: 16),
+                  FilledButton.icon(
+                    onPressed: () => TaskEditorDialog.show(
+                      context,
+                      initialRoadmapId: roadmapId,
+                    ),
+                    icon: const Icon(Icons.add_task_outlined),
+                    label: Text(context.l10n.text('roadmap_create_new_task')),
+                  ),
+                  TextButton.icon(
+                    onPressed: () =>
+                        _showLinkTask(context, ref, roadmapId, null),
+                    icon: const Icon(Icons.add_link),
+                    label: Text(
+                      context.l10n.text('roadmap_link_existing_tasks'),
+                    ),
+                  ),
+                ],
+              ),
+            )
+          : ListView(
               padding: const EdgeInsets.all(20),
-              itemCount: tasks.length,
-              separatorBuilder: (_, _) => const SizedBox(height: 10),
-              itemBuilder: (context, index) => TaskCard(task: tasks[index]),
+              children: [
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: [
+                    FilledButton.icon(
+                      onPressed: () => TaskEditorDialog.show(
+                        context,
+                        initialRoadmapId: roadmapId,
+                      ),
+                      icon: const Icon(Icons.add_task_outlined),
+                      label: Text(context.l10n.text('roadmap_create_new_task')),
+                    ),
+                    OutlinedButton.icon(
+                      onPressed: () =>
+                          _showLinkTask(context, ref, roadmapId, null),
+                      icon: const Icon(Icons.add_link),
+                      label: Text(
+                        context.l10n.text('roadmap_link_existing_tasks'),
+                      ),
+                    ),
+                  ],
+                ),
+                if (roadmapLevelTasks.isNotEmpty) ...[
+                  const SizedBox(height: 22),
+                  Text(
+                    context.l10n.text('roadmap_level_tasks'),
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  for (final task in roadmapLevelTasks) ...[
+                    TaskCard(task: task),
+                    const SizedBox(height: 10),
+                  ],
+                ],
+                if (phaseTasks.isNotEmpty) ...[
+                  const SizedBox(height: 22),
+                  Text(
+                    context.l10n.text('roadmap_phase_tasks'),
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  for (final task in phaseTasks) ...[
+                    TaskCard(task: task),
+                    const SizedBox(height: 10),
+                  ],
+                ],
+              ],
             ),
     );
   }
@@ -871,6 +1312,7 @@ class _RoadmapForecast extends StatelessWidget {
   Widget build(BuildContext context) {
     final original = roadmap.originalTargetDate;
     final forecast = roadmap.forecastTargetDate;
+    final insufficientEvidence = roadmap.forecastConfidence == 'insufficient';
     final variance = original == null || forecast == null
         ? null
         : forecast.difference(original).inDays;
@@ -884,18 +1326,29 @@ class _RoadmapForecast extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Explainable forecast',
+                  context.l10n.text('roadmap_explainable_forecast'),
                   style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                     fontWeight: FontWeight.w800,
                   ),
                 ),
                 const SizedBox(height: 14),
                 Text(
-                  forecast == null
-                      ? 'Add target dates and recorded effort to calculate a forecast'
+                  insufficientEvidence
+                      ? context.l10n.text('roadmap_forecast_insufficient')
+                      : forecast == null
+                      ? context.l10n.text('roadmap_forecast_missing')
                       : variance == null || variance == 0
-                      ? 'The current forecast remains ${DateFormat.yMMMMd().format(forecast)}'
-                      : 'The expected completion is ${variance > 0 ? '$variance days later' : '${variance.abs()} days earlier'} than the original target',
+                      ? context.l10n.format('roadmap_forecast_unchanged', {
+                          'date': DateFormat.yMMMMd(
+                            context.l10n.locale.toLanguageTag(),
+                          ).format(forecast),
+                        })
+                      : context.l10n.format(
+                          variance > 0
+                              ? 'roadmap_forecast_later'
+                              : 'roadmap_forecast_earlier',
+                          {'days': variance.abs()},
+                        ),
                   style: Theme.of(context).textTheme.titleLarge,
                 ),
                 const SizedBox(height: 18),
@@ -906,18 +1359,32 @@ class _RoadmapForecast extends StatelessWidget {
                     _Pill(
                       icon: Icons.event_outlined,
                       label: original == null
-                          ? 'No original target'
-                          : 'Original ${DateFormat.yMMMd().format(original)}',
+                          ? context.l10n.text('roadmap_no_original_target')
+                          : context.l10n.format('roadmap_original_target', {
+                              'date': DateFormat.yMMMd(
+                                context.l10n.locale.toLanguageTag(),
+                              ).format(original),
+                            }),
                     ),
                     _Pill(
                       icon: Icons.auto_graph,
                       label: forecast == null
-                          ? 'Forecast unavailable'
-                          : 'Forecast ${DateFormat.yMMMd().format(forecast)}',
+                          ? context.l10n.text('roadmap_forecast_unavailable')
+                          : context.l10n.format('roadmap_forecast_date', {
+                              'date': DateFormat.yMMMd(
+                                context.l10n.locale.toLanguageTag(),
+                              ).format(forecast),
+                            }),
                     ),
                     _Pill(
                       icon: Icons.verified_outlined,
-                      label: '${roadmap.forecastConfidence} confidence',
+                      label: insufficientEvidence
+                          ? context.l10n.text('roadmap_confidence_insufficient')
+                          : context.l10n.format('roadmap_forecast_confidence', {
+                              'confidence': context.l10n.text(
+                                'roadmap_confidence_${roadmap.forecastConfidence}',
+                              ),
+                            }),
                     ),
                   ],
                 ),
@@ -925,20 +1392,30 @@ class _RoadmapForecast extends StatelessWidget {
                 const Divider(),
                 const SizedBox(height: 12),
                 Text(
-                  'Evidence used',
+                  context.l10n.text('roadmap_evidence_used'),
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w800,
                   ),
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  '$phaseCount phases · $milestoneCount milestones · '
-                  '$checkpointCount checkpoints · ${tasks.length} linked tasks',
+                  context.l10n.format('roadmap_evidence_summary', {
+                    'phases': phaseCount,
+                    'milestones': milestoneCount,
+                    'checkpoints': checkpointCount,
+                    'tasks': tasks.length,
+                  }),
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  '${_formatDuration(roadmap.completedEffortMs)} recorded effort '
-                  'of ${_formatDuration(roadmap.requiredEffortMs ?? 0)} planned',
+                  context.l10n.format('roadmap_effort_summary', {
+                    'recorded': context.l10n.duration(
+                      Duration(milliseconds: roadmap.completedEffortMs),
+                    ),
+                    'planned': context.l10n.duration(
+                      Duration(milliseconds: roadmap.requiredEffortMs ?? 0),
+                    ),
+                  }),
                 ),
               ],
             ),
@@ -971,35 +1448,35 @@ class _ProgressExplanation extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Why this percentage?',
+              context.l10n.text('roadmap_progress_explanation'),
               style: Theme.of(
                 context,
               ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
             ),
             const SizedBox(height: 12),
             _CountProgress(
-              label: 'Phases',
+              label: context.l10n.text('roadmap_phases'),
               completed: phases
                   .where((item) => item.status == 'completed')
                   .length,
               total: phases.length,
             ),
             _CountProgress(
-              label: 'Milestones',
+              label: context.l10n.text('roadmap_milestones'),
               completed: milestones
                   .where((item) => item.status == 'completed')
                   .length,
               total: milestones.length,
             ),
             _CountProgress(
-              label: 'Checkpoints',
+              label: context.l10n.text('roadmap_checkpoints'),
               completed: checkpoints
                   .where((item) => item.status == 'completed')
                   .length,
               total: checkpoints.length,
             ),
             _CountProgress(
-              label: 'Linked tasks',
+              label: context.l10n.text('roadmap_linked_tasks'),
               completed: tasks
                   .where((item) => item.status == 'completed')
                   .length,
@@ -1038,7 +1515,12 @@ class _CountProgress extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 12),
-          Text('$completed of $total'),
+          Text(
+            context.l10n.format('roadmap_count_of', {
+              'completed': completed,
+              'total': total,
+            }),
+          ),
         ],
       ),
     );
@@ -1094,20 +1576,20 @@ class _EmptyRoadmaps extends StatelessWidget {
               color: Theme.of(context).colorScheme.primary,
             ),
             const SizedBox(height: 16),
-            const Text(
-              'Build your first roadmap',
-              style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800),
+            Text(
+              context.l10n.text('roadmap_first_heading'),
+              style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800),
             ),
             const SizedBox(height: 8),
-            const Text(
-              'Define the outcome, then add editable phases, milestones, checkpoints, and linked tasks',
+            Text(
+              context.l10n.text('roadmap_first_description'),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 20),
             FilledButton.icon(
               onPressed: onCreate,
               icon: const Icon(Icons.add),
-              label: const Text('Create roadmap'),
+              label: Text(context.l10n.text('roadmap_create')),
             ),
           ],
         ),
@@ -1135,7 +1617,11 @@ Future<void> _showRoadmapEditor(
     context: context,
     builder: (context) => StatefulBuilder(
       builder: (context, setState) => AlertDialog(
-        title: Text(roadmap == null ? 'Create roadmap' : 'Edit roadmap'),
+        title: Text(
+          context.l10n.text(
+            roadmap == null ? 'roadmap_create' : 'roadmap_edit',
+          ),
+        ),
         content: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 580),
           child: SingleChildScrollView(
@@ -1145,9 +1631,9 @@ Future<void> _showRoadmapEditor(
                 TextField(
                   controller: title,
                   autofocus: true,
-                  decoration: const InputDecoration(
-                    labelText: 'Roadmap title',
-                    prefixIcon: Icon(Icons.route_outlined),
+                  decoration: InputDecoration(
+                    labelText: context.l10n.text('roadmap_title'),
+                    prefixIcon: const Icon(Icons.route_outlined),
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -1155,15 +1641,17 @@ Future<void> _showRoadmapEditor(
                   controller: description,
                   minLines: 2,
                   maxLines: 4,
-                  decoration: const InputDecoration(labelText: 'Description'),
+                  decoration: InputDecoration(
+                    labelText: context.l10n.text('description'),
+                  ),
                 ),
                 const SizedBox(height: 12),
                 TextField(
                   controller: outcome,
                   minLines: 2,
                   maxLines: 4,
-                  decoration: const InputDecoration(
-                    labelText: 'Final measurable outcome',
+                  decoration: InputDecoration(
+                    labelText: context.l10n.text('roadmap_final_outcome'),
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -1171,7 +1659,7 @@ Future<void> _showRoadmapEditor(
                   children: [
                     Expanded(
                       child: _DateField(
-                        label: 'Start date',
+                        label: context.l10n.text('roadmap_start_date'),
                         value: start,
                         onChanged: (value) => setState(() => start = value),
                       ),
@@ -1179,7 +1667,7 @@ Future<void> _showRoadmapEditor(
                     const SizedBox(width: 10),
                     Expanded(
                       child: _DateField(
-                        label: 'Target date',
+                        label: context.l10n.text('roadmap_target_date'),
                         value: target,
                         onChanged: (value) => setState(() => target = value),
                       ),
@@ -1190,9 +1678,9 @@ Future<void> _showRoadmapEditor(
                 TextFormField(
                   initialValue: '$effortHours',
                   keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                    labelText: 'Estimated total effort',
-                    suffixText: 'hours',
+                  decoration: InputDecoration(
+                    labelText: context.l10n.text('roadmap_estimated_effort'),
+                    suffixText: context.l10n.text('unit_hours'),
                   ),
                   onChanged: (value) =>
                       effortHours = int.tryParse(value) ?? effortHours,
@@ -1204,11 +1692,13 @@ Future<void> _showRoadmapEditor(
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
+            child: Text(context.l10n.text('cancel')),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
-            child: Text(roadmap == null ? 'Create' : 'Save'),
+            child: Text(
+              context.l10n.text(roadmap == null ? 'roadmap_create' : 'save'),
+            ),
           ),
         ],
       ),
@@ -1255,7 +1745,7 @@ Future<void> _showPhaseEditor(
   final result = await showDialog<bool>(
     context: context,
     builder: (context) => AlertDialog(
-      title: const Text('Add roadmap phase'),
+      title: Text(context.l10n.text('roadmap_add_phase')),
       content: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 500),
         child: Column(
@@ -1264,14 +1754,18 @@ Future<void> _showPhaseEditor(
             TextField(
               controller: title,
               autofocus: true,
-              decoration: const InputDecoration(labelText: 'Phase title'),
+              decoration: InputDecoration(
+                labelText: context.l10n.text('roadmap_phase_title'),
+              ),
             ),
             const SizedBox(height: 12),
             TextField(
               controller: description,
               minLines: 2,
               maxLines: 4,
-              decoration: const InputDecoration(labelText: 'Description'),
+              decoration: InputDecoration(
+                labelText: context.l10n.text('description'),
+              ),
             ),
           ],
         ),
@@ -1279,11 +1773,11 @@ Future<void> _showPhaseEditor(
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context, false),
-          child: const Text('Cancel'),
+          child: Text(context.l10n.text('cancel')),
         ),
         FilledButton(
           onPressed: () => Navigator.pop(context, true),
-          child: const Text('Add phase'),
+          child: Text(context.l10n.text('roadmap_add_phase')),
         ),
       ],
     ),
@@ -1307,84 +1801,390 @@ Future<void> _showMilestoneEditor(
   BuildContext context,
   WidgetRef ref,
   String roadmapId,
-  String phaseId,
+  String? phaseId,
 ) async {
-  final controller = TextEditingController();
-  final result = await _simpleTitleDialog(
-    context,
-    title: 'Add milestone',
-    label: 'Milestone title',
-    controller: controller,
-  );
+  final title = TextEditingController();
+  final description = TextEditingController();
+  final notes = TextEditingController();
+  DateTime? targetDate;
+  var status = 'not_started';
+  var completionRule = 'manual';
+  final result =
+      await showDialog<bool>(
+        context: context,
+        builder: (context) => StatefulBuilder(
+          builder: (context, setDialogState) => AlertDialog(
+            title: Text(context.l10n.text('roadmap_add_milestone')),
+            content: SizedBox(
+              width: 560,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextField(
+                      controller: title,
+                      autofocus: true,
+                      decoration: InputDecoration(
+                        labelText: context.l10n.text('roadmap_milestone_title'),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: description,
+                      minLines: 2,
+                      maxLines: 4,
+                      decoration: InputDecoration(
+                        labelText: context.l10n.text('description'),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: const Icon(Icons.event_outlined),
+                      title: Text(
+                        targetDate == null
+                            ? context.l10n.text('roadmap_target_date')
+                            : DateFormat.yMMMd(
+                                Localizations.localeOf(context).toLanguageTag(),
+                              ).format(targetDate!),
+                      ),
+                      trailing: const Icon(Icons.edit_calendar_outlined),
+                      onTap: () async {
+                        final picked = await showDatePicker(
+                          context: context,
+                          firstDate: DateTime.now().subtract(
+                            const Duration(days: 365),
+                          ),
+                          lastDate: DateTime.now().add(
+                            const Duration(days: 3650),
+                          ),
+                          initialDate: targetDate ?? DateTime.now(),
+                        );
+                        if (picked != null) {
+                          setDialogState(() => targetDate = picked);
+                        }
+                      },
+                    ),
+                    const SizedBox(height: 8),
+                    DropdownButtonFormField<String>(
+                      initialValue: status,
+                      decoration: InputDecoration(
+                        labelText: context.l10n.text('status'),
+                      ),
+                      items: [
+                        for (final value in const [
+                          'not_started',
+                          'in_progress',
+                          'at_risk',
+                          'completed',
+                          'missed',
+                          'paused',
+                        ])
+                          DropdownMenuItem(
+                            value: value,
+                            child: Text(
+                              context.l10n.text(
+                                'roadmap_milestone_status_$value',
+                              ),
+                            ),
+                          ),
+                      ],
+                      onChanged: (value) =>
+                          setDialogState(() => status = value ?? status),
+                    ),
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<String>(
+                      initialValue: completionRule,
+                      decoration: InputDecoration(
+                        labelText: context.l10n.text('roadmap_completion_rule'),
+                      ),
+                      items: [
+                        for (final value in const [
+                          'manual',
+                          'all_checkpoints',
+                          'all_required_tasks',
+                          'progress_threshold',
+                        ])
+                          DropdownMenuItem(
+                            value: value,
+                            child: Text(
+                              context.l10n.text(
+                                'roadmap_milestone_rule_$value',
+                              ),
+                            ),
+                          ),
+                      ],
+                      onChanged: (value) => setDialogState(
+                        () => completionRule = value ?? completionRule,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: notes,
+                      minLines: 2,
+                      maxLines: 4,
+                      decoration: InputDecoration(
+                        labelText: context.l10n.text('notes'),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: Text(context.l10n.text('cancel')),
+              ),
+              FilledButton(
+                onPressed: () =>
+                    Navigator.pop(context, title.text.trim().isNotEmpty),
+                child: Text(context.l10n.text('add')),
+              ),
+            ],
+          ),
+        ),
+      ) ??
+      false;
   if (result) {
     await ref
         .read(roadmapRepositoryProvider)
         .addMilestone(
           roadmapId: roadmapId,
           phaseId: phaseId,
-          title: controller.text,
+          title: title.text,
+          description: description.text,
+          targetDate: targetDate,
+          status: status,
+          completionRule: completionRule,
+          notes: notes.text,
         );
     unawaited(ref.read(syncServiceProvider).drainOutbox());
   }
-  controller.dispose();
+  title.dispose();
+  description.dispose();
+  notes.dispose();
 }
 
 Future<void> _showCheckpointEditor(
   BuildContext context,
   WidgetRef ref,
   String roadmapId,
-  String phaseId,
+  String? phaseId,
 ) async {
-  final controller = TextEditingController();
-  final result = await _simpleTitleDialog(
-    context,
-    title: 'Add checkpoint',
-    label: 'Checkpoint objective',
-    controller: controller,
-  );
+  final milestones =
+      (await ref
+              .read(roadmapRepositoryProvider)
+              .watchMilestones(roadmapId)
+              .first)
+          .where(
+            (milestone) =>
+                milestone.secondaryParentId == null ||
+                milestone.secondaryParentId == phaseId,
+          )
+          .toList();
+  if (!context.mounted) return;
+  final title = TextEditingController();
+  final objective = TextEditingController();
+  final notes = TextEditingController();
+  DateTime? targetDate;
+  String? milestoneId;
+  var status = 'not_started';
+  var required = true;
+  var completionRule = 'manual';
+  final result =
+      await showDialog<bool>(
+        context: context,
+        builder: (context) => StatefulBuilder(
+          builder: (context, setDialogState) => AlertDialog(
+            title: Text(context.l10n.text('roadmap_add_checkpoint')),
+            content: SizedBox(
+              width: 560,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextField(
+                      controller: title,
+                      autofocus: true,
+                      decoration: InputDecoration(
+                        labelText: context.l10n.text(
+                          'roadmap_checkpoint_title',
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: objective,
+                      minLines: 2,
+                      maxLines: 4,
+                      decoration: InputDecoration(
+                        labelText: context.l10n.text(
+                          'roadmap_checkpoint_objective',
+                        ),
+                      ),
+                    ),
+                    if (milestones.isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      DropdownButtonFormField<String?>(
+                        initialValue: milestoneId,
+                        decoration: InputDecoration(
+                          labelText: context.l10n.text('roadmap_milestone'),
+                        ),
+                        items: [
+                          DropdownMenuItem(
+                            value: null,
+                            child: Text(
+                              context.l10n.text('roadmap_no_milestone'),
+                            ),
+                          ),
+                          for (final milestone in milestones)
+                            DropdownMenuItem(
+                              value: milestone.id,
+                              child: Text(milestone.title),
+                            ),
+                        ],
+                        onChanged: (value) =>
+                            setDialogState(() => milestoneId = value),
+                      ),
+                    ],
+                    const SizedBox(height: 8),
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: const Icon(Icons.event_outlined),
+                      title: Text(
+                        targetDate == null
+                            ? context.l10n.text('roadmap_target_date')
+                            : DateFormat.yMMMd(
+                                Localizations.localeOf(context).toLanguageTag(),
+                              ).format(targetDate!),
+                      ),
+                      trailing: const Icon(Icons.edit_calendar_outlined),
+                      onTap: () async {
+                        final picked = await showDatePicker(
+                          context: context,
+                          firstDate: DateTime.now().subtract(
+                            const Duration(days: 365),
+                          ),
+                          lastDate: DateTime.now().add(
+                            const Duration(days: 3650),
+                          ),
+                          initialDate: targetDate ?? DateTime.now(),
+                        );
+                        if (picked != null) {
+                          setDialogState(() => targetDate = picked);
+                        }
+                      },
+                    ),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      value: required,
+                      title: Text(
+                        context.l10n.text('roadmap_checkpoint_required'),
+                      ),
+                      onChanged: (value) =>
+                          setDialogState(() => required = value),
+                    ),
+                    DropdownButtonFormField<String>(
+                      initialValue: status,
+                      decoration: InputDecoration(
+                        labelText: context.l10n.text('status'),
+                      ),
+                      items: [
+                        for (final value in const [
+                          'not_started',
+                          'in_progress',
+                          'ready_for_review',
+                          'completed',
+                          'blocked',
+                          'missed',
+                        ])
+                          DropdownMenuItem(
+                            value: value,
+                            child: Text(
+                              context.l10n.text(
+                                'roadmap_checkpoint_status_$value',
+                              ),
+                            ),
+                          ),
+                      ],
+                      onChanged: (value) =>
+                          setDialogState(() => status = value ?? status),
+                    ),
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<String>(
+                      initialValue: completionRule,
+                      decoration: InputDecoration(
+                        labelText: context.l10n.text('roadmap_completion_rule'),
+                      ),
+                      items: [
+                        for (final value in const [
+                          'manual',
+                          'linked_tasks',
+                          'user_review',
+                          'approved_rule',
+                        ])
+                          DropdownMenuItem(
+                            value: value,
+                            child: Text(
+                              context.l10n.text(
+                                'roadmap_checkpoint_rule_$value',
+                              ),
+                            ),
+                          ),
+                      ],
+                      onChanged: (value) => setDialogState(
+                        () => completionRule = value ?? completionRule,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: notes,
+                      minLines: 2,
+                      maxLines: 4,
+                      decoration: InputDecoration(
+                        labelText: context.l10n.text('notes'),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: Text(context.l10n.text('cancel')),
+              ),
+              FilledButton(
+                onPressed: () =>
+                    Navigator.pop(context, title.text.trim().isNotEmpty),
+                child: Text(context.l10n.text('add')),
+              ),
+            ],
+          ),
+        ),
+      ) ??
+      false;
   if (result) {
     await ref
         .read(roadmapRepositoryProvider)
         .addCheckpoint(
           roadmapId: roadmapId,
           phaseId: phaseId,
-          title: controller.text,
-          objective: controller.text,
+          milestoneId: milestoneId,
+          title: title.text,
+          objective: objective.text,
+          targetDate: targetDate,
+          required: required,
+          status: status,
+          completionRule: completionRule,
+          notes: notes.text,
         );
     unawaited(ref.read(syncServiceProvider).drainOutbox());
   }
-  controller.dispose();
-}
-
-Future<bool> _simpleTitleDialog(
-  BuildContext context, {
-  required String title,
-  required String label,
-  required TextEditingController controller,
-}) async {
-  return await showDialog<bool>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: Text(title),
-          content: TextField(
-            controller: controller,
-            autofocus: true,
-            decoration: InputDecoration(labelText: label),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () =>
-                  Navigator.pop(context, controller.text.trim().isNotEmpty),
-              child: const Text('Add'),
-            ),
-          ],
-        ),
-      ) ??
-      false;
+  title.dispose();
+  objective.dispose();
+  notes.dispose();
 }
 
 Future<void> _showLinkTask(
@@ -1395,54 +2195,203 @@ Future<void> _showLinkTask(
 ) async {
   final tasks = await ref.read(taskRepositoryProvider).watchTasks().first;
   if (!context.mounted) return;
-  final selected = await showDialog<LocalTask>(
+  final search = TextEditingController();
+  final selectedIds = <String>{};
+  var statusFilter = 'all';
+  final selected = await showDialog<Set<String>>(
     context: context,
-    builder: (context) => AlertDialog(
-      title: const Text('Link an existing task'),
-      content: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 560, maxHeight: 520),
-        child: tasks.isEmpty
-            ? const Center(child: Text('Create a task first'))
-            : ListView.builder(
-                shrinkWrap: true,
-                itemCount: tasks.length,
-                itemBuilder: (context, index) {
-                  final task = tasks[index];
-                  return ListTile(
-                    leading: Icon(
-                      task.roadmapId == roadmapId
-                          ? Icons.link
-                          : Icons.task_alt_outlined,
+    builder: (context) => StatefulBuilder(
+      builder: (context, setDialogState) {
+        final query = search.text.trim().toLowerCase();
+        final filtered = tasks.where((task) {
+          final matchesSearch =
+              query.isEmpty || task.title.toLowerCase().contains(query);
+          final matchesStatus =
+              statusFilter == 'all' || task.status == statusFilter;
+          return matchesSearch && matchesStatus;
+        }).toList();
+        return AlertDialog(
+          title: Text(context.l10n.text('roadmap_link_existing_tasks')),
+          content: SizedBox(
+            width: 620,
+            height: 540,
+            child: Column(
+              children: [
+                TextField(
+                  controller: search,
+                  autofocus: true,
+                  decoration: InputDecoration(
+                    labelText: context.l10n.text('roadmap_search_tasks'),
+                    prefixIcon: const Icon(Icons.search),
+                  ),
+                  onChanged: (_) => setDialogState(() {}),
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  initialValue: statusFilter,
+                  decoration: InputDecoration(
+                    labelText: context.l10n.text('roadmap_filter_status'),
+                  ),
+                  items: [
+                    DropdownMenuItem(
+                      value: 'all',
+                      child: Text(context.l10n.text('filter_all')),
                     ),
-                    title: Text(task.title),
-                    subtitle: Text(
-                      task.roadmapId == null
-                          ? 'Not linked'
-                          : task.roadmapId == roadmapId
-                          ? 'Already linked to this roadmap'
-                          : 'Linked to another roadmap',
-                    ),
-                    onTap: () => Navigator.pop(context, task),
-                  );
-                },
+                    for (final status in const [
+                      'ready',
+                      'in_progress',
+                      'paused',
+                      'completed',
+                      'overdue',
+                    ])
+                      DropdownMenuItem(
+                        value: status,
+                        child: Text(context.l10n.taskStatus(status)),
+                      ),
+                  ],
+                  onChanged: (value) =>
+                      setDialogState(() => statusFilter = value ?? 'all'),
+                ),
+                const SizedBox(height: 8),
+                Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  child: Text(
+                    context.l10n.format('roadmap_selected_task_count', {
+                      'count': selectedIds.length,
+                    }),
+                    style: Theme.of(context).textTheme.labelLarge,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Expanded(
+                  child: tasks.isEmpty
+                      ? Center(
+                          child: Text(
+                            context.l10n.text('roadmap_create_task_first'),
+                          ),
+                        )
+                      : filtered.isEmpty
+                      ? Center(
+                          child: Text(
+                            context.l10n.text('roadmap_no_matching_tasks'),
+                          ),
+                        )
+                      : ListView.builder(
+                          itemCount: filtered.length,
+                          itemBuilder: (context, index) {
+                            final task = filtered[index];
+                            final alreadyHere =
+                                task.roadmapId == roadmapId &&
+                                task.roadmapPhaseId == phaseId;
+                            final selected = selectedIds.contains(task.id);
+                            final relationshipLabel = alreadyHere
+                                ? context.l10n.text(
+                                    phaseId == null
+                                        ? 'roadmap_already_linked'
+                                        : 'roadmap_already_linked_phase',
+                                  )
+                                : task.roadmapId == roadmapId
+                                ? context.l10n.text(
+                                    'roadmap_linked_another_phase',
+                                  )
+                                : task.roadmapId == null
+                                ? context.l10n.text('roadmap_not_linked')
+                                : context.l10n.text('roadmap_linked_other');
+                            return CheckboxListTile(
+                              value: alreadyHere || selected,
+                              onChanged: alreadyHere
+                                  ? null
+                                  : (value) => setDialogState(() {
+                                      if (value == true) {
+                                        selectedIds.add(task.id);
+                                      } else {
+                                        selectedIds.remove(task.id);
+                                      }
+                                    }),
+                              secondary: Icon(
+                                alreadyHere
+                                    ? Icons.link
+                                    : Icons.task_alt_outlined,
+                              ),
+                              title: Text(task.title),
+                              subtitle: Text(relationshipLabel),
+                            );
+                          },
+                        ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text(context.l10n.text('cancel')),
+            ),
+            FilledButton.icon(
+              onPressed: selectedIds.isEmpty
+                  ? null
+                  : () => Navigator.pop(context, {...selectedIds}),
+              icon: const Icon(Icons.add_link),
+              label: Text(
+                context.l10n.format('roadmap_link_selected_tasks', {
+                  'count': selectedIds.length,
+                }),
               ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Cancel'),
-        ),
-      ],
+            ),
+          ],
+        );
+      },
     ),
   );
-  if (selected == null) return;
-  await ref
-      .read(taskRepositoryProvider)
-      .updateRelationships(
-        selected,
-        roadmapId: roadmapId,
-        roadmapPhaseId: phaseId,
-      );
+  search.dispose();
+  if (selected == null || selected.isEmpty) return;
+  if (!context.mounted) return;
+  final selectedTasks = tasks
+      .where((task) => selected.contains(task.id))
+      .toList();
+  final movingExisting = selectedTasks.any(
+    (task) =>
+        task.roadmapId != null &&
+        (task.roadmapId != roadmapId || task.roadmapPhaseId != phaseId),
+  );
+  if (movingExisting) {
+    final confirmed =
+        await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: Text(context.l10n.text('roadmap_move_tasks_title')),
+            content: Text(context.l10n.text('roadmap_move_tasks_description')),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: Text(context.l10n.text('cancel')),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: Text(context.l10n.text('roadmap_move_selected_tasks')),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+    if (!confirmed) return;
+  }
+  for (final task in selectedTasks) {
+    await ref
+        .read(taskRepositoryProvider)
+        .updateRelationships(
+          task,
+          roadmapId: roadmapId,
+          roadmapPhaseId: phaseId,
+        );
+    await ref
+        .read(roadmapRepositoryProvider)
+        .upsertTaskLink(
+          roadmapId: roadmapId,
+          taskId: task.id,
+          phaseId: phaseId,
+        );
+  }
   await ref.read(roadmapRepositoryProvider).recalculateProgress(roadmapId);
   unawaited(ref.read(syncServiceProvider).drainOutbox());
 }
@@ -1455,18 +2404,16 @@ Future<void> _confirmDelete(
   final confirmed = await showDialog<bool>(
     context: context,
     builder: (context) => AlertDialog(
-      title: const Text('Delete roadmap?'),
-      content: const Text(
-        'The roadmap is tombstoned for synchronization. Linked tasks remain available and can be reassigned.',
-      ),
+      title: Text(context.l10n.text('roadmap_delete_title')),
+      content: Text(context.l10n.text('roadmap_delete_description')),
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context, false),
-          child: const Text('Cancel'),
+          child: Text(context.l10n.text('cancel')),
         ),
         FilledButton(
           onPressed: () => Navigator.pop(context, true),
-          child: const Text('Delete roadmap'),
+          child: Text(context.l10n.text('roadmap_delete')),
         ),
       ],
     ),
@@ -1503,7 +2450,9 @@ class _DateField extends StatelessWidget {
       },
       child: InputDecorator(
         decoration: InputDecoration(labelText: label),
-        child: Text(DateFormat.yMMMd().format(value)),
+        child: Text(
+          DateFormat.yMMMd(context.l10n.locale.toLanguageTag()).format(value),
+        ),
       ),
     );
   }
@@ -1514,10 +2463,3 @@ Color _riskColor(BuildContext context, String risk) => switch (risk) {
   'medium' => const Color(0xFFF28C28),
   _ => const Color(0xFF35A870),
 };
-
-String _formatDuration(int milliseconds) {
-  final hours = milliseconds / 3600000;
-  return hours < 1
-      ? '${(milliseconds / 60000).round()} min'
-      : '${hours.toStringAsFixed(hours >= 10 ? 0 : 1)} h';
-}

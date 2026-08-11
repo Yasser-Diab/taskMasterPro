@@ -1,0 +1,5 @@
+<resources>
+    <string name="vault_biometric_title">TaskMaster Pro</string>
+    <string name="vault_biometric_cancel">إلغاء</string>
+    <string name="vault_biometric_unlock">افتح كلمات المرور المحفوظة</string>
+</resources>

@@ -88,7 +88,10 @@ declare
     'coaching_feedback',
     'health_permissions',
     'health_summaries',
-    'cycle_records'
+    'cycle_records',
+    'user_vaults',
+    'vault_items',
+    'vault_device_keys'
   ];
   protected_columns constant text[] := array[
     'id',

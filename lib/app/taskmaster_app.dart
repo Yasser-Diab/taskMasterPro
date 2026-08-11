@@ -3,6 +3,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/localization/app_localizations.dart';
+import '../core/navigation/app_route_observer.dart';
 import '../core/providers.dart';
 import '../core/theme/app_theme.dart';
 import '../core/updates/update_prompt.dart';
@@ -54,6 +55,7 @@ class TaskMasterApp extends ConsumerWidget {
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
+      navigatorObservers: [appRouteObserver],
       home: UpdatePrompt(child: AuthGate(themeKey: themeKey)),
     );
   }

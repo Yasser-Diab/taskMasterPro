@@ -70,6 +70,28 @@ class $LocalProfilesTable extends LocalProfiles
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _dateOfBirthMeta = const VerificationMeta(
+    'dateOfBirth',
+  );
+  @override
+  late final GeneratedColumn<DateTime> dateOfBirth = GeneratedColumn<DateTime>(
+    'date_of_birth',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _heightCmMeta = const VerificationMeta(
+    'heightCm',
+  );
+  @override
+  late final GeneratedColumn<double> heightCm = GeneratedColumn<double>(
+    'height_cm',
+    aliasedName,
+    true,
+    type: DriftSqlType.double,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _onboardingCompletedMeta =
       const VerificationMeta('onboardingCompleted');
   @override
@@ -160,6 +182,8 @@ class $LocalProfilesTable extends LocalProfiles
     email,
     imagePath,
     genderIdentity,
+    dateOfBirth,
+    heightCm,
     onboardingCompleted,
     revision,
     createdAt,
@@ -221,6 +245,21 @@ class $LocalProfilesTable extends LocalProfiles
           data['gender_identity']!,
           _genderIdentityMeta,
         ),
+      );
+    }
+    if (data.containsKey('date_of_birth')) {
+      context.handle(
+        _dateOfBirthMeta,
+        dateOfBirth.isAcceptableOrUnknown(
+          data['date_of_birth']!,
+          _dateOfBirthMeta,
+        ),
+      );
+    }
+    if (data.containsKey('height_cm')) {
+      context.handle(
+        _heightCmMeta,
+        heightCm.isAcceptableOrUnknown(data['height_cm']!, _heightCmMeta),
       );
     }
     if (data.containsKey('onboarding_completed')) {
@@ -311,6 +350,14 @@ class $LocalProfilesTable extends LocalProfiles
         DriftSqlType.string,
         data['${effectivePrefix}gender_identity'],
       ),
+      dateOfBirth: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}date_of_birth'],
+      ),
+      heightCm: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}height_cm'],
+      ),
       onboardingCompleted: attachedDatabase.typeMapping.read(
         DriftSqlType.bool,
         data['${effectivePrefix}onboarding_completed'],
@@ -355,6 +402,8 @@ class LocalProfile extends DataClass implements Insertable<LocalProfile> {
   final String? email;
   final String? imagePath;
   final String? genderIdentity;
+  final DateTime? dateOfBirth;
+  final double? heightCm;
   final bool onboardingCompleted;
   final int revision;
   final DateTime createdAt;
@@ -369,6 +418,8 @@ class LocalProfile extends DataClass implements Insertable<LocalProfile> {
     this.email,
     this.imagePath,
     this.genderIdentity,
+    this.dateOfBirth,
+    this.heightCm,
     required this.onboardingCompleted,
     required this.revision,
     required this.createdAt,
@@ -391,6 +442,12 @@ class LocalProfile extends DataClass implements Insertable<LocalProfile> {
     }
     if (!nullToAbsent || genderIdentity != null) {
       map['gender_identity'] = Variable<String>(genderIdentity);
+    }
+    if (!nullToAbsent || dateOfBirth != null) {
+      map['date_of_birth'] = Variable<DateTime>(dateOfBirth);
+    }
+    if (!nullToAbsent || heightCm != null) {
+      map['height_cm'] = Variable<double>(heightCm);
     }
     map['onboarding_completed'] = Variable<bool>(onboardingCompleted);
     map['revision'] = Variable<int>(revision);
@@ -422,6 +479,12 @@ class LocalProfile extends DataClass implements Insertable<LocalProfile> {
       genderIdentity: genderIdentity == null && nullToAbsent
           ? const Value.absent()
           : Value(genderIdentity),
+      dateOfBirth: dateOfBirth == null && nullToAbsent
+          ? const Value.absent()
+          : Value(dateOfBirth),
+      heightCm: heightCm == null && nullToAbsent
+          ? const Value.absent()
+          : Value(heightCm),
       onboardingCompleted: Value(onboardingCompleted),
       revision: Value(revision),
       createdAt: Value(createdAt),
@@ -450,6 +513,8 @@ class LocalProfile extends DataClass implements Insertable<LocalProfile> {
       email: serializer.fromJson<String?>(json['email']),
       imagePath: serializer.fromJson<String?>(json['imagePath']),
       genderIdentity: serializer.fromJson<String?>(json['genderIdentity']),
+      dateOfBirth: serializer.fromJson<DateTime?>(json['dateOfBirth']),
+      heightCm: serializer.fromJson<double?>(json['heightCm']),
       onboardingCompleted: serializer.fromJson<bool>(
         json['onboardingCompleted'],
       ),
@@ -473,6 +538,8 @@ class LocalProfile extends DataClass implements Insertable<LocalProfile> {
       'email': serializer.toJson<String?>(email),
       'imagePath': serializer.toJson<String?>(imagePath),
       'genderIdentity': serializer.toJson<String?>(genderIdentity),
+      'dateOfBirth': serializer.toJson<DateTime?>(dateOfBirth),
+      'heightCm': serializer.toJson<double?>(heightCm),
       'onboardingCompleted': serializer.toJson<bool>(onboardingCompleted),
       'revision': serializer.toJson<int>(revision),
       'createdAt': serializer.toJson<DateTime>(createdAt),
@@ -490,6 +557,8 @@ class LocalProfile extends DataClass implements Insertable<LocalProfile> {
     Value<String?> email = const Value.absent(),
     Value<String?> imagePath = const Value.absent(),
     Value<String?> genderIdentity = const Value.absent(),
+    Value<DateTime?> dateOfBirth = const Value.absent(),
+    Value<double?> heightCm = const Value.absent(),
     bool? onboardingCompleted,
     int? revision,
     DateTime? createdAt,
@@ -506,6 +575,8 @@ class LocalProfile extends DataClass implements Insertable<LocalProfile> {
     genderIdentity: genderIdentity.present
         ? genderIdentity.value
         : this.genderIdentity,
+    dateOfBirth: dateOfBirth.present ? dateOfBirth.value : this.dateOfBirth,
+    heightCm: heightCm.present ? heightCm.value : this.heightCm,
     onboardingCompleted: onboardingCompleted ?? this.onboardingCompleted,
     revision: revision ?? this.revision,
     createdAt: createdAt ?? this.createdAt,
@@ -530,6 +601,10 @@ class LocalProfile extends DataClass implements Insertable<LocalProfile> {
       genderIdentity: data.genderIdentity.present
           ? data.genderIdentity.value
           : this.genderIdentity,
+      dateOfBirth: data.dateOfBirth.present
+          ? data.dateOfBirth.value
+          : this.dateOfBirth,
+      heightCm: data.heightCm.present ? data.heightCm.value : this.heightCm,
       onboardingCompleted: data.onboardingCompleted.present
           ? data.onboardingCompleted.value
           : this.onboardingCompleted,
@@ -555,6 +630,8 @@ class LocalProfile extends DataClass implements Insertable<LocalProfile> {
           ..write('email: $email, ')
           ..write('imagePath: $imagePath, ')
           ..write('genderIdentity: $genderIdentity, ')
+          ..write('dateOfBirth: $dateOfBirth, ')
+          ..write('heightCm: $heightCm, ')
           ..write('onboardingCompleted: $onboardingCompleted, ')
           ..write('revision: $revision, ')
           ..write('createdAt: $createdAt, ')
@@ -574,6 +651,8 @@ class LocalProfile extends DataClass implements Insertable<LocalProfile> {
     email,
     imagePath,
     genderIdentity,
+    dateOfBirth,
+    heightCm,
     onboardingCompleted,
     revision,
     createdAt,
@@ -592,6 +671,8 @@ class LocalProfile extends DataClass implements Insertable<LocalProfile> {
           other.email == this.email &&
           other.imagePath == this.imagePath &&
           other.genderIdentity == this.genderIdentity &&
+          other.dateOfBirth == this.dateOfBirth &&
+          other.heightCm == this.heightCm &&
           other.onboardingCompleted == this.onboardingCompleted &&
           other.revision == this.revision &&
           other.createdAt == this.createdAt &&
@@ -608,6 +689,8 @@ class LocalProfilesCompanion extends UpdateCompanion<LocalProfile> {
   final Value<String?> email;
   final Value<String?> imagePath;
   final Value<String?> genderIdentity;
+  final Value<DateTime?> dateOfBirth;
+  final Value<double?> heightCm;
   final Value<bool> onboardingCompleted;
   final Value<int> revision;
   final Value<DateTime> createdAt;
@@ -623,6 +706,8 @@ class LocalProfilesCompanion extends UpdateCompanion<LocalProfile> {
     this.email = const Value.absent(),
     this.imagePath = const Value.absent(),
     this.genderIdentity = const Value.absent(),
+    this.dateOfBirth = const Value.absent(),
+    this.heightCm = const Value.absent(),
     this.onboardingCompleted = const Value.absent(),
     this.revision = const Value.absent(),
     this.createdAt = const Value.absent(),
@@ -639,6 +724,8 @@ class LocalProfilesCompanion extends UpdateCompanion<LocalProfile> {
     this.email = const Value.absent(),
     this.imagePath = const Value.absent(),
     this.genderIdentity = const Value.absent(),
+    this.dateOfBirth = const Value.absent(),
+    this.heightCm = const Value.absent(),
     this.onboardingCompleted = const Value.absent(),
     this.revision = const Value.absent(),
     required DateTime createdAt,
@@ -658,6 +745,8 @@ class LocalProfilesCompanion extends UpdateCompanion<LocalProfile> {
     Expression<String>? email,
     Expression<String>? imagePath,
     Expression<String>? genderIdentity,
+    Expression<DateTime>? dateOfBirth,
+    Expression<double>? heightCm,
     Expression<bool>? onboardingCompleted,
     Expression<int>? revision,
     Expression<DateTime>? createdAt,
@@ -674,6 +763,8 @@ class LocalProfilesCompanion extends UpdateCompanion<LocalProfile> {
       if (email != null) 'email': email,
       if (imagePath != null) 'image_path': imagePath,
       if (genderIdentity != null) 'gender_identity': genderIdentity,
+      if (dateOfBirth != null) 'date_of_birth': dateOfBirth,
+      if (heightCm != null) 'height_cm': heightCm,
       if (onboardingCompleted != null)
         'onboarding_completed': onboardingCompleted,
       if (revision != null) 'revision': revision,
@@ -693,6 +784,8 @@ class LocalProfilesCompanion extends UpdateCompanion<LocalProfile> {
     Value<String?>? email,
     Value<String?>? imagePath,
     Value<String?>? genderIdentity,
+    Value<DateTime?>? dateOfBirth,
+    Value<double?>? heightCm,
     Value<bool>? onboardingCompleted,
     Value<int>? revision,
     Value<DateTime>? createdAt,
@@ -709,6 +802,8 @@ class LocalProfilesCompanion extends UpdateCompanion<LocalProfile> {
       email: email ?? this.email,
       imagePath: imagePath ?? this.imagePath,
       genderIdentity: genderIdentity ?? this.genderIdentity,
+      dateOfBirth: dateOfBirth ?? this.dateOfBirth,
+      heightCm: heightCm ?? this.heightCm,
       onboardingCompleted: onboardingCompleted ?? this.onboardingCompleted,
       revision: revision ?? this.revision,
       createdAt: createdAt ?? this.createdAt,
@@ -740,6 +835,12 @@ class LocalProfilesCompanion extends UpdateCompanion<LocalProfile> {
     }
     if (genderIdentity.present) {
       map['gender_identity'] = Variable<String>(genderIdentity.value);
+    }
+    if (dateOfBirth.present) {
+      map['date_of_birth'] = Variable<DateTime>(dateOfBirth.value);
+    }
+    if (heightCm.present) {
+      map['height_cm'] = Variable<double>(heightCm.value);
     }
     if (onboardingCompleted.present) {
       map['onboarding_completed'] = Variable<bool>(onboardingCompleted.value);
@@ -777,6 +878,8 @@ class LocalProfilesCompanion extends UpdateCompanion<LocalProfile> {
           ..write('email: $email, ')
           ..write('imagePath: $imagePath, ')
           ..write('genderIdentity: $genderIdentity, ')
+          ..write('dateOfBirth: $dateOfBirth, ')
+          ..write('heightCm: $heightCm, ')
           ..write('onboardingCompleted: $onboardingCompleted, ')
           ..write('revision: $revision, ')
           ..write('createdAt: $createdAt, ')
@@ -862,6 +965,21 @@ class $LocalAppSettingsTable extends LocalAppSettings
     type: DriftSqlType.string,
     requiredDuringInsert: false,
     defaultValue: const Constant('UTC'),
+  );
+  static const VerificationMeta _useDeviceTimeZoneMeta = const VerificationMeta(
+    'useDeviceTimeZone',
+  );
+  @override
+  late final GeneratedColumn<bool> useDeviceTimeZone = GeneratedColumn<bool>(
+    'use_device_time_zone',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("use_device_time_zone" IN (0, 1))',
+    ),
+    defaultValue: const Constant(true),
   );
   static const VerificationMeta _clockFormatMeta = const VerificationMeta(
     'clockFormat',
@@ -955,7 +1073,7 @@ class $LocalAppSettingsTable extends LocalAppSettings
         defaultConstraints: GeneratedColumn.constraintIsAlways(
           'CHECK ("application_tracking_enabled" IN (0, 1))',
         ),
-        defaultValue: const Constant(false),
+        defaultValue: const Constant(true),
       );
   static const VerificationMeta _windowTitleTrackingEnabledMeta =
       const VerificationMeta('windowTitleTrackingEnabled');
@@ -1084,6 +1202,78 @@ class $LocalAppSettingsTable extends LocalAppSettings
     ),
     defaultValue: const Constant(true),
   );
+  static const VerificationMeta _activityRuleSyncEnabledMeta =
+      const VerificationMeta('activityRuleSyncEnabled');
+  @override
+  late final GeneratedColumn<bool> activityRuleSyncEnabled =
+      GeneratedColumn<bool>(
+        'activity_rule_sync_enabled',
+        aliasedName,
+        false,
+        type: DriftSqlType.bool,
+        requiredDuringInsert: false,
+        defaultConstraints: GeneratedColumn.constraintIsAlways(
+          'CHECK ("activity_rule_sync_enabled" IN (0, 1))',
+        ),
+        defaultValue: const Constant(true),
+      );
+  static const VerificationMeta _detailedActivitySyncEnabledMeta =
+      const VerificationMeta('detailedActivitySyncEnabled');
+  @override
+  late final GeneratedColumn<bool> detailedActivitySyncEnabled =
+      GeneratedColumn<bool>(
+        'detailed_activity_sync_enabled',
+        aliasedName,
+        false,
+        type: DriftSqlType.bool,
+        requiredDuringInsert: false,
+        defaultConstraints: GeneratedColumn.constraintIsAlways(
+          'CHECK ("detailed_activity_sync_enabled" IN (0, 1))',
+        ),
+        defaultValue: const Constant(false),
+      );
+  static const VerificationMeta _localActivityRetentionDaysMeta =
+      const VerificationMeta('localActivityRetentionDays');
+  @override
+  late final GeneratedColumn<int> localActivityRetentionDays =
+      GeneratedColumn<int>(
+        'local_activity_retention_days',
+        aliasedName,
+        false,
+        type: DriftSqlType.int,
+        requiredDuringInsert: false,
+        defaultValue: const Constant(30),
+      );
+  static const VerificationMeta _hideConfirmedSystemActivityMeta =
+      const VerificationMeta('hideConfirmedSystemActivity');
+  @override
+  late final GeneratedColumn<bool> hideConfirmedSystemActivity =
+      GeneratedColumn<bool>(
+        'hide_confirmed_system_activity',
+        aliasedName,
+        false,
+        type: DriftSqlType.bool,
+        requiredDuringInsert: false,
+        defaultConstraints: GeneratedColumn.constraintIsAlways(
+          'CHECK ("hide_confirmed_system_activity" IN (0, 1))',
+        ),
+        defaultValue: const Constant(true),
+      );
+  static const VerificationMeta _showPossibleSystemActivityMeta =
+      const VerificationMeta('showPossibleSystemActivity');
+  @override
+  late final GeneratedColumn<bool> showPossibleSystemActivity =
+      GeneratedColumn<bool>(
+        'show_possible_system_activity',
+        aliasedName,
+        false,
+        type: DriftSqlType.bool,
+        requiredDuringInsert: false,
+        defaultConstraints: GeneratedColumn.constraintIsAlways(
+          'CHECK ("show_possible_system_activity" IN (0, 1))',
+        ),
+        defaultValue: const Constant(true),
+      );
   static const VerificationMeta _automaticConfidenceThresholdMeta =
       const VerificationMeta('automaticConfidenceThreshold');
   @override
@@ -1108,6 +1298,237 @@ class $LocalAppSettingsTable extends LocalAppSettings
         requiredDuringInsert: false,
         defaultValue: const Constant(30000),
       );
+  static const VerificationMeta _wakeTimeMinutesMeta = const VerificationMeta(
+    'wakeTimeMinutes',
+  );
+  @override
+  late final GeneratedColumn<int> wakeTimeMinutes = GeneratedColumn<int>(
+    'wake_time_minutes',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(420),
+  );
+  static const VerificationMeta _sleepTimeMinutesMeta = const VerificationMeta(
+    'sleepTimeMinutes',
+  );
+  @override
+  late final GeneratedColumn<int> sleepTimeMinutes = GeneratedColumn<int>(
+    'sleep_time_minutes',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(1320),
+  );
+  static const VerificationMeta _workingDaysJsonMeta = const VerificationMeta(
+    'workingDaysJson',
+  );
+  @override
+  late final GeneratedColumn<String> workingDaysJson = GeneratedColumn<String>(
+    'working_days_json',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('[1,2,3,4,5]'),
+  );
+  static const VerificationMeta _workStartMinutesMeta = const VerificationMeta(
+    'workStartMinutes',
+  );
+  @override
+  late final GeneratedColumn<int> workStartMinutes = GeneratedColumn<int>(
+    'work_start_minutes',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(540),
+  );
+  static const VerificationMeta _workEndMinutesMeta = const VerificationMeta(
+    'workEndMinutes',
+  );
+  @override
+  late final GeneratedColumn<int> workEndMinutes = GeneratedColumn<int>(
+    'work_end_minutes',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(1020),
+  );
+  static const VerificationMeta _quietStartMinutesMeta = const VerificationMeta(
+    'quietStartMinutes',
+  );
+  @override
+  late final GeneratedColumn<int> quietStartMinutes = GeneratedColumn<int>(
+    'quiet_start_minutes',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(1320),
+  );
+  static const VerificationMeta _quietEndMinutesMeta = const VerificationMeta(
+    'quietEndMinutes',
+  );
+  @override
+  late final GeneratedColumn<int> quietEndMinutes = GeneratedColumn<int>(
+    'quiet_end_minutes',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(420),
+  );
+  static const VerificationMeta _sleepReminderEnabledMeta =
+      const VerificationMeta('sleepReminderEnabled');
+  @override
+  late final GeneratedColumn<bool> sleepReminderEnabled = GeneratedColumn<bool>(
+    'sleep_reminder_enabled',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("sleep_reminder_enabled" IN (0, 1))',
+    ),
+    defaultValue: const Constant(true),
+  );
+  static const VerificationMeta _sleepReminderOffsetMinutesMeta =
+      const VerificationMeta('sleepReminderOffsetMinutes');
+  @override
+  late final GeneratedColumn<int> sleepReminderOffsetMinutes =
+      GeneratedColumn<int>(
+        'sleep_reminder_offset_minutes',
+        aliasedName,
+        false,
+        type: DriftSqlType.int,
+        requiredDuringInsert: false,
+        defaultValue: const Constant(30),
+      );
+  static const VerificationMeta _phoneUsageAnalysisEnabledMeta =
+      const VerificationMeta('phoneUsageAnalysisEnabled');
+  @override
+  late final GeneratedColumn<bool> phoneUsageAnalysisEnabled =
+      GeneratedColumn<bool>(
+        'phone_usage_analysis_enabled',
+        aliasedName,
+        false,
+        type: DriftSqlType.bool,
+        requiredDuringInsert: false,
+        defaultConstraints: GeneratedColumn.constraintIsAlways(
+          'CHECK ("phone_usage_analysis_enabled" IN (0, 1))',
+        ),
+        defaultValue: const Constant(false),
+      );
+  static const VerificationMeta _coachingSensitivityMeta =
+      const VerificationMeta('coachingSensitivity');
+  @override
+  late final GeneratedColumn<String> coachingSensitivity =
+      GeneratedColumn<String>(
+        'coaching_sensitivity',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+        defaultValue: const Constant('standard'),
+      );
+  static const VerificationMeta _coachingToneMeta = const VerificationMeta(
+    'coachingTone',
+  );
+  @override
+  late final GeneratedColumn<String> coachingTone = GeneratedColumn<String>(
+    'coaching_tone',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('balanced'),
+  );
+  static const VerificationMeta _healthSummarySyncEnabledMeta =
+      const VerificationMeta('healthSummarySyncEnabled');
+  @override
+  late final GeneratedColumn<bool> healthSummarySyncEnabled =
+      GeneratedColumn<bool>(
+        'health_summary_sync_enabled',
+        aliasedName,
+        false,
+        type: DriftSqlType.bool,
+        requiredDuringInsert: false,
+        defaultConstraints: GeneratedColumn.constraintIsAlways(
+          'CHECK ("health_summary_sync_enabled" IN (0, 1))',
+        ),
+        defaultValue: const Constant(false),
+      );
+  static const VerificationMeta _healthReportPrivacyMeta =
+      const VerificationMeta('healthReportPrivacy');
+  @override
+  late final GeneratedColumn<String> healthReportPrivacy =
+      GeneratedColumn<String>(
+        'health_report_privacy',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+        defaultValue: const Constant('ask'),
+      );
+  static const VerificationMeta _notificationPreferencesJsonMeta =
+      const VerificationMeta('notificationPreferencesJson');
+  @override
+  late final GeneratedColumn<String> notificationPreferencesJson =
+      GeneratedColumn<String>(
+        'notification_preferences_json',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+        defaultValue: const Constant(
+          '{"task_reminders":true,"scheduled_starts":true,'
+          '"overdue_tasks":true,"focus_completed":true,'
+          '"short_break_completed":true,"long_break_completed":true,'
+          '"roadmaps":true,"activity_review":true,"coaching":true,'
+          '"sleep_health":true,"synchronization":true,"security":true,'
+          '"vibration":true}',
+        ),
+      );
+  static const VerificationMeta _countryCodeMeta = const VerificationMeta(
+    'countryCode',
+  );
+  @override
+  late final GeneratedColumn<String> countryCode = GeneratedColumn<String>(
+    'country_code',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(''),
+  );
+  static const VerificationMeta _dateFormatMeta = const VerificationMeta(
+    'dateFormat',
+  );
+  @override
+  late final GeneratedColumn<String> dateFormat = GeneratedColumn<String>(
+    'date_format',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('locale'),
+  );
+  static const VerificationMeta _firstDayOfWeekMeta = const VerificationMeta(
+    'firstDayOfWeek',
+  );
+  @override
+  late final GeneratedColumn<int> firstDayOfWeek = GeneratedColumn<int>(
+    'first_day_of_week',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(1),
+  );
   static const VerificationMeta _revisionMeta = const VerificationMeta(
     'revision',
   );
@@ -1172,6 +1593,7 @@ class $LocalAppSettingsTable extends LocalAppSettings
     themeKey,
     accentColor,
     timeZone,
+    useDeviceTimeZone,
     clockFormat,
     notificationSoundKey,
     healthConnectEnabled,
@@ -1188,8 +1610,31 @@ class $LocalAppSettingsTable extends LocalAppSettings
     retainTechnicalIdle,
     automaticTrustedRules,
     activitySyncEnabled,
+    activityRuleSyncEnabled,
+    detailedActivitySyncEnabled,
+    localActivityRetentionDays,
+    hideConfirmedSystemActivity,
+    showPossibleSystemActivity,
     automaticConfidenceThreshold,
     minimumSuggestionDurationMs,
+    wakeTimeMinutes,
+    sleepTimeMinutes,
+    workingDaysJson,
+    workStartMinutes,
+    workEndMinutes,
+    quietStartMinutes,
+    quietEndMinutes,
+    sleepReminderEnabled,
+    sleepReminderOffsetMinutes,
+    phoneUsageAnalysisEnabled,
+    coachingSensitivity,
+    coachingTone,
+    healthSummarySyncEnabled,
+    healthReportPrivacy,
+    notificationPreferencesJson,
+    countryCode,
+    dateFormat,
+    firstDayOfWeek,
     revision,
     createdAt,
     updatedAt,
@@ -1244,6 +1689,15 @@ class $LocalAppSettingsTable extends LocalAppSettings
       context.handle(
         _timeZoneMeta,
         timeZone.isAcceptableOrUnknown(data['time_zone']!, _timeZoneMeta),
+      );
+    }
+    if (data.containsKey('use_device_time_zone')) {
+      context.handle(
+        _useDeviceTimeZoneMeta,
+        useDeviceTimeZone.isAcceptableOrUnknown(
+          data['use_device_time_zone']!,
+          _useDeviceTimeZoneMeta,
+        ),
       );
     }
     if (data.containsKey('clock_format')) {
@@ -1390,6 +1844,51 @@ class $LocalAppSettingsTable extends LocalAppSettings
         ),
       );
     }
+    if (data.containsKey('activity_rule_sync_enabled')) {
+      context.handle(
+        _activityRuleSyncEnabledMeta,
+        activityRuleSyncEnabled.isAcceptableOrUnknown(
+          data['activity_rule_sync_enabled']!,
+          _activityRuleSyncEnabledMeta,
+        ),
+      );
+    }
+    if (data.containsKey('detailed_activity_sync_enabled')) {
+      context.handle(
+        _detailedActivitySyncEnabledMeta,
+        detailedActivitySyncEnabled.isAcceptableOrUnknown(
+          data['detailed_activity_sync_enabled']!,
+          _detailedActivitySyncEnabledMeta,
+        ),
+      );
+    }
+    if (data.containsKey('local_activity_retention_days')) {
+      context.handle(
+        _localActivityRetentionDaysMeta,
+        localActivityRetentionDays.isAcceptableOrUnknown(
+          data['local_activity_retention_days']!,
+          _localActivityRetentionDaysMeta,
+        ),
+      );
+    }
+    if (data.containsKey('hide_confirmed_system_activity')) {
+      context.handle(
+        _hideConfirmedSystemActivityMeta,
+        hideConfirmedSystemActivity.isAcceptableOrUnknown(
+          data['hide_confirmed_system_activity']!,
+          _hideConfirmedSystemActivityMeta,
+        ),
+      );
+    }
+    if (data.containsKey('show_possible_system_activity')) {
+      context.handle(
+        _showPossibleSystemActivityMeta,
+        showPossibleSystemActivity.isAcceptableOrUnknown(
+          data['show_possible_system_activity']!,
+          _showPossibleSystemActivityMeta,
+        ),
+      );
+    }
     if (data.containsKey('automatic_confidence_threshold')) {
       context.handle(
         _automaticConfidenceThresholdMeta,
@@ -1405,6 +1904,165 @@ class $LocalAppSettingsTable extends LocalAppSettings
         minimumSuggestionDurationMs.isAcceptableOrUnknown(
           data['minimum_suggestion_duration_ms']!,
           _minimumSuggestionDurationMsMeta,
+        ),
+      );
+    }
+    if (data.containsKey('wake_time_minutes')) {
+      context.handle(
+        _wakeTimeMinutesMeta,
+        wakeTimeMinutes.isAcceptableOrUnknown(
+          data['wake_time_minutes']!,
+          _wakeTimeMinutesMeta,
+        ),
+      );
+    }
+    if (data.containsKey('sleep_time_minutes')) {
+      context.handle(
+        _sleepTimeMinutesMeta,
+        sleepTimeMinutes.isAcceptableOrUnknown(
+          data['sleep_time_minutes']!,
+          _sleepTimeMinutesMeta,
+        ),
+      );
+    }
+    if (data.containsKey('working_days_json')) {
+      context.handle(
+        _workingDaysJsonMeta,
+        workingDaysJson.isAcceptableOrUnknown(
+          data['working_days_json']!,
+          _workingDaysJsonMeta,
+        ),
+      );
+    }
+    if (data.containsKey('work_start_minutes')) {
+      context.handle(
+        _workStartMinutesMeta,
+        workStartMinutes.isAcceptableOrUnknown(
+          data['work_start_minutes']!,
+          _workStartMinutesMeta,
+        ),
+      );
+    }
+    if (data.containsKey('work_end_minutes')) {
+      context.handle(
+        _workEndMinutesMeta,
+        workEndMinutes.isAcceptableOrUnknown(
+          data['work_end_minutes']!,
+          _workEndMinutesMeta,
+        ),
+      );
+    }
+    if (data.containsKey('quiet_start_minutes')) {
+      context.handle(
+        _quietStartMinutesMeta,
+        quietStartMinutes.isAcceptableOrUnknown(
+          data['quiet_start_minutes']!,
+          _quietStartMinutesMeta,
+        ),
+      );
+    }
+    if (data.containsKey('quiet_end_minutes')) {
+      context.handle(
+        _quietEndMinutesMeta,
+        quietEndMinutes.isAcceptableOrUnknown(
+          data['quiet_end_minutes']!,
+          _quietEndMinutesMeta,
+        ),
+      );
+    }
+    if (data.containsKey('sleep_reminder_enabled')) {
+      context.handle(
+        _sleepReminderEnabledMeta,
+        sleepReminderEnabled.isAcceptableOrUnknown(
+          data['sleep_reminder_enabled']!,
+          _sleepReminderEnabledMeta,
+        ),
+      );
+    }
+    if (data.containsKey('sleep_reminder_offset_minutes')) {
+      context.handle(
+        _sleepReminderOffsetMinutesMeta,
+        sleepReminderOffsetMinutes.isAcceptableOrUnknown(
+          data['sleep_reminder_offset_minutes']!,
+          _sleepReminderOffsetMinutesMeta,
+        ),
+      );
+    }
+    if (data.containsKey('phone_usage_analysis_enabled')) {
+      context.handle(
+        _phoneUsageAnalysisEnabledMeta,
+        phoneUsageAnalysisEnabled.isAcceptableOrUnknown(
+          data['phone_usage_analysis_enabled']!,
+          _phoneUsageAnalysisEnabledMeta,
+        ),
+      );
+    }
+    if (data.containsKey('coaching_sensitivity')) {
+      context.handle(
+        _coachingSensitivityMeta,
+        coachingSensitivity.isAcceptableOrUnknown(
+          data['coaching_sensitivity']!,
+          _coachingSensitivityMeta,
+        ),
+      );
+    }
+    if (data.containsKey('coaching_tone')) {
+      context.handle(
+        _coachingToneMeta,
+        coachingTone.isAcceptableOrUnknown(
+          data['coaching_tone']!,
+          _coachingToneMeta,
+        ),
+      );
+    }
+    if (data.containsKey('health_summary_sync_enabled')) {
+      context.handle(
+        _healthSummarySyncEnabledMeta,
+        healthSummarySyncEnabled.isAcceptableOrUnknown(
+          data['health_summary_sync_enabled']!,
+          _healthSummarySyncEnabledMeta,
+        ),
+      );
+    }
+    if (data.containsKey('health_report_privacy')) {
+      context.handle(
+        _healthReportPrivacyMeta,
+        healthReportPrivacy.isAcceptableOrUnknown(
+          data['health_report_privacy']!,
+          _healthReportPrivacyMeta,
+        ),
+      );
+    }
+    if (data.containsKey('notification_preferences_json')) {
+      context.handle(
+        _notificationPreferencesJsonMeta,
+        notificationPreferencesJson.isAcceptableOrUnknown(
+          data['notification_preferences_json']!,
+          _notificationPreferencesJsonMeta,
+        ),
+      );
+    }
+    if (data.containsKey('country_code')) {
+      context.handle(
+        _countryCodeMeta,
+        countryCode.isAcceptableOrUnknown(
+          data['country_code']!,
+          _countryCodeMeta,
+        ),
+      );
+    }
+    if (data.containsKey('date_format')) {
+      context.handle(
+        _dateFormatMeta,
+        dateFormat.isAcceptableOrUnknown(data['date_format']!, _dateFormatMeta),
+      );
+    }
+    if (data.containsKey('first_day_of_week')) {
+      context.handle(
+        _firstDayOfWeekMeta,
+        firstDayOfWeek.isAcceptableOrUnknown(
+          data['first_day_of_week']!,
+          _firstDayOfWeekMeta,
         ),
       );
     }
@@ -1478,6 +2136,10 @@ class $LocalAppSettingsTable extends LocalAppSettings
         DriftSqlType.string,
         data['${effectivePrefix}time_zone'],
       )!,
+      useDeviceTimeZone: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}use_device_time_zone'],
+      )!,
       clockFormat: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}clock_format'],
@@ -1542,6 +2204,26 @@ class $LocalAppSettingsTable extends LocalAppSettings
         DriftSqlType.bool,
         data['${effectivePrefix}activity_sync_enabled'],
       )!,
+      activityRuleSyncEnabled: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}activity_rule_sync_enabled'],
+      )!,
+      detailedActivitySyncEnabled: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}detailed_activity_sync_enabled'],
+      )!,
+      localActivityRetentionDays: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}local_activity_retention_days'],
+      )!,
+      hideConfirmedSystemActivity: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}hide_confirmed_system_activity'],
+      )!,
+      showPossibleSystemActivity: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}show_possible_system_activity'],
+      )!,
       automaticConfidenceThreshold: attachedDatabase.typeMapping.read(
         DriftSqlType.double,
         data['${effectivePrefix}automatic_confidence_threshold'],
@@ -1549,6 +2231,78 @@ class $LocalAppSettingsTable extends LocalAppSettings
       minimumSuggestionDurationMs: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}minimum_suggestion_duration_ms'],
+      )!,
+      wakeTimeMinutes: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}wake_time_minutes'],
+      )!,
+      sleepTimeMinutes: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}sleep_time_minutes'],
+      )!,
+      workingDaysJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}working_days_json'],
+      )!,
+      workStartMinutes: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}work_start_minutes'],
+      )!,
+      workEndMinutes: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}work_end_minutes'],
+      )!,
+      quietStartMinutes: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}quiet_start_minutes'],
+      )!,
+      quietEndMinutes: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}quiet_end_minutes'],
+      )!,
+      sleepReminderEnabled: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}sleep_reminder_enabled'],
+      )!,
+      sleepReminderOffsetMinutes: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}sleep_reminder_offset_minutes'],
+      )!,
+      phoneUsageAnalysisEnabled: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}phone_usage_analysis_enabled'],
+      )!,
+      coachingSensitivity: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}coaching_sensitivity'],
+      )!,
+      coachingTone: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}coaching_tone'],
+      )!,
+      healthSummarySyncEnabled: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}health_summary_sync_enabled'],
+      )!,
+      healthReportPrivacy: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}health_report_privacy'],
+      )!,
+      notificationPreferencesJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}notification_preferences_json'],
+      )!,
+      countryCode: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}country_code'],
+      )!,
+      dateFormat: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}date_format'],
+      )!,
+      firstDayOfWeek: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}first_day_of_week'],
       )!,
       revision: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
@@ -1586,6 +2340,7 @@ class LocalAppSetting extends DataClass implements Insertable<LocalAppSetting> {
   final String themeKey;
   final int accentColor;
   final String timeZone;
+  final bool useDeviceTimeZone;
   final String clockFormat;
   final String notificationSoundKey;
   final bool healthConnectEnabled;
@@ -1602,8 +2357,31 @@ class LocalAppSetting extends DataClass implements Insertable<LocalAppSetting> {
   final bool retainTechnicalIdle;
   final bool automaticTrustedRules;
   final bool activitySyncEnabled;
+  final bool activityRuleSyncEnabled;
+  final bool detailedActivitySyncEnabled;
+  final int localActivityRetentionDays;
+  final bool hideConfirmedSystemActivity;
+  final bool showPossibleSystemActivity;
   final double automaticConfidenceThreshold;
   final int minimumSuggestionDurationMs;
+  final int wakeTimeMinutes;
+  final int sleepTimeMinutes;
+  final String workingDaysJson;
+  final int workStartMinutes;
+  final int workEndMinutes;
+  final int quietStartMinutes;
+  final int quietEndMinutes;
+  final bool sleepReminderEnabled;
+  final int sleepReminderOffsetMinutes;
+  final bool phoneUsageAnalysisEnabled;
+  final String coachingSensitivity;
+  final String coachingTone;
+  final bool healthSummarySyncEnabled;
+  final String healthReportPrivacy;
+  final String notificationPreferencesJson;
+  final String countryCode;
+  final String dateFormat;
+  final int firstDayOfWeek;
   final int revision;
   final DateTime createdAt;
   final DateTime updatedAt;
@@ -1616,6 +2394,7 @@ class LocalAppSetting extends DataClass implements Insertable<LocalAppSetting> {
     required this.themeKey,
     required this.accentColor,
     required this.timeZone,
+    required this.useDeviceTimeZone,
     required this.clockFormat,
     required this.notificationSoundKey,
     required this.healthConnectEnabled,
@@ -1632,8 +2411,31 @@ class LocalAppSetting extends DataClass implements Insertable<LocalAppSetting> {
     required this.retainTechnicalIdle,
     required this.automaticTrustedRules,
     required this.activitySyncEnabled,
+    required this.activityRuleSyncEnabled,
+    required this.detailedActivitySyncEnabled,
+    required this.localActivityRetentionDays,
+    required this.hideConfirmedSystemActivity,
+    required this.showPossibleSystemActivity,
     required this.automaticConfidenceThreshold,
     required this.minimumSuggestionDurationMs,
+    required this.wakeTimeMinutes,
+    required this.sleepTimeMinutes,
+    required this.workingDaysJson,
+    required this.workStartMinutes,
+    required this.workEndMinutes,
+    required this.quietStartMinutes,
+    required this.quietEndMinutes,
+    required this.sleepReminderEnabled,
+    required this.sleepReminderOffsetMinutes,
+    required this.phoneUsageAnalysisEnabled,
+    required this.coachingSensitivity,
+    required this.coachingTone,
+    required this.healthSummarySyncEnabled,
+    required this.healthReportPrivacy,
+    required this.notificationPreferencesJson,
+    required this.countryCode,
+    required this.dateFormat,
+    required this.firstDayOfWeek,
     required this.revision,
     required this.createdAt,
     required this.updatedAt,
@@ -1649,6 +2451,7 @@ class LocalAppSetting extends DataClass implements Insertable<LocalAppSetting> {
     map['theme_key'] = Variable<String>(themeKey);
     map['accent_color'] = Variable<int>(accentColor);
     map['time_zone'] = Variable<String>(timeZone);
+    map['use_device_time_zone'] = Variable<bool>(useDeviceTimeZone);
     map['clock_format'] = Variable<String>(clockFormat);
     map['notification_sound_key'] = Variable<String>(notificationSoundKey);
     map['health_connect_enabled'] = Variable<bool>(healthConnectEnabled);
@@ -1671,12 +2474,51 @@ class LocalAppSetting extends DataClass implements Insertable<LocalAppSetting> {
     map['retain_technical_idle'] = Variable<bool>(retainTechnicalIdle);
     map['automatic_trusted_rules'] = Variable<bool>(automaticTrustedRules);
     map['activity_sync_enabled'] = Variable<bool>(activitySyncEnabled);
+    map['activity_rule_sync_enabled'] = Variable<bool>(activityRuleSyncEnabled);
+    map['detailed_activity_sync_enabled'] = Variable<bool>(
+      detailedActivitySyncEnabled,
+    );
+    map['local_activity_retention_days'] = Variable<int>(
+      localActivityRetentionDays,
+    );
+    map['hide_confirmed_system_activity'] = Variable<bool>(
+      hideConfirmedSystemActivity,
+    );
+    map['show_possible_system_activity'] = Variable<bool>(
+      showPossibleSystemActivity,
+    );
     map['automatic_confidence_threshold'] = Variable<double>(
       automaticConfidenceThreshold,
     );
     map['minimum_suggestion_duration_ms'] = Variable<int>(
       minimumSuggestionDurationMs,
     );
+    map['wake_time_minutes'] = Variable<int>(wakeTimeMinutes);
+    map['sleep_time_minutes'] = Variable<int>(sleepTimeMinutes);
+    map['working_days_json'] = Variable<String>(workingDaysJson);
+    map['work_start_minutes'] = Variable<int>(workStartMinutes);
+    map['work_end_minutes'] = Variable<int>(workEndMinutes);
+    map['quiet_start_minutes'] = Variable<int>(quietStartMinutes);
+    map['quiet_end_minutes'] = Variable<int>(quietEndMinutes);
+    map['sleep_reminder_enabled'] = Variable<bool>(sleepReminderEnabled);
+    map['sleep_reminder_offset_minutes'] = Variable<int>(
+      sleepReminderOffsetMinutes,
+    );
+    map['phone_usage_analysis_enabled'] = Variable<bool>(
+      phoneUsageAnalysisEnabled,
+    );
+    map['coaching_sensitivity'] = Variable<String>(coachingSensitivity);
+    map['coaching_tone'] = Variable<String>(coachingTone);
+    map['health_summary_sync_enabled'] = Variable<bool>(
+      healthSummarySyncEnabled,
+    );
+    map['health_report_privacy'] = Variable<String>(healthReportPrivacy);
+    map['notification_preferences_json'] = Variable<String>(
+      notificationPreferencesJson,
+    );
+    map['country_code'] = Variable<String>(countryCode);
+    map['date_format'] = Variable<String>(dateFormat);
+    map['first_day_of_week'] = Variable<int>(firstDayOfWeek);
     map['revision'] = Variable<int>(revision);
     map['created_at'] = Variable<DateTime>(createdAt);
     map['updated_at'] = Variable<DateTime>(updatedAt);
@@ -1697,6 +2539,7 @@ class LocalAppSetting extends DataClass implements Insertable<LocalAppSetting> {
       themeKey: Value(themeKey),
       accentColor: Value(accentColor),
       timeZone: Value(timeZone),
+      useDeviceTimeZone: Value(useDeviceTimeZone),
       clockFormat: Value(clockFormat),
       notificationSoundKey: Value(notificationSoundKey),
       healthConnectEnabled: Value(healthConnectEnabled),
@@ -1713,8 +2556,31 @@ class LocalAppSetting extends DataClass implements Insertable<LocalAppSetting> {
       retainTechnicalIdle: Value(retainTechnicalIdle),
       automaticTrustedRules: Value(automaticTrustedRules),
       activitySyncEnabled: Value(activitySyncEnabled),
+      activityRuleSyncEnabled: Value(activityRuleSyncEnabled),
+      detailedActivitySyncEnabled: Value(detailedActivitySyncEnabled),
+      localActivityRetentionDays: Value(localActivityRetentionDays),
+      hideConfirmedSystemActivity: Value(hideConfirmedSystemActivity),
+      showPossibleSystemActivity: Value(showPossibleSystemActivity),
       automaticConfidenceThreshold: Value(automaticConfidenceThreshold),
       minimumSuggestionDurationMs: Value(minimumSuggestionDurationMs),
+      wakeTimeMinutes: Value(wakeTimeMinutes),
+      sleepTimeMinutes: Value(sleepTimeMinutes),
+      workingDaysJson: Value(workingDaysJson),
+      workStartMinutes: Value(workStartMinutes),
+      workEndMinutes: Value(workEndMinutes),
+      quietStartMinutes: Value(quietStartMinutes),
+      quietEndMinutes: Value(quietEndMinutes),
+      sleepReminderEnabled: Value(sleepReminderEnabled),
+      sleepReminderOffsetMinutes: Value(sleepReminderOffsetMinutes),
+      phoneUsageAnalysisEnabled: Value(phoneUsageAnalysisEnabled),
+      coachingSensitivity: Value(coachingSensitivity),
+      coachingTone: Value(coachingTone),
+      healthSummarySyncEnabled: Value(healthSummarySyncEnabled),
+      healthReportPrivacy: Value(healthReportPrivacy),
+      notificationPreferencesJson: Value(notificationPreferencesJson),
+      countryCode: Value(countryCode),
+      dateFormat: Value(dateFormat),
+      firstDayOfWeek: Value(firstDayOfWeek),
       revision: Value(revision),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
@@ -1739,6 +2605,7 @@ class LocalAppSetting extends DataClass implements Insertable<LocalAppSetting> {
       themeKey: serializer.fromJson<String>(json['themeKey']),
       accentColor: serializer.fromJson<int>(json['accentColor']),
       timeZone: serializer.fromJson<String>(json['timeZone']),
+      useDeviceTimeZone: serializer.fromJson<bool>(json['useDeviceTimeZone']),
       clockFormat: serializer.fromJson<String>(json['clockFormat']),
       notificationSoundKey: serializer.fromJson<String>(
         json['notificationSoundKey'],
@@ -1783,12 +2650,59 @@ class LocalAppSetting extends DataClass implements Insertable<LocalAppSetting> {
       activitySyncEnabled: serializer.fromJson<bool>(
         json['activitySyncEnabled'],
       ),
+      activityRuleSyncEnabled: serializer.fromJson<bool>(
+        json['activityRuleSyncEnabled'],
+      ),
+      detailedActivitySyncEnabled: serializer.fromJson<bool>(
+        json['detailedActivitySyncEnabled'],
+      ),
+      localActivityRetentionDays: serializer.fromJson<int>(
+        json['localActivityRetentionDays'],
+      ),
+      hideConfirmedSystemActivity: serializer.fromJson<bool>(
+        json['hideConfirmedSystemActivity'],
+      ),
+      showPossibleSystemActivity: serializer.fromJson<bool>(
+        json['showPossibleSystemActivity'],
+      ),
       automaticConfidenceThreshold: serializer.fromJson<double>(
         json['automaticConfidenceThreshold'],
       ),
       minimumSuggestionDurationMs: serializer.fromJson<int>(
         json['minimumSuggestionDurationMs'],
       ),
+      wakeTimeMinutes: serializer.fromJson<int>(json['wakeTimeMinutes']),
+      sleepTimeMinutes: serializer.fromJson<int>(json['sleepTimeMinutes']),
+      workingDaysJson: serializer.fromJson<String>(json['workingDaysJson']),
+      workStartMinutes: serializer.fromJson<int>(json['workStartMinutes']),
+      workEndMinutes: serializer.fromJson<int>(json['workEndMinutes']),
+      quietStartMinutes: serializer.fromJson<int>(json['quietStartMinutes']),
+      quietEndMinutes: serializer.fromJson<int>(json['quietEndMinutes']),
+      sleepReminderEnabled: serializer.fromJson<bool>(
+        json['sleepReminderEnabled'],
+      ),
+      sleepReminderOffsetMinutes: serializer.fromJson<int>(
+        json['sleepReminderOffsetMinutes'],
+      ),
+      phoneUsageAnalysisEnabled: serializer.fromJson<bool>(
+        json['phoneUsageAnalysisEnabled'],
+      ),
+      coachingSensitivity: serializer.fromJson<String>(
+        json['coachingSensitivity'],
+      ),
+      coachingTone: serializer.fromJson<String>(json['coachingTone']),
+      healthSummarySyncEnabled: serializer.fromJson<bool>(
+        json['healthSummarySyncEnabled'],
+      ),
+      healthReportPrivacy: serializer.fromJson<String>(
+        json['healthReportPrivacy'],
+      ),
+      notificationPreferencesJson: serializer.fromJson<String>(
+        json['notificationPreferencesJson'],
+      ),
+      countryCode: serializer.fromJson<String>(json['countryCode']),
+      dateFormat: serializer.fromJson<String>(json['dateFormat']),
+      firstDayOfWeek: serializer.fromJson<int>(json['firstDayOfWeek']),
       revision: serializer.fromJson<int>(json['revision']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
@@ -1806,6 +2720,7 @@ class LocalAppSetting extends DataClass implements Insertable<LocalAppSetting> {
       'themeKey': serializer.toJson<String>(themeKey),
       'accentColor': serializer.toJson<int>(accentColor),
       'timeZone': serializer.toJson<String>(timeZone),
+      'useDeviceTimeZone': serializer.toJson<bool>(useDeviceTimeZone),
       'clockFormat': serializer.toJson<String>(clockFormat),
       'notificationSoundKey': serializer.toJson<String>(notificationSoundKey),
       'healthConnectEnabled': serializer.toJson<bool>(healthConnectEnabled),
@@ -1830,12 +2745,53 @@ class LocalAppSetting extends DataClass implements Insertable<LocalAppSetting> {
       'retainTechnicalIdle': serializer.toJson<bool>(retainTechnicalIdle),
       'automaticTrustedRules': serializer.toJson<bool>(automaticTrustedRules),
       'activitySyncEnabled': serializer.toJson<bool>(activitySyncEnabled),
+      'activityRuleSyncEnabled': serializer.toJson<bool>(
+        activityRuleSyncEnabled,
+      ),
+      'detailedActivitySyncEnabled': serializer.toJson<bool>(
+        detailedActivitySyncEnabled,
+      ),
+      'localActivityRetentionDays': serializer.toJson<int>(
+        localActivityRetentionDays,
+      ),
+      'hideConfirmedSystemActivity': serializer.toJson<bool>(
+        hideConfirmedSystemActivity,
+      ),
+      'showPossibleSystemActivity': serializer.toJson<bool>(
+        showPossibleSystemActivity,
+      ),
       'automaticConfidenceThreshold': serializer.toJson<double>(
         automaticConfidenceThreshold,
       ),
       'minimumSuggestionDurationMs': serializer.toJson<int>(
         minimumSuggestionDurationMs,
       ),
+      'wakeTimeMinutes': serializer.toJson<int>(wakeTimeMinutes),
+      'sleepTimeMinutes': serializer.toJson<int>(sleepTimeMinutes),
+      'workingDaysJson': serializer.toJson<String>(workingDaysJson),
+      'workStartMinutes': serializer.toJson<int>(workStartMinutes),
+      'workEndMinutes': serializer.toJson<int>(workEndMinutes),
+      'quietStartMinutes': serializer.toJson<int>(quietStartMinutes),
+      'quietEndMinutes': serializer.toJson<int>(quietEndMinutes),
+      'sleepReminderEnabled': serializer.toJson<bool>(sleepReminderEnabled),
+      'sleepReminderOffsetMinutes': serializer.toJson<int>(
+        sleepReminderOffsetMinutes,
+      ),
+      'phoneUsageAnalysisEnabled': serializer.toJson<bool>(
+        phoneUsageAnalysisEnabled,
+      ),
+      'coachingSensitivity': serializer.toJson<String>(coachingSensitivity),
+      'coachingTone': serializer.toJson<String>(coachingTone),
+      'healthSummarySyncEnabled': serializer.toJson<bool>(
+        healthSummarySyncEnabled,
+      ),
+      'healthReportPrivacy': serializer.toJson<String>(healthReportPrivacy),
+      'notificationPreferencesJson': serializer.toJson<String>(
+        notificationPreferencesJson,
+      ),
+      'countryCode': serializer.toJson<String>(countryCode),
+      'dateFormat': serializer.toJson<String>(dateFormat),
+      'firstDayOfWeek': serializer.toJson<int>(firstDayOfWeek),
       'revision': serializer.toJson<int>(revision),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
@@ -1851,6 +2807,7 @@ class LocalAppSetting extends DataClass implements Insertable<LocalAppSetting> {
     String? themeKey,
     int? accentColor,
     String? timeZone,
+    bool? useDeviceTimeZone,
     String? clockFormat,
     String? notificationSoundKey,
     bool? healthConnectEnabled,
@@ -1867,8 +2824,31 @@ class LocalAppSetting extends DataClass implements Insertable<LocalAppSetting> {
     bool? retainTechnicalIdle,
     bool? automaticTrustedRules,
     bool? activitySyncEnabled,
+    bool? activityRuleSyncEnabled,
+    bool? detailedActivitySyncEnabled,
+    int? localActivityRetentionDays,
+    bool? hideConfirmedSystemActivity,
+    bool? showPossibleSystemActivity,
     double? automaticConfidenceThreshold,
     int? minimumSuggestionDurationMs,
+    int? wakeTimeMinutes,
+    int? sleepTimeMinutes,
+    String? workingDaysJson,
+    int? workStartMinutes,
+    int? workEndMinutes,
+    int? quietStartMinutes,
+    int? quietEndMinutes,
+    bool? sleepReminderEnabled,
+    int? sleepReminderOffsetMinutes,
+    bool? phoneUsageAnalysisEnabled,
+    String? coachingSensitivity,
+    String? coachingTone,
+    bool? healthSummarySyncEnabled,
+    String? healthReportPrivacy,
+    String? notificationPreferencesJson,
+    String? countryCode,
+    String? dateFormat,
+    int? firstDayOfWeek,
     int? revision,
     DateTime? createdAt,
     DateTime? updatedAt,
@@ -1881,6 +2861,7 @@ class LocalAppSetting extends DataClass implements Insertable<LocalAppSetting> {
     themeKey: themeKey ?? this.themeKey,
     accentColor: accentColor ?? this.accentColor,
     timeZone: timeZone ?? this.timeZone,
+    useDeviceTimeZone: useDeviceTimeZone ?? this.useDeviceTimeZone,
     clockFormat: clockFormat ?? this.clockFormat,
     notificationSoundKey: notificationSoundKey ?? this.notificationSoundKey,
     healthConnectEnabled: healthConnectEnabled ?? this.healthConnectEnabled,
@@ -1901,10 +2882,42 @@ class LocalAppSetting extends DataClass implements Insertable<LocalAppSetting> {
     retainTechnicalIdle: retainTechnicalIdle ?? this.retainTechnicalIdle,
     automaticTrustedRules: automaticTrustedRules ?? this.automaticTrustedRules,
     activitySyncEnabled: activitySyncEnabled ?? this.activitySyncEnabled,
+    activityRuleSyncEnabled:
+        activityRuleSyncEnabled ?? this.activityRuleSyncEnabled,
+    detailedActivitySyncEnabled:
+        detailedActivitySyncEnabled ?? this.detailedActivitySyncEnabled,
+    localActivityRetentionDays:
+        localActivityRetentionDays ?? this.localActivityRetentionDays,
+    hideConfirmedSystemActivity:
+        hideConfirmedSystemActivity ?? this.hideConfirmedSystemActivity,
+    showPossibleSystemActivity:
+        showPossibleSystemActivity ?? this.showPossibleSystemActivity,
     automaticConfidenceThreshold:
         automaticConfidenceThreshold ?? this.automaticConfidenceThreshold,
     minimumSuggestionDurationMs:
         minimumSuggestionDurationMs ?? this.minimumSuggestionDurationMs,
+    wakeTimeMinutes: wakeTimeMinutes ?? this.wakeTimeMinutes,
+    sleepTimeMinutes: sleepTimeMinutes ?? this.sleepTimeMinutes,
+    workingDaysJson: workingDaysJson ?? this.workingDaysJson,
+    workStartMinutes: workStartMinutes ?? this.workStartMinutes,
+    workEndMinutes: workEndMinutes ?? this.workEndMinutes,
+    quietStartMinutes: quietStartMinutes ?? this.quietStartMinutes,
+    quietEndMinutes: quietEndMinutes ?? this.quietEndMinutes,
+    sleepReminderEnabled: sleepReminderEnabled ?? this.sleepReminderEnabled,
+    sleepReminderOffsetMinutes:
+        sleepReminderOffsetMinutes ?? this.sleepReminderOffsetMinutes,
+    phoneUsageAnalysisEnabled:
+        phoneUsageAnalysisEnabled ?? this.phoneUsageAnalysisEnabled,
+    coachingSensitivity: coachingSensitivity ?? this.coachingSensitivity,
+    coachingTone: coachingTone ?? this.coachingTone,
+    healthSummarySyncEnabled:
+        healthSummarySyncEnabled ?? this.healthSummarySyncEnabled,
+    healthReportPrivacy: healthReportPrivacy ?? this.healthReportPrivacy,
+    notificationPreferencesJson:
+        notificationPreferencesJson ?? this.notificationPreferencesJson,
+    countryCode: countryCode ?? this.countryCode,
+    dateFormat: dateFormat ?? this.dateFormat,
+    firstDayOfWeek: firstDayOfWeek ?? this.firstDayOfWeek,
     revision: revision ?? this.revision,
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
@@ -1925,6 +2938,9 @@ class LocalAppSetting extends DataClass implements Insertable<LocalAppSetting> {
           ? data.accentColor.value
           : this.accentColor,
       timeZone: data.timeZone.present ? data.timeZone.value : this.timeZone,
+      useDeviceTimeZone: data.useDeviceTimeZone.present
+          ? data.useDeviceTimeZone.value
+          : this.useDeviceTimeZone,
       clockFormat: data.clockFormat.present
           ? data.clockFormat.value
           : this.clockFormat,
@@ -1973,12 +2989,81 @@ class LocalAppSetting extends DataClass implements Insertable<LocalAppSetting> {
       activitySyncEnabled: data.activitySyncEnabled.present
           ? data.activitySyncEnabled.value
           : this.activitySyncEnabled,
+      activityRuleSyncEnabled: data.activityRuleSyncEnabled.present
+          ? data.activityRuleSyncEnabled.value
+          : this.activityRuleSyncEnabled,
+      detailedActivitySyncEnabled: data.detailedActivitySyncEnabled.present
+          ? data.detailedActivitySyncEnabled.value
+          : this.detailedActivitySyncEnabled,
+      localActivityRetentionDays: data.localActivityRetentionDays.present
+          ? data.localActivityRetentionDays.value
+          : this.localActivityRetentionDays,
+      hideConfirmedSystemActivity: data.hideConfirmedSystemActivity.present
+          ? data.hideConfirmedSystemActivity.value
+          : this.hideConfirmedSystemActivity,
+      showPossibleSystemActivity: data.showPossibleSystemActivity.present
+          ? data.showPossibleSystemActivity.value
+          : this.showPossibleSystemActivity,
       automaticConfidenceThreshold: data.automaticConfidenceThreshold.present
           ? data.automaticConfidenceThreshold.value
           : this.automaticConfidenceThreshold,
       minimumSuggestionDurationMs: data.minimumSuggestionDurationMs.present
           ? data.minimumSuggestionDurationMs.value
           : this.minimumSuggestionDurationMs,
+      wakeTimeMinutes: data.wakeTimeMinutes.present
+          ? data.wakeTimeMinutes.value
+          : this.wakeTimeMinutes,
+      sleepTimeMinutes: data.sleepTimeMinutes.present
+          ? data.sleepTimeMinutes.value
+          : this.sleepTimeMinutes,
+      workingDaysJson: data.workingDaysJson.present
+          ? data.workingDaysJson.value
+          : this.workingDaysJson,
+      workStartMinutes: data.workStartMinutes.present
+          ? data.workStartMinutes.value
+          : this.workStartMinutes,
+      workEndMinutes: data.workEndMinutes.present
+          ? data.workEndMinutes.value
+          : this.workEndMinutes,
+      quietStartMinutes: data.quietStartMinutes.present
+          ? data.quietStartMinutes.value
+          : this.quietStartMinutes,
+      quietEndMinutes: data.quietEndMinutes.present
+          ? data.quietEndMinutes.value
+          : this.quietEndMinutes,
+      sleepReminderEnabled: data.sleepReminderEnabled.present
+          ? data.sleepReminderEnabled.value
+          : this.sleepReminderEnabled,
+      sleepReminderOffsetMinutes: data.sleepReminderOffsetMinutes.present
+          ? data.sleepReminderOffsetMinutes.value
+          : this.sleepReminderOffsetMinutes,
+      phoneUsageAnalysisEnabled: data.phoneUsageAnalysisEnabled.present
+          ? data.phoneUsageAnalysisEnabled.value
+          : this.phoneUsageAnalysisEnabled,
+      coachingSensitivity: data.coachingSensitivity.present
+          ? data.coachingSensitivity.value
+          : this.coachingSensitivity,
+      coachingTone: data.coachingTone.present
+          ? data.coachingTone.value
+          : this.coachingTone,
+      healthSummarySyncEnabled: data.healthSummarySyncEnabled.present
+          ? data.healthSummarySyncEnabled.value
+          : this.healthSummarySyncEnabled,
+      healthReportPrivacy: data.healthReportPrivacy.present
+          ? data.healthReportPrivacy.value
+          : this.healthReportPrivacy,
+      notificationPreferencesJson: data.notificationPreferencesJson.present
+          ? data.notificationPreferencesJson.value
+          : this.notificationPreferencesJson,
+      countryCode: data.countryCode.present
+          ? data.countryCode.value
+          : this.countryCode,
+      dateFormat: data.dateFormat.present
+          ? data.dateFormat.value
+          : this.dateFormat,
+      firstDayOfWeek: data.firstDayOfWeek.present
+          ? data.firstDayOfWeek.value
+          : this.firstDayOfWeek,
       revision: data.revision.present ? data.revision.value : this.revision,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
@@ -1998,6 +3083,7 @@ class LocalAppSetting extends DataClass implements Insertable<LocalAppSetting> {
           ..write('themeKey: $themeKey, ')
           ..write('accentColor: $accentColor, ')
           ..write('timeZone: $timeZone, ')
+          ..write('useDeviceTimeZone: $useDeviceTimeZone, ')
           ..write('clockFormat: $clockFormat, ')
           ..write('notificationSoundKey: $notificationSoundKey, ')
           ..write('healthConnectEnabled: $healthConnectEnabled, ')
@@ -2014,10 +3100,33 @@ class LocalAppSetting extends DataClass implements Insertable<LocalAppSetting> {
           ..write('retainTechnicalIdle: $retainTechnicalIdle, ')
           ..write('automaticTrustedRules: $automaticTrustedRules, ')
           ..write('activitySyncEnabled: $activitySyncEnabled, ')
+          ..write('activityRuleSyncEnabled: $activityRuleSyncEnabled, ')
+          ..write('detailedActivitySyncEnabled: $detailedActivitySyncEnabled, ')
+          ..write('localActivityRetentionDays: $localActivityRetentionDays, ')
+          ..write('hideConfirmedSystemActivity: $hideConfirmedSystemActivity, ')
+          ..write('showPossibleSystemActivity: $showPossibleSystemActivity, ')
           ..write(
             'automaticConfidenceThreshold: $automaticConfidenceThreshold, ',
           )
           ..write('minimumSuggestionDurationMs: $minimumSuggestionDurationMs, ')
+          ..write('wakeTimeMinutes: $wakeTimeMinutes, ')
+          ..write('sleepTimeMinutes: $sleepTimeMinutes, ')
+          ..write('workingDaysJson: $workingDaysJson, ')
+          ..write('workStartMinutes: $workStartMinutes, ')
+          ..write('workEndMinutes: $workEndMinutes, ')
+          ..write('quietStartMinutes: $quietStartMinutes, ')
+          ..write('quietEndMinutes: $quietEndMinutes, ')
+          ..write('sleepReminderEnabled: $sleepReminderEnabled, ')
+          ..write('sleepReminderOffsetMinutes: $sleepReminderOffsetMinutes, ')
+          ..write('phoneUsageAnalysisEnabled: $phoneUsageAnalysisEnabled, ')
+          ..write('coachingSensitivity: $coachingSensitivity, ')
+          ..write('coachingTone: $coachingTone, ')
+          ..write('healthSummarySyncEnabled: $healthSummarySyncEnabled, ')
+          ..write('healthReportPrivacy: $healthReportPrivacy, ')
+          ..write('notificationPreferencesJson: $notificationPreferencesJson, ')
+          ..write('countryCode: $countryCode, ')
+          ..write('dateFormat: $dateFormat, ')
+          ..write('firstDayOfWeek: $firstDayOfWeek, ')
           ..write('revision: $revision, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
@@ -2035,6 +3144,7 @@ class LocalAppSetting extends DataClass implements Insertable<LocalAppSetting> {
     themeKey,
     accentColor,
     timeZone,
+    useDeviceTimeZone,
     clockFormat,
     notificationSoundKey,
     healthConnectEnabled,
@@ -2051,8 +3161,31 @@ class LocalAppSetting extends DataClass implements Insertable<LocalAppSetting> {
     retainTechnicalIdle,
     automaticTrustedRules,
     activitySyncEnabled,
+    activityRuleSyncEnabled,
+    detailedActivitySyncEnabled,
+    localActivityRetentionDays,
+    hideConfirmedSystemActivity,
+    showPossibleSystemActivity,
     automaticConfidenceThreshold,
     minimumSuggestionDurationMs,
+    wakeTimeMinutes,
+    sleepTimeMinutes,
+    workingDaysJson,
+    workStartMinutes,
+    workEndMinutes,
+    quietStartMinutes,
+    quietEndMinutes,
+    sleepReminderEnabled,
+    sleepReminderOffsetMinutes,
+    phoneUsageAnalysisEnabled,
+    coachingSensitivity,
+    coachingTone,
+    healthSummarySyncEnabled,
+    healthReportPrivacy,
+    notificationPreferencesJson,
+    countryCode,
+    dateFormat,
+    firstDayOfWeek,
     revision,
     createdAt,
     updatedAt,
@@ -2069,6 +3202,7 @@ class LocalAppSetting extends DataClass implements Insertable<LocalAppSetting> {
           other.themeKey == this.themeKey &&
           other.accentColor == this.accentColor &&
           other.timeZone == this.timeZone &&
+          other.useDeviceTimeZone == this.useDeviceTimeZone &&
           other.clockFormat == this.clockFormat &&
           other.notificationSoundKey == this.notificationSoundKey &&
           other.healthConnectEnabled == this.healthConnectEnabled &&
@@ -2085,10 +3219,36 @@ class LocalAppSetting extends DataClass implements Insertable<LocalAppSetting> {
           other.retainTechnicalIdle == this.retainTechnicalIdle &&
           other.automaticTrustedRules == this.automaticTrustedRules &&
           other.activitySyncEnabled == this.activitySyncEnabled &&
+          other.activityRuleSyncEnabled == this.activityRuleSyncEnabled &&
+          other.detailedActivitySyncEnabled ==
+              this.detailedActivitySyncEnabled &&
+          other.localActivityRetentionDays == this.localActivityRetentionDays &&
+          other.hideConfirmedSystemActivity ==
+              this.hideConfirmedSystemActivity &&
+          other.showPossibleSystemActivity == this.showPossibleSystemActivity &&
           other.automaticConfidenceThreshold ==
               this.automaticConfidenceThreshold &&
           other.minimumSuggestionDurationMs ==
               this.minimumSuggestionDurationMs &&
+          other.wakeTimeMinutes == this.wakeTimeMinutes &&
+          other.sleepTimeMinutes == this.sleepTimeMinutes &&
+          other.workingDaysJson == this.workingDaysJson &&
+          other.workStartMinutes == this.workStartMinutes &&
+          other.workEndMinutes == this.workEndMinutes &&
+          other.quietStartMinutes == this.quietStartMinutes &&
+          other.quietEndMinutes == this.quietEndMinutes &&
+          other.sleepReminderEnabled == this.sleepReminderEnabled &&
+          other.sleepReminderOffsetMinutes == this.sleepReminderOffsetMinutes &&
+          other.phoneUsageAnalysisEnabled == this.phoneUsageAnalysisEnabled &&
+          other.coachingSensitivity == this.coachingSensitivity &&
+          other.coachingTone == this.coachingTone &&
+          other.healthSummarySyncEnabled == this.healthSummarySyncEnabled &&
+          other.healthReportPrivacy == this.healthReportPrivacy &&
+          other.notificationPreferencesJson ==
+              this.notificationPreferencesJson &&
+          other.countryCode == this.countryCode &&
+          other.dateFormat == this.dateFormat &&
+          other.firstDayOfWeek == this.firstDayOfWeek &&
           other.revision == this.revision &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt &&
@@ -2103,6 +3263,7 @@ class LocalAppSettingsCompanion extends UpdateCompanion<LocalAppSetting> {
   final Value<String> themeKey;
   final Value<int> accentColor;
   final Value<String> timeZone;
+  final Value<bool> useDeviceTimeZone;
   final Value<String> clockFormat;
   final Value<String> notificationSoundKey;
   final Value<bool> healthConnectEnabled;
@@ -2119,8 +3280,31 @@ class LocalAppSettingsCompanion extends UpdateCompanion<LocalAppSetting> {
   final Value<bool> retainTechnicalIdle;
   final Value<bool> automaticTrustedRules;
   final Value<bool> activitySyncEnabled;
+  final Value<bool> activityRuleSyncEnabled;
+  final Value<bool> detailedActivitySyncEnabled;
+  final Value<int> localActivityRetentionDays;
+  final Value<bool> hideConfirmedSystemActivity;
+  final Value<bool> showPossibleSystemActivity;
   final Value<double> automaticConfidenceThreshold;
   final Value<int> minimumSuggestionDurationMs;
+  final Value<int> wakeTimeMinutes;
+  final Value<int> sleepTimeMinutes;
+  final Value<String> workingDaysJson;
+  final Value<int> workStartMinutes;
+  final Value<int> workEndMinutes;
+  final Value<int> quietStartMinutes;
+  final Value<int> quietEndMinutes;
+  final Value<bool> sleepReminderEnabled;
+  final Value<int> sleepReminderOffsetMinutes;
+  final Value<bool> phoneUsageAnalysisEnabled;
+  final Value<String> coachingSensitivity;
+  final Value<String> coachingTone;
+  final Value<bool> healthSummarySyncEnabled;
+  final Value<String> healthReportPrivacy;
+  final Value<String> notificationPreferencesJson;
+  final Value<String> countryCode;
+  final Value<String> dateFormat;
+  final Value<int> firstDayOfWeek;
   final Value<int> revision;
   final Value<DateTime> createdAt;
   final Value<DateTime> updatedAt;
@@ -2134,6 +3318,7 @@ class LocalAppSettingsCompanion extends UpdateCompanion<LocalAppSetting> {
     this.themeKey = const Value.absent(),
     this.accentColor = const Value.absent(),
     this.timeZone = const Value.absent(),
+    this.useDeviceTimeZone = const Value.absent(),
     this.clockFormat = const Value.absent(),
     this.notificationSoundKey = const Value.absent(),
     this.healthConnectEnabled = const Value.absent(),
@@ -2150,8 +3335,31 @@ class LocalAppSettingsCompanion extends UpdateCompanion<LocalAppSetting> {
     this.retainTechnicalIdle = const Value.absent(),
     this.automaticTrustedRules = const Value.absent(),
     this.activitySyncEnabled = const Value.absent(),
+    this.activityRuleSyncEnabled = const Value.absent(),
+    this.detailedActivitySyncEnabled = const Value.absent(),
+    this.localActivityRetentionDays = const Value.absent(),
+    this.hideConfirmedSystemActivity = const Value.absent(),
+    this.showPossibleSystemActivity = const Value.absent(),
     this.automaticConfidenceThreshold = const Value.absent(),
     this.minimumSuggestionDurationMs = const Value.absent(),
+    this.wakeTimeMinutes = const Value.absent(),
+    this.sleepTimeMinutes = const Value.absent(),
+    this.workingDaysJson = const Value.absent(),
+    this.workStartMinutes = const Value.absent(),
+    this.workEndMinutes = const Value.absent(),
+    this.quietStartMinutes = const Value.absent(),
+    this.quietEndMinutes = const Value.absent(),
+    this.sleepReminderEnabled = const Value.absent(),
+    this.sleepReminderOffsetMinutes = const Value.absent(),
+    this.phoneUsageAnalysisEnabled = const Value.absent(),
+    this.coachingSensitivity = const Value.absent(),
+    this.coachingTone = const Value.absent(),
+    this.healthSummarySyncEnabled = const Value.absent(),
+    this.healthReportPrivacy = const Value.absent(),
+    this.notificationPreferencesJson = const Value.absent(),
+    this.countryCode = const Value.absent(),
+    this.dateFormat = const Value.absent(),
+    this.firstDayOfWeek = const Value.absent(),
     this.revision = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
@@ -2166,6 +3374,7 @@ class LocalAppSettingsCompanion extends UpdateCompanion<LocalAppSetting> {
     this.themeKey = const Value.absent(),
     this.accentColor = const Value.absent(),
     this.timeZone = const Value.absent(),
+    this.useDeviceTimeZone = const Value.absent(),
     this.clockFormat = const Value.absent(),
     this.notificationSoundKey = const Value.absent(),
     this.healthConnectEnabled = const Value.absent(),
@@ -2182,8 +3391,31 @@ class LocalAppSettingsCompanion extends UpdateCompanion<LocalAppSetting> {
     this.retainTechnicalIdle = const Value.absent(),
     this.automaticTrustedRules = const Value.absent(),
     this.activitySyncEnabled = const Value.absent(),
+    this.activityRuleSyncEnabled = const Value.absent(),
+    this.detailedActivitySyncEnabled = const Value.absent(),
+    this.localActivityRetentionDays = const Value.absent(),
+    this.hideConfirmedSystemActivity = const Value.absent(),
+    this.showPossibleSystemActivity = const Value.absent(),
     this.automaticConfidenceThreshold = const Value.absent(),
     this.minimumSuggestionDurationMs = const Value.absent(),
+    this.wakeTimeMinutes = const Value.absent(),
+    this.sleepTimeMinutes = const Value.absent(),
+    this.workingDaysJson = const Value.absent(),
+    this.workStartMinutes = const Value.absent(),
+    this.workEndMinutes = const Value.absent(),
+    this.quietStartMinutes = const Value.absent(),
+    this.quietEndMinutes = const Value.absent(),
+    this.sleepReminderEnabled = const Value.absent(),
+    this.sleepReminderOffsetMinutes = const Value.absent(),
+    this.phoneUsageAnalysisEnabled = const Value.absent(),
+    this.coachingSensitivity = const Value.absent(),
+    this.coachingTone = const Value.absent(),
+    this.healthSummarySyncEnabled = const Value.absent(),
+    this.healthReportPrivacy = const Value.absent(),
+    this.notificationPreferencesJson = const Value.absent(),
+    this.countryCode = const Value.absent(),
+    this.dateFormat = const Value.absent(),
+    this.firstDayOfWeek = const Value.absent(),
     this.revision = const Value.absent(),
     required DateTime createdAt,
     required DateTime updatedAt,
@@ -2200,6 +3432,7 @@ class LocalAppSettingsCompanion extends UpdateCompanion<LocalAppSetting> {
     Expression<String>? themeKey,
     Expression<int>? accentColor,
     Expression<String>? timeZone,
+    Expression<bool>? useDeviceTimeZone,
     Expression<String>? clockFormat,
     Expression<String>? notificationSoundKey,
     Expression<bool>? healthConnectEnabled,
@@ -2216,8 +3449,31 @@ class LocalAppSettingsCompanion extends UpdateCompanion<LocalAppSetting> {
     Expression<bool>? retainTechnicalIdle,
     Expression<bool>? automaticTrustedRules,
     Expression<bool>? activitySyncEnabled,
+    Expression<bool>? activityRuleSyncEnabled,
+    Expression<bool>? detailedActivitySyncEnabled,
+    Expression<int>? localActivityRetentionDays,
+    Expression<bool>? hideConfirmedSystemActivity,
+    Expression<bool>? showPossibleSystemActivity,
     Expression<double>? automaticConfidenceThreshold,
     Expression<int>? minimumSuggestionDurationMs,
+    Expression<int>? wakeTimeMinutes,
+    Expression<int>? sleepTimeMinutes,
+    Expression<String>? workingDaysJson,
+    Expression<int>? workStartMinutes,
+    Expression<int>? workEndMinutes,
+    Expression<int>? quietStartMinutes,
+    Expression<int>? quietEndMinutes,
+    Expression<bool>? sleepReminderEnabled,
+    Expression<int>? sleepReminderOffsetMinutes,
+    Expression<bool>? phoneUsageAnalysisEnabled,
+    Expression<String>? coachingSensitivity,
+    Expression<String>? coachingTone,
+    Expression<bool>? healthSummarySyncEnabled,
+    Expression<String>? healthReportPrivacy,
+    Expression<String>? notificationPreferencesJson,
+    Expression<String>? countryCode,
+    Expression<String>? dateFormat,
+    Expression<int>? firstDayOfWeek,
     Expression<int>? revision,
     Expression<DateTime>? createdAt,
     Expression<DateTime>? updatedAt,
@@ -2232,6 +3488,7 @@ class LocalAppSettingsCompanion extends UpdateCompanion<LocalAppSetting> {
       if (themeKey != null) 'theme_key': themeKey,
       if (accentColor != null) 'accent_color': accentColor,
       if (timeZone != null) 'time_zone': timeZone,
+      if (useDeviceTimeZone != null) 'use_device_time_zone': useDeviceTimeZone,
       if (clockFormat != null) 'clock_format': clockFormat,
       if (notificationSoundKey != null)
         'notification_sound_key': notificationSoundKey,
@@ -2262,10 +3519,45 @@ class LocalAppSettingsCompanion extends UpdateCompanion<LocalAppSetting> {
         'automatic_trusted_rules': automaticTrustedRules,
       if (activitySyncEnabled != null)
         'activity_sync_enabled': activitySyncEnabled,
+      if (activityRuleSyncEnabled != null)
+        'activity_rule_sync_enabled': activityRuleSyncEnabled,
+      if (detailedActivitySyncEnabled != null)
+        'detailed_activity_sync_enabled': detailedActivitySyncEnabled,
+      if (localActivityRetentionDays != null)
+        'local_activity_retention_days': localActivityRetentionDays,
+      if (hideConfirmedSystemActivity != null)
+        'hide_confirmed_system_activity': hideConfirmedSystemActivity,
+      if (showPossibleSystemActivity != null)
+        'show_possible_system_activity': showPossibleSystemActivity,
       if (automaticConfidenceThreshold != null)
         'automatic_confidence_threshold': automaticConfidenceThreshold,
       if (minimumSuggestionDurationMs != null)
         'minimum_suggestion_duration_ms': minimumSuggestionDurationMs,
+      if (wakeTimeMinutes != null) 'wake_time_minutes': wakeTimeMinutes,
+      if (sleepTimeMinutes != null) 'sleep_time_minutes': sleepTimeMinutes,
+      if (workingDaysJson != null) 'working_days_json': workingDaysJson,
+      if (workStartMinutes != null) 'work_start_minutes': workStartMinutes,
+      if (workEndMinutes != null) 'work_end_minutes': workEndMinutes,
+      if (quietStartMinutes != null) 'quiet_start_minutes': quietStartMinutes,
+      if (quietEndMinutes != null) 'quiet_end_minutes': quietEndMinutes,
+      if (sleepReminderEnabled != null)
+        'sleep_reminder_enabled': sleepReminderEnabled,
+      if (sleepReminderOffsetMinutes != null)
+        'sleep_reminder_offset_minutes': sleepReminderOffsetMinutes,
+      if (phoneUsageAnalysisEnabled != null)
+        'phone_usage_analysis_enabled': phoneUsageAnalysisEnabled,
+      if (coachingSensitivity != null)
+        'coaching_sensitivity': coachingSensitivity,
+      if (coachingTone != null) 'coaching_tone': coachingTone,
+      if (healthSummarySyncEnabled != null)
+        'health_summary_sync_enabled': healthSummarySyncEnabled,
+      if (healthReportPrivacy != null)
+        'health_report_privacy': healthReportPrivacy,
+      if (notificationPreferencesJson != null)
+        'notification_preferences_json': notificationPreferencesJson,
+      if (countryCode != null) 'country_code': countryCode,
+      if (dateFormat != null) 'date_format': dateFormat,
+      if (firstDayOfWeek != null) 'first_day_of_week': firstDayOfWeek,
       if (revision != null) 'revision': revision,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
@@ -2282,6 +3574,7 @@ class LocalAppSettingsCompanion extends UpdateCompanion<LocalAppSetting> {
     Value<String>? themeKey,
     Value<int>? accentColor,
     Value<String>? timeZone,
+    Value<bool>? useDeviceTimeZone,
     Value<String>? clockFormat,
     Value<String>? notificationSoundKey,
     Value<bool>? healthConnectEnabled,
@@ -2298,8 +3591,31 @@ class LocalAppSettingsCompanion extends UpdateCompanion<LocalAppSetting> {
     Value<bool>? retainTechnicalIdle,
     Value<bool>? automaticTrustedRules,
     Value<bool>? activitySyncEnabled,
+    Value<bool>? activityRuleSyncEnabled,
+    Value<bool>? detailedActivitySyncEnabled,
+    Value<int>? localActivityRetentionDays,
+    Value<bool>? hideConfirmedSystemActivity,
+    Value<bool>? showPossibleSystemActivity,
     Value<double>? automaticConfidenceThreshold,
     Value<int>? minimumSuggestionDurationMs,
+    Value<int>? wakeTimeMinutes,
+    Value<int>? sleepTimeMinutes,
+    Value<String>? workingDaysJson,
+    Value<int>? workStartMinutes,
+    Value<int>? workEndMinutes,
+    Value<int>? quietStartMinutes,
+    Value<int>? quietEndMinutes,
+    Value<bool>? sleepReminderEnabled,
+    Value<int>? sleepReminderOffsetMinutes,
+    Value<bool>? phoneUsageAnalysisEnabled,
+    Value<String>? coachingSensitivity,
+    Value<String>? coachingTone,
+    Value<bool>? healthSummarySyncEnabled,
+    Value<String>? healthReportPrivacy,
+    Value<String>? notificationPreferencesJson,
+    Value<String>? countryCode,
+    Value<String>? dateFormat,
+    Value<int>? firstDayOfWeek,
     Value<int>? revision,
     Value<DateTime>? createdAt,
     Value<DateTime>? updatedAt,
@@ -2314,6 +3630,7 @@ class LocalAppSettingsCompanion extends UpdateCompanion<LocalAppSetting> {
       themeKey: themeKey ?? this.themeKey,
       accentColor: accentColor ?? this.accentColor,
       timeZone: timeZone ?? this.timeZone,
+      useDeviceTimeZone: useDeviceTimeZone ?? this.useDeviceTimeZone,
       clockFormat: clockFormat ?? this.clockFormat,
       notificationSoundKey: notificationSoundKey ?? this.notificationSoundKey,
       healthConnectEnabled: healthConnectEnabled ?? this.healthConnectEnabled,
@@ -2336,10 +3653,42 @@ class LocalAppSettingsCompanion extends UpdateCompanion<LocalAppSetting> {
       automaticTrustedRules:
           automaticTrustedRules ?? this.automaticTrustedRules,
       activitySyncEnabled: activitySyncEnabled ?? this.activitySyncEnabled,
+      activityRuleSyncEnabled:
+          activityRuleSyncEnabled ?? this.activityRuleSyncEnabled,
+      detailedActivitySyncEnabled:
+          detailedActivitySyncEnabled ?? this.detailedActivitySyncEnabled,
+      localActivityRetentionDays:
+          localActivityRetentionDays ?? this.localActivityRetentionDays,
+      hideConfirmedSystemActivity:
+          hideConfirmedSystemActivity ?? this.hideConfirmedSystemActivity,
+      showPossibleSystemActivity:
+          showPossibleSystemActivity ?? this.showPossibleSystemActivity,
       automaticConfidenceThreshold:
           automaticConfidenceThreshold ?? this.automaticConfidenceThreshold,
       minimumSuggestionDurationMs:
           minimumSuggestionDurationMs ?? this.minimumSuggestionDurationMs,
+      wakeTimeMinutes: wakeTimeMinutes ?? this.wakeTimeMinutes,
+      sleepTimeMinutes: sleepTimeMinutes ?? this.sleepTimeMinutes,
+      workingDaysJson: workingDaysJson ?? this.workingDaysJson,
+      workStartMinutes: workStartMinutes ?? this.workStartMinutes,
+      workEndMinutes: workEndMinutes ?? this.workEndMinutes,
+      quietStartMinutes: quietStartMinutes ?? this.quietStartMinutes,
+      quietEndMinutes: quietEndMinutes ?? this.quietEndMinutes,
+      sleepReminderEnabled: sleepReminderEnabled ?? this.sleepReminderEnabled,
+      sleepReminderOffsetMinutes:
+          sleepReminderOffsetMinutes ?? this.sleepReminderOffsetMinutes,
+      phoneUsageAnalysisEnabled:
+          phoneUsageAnalysisEnabled ?? this.phoneUsageAnalysisEnabled,
+      coachingSensitivity: coachingSensitivity ?? this.coachingSensitivity,
+      coachingTone: coachingTone ?? this.coachingTone,
+      healthSummarySyncEnabled:
+          healthSummarySyncEnabled ?? this.healthSummarySyncEnabled,
+      healthReportPrivacy: healthReportPrivacy ?? this.healthReportPrivacy,
+      notificationPreferencesJson:
+          notificationPreferencesJson ?? this.notificationPreferencesJson,
+      countryCode: countryCode ?? this.countryCode,
+      dateFormat: dateFormat ?? this.dateFormat,
+      firstDayOfWeek: firstDayOfWeek ?? this.firstDayOfWeek,
       revision: revision ?? this.revision,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
@@ -2369,6 +3718,9 @@ class LocalAppSettingsCompanion extends UpdateCompanion<LocalAppSetting> {
     }
     if (timeZone.present) {
       map['time_zone'] = Variable<String>(timeZone.value);
+    }
+    if (useDeviceTimeZone.present) {
+      map['use_device_time_zone'] = Variable<bool>(useDeviceTimeZone.value);
     }
     if (clockFormat.present) {
       map['clock_format'] = Variable<String>(clockFormat.value);
@@ -2438,6 +3790,31 @@ class LocalAppSettingsCompanion extends UpdateCompanion<LocalAppSetting> {
     if (activitySyncEnabled.present) {
       map['activity_sync_enabled'] = Variable<bool>(activitySyncEnabled.value);
     }
+    if (activityRuleSyncEnabled.present) {
+      map['activity_rule_sync_enabled'] = Variable<bool>(
+        activityRuleSyncEnabled.value,
+      );
+    }
+    if (detailedActivitySyncEnabled.present) {
+      map['detailed_activity_sync_enabled'] = Variable<bool>(
+        detailedActivitySyncEnabled.value,
+      );
+    }
+    if (localActivityRetentionDays.present) {
+      map['local_activity_retention_days'] = Variable<int>(
+        localActivityRetentionDays.value,
+      );
+    }
+    if (hideConfirmedSystemActivity.present) {
+      map['hide_confirmed_system_activity'] = Variable<bool>(
+        hideConfirmedSystemActivity.value,
+      );
+    }
+    if (showPossibleSystemActivity.present) {
+      map['show_possible_system_activity'] = Variable<bool>(
+        showPossibleSystemActivity.value,
+      );
+    }
     if (automaticConfidenceThreshold.present) {
       map['automatic_confidence_threshold'] = Variable<double>(
         automaticConfidenceThreshold.value,
@@ -2447,6 +3824,72 @@ class LocalAppSettingsCompanion extends UpdateCompanion<LocalAppSetting> {
       map['minimum_suggestion_duration_ms'] = Variable<int>(
         minimumSuggestionDurationMs.value,
       );
+    }
+    if (wakeTimeMinutes.present) {
+      map['wake_time_minutes'] = Variable<int>(wakeTimeMinutes.value);
+    }
+    if (sleepTimeMinutes.present) {
+      map['sleep_time_minutes'] = Variable<int>(sleepTimeMinutes.value);
+    }
+    if (workingDaysJson.present) {
+      map['working_days_json'] = Variable<String>(workingDaysJson.value);
+    }
+    if (workStartMinutes.present) {
+      map['work_start_minutes'] = Variable<int>(workStartMinutes.value);
+    }
+    if (workEndMinutes.present) {
+      map['work_end_minutes'] = Variable<int>(workEndMinutes.value);
+    }
+    if (quietStartMinutes.present) {
+      map['quiet_start_minutes'] = Variable<int>(quietStartMinutes.value);
+    }
+    if (quietEndMinutes.present) {
+      map['quiet_end_minutes'] = Variable<int>(quietEndMinutes.value);
+    }
+    if (sleepReminderEnabled.present) {
+      map['sleep_reminder_enabled'] = Variable<bool>(
+        sleepReminderEnabled.value,
+      );
+    }
+    if (sleepReminderOffsetMinutes.present) {
+      map['sleep_reminder_offset_minutes'] = Variable<int>(
+        sleepReminderOffsetMinutes.value,
+      );
+    }
+    if (phoneUsageAnalysisEnabled.present) {
+      map['phone_usage_analysis_enabled'] = Variable<bool>(
+        phoneUsageAnalysisEnabled.value,
+      );
+    }
+    if (coachingSensitivity.present) {
+      map['coaching_sensitivity'] = Variable<String>(coachingSensitivity.value);
+    }
+    if (coachingTone.present) {
+      map['coaching_tone'] = Variable<String>(coachingTone.value);
+    }
+    if (healthSummarySyncEnabled.present) {
+      map['health_summary_sync_enabled'] = Variable<bool>(
+        healthSummarySyncEnabled.value,
+      );
+    }
+    if (healthReportPrivacy.present) {
+      map['health_report_privacy'] = Variable<String>(
+        healthReportPrivacy.value,
+      );
+    }
+    if (notificationPreferencesJson.present) {
+      map['notification_preferences_json'] = Variable<String>(
+        notificationPreferencesJson.value,
+      );
+    }
+    if (countryCode.present) {
+      map['country_code'] = Variable<String>(countryCode.value);
+    }
+    if (dateFormat.present) {
+      map['date_format'] = Variable<String>(dateFormat.value);
+    }
+    if (firstDayOfWeek.present) {
+      map['first_day_of_week'] = Variable<int>(firstDayOfWeek.value);
     }
     if (revision.present) {
       map['revision'] = Variable<int>(revision.value);
@@ -2478,6 +3921,7 @@ class LocalAppSettingsCompanion extends UpdateCompanion<LocalAppSetting> {
           ..write('themeKey: $themeKey, ')
           ..write('accentColor: $accentColor, ')
           ..write('timeZone: $timeZone, ')
+          ..write('useDeviceTimeZone: $useDeviceTimeZone, ')
           ..write('clockFormat: $clockFormat, ')
           ..write('notificationSoundKey: $notificationSoundKey, ')
           ..write('healthConnectEnabled: $healthConnectEnabled, ')
@@ -2494,10 +3938,33 @@ class LocalAppSettingsCompanion extends UpdateCompanion<LocalAppSetting> {
           ..write('retainTechnicalIdle: $retainTechnicalIdle, ')
           ..write('automaticTrustedRules: $automaticTrustedRules, ')
           ..write('activitySyncEnabled: $activitySyncEnabled, ')
+          ..write('activityRuleSyncEnabled: $activityRuleSyncEnabled, ')
+          ..write('detailedActivitySyncEnabled: $detailedActivitySyncEnabled, ')
+          ..write('localActivityRetentionDays: $localActivityRetentionDays, ')
+          ..write('hideConfirmedSystemActivity: $hideConfirmedSystemActivity, ')
+          ..write('showPossibleSystemActivity: $showPossibleSystemActivity, ')
           ..write(
             'automaticConfidenceThreshold: $automaticConfidenceThreshold, ',
           )
           ..write('minimumSuggestionDurationMs: $minimumSuggestionDurationMs, ')
+          ..write('wakeTimeMinutes: $wakeTimeMinutes, ')
+          ..write('sleepTimeMinutes: $sleepTimeMinutes, ')
+          ..write('workingDaysJson: $workingDaysJson, ')
+          ..write('workStartMinutes: $workStartMinutes, ')
+          ..write('workEndMinutes: $workEndMinutes, ')
+          ..write('quietStartMinutes: $quietStartMinutes, ')
+          ..write('quietEndMinutes: $quietEndMinutes, ')
+          ..write('sleepReminderEnabled: $sleepReminderEnabled, ')
+          ..write('sleepReminderOffsetMinutes: $sleepReminderOffsetMinutes, ')
+          ..write('phoneUsageAnalysisEnabled: $phoneUsageAnalysisEnabled, ')
+          ..write('coachingSensitivity: $coachingSensitivity, ')
+          ..write('coachingTone: $coachingTone, ')
+          ..write('healthSummarySyncEnabled: $healthSummarySyncEnabled, ')
+          ..write('healthReportPrivacy: $healthReportPrivacy, ')
+          ..write('notificationPreferencesJson: $notificationPreferencesJson, ')
+          ..write('countryCode: $countryCode, ')
+          ..write('dateFormat: $dateFormat, ')
+          ..write('firstDayOfWeek: $firstDayOfWeek, ')
           ..write('revision: $revision, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
@@ -12917,6 +14384,8 @@ typedef $$LocalProfilesTableCreateCompanionBuilder =
       Value<String?> email,
       Value<String?> imagePath,
       Value<String?> genderIdentity,
+      Value<DateTime?> dateOfBirth,
+      Value<double?> heightCm,
       Value<bool> onboardingCompleted,
       Value<int> revision,
       required DateTime createdAt,
@@ -12934,6 +14403,8 @@ typedef $$LocalProfilesTableUpdateCompanionBuilder =
       Value<String?> email,
       Value<String?> imagePath,
       Value<String?> genderIdentity,
+      Value<DateTime?> dateOfBirth,
+      Value<double?> heightCm,
       Value<bool> onboardingCompleted,
       Value<int> revision,
       Value<DateTime> createdAt,
@@ -12980,6 +14451,16 @@ class $$LocalProfilesTableFilterComposer
 
   ColumnFilters<String> get genderIdentity => $composableBuilder(
     column: $table.genderIdentity,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get dateOfBirth => $composableBuilder(
+    column: $table.dateOfBirth,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get heightCm => $composableBuilder(
+    column: $table.heightCm,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -13058,6 +14539,16 @@ class $$LocalProfilesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<DateTime> get dateOfBirth => $composableBuilder(
+    column: $table.dateOfBirth,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get heightCm => $composableBuilder(
+    column: $table.heightCm,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<bool> get onboardingCompleted => $composableBuilder(
     column: $table.onboardingCompleted,
     builder: (column) => ColumnOrderings(column),
@@ -13125,6 +14616,14 @@ class $$LocalProfilesTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<DateTime> get dateOfBirth => $composableBuilder(
+    column: $table.dateOfBirth,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<double> get heightCm =>
+      $composableBuilder(column: $table.heightCm, builder: (column) => column);
+
   GeneratedColumn<bool> get onboardingCompleted => $composableBuilder(
     column: $table.onboardingCompleted,
     builder: (column) => column,
@@ -13190,6 +14689,8 @@ class $$LocalProfilesTableTableManager
                 Value<String?> email = const Value.absent(),
                 Value<String?> imagePath = const Value.absent(),
                 Value<String?> genderIdentity = const Value.absent(),
+                Value<DateTime?> dateOfBirth = const Value.absent(),
+                Value<double?> heightCm = const Value.absent(),
                 Value<bool> onboardingCompleted = const Value.absent(),
                 Value<int> revision = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
@@ -13205,6 +14706,8 @@ class $$LocalProfilesTableTableManager
                 email: email,
                 imagePath: imagePath,
                 genderIdentity: genderIdentity,
+                dateOfBirth: dateOfBirth,
+                heightCm: heightCm,
                 onboardingCompleted: onboardingCompleted,
                 revision: revision,
                 createdAt: createdAt,
@@ -13222,6 +14725,8 @@ class $$LocalProfilesTableTableManager
                 Value<String?> email = const Value.absent(),
                 Value<String?> imagePath = const Value.absent(),
                 Value<String?> genderIdentity = const Value.absent(),
+                Value<DateTime?> dateOfBirth = const Value.absent(),
+                Value<double?> heightCm = const Value.absent(),
                 Value<bool> onboardingCompleted = const Value.absent(),
                 Value<int> revision = const Value.absent(),
                 required DateTime createdAt,
@@ -13237,6 +14742,8 @@ class $$LocalProfilesTableTableManager
                 email: email,
                 imagePath: imagePath,
                 genderIdentity: genderIdentity,
+                dateOfBirth: dateOfBirth,
+                heightCm: heightCm,
                 onboardingCompleted: onboardingCompleted,
                 revision: revision,
                 createdAt: createdAt,
@@ -13279,6 +14786,7 @@ typedef $$LocalAppSettingsTableCreateCompanionBuilder =
       Value<String> themeKey,
       Value<int> accentColor,
       Value<String> timeZone,
+      Value<bool> useDeviceTimeZone,
       Value<String> clockFormat,
       Value<String> notificationSoundKey,
       Value<bool> healthConnectEnabled,
@@ -13295,8 +14803,31 @@ typedef $$LocalAppSettingsTableCreateCompanionBuilder =
       Value<bool> retainTechnicalIdle,
       Value<bool> automaticTrustedRules,
       Value<bool> activitySyncEnabled,
+      Value<bool> activityRuleSyncEnabled,
+      Value<bool> detailedActivitySyncEnabled,
+      Value<int> localActivityRetentionDays,
+      Value<bool> hideConfirmedSystemActivity,
+      Value<bool> showPossibleSystemActivity,
       Value<double> automaticConfidenceThreshold,
       Value<int> minimumSuggestionDurationMs,
+      Value<int> wakeTimeMinutes,
+      Value<int> sleepTimeMinutes,
+      Value<String> workingDaysJson,
+      Value<int> workStartMinutes,
+      Value<int> workEndMinutes,
+      Value<int> quietStartMinutes,
+      Value<int> quietEndMinutes,
+      Value<bool> sleepReminderEnabled,
+      Value<int> sleepReminderOffsetMinutes,
+      Value<bool> phoneUsageAnalysisEnabled,
+      Value<String> coachingSensitivity,
+      Value<String> coachingTone,
+      Value<bool> healthSummarySyncEnabled,
+      Value<String> healthReportPrivacy,
+      Value<String> notificationPreferencesJson,
+      Value<String> countryCode,
+      Value<String> dateFormat,
+      Value<int> firstDayOfWeek,
       Value<int> revision,
       required DateTime createdAt,
       required DateTime updatedAt,
@@ -13312,6 +14843,7 @@ typedef $$LocalAppSettingsTableUpdateCompanionBuilder =
       Value<String> themeKey,
       Value<int> accentColor,
       Value<String> timeZone,
+      Value<bool> useDeviceTimeZone,
       Value<String> clockFormat,
       Value<String> notificationSoundKey,
       Value<bool> healthConnectEnabled,
@@ -13328,8 +14860,31 @@ typedef $$LocalAppSettingsTableUpdateCompanionBuilder =
       Value<bool> retainTechnicalIdle,
       Value<bool> automaticTrustedRules,
       Value<bool> activitySyncEnabled,
+      Value<bool> activityRuleSyncEnabled,
+      Value<bool> detailedActivitySyncEnabled,
+      Value<int> localActivityRetentionDays,
+      Value<bool> hideConfirmedSystemActivity,
+      Value<bool> showPossibleSystemActivity,
       Value<double> automaticConfidenceThreshold,
       Value<int> minimumSuggestionDurationMs,
+      Value<int> wakeTimeMinutes,
+      Value<int> sleepTimeMinutes,
+      Value<String> workingDaysJson,
+      Value<int> workStartMinutes,
+      Value<int> workEndMinutes,
+      Value<int> quietStartMinutes,
+      Value<int> quietEndMinutes,
+      Value<bool> sleepReminderEnabled,
+      Value<int> sleepReminderOffsetMinutes,
+      Value<bool> phoneUsageAnalysisEnabled,
+      Value<String> coachingSensitivity,
+      Value<String> coachingTone,
+      Value<bool> healthSummarySyncEnabled,
+      Value<String> healthReportPrivacy,
+      Value<String> notificationPreferencesJson,
+      Value<String> countryCode,
+      Value<String> dateFormat,
+      Value<int> firstDayOfWeek,
       Value<int> revision,
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
@@ -13374,6 +14929,11 @@ class $$LocalAppSettingsTableFilterComposer
 
   ColumnFilters<String> get timeZone => $composableBuilder(
     column: $table.timeZone,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get useDeviceTimeZone => $composableBuilder(
+    column: $table.useDeviceTimeZone,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -13457,6 +15017,31 @@ class $$LocalAppSettingsTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnFilters<bool> get activityRuleSyncEnabled => $composableBuilder(
+    column: $table.activityRuleSyncEnabled,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get detailedActivitySyncEnabled => $composableBuilder(
+    column: $table.detailedActivitySyncEnabled,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get localActivityRetentionDays => $composableBuilder(
+    column: $table.localActivityRetentionDays,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get hideConfirmedSystemActivity => $composableBuilder(
+    column: $table.hideConfirmedSystemActivity,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get showPossibleSystemActivity => $composableBuilder(
+    column: $table.showPossibleSystemActivity,
+    builder: (column) => ColumnFilters(column),
+  );
+
   ColumnFilters<double> get automaticConfidenceThreshold => $composableBuilder(
     column: $table.automaticConfidenceThreshold,
     builder: (column) => ColumnFilters(column),
@@ -13464,6 +15049,96 @@ class $$LocalAppSettingsTableFilterComposer
 
   ColumnFilters<int> get minimumSuggestionDurationMs => $composableBuilder(
     column: $table.minimumSuggestionDurationMs,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get wakeTimeMinutes => $composableBuilder(
+    column: $table.wakeTimeMinutes,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get sleepTimeMinutes => $composableBuilder(
+    column: $table.sleepTimeMinutes,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get workingDaysJson => $composableBuilder(
+    column: $table.workingDaysJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get workStartMinutes => $composableBuilder(
+    column: $table.workStartMinutes,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get workEndMinutes => $composableBuilder(
+    column: $table.workEndMinutes,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get quietStartMinutes => $composableBuilder(
+    column: $table.quietStartMinutes,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get quietEndMinutes => $composableBuilder(
+    column: $table.quietEndMinutes,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get sleepReminderEnabled => $composableBuilder(
+    column: $table.sleepReminderEnabled,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get sleepReminderOffsetMinutes => $composableBuilder(
+    column: $table.sleepReminderOffsetMinutes,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get phoneUsageAnalysisEnabled => $composableBuilder(
+    column: $table.phoneUsageAnalysisEnabled,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get coachingSensitivity => $composableBuilder(
+    column: $table.coachingSensitivity,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get coachingTone => $composableBuilder(
+    column: $table.coachingTone,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get healthSummarySyncEnabled => $composableBuilder(
+    column: $table.healthSummarySyncEnabled,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get healthReportPrivacy => $composableBuilder(
+    column: $table.healthReportPrivacy,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get notificationPreferencesJson => $composableBuilder(
+    column: $table.notificationPreferencesJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get countryCode => $composableBuilder(
+    column: $table.countryCode,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get dateFormat => $composableBuilder(
+    column: $table.dateFormat,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get firstDayOfWeek => $composableBuilder(
+    column: $table.firstDayOfWeek,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -13529,6 +15204,11 @@ class $$LocalAppSettingsTableOrderingComposer
 
   ColumnOrderings<String> get timeZone => $composableBuilder(
     column: $table.timeZone,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get useDeviceTimeZone => $composableBuilder(
+    column: $table.useDeviceTimeZone,
     builder: (column) => ColumnOrderings(column),
   );
 
@@ -13612,6 +15292,31 @@ class $$LocalAppSettingsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<bool> get activityRuleSyncEnabled => $composableBuilder(
+    column: $table.activityRuleSyncEnabled,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get detailedActivitySyncEnabled => $composableBuilder(
+    column: $table.detailedActivitySyncEnabled,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get localActivityRetentionDays => $composableBuilder(
+    column: $table.localActivityRetentionDays,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get hideConfirmedSystemActivity => $composableBuilder(
+    column: $table.hideConfirmedSystemActivity,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get showPossibleSystemActivity => $composableBuilder(
+    column: $table.showPossibleSystemActivity,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<double> get automaticConfidenceThreshold =>
       $composableBuilder(
         column: $table.automaticConfidenceThreshold,
@@ -13620,6 +15325,96 @@ class $$LocalAppSettingsTableOrderingComposer
 
   ColumnOrderings<int> get minimumSuggestionDurationMs => $composableBuilder(
     column: $table.minimumSuggestionDurationMs,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get wakeTimeMinutes => $composableBuilder(
+    column: $table.wakeTimeMinutes,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get sleepTimeMinutes => $composableBuilder(
+    column: $table.sleepTimeMinutes,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get workingDaysJson => $composableBuilder(
+    column: $table.workingDaysJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get workStartMinutes => $composableBuilder(
+    column: $table.workStartMinutes,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get workEndMinutes => $composableBuilder(
+    column: $table.workEndMinutes,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get quietStartMinutes => $composableBuilder(
+    column: $table.quietStartMinutes,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get quietEndMinutes => $composableBuilder(
+    column: $table.quietEndMinutes,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get sleepReminderEnabled => $composableBuilder(
+    column: $table.sleepReminderEnabled,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get sleepReminderOffsetMinutes => $composableBuilder(
+    column: $table.sleepReminderOffsetMinutes,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get phoneUsageAnalysisEnabled => $composableBuilder(
+    column: $table.phoneUsageAnalysisEnabled,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get coachingSensitivity => $composableBuilder(
+    column: $table.coachingSensitivity,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get coachingTone => $composableBuilder(
+    column: $table.coachingTone,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get healthSummarySyncEnabled => $composableBuilder(
+    column: $table.healthSummarySyncEnabled,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get healthReportPrivacy => $composableBuilder(
+    column: $table.healthReportPrivacy,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get notificationPreferencesJson => $composableBuilder(
+    column: $table.notificationPreferencesJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get countryCode => $composableBuilder(
+    column: $table.countryCode,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get dateFormat => $composableBuilder(
+    column: $table.dateFormat,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get firstDayOfWeek => $composableBuilder(
+    column: $table.firstDayOfWeek,
     builder: (column) => ColumnOrderings(column),
   );
 
@@ -13679,6 +15474,11 @@ class $$LocalAppSettingsTableAnnotationComposer
 
   GeneratedColumn<String> get timeZone =>
       $composableBuilder(column: $table.timeZone, builder: (column) => column);
+
+  GeneratedColumn<bool> get useDeviceTimeZone => $composableBuilder(
+    column: $table.useDeviceTimeZone,
+    builder: (column) => column,
+  );
 
   GeneratedColumn<String> get clockFormat => $composableBuilder(
     column: $table.clockFormat,
@@ -13760,6 +15560,31 @@ class $$LocalAppSettingsTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<bool> get activityRuleSyncEnabled => $composableBuilder(
+    column: $table.activityRuleSyncEnabled,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get detailedActivitySyncEnabled => $composableBuilder(
+    column: $table.detailedActivitySyncEnabled,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get localActivityRetentionDays => $composableBuilder(
+    column: $table.localActivityRetentionDays,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get hideConfirmedSystemActivity => $composableBuilder(
+    column: $table.hideConfirmedSystemActivity,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get showPossibleSystemActivity => $composableBuilder(
+    column: $table.showPossibleSystemActivity,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<double> get automaticConfidenceThreshold =>
       $composableBuilder(
         column: $table.automaticConfidenceThreshold,
@@ -13768,6 +15593,96 @@ class $$LocalAppSettingsTableAnnotationComposer
 
   GeneratedColumn<int> get minimumSuggestionDurationMs => $composableBuilder(
     column: $table.minimumSuggestionDurationMs,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get wakeTimeMinutes => $composableBuilder(
+    column: $table.wakeTimeMinutes,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get sleepTimeMinutes => $composableBuilder(
+    column: $table.sleepTimeMinutes,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get workingDaysJson => $composableBuilder(
+    column: $table.workingDaysJson,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get workStartMinutes => $composableBuilder(
+    column: $table.workStartMinutes,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get workEndMinutes => $composableBuilder(
+    column: $table.workEndMinutes,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get quietStartMinutes => $composableBuilder(
+    column: $table.quietStartMinutes,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get quietEndMinutes => $composableBuilder(
+    column: $table.quietEndMinutes,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get sleepReminderEnabled => $composableBuilder(
+    column: $table.sleepReminderEnabled,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get sleepReminderOffsetMinutes => $composableBuilder(
+    column: $table.sleepReminderOffsetMinutes,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get phoneUsageAnalysisEnabled => $composableBuilder(
+    column: $table.phoneUsageAnalysisEnabled,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get coachingSensitivity => $composableBuilder(
+    column: $table.coachingSensitivity,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get coachingTone => $composableBuilder(
+    column: $table.coachingTone,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get healthSummarySyncEnabled => $composableBuilder(
+    column: $table.healthSummarySyncEnabled,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get healthReportPrivacy => $composableBuilder(
+    column: $table.healthReportPrivacy,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get notificationPreferencesJson => $composableBuilder(
+    column: $table.notificationPreferencesJson,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get countryCode => $composableBuilder(
+    column: $table.countryCode,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get dateFormat => $composableBuilder(
+    column: $table.dateFormat,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get firstDayOfWeek => $composableBuilder(
+    column: $table.firstDayOfWeek,
     builder: (column) => column,
   );
 
@@ -13832,6 +15747,7 @@ class $$LocalAppSettingsTableTableManager
                 Value<String> themeKey = const Value.absent(),
                 Value<int> accentColor = const Value.absent(),
                 Value<String> timeZone = const Value.absent(),
+                Value<bool> useDeviceTimeZone = const Value.absent(),
                 Value<String> clockFormat = const Value.absent(),
                 Value<String> notificationSoundKey = const Value.absent(),
                 Value<bool> healthConnectEnabled = const Value.absent(),
@@ -13848,9 +15764,33 @@ class $$LocalAppSettingsTableTableManager
                 Value<bool> retainTechnicalIdle = const Value.absent(),
                 Value<bool> automaticTrustedRules = const Value.absent(),
                 Value<bool> activitySyncEnabled = const Value.absent(),
+                Value<bool> activityRuleSyncEnabled = const Value.absent(),
+                Value<bool> detailedActivitySyncEnabled = const Value.absent(),
+                Value<int> localActivityRetentionDays = const Value.absent(),
+                Value<bool> hideConfirmedSystemActivity = const Value.absent(),
+                Value<bool> showPossibleSystemActivity = const Value.absent(),
                 Value<double> automaticConfidenceThreshold =
                     const Value.absent(),
                 Value<int> minimumSuggestionDurationMs = const Value.absent(),
+                Value<int> wakeTimeMinutes = const Value.absent(),
+                Value<int> sleepTimeMinutes = const Value.absent(),
+                Value<String> workingDaysJson = const Value.absent(),
+                Value<int> workStartMinutes = const Value.absent(),
+                Value<int> workEndMinutes = const Value.absent(),
+                Value<int> quietStartMinutes = const Value.absent(),
+                Value<int> quietEndMinutes = const Value.absent(),
+                Value<bool> sleepReminderEnabled = const Value.absent(),
+                Value<int> sleepReminderOffsetMinutes = const Value.absent(),
+                Value<bool> phoneUsageAnalysisEnabled = const Value.absent(),
+                Value<String> coachingSensitivity = const Value.absent(),
+                Value<String> coachingTone = const Value.absent(),
+                Value<bool> healthSummarySyncEnabled = const Value.absent(),
+                Value<String> healthReportPrivacy = const Value.absent(),
+                Value<String> notificationPreferencesJson =
+                    const Value.absent(),
+                Value<String> countryCode = const Value.absent(),
+                Value<String> dateFormat = const Value.absent(),
+                Value<int> firstDayOfWeek = const Value.absent(),
                 Value<int> revision = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
@@ -13864,6 +15804,7 @@ class $$LocalAppSettingsTableTableManager
                 themeKey: themeKey,
                 accentColor: accentColor,
                 timeZone: timeZone,
+                useDeviceTimeZone: useDeviceTimeZone,
                 clockFormat: clockFormat,
                 notificationSoundKey: notificationSoundKey,
                 healthConnectEnabled: healthConnectEnabled,
@@ -13880,8 +15821,31 @@ class $$LocalAppSettingsTableTableManager
                 retainTechnicalIdle: retainTechnicalIdle,
                 automaticTrustedRules: automaticTrustedRules,
                 activitySyncEnabled: activitySyncEnabled,
+                activityRuleSyncEnabled: activityRuleSyncEnabled,
+                detailedActivitySyncEnabled: detailedActivitySyncEnabled,
+                localActivityRetentionDays: localActivityRetentionDays,
+                hideConfirmedSystemActivity: hideConfirmedSystemActivity,
+                showPossibleSystemActivity: showPossibleSystemActivity,
                 automaticConfidenceThreshold: automaticConfidenceThreshold,
                 minimumSuggestionDurationMs: minimumSuggestionDurationMs,
+                wakeTimeMinutes: wakeTimeMinutes,
+                sleepTimeMinutes: sleepTimeMinutes,
+                workingDaysJson: workingDaysJson,
+                workStartMinutes: workStartMinutes,
+                workEndMinutes: workEndMinutes,
+                quietStartMinutes: quietStartMinutes,
+                quietEndMinutes: quietEndMinutes,
+                sleepReminderEnabled: sleepReminderEnabled,
+                sleepReminderOffsetMinutes: sleepReminderOffsetMinutes,
+                phoneUsageAnalysisEnabled: phoneUsageAnalysisEnabled,
+                coachingSensitivity: coachingSensitivity,
+                coachingTone: coachingTone,
+                healthSummarySyncEnabled: healthSummarySyncEnabled,
+                healthReportPrivacy: healthReportPrivacy,
+                notificationPreferencesJson: notificationPreferencesJson,
+                countryCode: countryCode,
+                dateFormat: dateFormat,
+                firstDayOfWeek: firstDayOfWeek,
                 revision: revision,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
@@ -13897,6 +15861,7 @@ class $$LocalAppSettingsTableTableManager
                 Value<String> themeKey = const Value.absent(),
                 Value<int> accentColor = const Value.absent(),
                 Value<String> timeZone = const Value.absent(),
+                Value<bool> useDeviceTimeZone = const Value.absent(),
                 Value<String> clockFormat = const Value.absent(),
                 Value<String> notificationSoundKey = const Value.absent(),
                 Value<bool> healthConnectEnabled = const Value.absent(),
@@ -13913,9 +15878,33 @@ class $$LocalAppSettingsTableTableManager
                 Value<bool> retainTechnicalIdle = const Value.absent(),
                 Value<bool> automaticTrustedRules = const Value.absent(),
                 Value<bool> activitySyncEnabled = const Value.absent(),
+                Value<bool> activityRuleSyncEnabled = const Value.absent(),
+                Value<bool> detailedActivitySyncEnabled = const Value.absent(),
+                Value<int> localActivityRetentionDays = const Value.absent(),
+                Value<bool> hideConfirmedSystemActivity = const Value.absent(),
+                Value<bool> showPossibleSystemActivity = const Value.absent(),
                 Value<double> automaticConfidenceThreshold =
                     const Value.absent(),
                 Value<int> minimumSuggestionDurationMs = const Value.absent(),
+                Value<int> wakeTimeMinutes = const Value.absent(),
+                Value<int> sleepTimeMinutes = const Value.absent(),
+                Value<String> workingDaysJson = const Value.absent(),
+                Value<int> workStartMinutes = const Value.absent(),
+                Value<int> workEndMinutes = const Value.absent(),
+                Value<int> quietStartMinutes = const Value.absent(),
+                Value<int> quietEndMinutes = const Value.absent(),
+                Value<bool> sleepReminderEnabled = const Value.absent(),
+                Value<int> sleepReminderOffsetMinutes = const Value.absent(),
+                Value<bool> phoneUsageAnalysisEnabled = const Value.absent(),
+                Value<String> coachingSensitivity = const Value.absent(),
+                Value<String> coachingTone = const Value.absent(),
+                Value<bool> healthSummarySyncEnabled = const Value.absent(),
+                Value<String> healthReportPrivacy = const Value.absent(),
+                Value<String> notificationPreferencesJson =
+                    const Value.absent(),
+                Value<String> countryCode = const Value.absent(),
+                Value<String> dateFormat = const Value.absent(),
+                Value<int> firstDayOfWeek = const Value.absent(),
                 Value<int> revision = const Value.absent(),
                 required DateTime createdAt,
                 required DateTime updatedAt,
@@ -13929,6 +15918,7 @@ class $$LocalAppSettingsTableTableManager
                 themeKey: themeKey,
                 accentColor: accentColor,
                 timeZone: timeZone,
+                useDeviceTimeZone: useDeviceTimeZone,
                 clockFormat: clockFormat,
                 notificationSoundKey: notificationSoundKey,
                 healthConnectEnabled: healthConnectEnabled,
@@ -13945,8 +15935,31 @@ class $$LocalAppSettingsTableTableManager
                 retainTechnicalIdle: retainTechnicalIdle,
                 automaticTrustedRules: automaticTrustedRules,
                 activitySyncEnabled: activitySyncEnabled,
+                activityRuleSyncEnabled: activityRuleSyncEnabled,
+                detailedActivitySyncEnabled: detailedActivitySyncEnabled,
+                localActivityRetentionDays: localActivityRetentionDays,
+                hideConfirmedSystemActivity: hideConfirmedSystemActivity,
+                showPossibleSystemActivity: showPossibleSystemActivity,
                 automaticConfidenceThreshold: automaticConfidenceThreshold,
                 minimumSuggestionDurationMs: minimumSuggestionDurationMs,
+                wakeTimeMinutes: wakeTimeMinutes,
+                sleepTimeMinutes: sleepTimeMinutes,
+                workingDaysJson: workingDaysJson,
+                workStartMinutes: workStartMinutes,
+                workEndMinutes: workEndMinutes,
+                quietStartMinutes: quietStartMinutes,
+                quietEndMinutes: quietEndMinutes,
+                sleepReminderEnabled: sleepReminderEnabled,
+                sleepReminderOffsetMinutes: sleepReminderOffsetMinutes,
+                phoneUsageAnalysisEnabled: phoneUsageAnalysisEnabled,
+                coachingSensitivity: coachingSensitivity,
+                coachingTone: coachingTone,
+                healthSummarySyncEnabled: healthSummarySyncEnabled,
+                healthReportPrivacy: healthReportPrivacy,
+                notificationPreferencesJson: notificationPreferencesJson,
+                countryCode: countryCode,
+                dateFormat: dateFormat,
+                firstDayOfWeek: firstDayOfWeek,
                 revision: revision,
                 createdAt: createdAt,
                 updatedAt: updatedAt,

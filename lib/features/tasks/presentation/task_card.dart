@@ -6,14 +6,37 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/database/app_database.dart';
 import '../../../core/localization/app_localizations.dart';
 import '../../../core/providers.dart';
+import '../data/task_execution_commands.dart';
+import '../data/task_execution_providers.dart';
+import '../domain/pomodoro_execution_state.dart';
+import 'task_completion_flow.dart';
 import 'task_editor_dialog.dart';
+import 'task_start_flow.dart';
 import 'task_workspace_screen.dart';
 
 class TaskCard extends ConsumerWidget {
-  const TaskCard({required this.task, this.compact = false, super.key});
+  const TaskCard({
+    required this.task,
+    this.compact = false,
+    this.suggested = false,
+    this.activeSessionState,
+    this.hideExecutionControl = false,
+    this.domainLabel,
+    this.recurrenceLabel,
+    super.key,
+  });
 
   final LocalTask task;
   final bool compact;
+  final bool suggested;
+
+  /// The runtime is canonical while a task has an active execution session.
+  /// A task row can otherwise lag behind the runtime record during a realtime
+  /// update and incorrectly show "Ready" next to an active task.
+  final String? activeSessionState;
+  final bool hideExecutionControl;
+  final String? domainLabel;
+  final String? recurrenceLabel;
 
   Future<void> _run(WidgetRef ref, Future<void> Function() localAction) async {
     await localAction();
@@ -23,9 +46,10 @@ class TaskCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final colorScheme = Theme.of(context).colorScheme;
-    final completed = task.status == 'completed';
-    final active = task.status == 'in_progress';
-    final paused = task.status == 'paused';
+    final effectiveStatus = activeSessionState == 'running'
+        ? 'in_progress'
+        : activeSessionState ?? task.status;
+    final completed = effectiveStatus == 'completed';
     final minutes = (task.estimatedDurationMs / 60000).round();
 
     return Card(
@@ -67,48 +91,39 @@ class TaskCard extends ConsumerWidget {
                       children: [
                         _Meta(
                           icon: _modeIcon(task.executionMode),
-                          label: _titleCase(task.executionMode),
+                          label: context.l10n.executionMode(task.executionMode),
                         ),
                         _Meta(
                           icon: Icons.timer_outlined,
-                          label: '$minutes min',
+                          label: context.l10n.format('duration_minutes', {
+                            'count': minutes,
+                          }),
                         ),
-                        _StatusPill(status: task.status),
+                        _StatusPill(
+                          status: effectiveStatus,
+                          activeSession: activeSessionState != null,
+                        ),
+                        if (domainLabel?.isNotEmpty == true)
+                          _Meta(
+                            icon: Icons.folder_outlined,
+                            label: domainLabel!,
+                          ),
+                        if (recurrenceLabel?.isNotEmpty == true)
+                          _Meta(
+                            icon: Icons.repeat_rounded,
+                            label: recurrenceLabel!,
+                          ),
+                        if (suggested) const _SuggestedPill(),
                       ],
                     ),
                   ],
                 ),
               ),
               const SizedBox(width: 10),
-              if (!completed)
-                switch ((active, paused)) {
-                  (true, _) => IconButton.filledTonal(
-                    tooltip: context.l10n.text('pause'),
-                    onPressed: () => _run(
-                      ref,
-                      () => ref.read(taskRepositoryProvider).pause(task),
-                    ),
-                    icon: const Icon(Icons.pause),
-                  ),
-                  (_, true) => IconButton.filled(
-                    tooltip: context.l10n.text('resume'),
-                    onPressed: () => _run(
-                      ref,
-                      () => ref.read(taskRepositoryProvider).resume(task),
-                    ),
-                    icon: const Icon(Icons.play_arrow),
-                  ),
-                  _ => IconButton.filled(
-                    tooltip: context.l10n.text('start'),
-                    onPressed: () => _run(
-                      ref,
-                      () => ref.read(taskRepositoryProvider).start(task),
-                    ),
-                    icon: const Icon(Icons.play_arrow),
-                  ),
-                },
+              if (!completed && !hideExecutionControl)
+                _CanonicalTaskControl(task: task),
               PopupMenuButton<String>(
-                tooltip: 'Task actions',
+                tooltip: context.l10n.text('task_actions'),
                 onSelected: (action) async {
                   switch (action) {
                     case 'open':
@@ -121,10 +136,9 @@ class TaskCard extends ConsumerWidget {
                         () => ref.read(taskRepositoryProvider).duplicate(task),
                       );
                     case 'complete':
-                      await _run(
-                        ref,
-                        () => ref.read(taskRepositoryProvider).complete(task),
-                      );
+                      await completeTaskWithUndo(context, ref, task);
+                    case 'reopen':
+                      await reopenTask(context, ref, task);
                     case 'delete':
                       await _run(
                         ref,
@@ -135,26 +149,26 @@ class TaskCard extends ConsumerWidget {
                 itemBuilder: (context) => [
                   PopupMenuItem(
                     value: 'open',
-                    child: const ListTile(
+                    child: ListTile(
                       contentPadding: EdgeInsets.zero,
-                      leading: Icon(Icons.open_in_new),
-                      title: Text('Open task workspace'),
+                      leading: const Icon(Icons.open_in_new),
+                      title: Text(context.l10n.text('open_task_workspace')),
                     ),
                   ),
                   PopupMenuItem(
                     value: 'edit',
-                    child: const ListTile(
+                    child: ListTile(
                       contentPadding: EdgeInsets.zero,
-                      leading: Icon(Icons.edit_outlined),
-                      title: Text('Edit task'),
+                      leading: const Icon(Icons.edit_outlined),
+                      title: Text(context.l10n.text('edit_task')),
                     ),
                   ),
                   PopupMenuItem(
                     value: 'duplicate',
-                    child: const ListTile(
+                    child: ListTile(
                       contentPadding: EdgeInsets.zero,
-                      leading: Icon(Icons.copy_outlined),
-                      title: Text('Duplicate'),
+                      leading: const Icon(Icons.copy_outlined),
+                      title: Text(context.l10n.text('duplicate')),
                     ),
                   ),
                   if (!completed)
@@ -167,6 +181,18 @@ class TaskCard extends ConsumerWidget {
                           color: colorScheme.primary,
                         ),
                         title: Text(context.l10n.text('complete')),
+                      ),
+                    ),
+                  if (completed)
+                    PopupMenuItem(
+                      value: 'reopen',
+                      child: ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: Icon(
+                          Icons.restore,
+                          color: colorScheme.primary,
+                        ),
+                        title: Text(context.l10n.text('reopen_task')),
                       ),
                     ),
                   PopupMenuItem(
@@ -211,10 +237,109 @@ class TaskCard extends ConsumerWidget {
       _ => Icons.touch_app,
     };
   }
+}
 
-  String _titleCase(String input) {
-    if (input.isEmpty) return input;
-    return '${input[0].toUpperCase()}${input.substring(1)}';
+class _CanonicalTaskControl extends ConsumerStatefulWidget {
+  const _CanonicalTaskControl({required this.task});
+
+  final LocalTask task;
+
+  @override
+  ConsumerState<_CanonicalTaskControl> createState() =>
+      _CanonicalTaskControlState();
+}
+
+class _CanonicalTaskControlState extends ConsumerState<_CanonicalTaskControl> {
+  bool _busy = false;
+
+  Future<void> _run(TaskExecutionPrimaryAction action) async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      await TaskExecutionCommands.commitLocallyAndSynchronize(
+        localCommand: () async {
+          final repository = ref.read(taskRepositoryProvider);
+          switch (action) {
+            case TaskExecutionPrimaryAction.start:
+              await startTaskWithConfirmation(
+                context,
+                ref,
+                widget.task,
+                onOpenInAppResource: (url) {
+                  unawaited(
+                    TaskWorkspaceScreen.open(
+                      context,
+                      widget.task,
+                      initialSection: 3,
+                      initialBrowserUrl: url,
+                    ),
+                  );
+                },
+              );
+            case TaskExecutionPrimaryAction.pause:
+              await repository.pause(widget.task);
+            case TaskExecutionPrimaryAction.resume:
+              await repository.resume(widget.task);
+            case TaskExecutionPrimaryAction.startBreak:
+              await TaskExecutionCommands.startOfferedBreak(
+                repository,
+                widget.task,
+              );
+            case TaskExecutionPrimaryAction.startFocus:
+              await repository.finishBreak(widget.task);
+          }
+        },
+        synchronize: () => ref.read(syncServiceProvider).drainOutbox(),
+      );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final runtime = ref.watch(taskExecutionRuntimeProvider).value;
+    final ownsTask = runtime?.activeTaskId == widget.task.id;
+    if (ownsTask &&
+        (runtime?.state == 'running' || runtime?.state == 'break')) {
+      ref.watch(taskExecutionClockProvider);
+    }
+    final pomodoro = ownsTask && widget.task.executionMode == 'pomodoro'
+        ? PomodoroExecutionSnapshot.fromTask(
+            task: widget.task,
+            runtime: runtime,
+            now: DateTime.now().toUtc(),
+          )
+        : null;
+    final controls = TaskExecutionControlState.from(
+      taskId: widget.task.id,
+      executionMode: widget.task.executionMode,
+      runtime: runtime,
+      pomodoro: pomodoro,
+    );
+    final tooltipKey = switch (controls.primary) {
+      TaskExecutionPrimaryAction.start => 'start',
+      TaskExecutionPrimaryAction.pause => 'pause',
+      TaskExecutionPrimaryAction.resume => 'resume',
+      TaskExecutionPrimaryAction.startBreak => 'notification_start_break',
+      TaskExecutionPrimaryAction.startFocus => 'notification_start_focus',
+    };
+    final icon = switch (controls.primary) {
+      TaskExecutionPrimaryAction.pause => Icons.pause,
+      TaskExecutionPrimaryAction.startBreak => Icons.coffee_outlined,
+      TaskExecutionPrimaryAction.startFocus => Icons.center_focus_strong,
+      _ => Icons.play_arrow,
+    };
+    return IconButton.filledTonal(
+      tooltip: context.l10n.text(tooltipKey),
+      onPressed: _busy ? null : () => _run(controls.primary),
+      icon: _busy
+          ? const SizedBox.square(
+              dimension: 18,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : Icon(icon),
+    );
   }
 }
 
@@ -247,15 +372,17 @@ class _Meta extends StatelessWidget {
 }
 
 class _StatusPill extends StatelessWidget {
-  const _StatusPill({required this.status});
+  const _StatusPill({required this.status, this.activeSession = false});
 
   final String status;
+  final bool activeSession;
 
   @override
   Widget build(BuildContext context) {
     final color = switch (status) {
       'completed' => const Color(0xFF35A870),
-      'in_progress' => Theme.of(context).colorScheme.primary,
+      'in_progress' || 'running' => Theme.of(context).colorScheme.primary,
+      'break' => const Color(0xFF2BAE9A),
       'paused' => const Color(0xFFF28C28),
       'overdue' => Theme.of(context).colorScheme.error,
       _ => Theme.of(context).colorScheme.onSurfaceVariant,
@@ -268,9 +395,43 @@ class _StatusPill extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
         child: Text(
-          status.replaceAll('_', ' '),
+          activeSession && (status == 'in_progress' || status == 'running')
+              ? context.l10n.text('currently_running')
+              : status == 'break'
+              ? context.l10n.text('break_in_progress')
+              : context.l10n.taskStatus(status, compact: true),
           style: Theme.of(context).textTheme.labelSmall?.copyWith(color: color),
         ),
+      ),
+    );
+  }
+}
+
+class _SuggestedPill extends StatelessWidget {
+  const _SuggestedPill();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+      decoration: BoxDecoration(
+        color: Colors.green.withValues(alpha: 0.18),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: Colors.green.withValues(alpha: 0.65)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.auto_awesome, size: 14, color: Colors.green),
+          const SizedBox(width: 4),
+          Text(
+            context.l10n.text('schedule_suggested'),
+            style: const TextStyle(
+              color: Colors.green,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
       ),
     );
   }

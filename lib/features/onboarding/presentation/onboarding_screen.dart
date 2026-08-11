@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/localization/app_localizations.dart';
+import '../../../core/account/owner_bootstrap.dart';
 import '../../../core/providers.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/theme/brand_logo.dart';
@@ -20,9 +21,9 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   late final TextEditingController _displayName;
   String _language = 'en';
   String _theme = 'system';
-  String _goal = 'Work performance';
-  String _executionStyle = 'Mixed methods';
-  String _coaching = 'Standard';
+  String _goal = 'work_performance';
+  String _executionStyle = 'mixed';
+  String _coaching = 'standard';
   bool _busy = false;
 
   @override
@@ -49,10 +50,17 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
       final settings = ref.read(settingsRepositoryProvider);
       await settings.updateLocale(_language);
       await settings.updateTheme(_theme);
-      await ref.read(taskRepositoryProvider).seedStarterDomains();
-      await ref
-          .read(roadmapRepositoryProvider)
-          .createStarterRoadmap(userId: widget.user.id, title: _goal);
+      if (mayBootstrapOwnerContent(widget.user.id)) {
+        await ref.read(taskRepositoryProvider).seedStarterDomains();
+        await ref
+            .read(roadmapRepositoryProvider)
+            .createStarterRoadmap(
+              userId: widget.user.id,
+              title: AppLocalizations(
+                Locale(_language),
+              ).text('onboarding_goal_$_goal'),
+            );
+      }
       await settings.completeOnboarding(
         userId: widget.user.id,
         displayName: _displayName.text,
@@ -113,18 +121,24 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                                 labelText: context.l10n.text('language'),
                                 prefixIcon: const Icon(Icons.language),
                               ),
-                              items: const [
+                              items: [
                                 DropdownMenuItem(
                                   value: 'en',
-                                  child: Text('English'),
+                                  child: Text(
+                                    context.l10n.text('language_english'),
+                                  ),
                                 ),
                                 DropdownMenuItem(
                                   value: 'ar',
-                                  child: Text('العربية'),
+                                  child: Text(
+                                    context.l10n.text('language_arabic'),
+                                  ),
                                 ),
                                 DropdownMenuItem(
                                   value: 'de',
-                                  child: Text('Deutsch'),
+                                  child: Text(
+                                    context.l10n.text('language_german'),
+                                  ),
                                 ),
                               ],
                               onChanged: (value) async {
@@ -170,48 +184,56 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                                 labelText: context.l10n.text('goal'),
                                 prefixIcon: const Icon(Icons.flag_outlined),
                               ),
-                              items:
-                                  const [
-                                        'Work performance',
-                                        'Programming',
-                                        'Language learning',
-                                        'Reading',
-                                        'Exercise',
-                                        'Personal organization',
-                                      ]
-                                      .map(
-                                        (goal) => DropdownMenuItem(
-                                          value: goal,
-                                          child: Text(goal),
-                                        ),
-                                      )
-                                      .toList(),
+                              items: [
+                                for (final goal in const [
+                                  'work_performance',
+                                  'programming',
+                                  'language_learning',
+                                  'reading',
+                                  'exercise',
+                                  'personal_organization',
+                                ])
+                                  DropdownMenuItem(
+                                    value: goal,
+                                    child: Text(
+                                      context.l10n.text(
+                                        'onboarding_goal_$goal',
+                                      ),
+                                    ),
+                                  ),
+                              ],
                               onChanged: (value) =>
                                   setState(() => _goal = value ?? _goal),
                             ),
                             const SizedBox(height: 16),
                             DropdownButtonFormField<String>(
                               initialValue: _executionStyle,
-                              decoration: const InputDecoration(
-                                labelText: 'Preferred execution',
-                                prefixIcon: Icon(Icons.play_circle_outline),
+                              decoration: InputDecoration(
+                                labelText: context.l10n.text(
+                                  'onboarding_preferred_execution',
+                                ),
+                                prefixIcon: const Icon(
+                                  Icons.play_circle_outline,
+                                ),
                               ),
-                              items:
-                                  const [
-                                        'Pomodoro',
-                                        'Continuous work blocks',
-                                        'Checklists',
-                                        'Flexible manual completion',
-                                        'Mixed methods',
-                                        'Not sure',
-                                      ]
-                                      .map(
-                                        (style) => DropdownMenuItem(
-                                          value: style,
-                                          child: Text(style),
-                                        ),
-                                      )
-                                      .toList(),
+                              items: [
+                                for (final style in const [
+                                  'pomodoro',
+                                  'continuous',
+                                  'checklist',
+                                  'manual',
+                                  'mixed',
+                                  'unsure',
+                                ])
+                                  DropdownMenuItem(
+                                    value: style,
+                                    child: Text(
+                                      context.l10n.text(
+                                        'onboarding_execution_$style',
+                                      ),
+                                    ),
+                                  ),
+                              ],
                               onChanged: (value) => setState(
                                 () =>
                                     _executionStyle = value ?? _executionStyle,
@@ -220,24 +242,28 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                             const SizedBox(height: 16),
                             DropdownButtonFormField<String>(
                               initialValue: _coaching,
-                              decoration: const InputDecoration(
-                                labelText: 'Coaching preference',
-                                prefixIcon: Icon(Icons.psychology_outlined),
+                              decoration: InputDecoration(
+                                labelText: context.l10n.text(
+                                  'onboarding_coaching_preference',
+                                ),
+                                prefixIcon: const Icon(
+                                  Icons.psychology_outlined,
+                                ),
                               ),
-                              items:
-                                  const [
-                                        'Quiet',
-                                        'Standard',
-                                        'Active',
-                                        'Persistent',
-                                      ]
-                                      .map(
-                                        (mode) => DropdownMenuItem(
-                                          value: mode,
-                                          child: Text(mode),
-                                        ),
-                                      )
-                                      .toList(),
+                              items: [
+                                for (final mode in const [
+                                  'quiet',
+                                  'standard',
+                                  'active',
+                                  'persistent',
+                                ])
+                                  DropdownMenuItem(
+                                    value: mode,
+                                    child: Text(
+                                      context.l10n.text('coaching_$mode'),
+                                    ),
+                                  ),
+                              ],
                               onChanged: (value) => setState(
                                 () => _coaching = value ?? _coaching,
                               ),

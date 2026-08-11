@@ -2,13 +2,15 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
+import 'package:intl/intl.dart' hide TextDirection;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:table_calendar/table_calendar.dart';
 
 import '../../../core/database/app_database.dart';
 import '../../../core/data/entity_record_repository.dart';
+import '../../../core/localization/app_localizations.dart';
 import '../../../core/providers.dart';
+import '../../health/presentation/task_health_evidence_strip.dart';
 import '../../tasks/presentation/task_card.dart';
 import '../../tasks/presentation/task_editor_dialog.dart';
 import '../data/cycle_crypto_service.dart';
@@ -39,10 +41,10 @@ class _PlanningCalendarScreenState
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Calendar and history'),
+        title: Text(context.l10n.text('calendar_history')),
         actions: [
           IconButton(
-            tooltip: 'Today',
+            tooltip: context.l10n.text('today'),
             onPressed: () => setState(() {
               _focusedDay = DateTime.now();
               _selectedDay = DateTime.now();
@@ -85,7 +87,7 @@ class _PlanningCalendarScreenState
                       _selectedDay = selected;
                       _focusedDay = focused;
                     }),
-                    onPageChanged: (day) => _focusedDay = day,
+                    onPageChanged: (day) => setState(() => _focusedDay = day),
                     onFormatChanged: (format) =>
                         setState(() => _format = format),
                   );
@@ -136,7 +138,7 @@ class _PlanningCalendarScreenState
                 storageMode: settings?.cycleStorageMode ?? 'local_only',
               ),
               icon: const Icon(Icons.water_drop_outlined),
-              label: const Text('Cycle entry'),
+              label: Text(context.l10n.text('cycle_entry')),
             )
           : null,
     );
@@ -183,18 +185,16 @@ class _PlanningCalendarScreenState
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Delete cycle entry?'),
-        content: const Text(
-          'This removes the selected cycle data without deleting tasks or account data.',
-        ),
+        title: Text(context.l10n.text('cycle_delete_title')),
+        content: Text(context.l10n.text('cycle_delete_description')),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
+            child: Text(context.l10n.text('cancel')),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('Delete entry'),
+            child: Text(context.l10n.text('cycle_delete_entry')),
           ),
         ],
       ),
@@ -262,45 +262,179 @@ class _CalendarCard extends StatelessWidget {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(12),
-        child: TableCalendar<Object>(
-          firstDay: DateTime.utc(2020),
-          lastDay: DateTime.utc(2045, 12, 31),
-          focusedDay: focusedDay,
-          selectedDayPredicate: (day) => isSameDay(selectedDay, day),
-          calendarFormat: format,
-          availableCalendarFormats: const {
-            CalendarFormat.month: 'Month',
-            CalendarFormat.twoWeeks: '2 weeks',
-            CalendarFormat.week: 'Week',
-          },
-          eventLoader: (day) =>
-              eventDays[DateTime(day.year, day.month, day.day)] ?? const [],
-          onDaySelected: onDaySelected,
-          onPageChanged: onPageChanged,
-          onFormatChanged: onFormatChanged,
-          startingDayOfWeek: StartingDayOfWeek.monday,
-          calendarStyle: CalendarStyle(
-            todayDecoration: BoxDecoration(
-              color: Theme.of(
-                context,
-              ).colorScheme.primary.withValues(alpha: 0.22),
-              shape: BoxShape.circle,
+        child: Column(
+          children: [
+            _CalendarHeader(
+              focusedDay: focusedDay,
+              format: format,
+              onFocusedDayChanged: onPageChanged,
+              onFormatChanged: onFormatChanged,
             ),
-            selectedDecoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.primary,
-              shape: BoxShape.circle,
+            TableCalendar<Object>(
+              firstDay: DateTime.utc(2020),
+              lastDay: DateTime.utc(2045, 12, 31),
+              focusedDay: focusedDay,
+              selectedDayPredicate: (day) => isSameDay(selectedDay, day),
+              calendarFormat: format,
+              eventLoader: (day) =>
+                  eventDays[DateTime(day.year, day.month, day.day)] ?? const [],
+              onDaySelected: onDaySelected,
+              onPageChanged: onPageChanged,
+              onFormatChanged: onFormatChanged,
+              startingDayOfWeek: StartingDayOfWeek.monday,
+              calendarStyle: CalendarStyle(
+                todayDecoration: BoxDecoration(
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.primary.withValues(alpha: 0.22),
+                  shape: BoxShape.circle,
+                ),
+                selectedDecoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.primary,
+                  shape: BoxShape.circle,
+                ),
+                markerDecoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.tertiary,
+                  shape: BoxShape.circle,
+                ),
+              ),
+              headerVisible: false,
+              locale: context.l10n.locale.toLanguageTag(),
             ),
-            markerDecoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.tertiary,
-              shape: BoxShape.circle,
-            ),
-          ),
-          headerStyle: const HeaderStyle(
-            titleCentered: false,
-            formatButtonVisible: true,
-          ),
+          ],
         ),
       ),
+    );
+  }
+}
+
+class _CalendarHeader extends StatelessWidget {
+  const _CalendarHeader({
+    required this.focusedDay,
+    required this.format,
+    required this.onFocusedDayChanged,
+    required this.onFormatChanged,
+  });
+
+  final DateTime focusedDay;
+  final CalendarFormat format;
+  final ValueChanged<DateTime> onFocusedDayChanged;
+  final ValueChanged<CalendarFormat> onFormatChanged;
+
+  String _label(BuildContext context, CalendarFormat value) =>
+      context.l10n.text(switch (value) {
+        CalendarFormat.month => 'calendar_month',
+        CalendarFormat.twoWeeks => 'calendar_two_weeks',
+        CalendarFormat.week => 'calendar_week',
+      });
+
+  DateTime _move(int direction) => switch (format) {
+    CalendarFormat.month => DateTime(
+      focusedDay.year,
+      focusedDay.month + direction,
+      1,
+    ),
+    CalendarFormat.twoWeeks => focusedDay.add(Duration(days: 14 * direction)),
+    CalendarFormat.week => focusedDay.add(Duration(days: 7 * direction)),
+  };
+
+  List<CalendarFormat> get _ordered => switch (format) {
+    CalendarFormat.month => const [
+      CalendarFormat.week,
+      CalendarFormat.month,
+      CalendarFormat.twoWeeks,
+    ],
+    CalendarFormat.twoWeeks => const [
+      CalendarFormat.month,
+      CalendarFormat.twoWeeks,
+      CalendarFormat.week,
+    ],
+    CalendarFormat.week => const [
+      CalendarFormat.twoWeeks,
+      CalendarFormat.week,
+      CalendarFormat.month,
+    ],
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final wide = constraints.maxWidth >= 560;
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Row(
+            children: [
+              IconButton(
+                tooltip: context.l10n.format('calendar_previous_range', {
+                  'range': _label(context, format),
+                }),
+                onPressed: () => onFocusedDayChanged(_move(-1)),
+                icon: Icon(
+                  Directionality.of(context) == TextDirection.rtl
+                      ? Icons.chevron_right
+                      : Icons.chevron_left,
+                ),
+              ),
+              Expanded(
+                child: Text(
+                  DateFormat.yMMMM(
+                    context.l10n.locale.toLanguageTag(),
+                  ).format(focusedDay),
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              if (wide)
+                SegmentedButton<CalendarFormat>(
+                  showSelectedIcon: false,
+                  segments: [
+                    for (final value in _ordered)
+                      ButtonSegment(
+                        value: value,
+                        label: Opacity(
+                          opacity: value == format ? 1 : 0.62,
+                          child: Text(_label(context, value)),
+                        ),
+                      ),
+                  ],
+                  selected: {format},
+                  onSelectionChanged: (values) => onFormatChanged(values.first),
+                )
+              else
+                PopupMenuButton<CalendarFormat>(
+                  tooltip: context.l10n.format('calendar_view', {
+                    'range': _label(context, format),
+                  }),
+                  onSelected: onFormatChanged,
+                  itemBuilder: (_) => [
+                    for (final value in CalendarFormat.values)
+                      PopupMenuItem(
+                        value: value,
+                        child: Text(_label(context, value)),
+                      ),
+                  ],
+                  child: Chip(
+                    label: Text(_label(context, format)),
+                    avatar: const Icon(Icons.arrow_drop_down, size: 18),
+                  ),
+                ),
+              IconButton(
+                tooltip: context.l10n.format('calendar_next_range', {
+                  'range': _label(context, format),
+                }),
+                onPressed: () => onFocusedDayChanged(_move(1)),
+                icon: Icon(
+                  Directionality.of(context) == TextDirection.rtl
+                      ? Icons.chevron_left
+                      : Icons.chevron_right,
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }
@@ -344,12 +478,17 @@ class _Agenda extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        DateFormat('EEEE').format(selectedDay),
+                        DateFormat(
+                          'EEEE',
+                          context.l10n.locale.toLanguageTag(),
+                        ).format(selectedDay),
                         style: Theme.of(context).textTheme.headlineSmall
                             ?.copyWith(fontWeight: FontWeight.w800),
                       ),
                       Text(
-                        DateFormat.yMMMMd().format(selectedDay),
+                        DateFormat.yMMMMd(
+                          context.l10n.locale.toLanguageTag(),
+                        ).format(selectedDay),
                         style: TextStyle(
                           color: Theme.of(context).colorScheme.onSurfaceVariant,
                         ),
@@ -368,12 +507,12 @@ class _Agenda extends StatelessWidget {
                   selected: showCompleted,
                   onSelected: onShowCompleted,
                   avatar: const Icon(Icons.history, size: 18),
-                  label: const Text('History'),
+                  label: Text(context.l10n.text('calendar_history_filter')),
                 ),
                 FilledButton.tonalIcon(
                   onPressed: onAddTask,
                   icon: const Icon(Icons.add_task),
-                  label: const Text('Task'),
+                  label: Text(context.l10n.text('calendar_task')),
                 ),
               ],
             ),
@@ -382,21 +521,25 @@ class _Agenda extends StatelessWidget {
               const _EmptyAgenda()
             else ...[
               if (tasks.isNotEmpty) ...[
-                const _AgendaHeading(
+                _AgendaHeading(
                   icon: Icons.task_alt_outlined,
-                  title: 'Tasks and execution history',
+                  title: context.l10n.text('calendar_task_history'),
                 ),
                 const SizedBox(height: 10),
                 for (final task in tasks) ...[
                   TaskCard(task: task, compact: true),
+                  TaskHealthEvidenceStrip(
+                    taskId: task.id,
+                    margin: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+                  ),
                   const SizedBox(height: 8),
                 ],
               ],
               if (cycleRecords.isNotEmpty) ...[
                 const SizedBox(height: 14),
-                const _AgendaHeading(
+                _AgendaHeading(
                   icon: Icons.water_drop_outlined,
-                  title: 'Cycle calendar',
+                  title: context.l10n.text('cycle_calendar'),
                 ),
                 const SizedBox(height: 10),
                 for (final record in cycleRecords)
@@ -411,7 +554,7 @@ class _Agenda extends StatelessWidget {
               OutlinedButton.icon(
                 onPressed: onAddCycle,
                 icon: const Icon(Icons.add),
-                label: const Text('Add cycle entry for this day'),
+                label: Text(context.l10n.text('cycle_add_for_day')),
               ),
             ],
           ],
@@ -460,7 +603,7 @@ class _EmptyAgenda extends StatelessWidget {
               color: Theme.of(context).colorScheme.outline,
             ),
             const SizedBox(height: 10),
-            const Text('No scheduled work or recorded history for this day'),
+            Text(context.l10n.text('calendar_empty_day')),
           ],
         ),
       ),
@@ -479,8 +622,8 @@ class _CycleRecordCard extends ConsumerWidget {
     final data = ref.read(entityRecordRepositoryProvider).decode(record);
     final started = data['period_started'] == true;
     final ended = data['period_ended'] == true;
-    final flow = data['flow'] as String? ?? 'Not recorded';
-    final energy = data['energy'] as String? ?? 'Not recorded';
+    final flow = data['flow'] as String? ?? 'not_recorded';
+    final energy = data['energy'] as String? ?? 'not_recorded';
     final symptoms = data['symptoms'] as String? ?? '';
     return Card(
       color: Theme.of(
@@ -490,26 +633,50 @@ class _CycleRecordCard extends ConsumerWidget {
         leading: const Icon(Icons.water_drop_outlined),
         title: Text(
           started
-              ? 'Period started'
+              ? context.l10n.text('cycle_period_started')
               : ended
-              ? 'Period ended'
-              : 'Cycle note',
+              ? context.l10n.text('cycle_period_ended')
+              : context.l10n.text('cycle_note'),
         ),
         subtitle: Text(
           [
-            'Flow: $flow',
-            'Energy: $energy',
+            context.l10n.format('cycle_flow_value', {
+              'value': _cycleValueLabel(context, flow),
+            }),
+            context.l10n.format('cycle_energy_value', {
+              'value': _cycleValueLabel(context, energy),
+            }),
             if (symptoms.trim().isNotEmpty) symptoms.trim(),
           ].join(' · '),
         ),
         trailing: IconButton(
-          tooltip: 'Delete cycle entry',
+          tooltip: context.l10n.text('cycle_delete_entry'),
           onPressed: onDelete,
           icon: const Icon(Icons.delete_outline),
         ),
       ),
     );
   }
+}
+
+String _cycleValueLabel(BuildContext context, String value) {
+  final normalized = value
+      .trim()
+      .toLowerCase()
+      .replaceAll(RegExp(r'[^a-z]+'), '_')
+      .replaceAll(RegExp(r'^_|_$'), '');
+  const supported = {
+    'not_recorded',
+    'light',
+    'medium',
+    'heavy',
+    'low',
+    'steady',
+    'high',
+  };
+  return context.l10n.text(
+    'cycle_value_${supported.contains(normalized) ? normalized : 'not_recorded'}',
+  );
 }
 
 class _CycleEntryDialog extends ConsumerStatefulWidget {
@@ -549,25 +716,25 @@ class _CycleEntryDialogState extends ConsumerState<_CycleEntryDialog> {
     final value = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Protect synchronized cycle data'),
+        title: Text(context.l10n.text('cycle_protect_sync')),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text(
-              'Choose a passphrase used only to encrypt and decrypt cycle data on your devices. It is never uploaded.',
-            ),
+            Text(context.l10n.text('cycle_passphrase_description')),
             const SizedBox(height: 14),
             TextField(
               controller: first,
               obscureText: true,
-              decoration: const InputDecoration(labelText: 'Passphrase'),
+              decoration: InputDecoration(
+                labelText: context.l10n.text('cycle_passphrase'),
+              ),
             ),
             const SizedBox(height: 10),
             TextField(
               controller: second,
               obscureText: true,
-              decoration: const InputDecoration(
-                labelText: 'Confirm passphrase',
+              decoration: InputDecoration(
+                labelText: context.l10n.text('cycle_confirm_passphrase'),
               ),
             ),
           ],
@@ -575,7 +742,7 @@ class _CycleEntryDialogState extends ConsumerState<_CycleEntryDialog> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
+            child: Text(context.l10n.text('cancel')),
           ),
           FilledButton(
             onPressed: () {
@@ -583,7 +750,7 @@ class _CycleEntryDialogState extends ConsumerState<_CycleEntryDialog> {
                 Navigator.pop(context, first.text);
               }
             },
-            child: const Text('Enable encryption'),
+            child: Text(context.l10n.text('cycle_enable_encryption')),
           ),
         ],
       ),
@@ -595,6 +762,7 @@ class _CycleEntryDialogState extends ConsumerState<_CycleEntryDialog> {
 
   Future<void> _save() async {
     if (_busy) return;
+    final localizedTitle = context.l10n.text('cycle_entry');
     setState(() => _busy = true);
     try {
       final date = DateFormat('yyyy-MM-dd').format(widget.date);
@@ -614,6 +782,7 @@ class _CycleEntryDialogState extends ConsumerState<_CycleEntryDialog> {
         final crypto = CycleCryptoService();
         if (!await crypto.hasKey(widget.userId)) {
           final passphrase = await _askPassphrase();
+          if (!mounted) return;
           if (passphrase == null) return;
           await crypto.setPassphrase(
             userId: widget.userId,
@@ -637,7 +806,7 @@ class _CycleEntryDialogState extends ConsumerState<_CycleEntryDialog> {
           .create(
             EntityRecordDraft(
               entityType: 'cycle_records',
-              title: 'Cycle entry',
+              title: localizedTitle,
               status: 'recorded',
               data: data,
               syncPayload: syncPayload,
@@ -656,7 +825,13 @@ class _CycleEntryDialogState extends ConsumerState<_CycleEntryDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: Text('Cycle entry · ${DateFormat.yMMMd().format(widget.date)}'),
+      title: Text(
+        context.l10n.format('cycle_entry_date', {
+          'date': DateFormat.yMMMd(
+            context.l10n.locale.toLanguageTag(),
+          ).format(widget.date),
+        }),
+      ),
       content: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 500),
         child: SingleChildScrollView(
@@ -666,42 +841,64 @@ class _CycleEntryDialogState extends ConsumerState<_CycleEntryDialog> {
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
                 value: _started,
-                title: const Text('Period started'),
+                title: Text(context.l10n.text('cycle_period_started')),
                 onChanged: (value) => setState(() => _started = value),
               ),
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
                 value: _ended,
-                title: const Text('Period ended'),
+                title: Text(context.l10n.text('cycle_period_ended')),
                 onChanged: (value) => setState(() => _ended = value),
               ),
               const SizedBox(height: 8),
               DropdownButtonFormField<String>(
                 initialValue: _flow,
-                decoration: const InputDecoration(labelText: 'Flow'),
-                items: const [
+                decoration: InputDecoration(
+                  labelText: context.l10n.text('cycle_flow'),
+                ),
+                items: [
                   DropdownMenuItem(
                     value: 'not_recorded',
-                    child: Text('Not recorded'),
+                    child: Text(context.l10n.text('cycle_value_not_recorded')),
                   ),
-                  DropdownMenuItem(value: 'light', child: Text('Light')),
-                  DropdownMenuItem(value: 'medium', child: Text('Medium')),
-                  DropdownMenuItem(value: 'heavy', child: Text('Heavy')),
+                  DropdownMenuItem(
+                    value: 'light',
+                    child: Text(context.l10n.text('cycle_value_light')),
+                  ),
+                  DropdownMenuItem(
+                    value: 'medium',
+                    child: Text(context.l10n.text('cycle_value_medium')),
+                  ),
+                  DropdownMenuItem(
+                    value: 'heavy',
+                    child: Text(context.l10n.text('cycle_value_heavy')),
+                  ),
                 ],
                 onChanged: (value) => setState(() => _flow = value ?? _flow),
               ),
               const SizedBox(height: 12),
               DropdownButtonFormField<String>(
                 initialValue: _energy,
-                decoration: const InputDecoration(labelText: 'Energy'),
-                items: const [
+                decoration: InputDecoration(
+                  labelText: context.l10n.text('cycle_energy'),
+                ),
+                items: [
                   DropdownMenuItem(
                     value: 'not_recorded',
-                    child: Text('Not recorded'),
+                    child: Text(context.l10n.text('cycle_value_not_recorded')),
                   ),
-                  DropdownMenuItem(value: 'low', child: Text('Low')),
-                  DropdownMenuItem(value: 'steady', child: Text('Steady')),
-                  DropdownMenuItem(value: 'high', child: Text('High')),
+                  DropdownMenuItem(
+                    value: 'low',
+                    child: Text(context.l10n.text('cycle_value_low')),
+                  ),
+                  DropdownMenuItem(
+                    value: 'steady',
+                    child: Text(context.l10n.text('cycle_value_steady')),
+                  ),
+                  DropdownMenuItem(
+                    value: 'high',
+                    child: Text(context.l10n.text('cycle_value_high')),
+                  ),
                 ],
                 onChanged: (value) =>
                     setState(() => _energy = value ?? _energy),
@@ -709,9 +906,9 @@ class _CycleEntryDialogState extends ConsumerState<_CycleEntryDialog> {
               const SizedBox(height: 12),
               TextField(
                 controller: _symptoms,
-                decoration: const InputDecoration(
-                  labelText: 'Symptoms',
-                  hintText: 'Optional, separate with commas',
+                decoration: InputDecoration(
+                  labelText: context.l10n.text('cycle_symptoms'),
+                  hintText: context.l10n.text('cycle_symptoms_hint'),
                 ),
               ),
               const SizedBox(height: 12),
@@ -719,15 +916,17 @@ class _CycleEntryDialogState extends ConsumerState<_CycleEntryDialog> {
                 controller: _notes,
                 minLines: 2,
                 maxLines: 4,
-                decoration: const InputDecoration(labelText: 'Private notes'),
+                decoration: InputDecoration(
+                  labelText: context.l10n.text('cycle_private_notes'),
+                ),
               ),
               const SizedBox(height: 10),
               Align(
                 alignment: AlignmentDirectional.centerStart,
                 child: Text(
                   widget.storageMode == 'encrypted_sync'
-                      ? 'This entry is encrypted before synchronization'
-                      : 'This entry stays on this device',
+                      ? context.l10n.text('cycle_entry_encrypted')
+                      : context.l10n.text('cycle_entry_local'),
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
               ),
@@ -738,7 +937,7 @@ class _CycleEntryDialogState extends ConsumerState<_CycleEntryDialog> {
       actions: [
         TextButton(
           onPressed: _busy ? null : () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
+          child: Text(context.l10n.text('cancel')),
         ),
         FilledButton(
           onPressed: _busy ? null : _save,
@@ -747,7 +946,7 @@ class _CycleEntryDialogState extends ConsumerState<_CycleEntryDialog> {
                   dimension: 18,
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
-              : const Text('Save entry'),
+              : Text(context.l10n.text('cycle_save_entry')),
         ),
       ],
     );

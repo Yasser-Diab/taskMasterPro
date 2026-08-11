@@ -1,7 +1,52 @@
 import 'package:drift/drift.dart';
 import 'package:drift_flutter/drift_flutter.dart';
 
+import '../config/supabase_config.dart';
+
 part 'app_database.g.dart';
+
+/// Local settings are account-scoped. A device can retain an offline cache
+/// for more than one account, so a global `app` row must not be reused after
+/// sign-out and sign-in.
+String localAppSettingsId(String userId) =>
+    userId == 'local' ? 'app' : 'app:$userId';
+
+/// Runtime state is a per-account cache, not a machine-wide singleton.  A
+/// device can retain a previous account's database rows after sign-out, so a
+/// stable account-scoped key prevents those rows from controlling the next
+/// signed-in account's timer.
+String localRuntimeStateId(String userId) =>
+    userId == 'local' ? 'runtime' : 'runtime:$userId';
+
+/// Returns a safe physical namespace for one Supabase project.
+///
+/// The project identity is part of every durable database and therefore every
+/// durable outbox as well. Changing a backend opens a fresh namespace instead
+/// of replaying commands, sync cursors or timer state created for the prior
+/// project. Old databases are intentionally left in place for recovery.
+String localBackendNamespaceForProject(String projectRef) {
+  final normalized = projectRef.replaceAll(RegExp('[^A-Za-z0-9_-]'), '_');
+  return normalized.isEmpty ? 'unknown_project' : normalized;
+}
+
+/// Returns the local database namespace for exactly one authenticated account
+/// and backend project.
+///
+/// A device can be used by more than one person.  Keeping all rows in a
+/// shared database and relying only on query filters made a stale cache far
+/// too easy to expose during an account switch.  The authenticated Supabase
+/// UUID and backend project are now part of the database name as physical
+/// isolation boundaries. The signed-out workspace deliberately uses its own
+/// empty namespace and is never used as an offline fallback for an account.
+String localDatabaseNameForAccount(
+  String? userId, {
+  String projectRef = SupabaseConfig.projectRef,
+}) {
+  final normalized = (userId == null || userId.isEmpty)
+      ? 'signed_out'
+      : userId.replaceAll(RegExp('[^A-Za-z0-9_-]'), '_');
+  return 'taskmaster_${localBackendNamespaceForProject(projectRef)}_$normalized';
+}
 
 @DataClassName('LocalProfile')
 class LocalProfiles extends Table {
@@ -11,6 +56,8 @@ class LocalProfiles extends Table {
   TextColumn get email => text().nullable()();
   TextColumn get imagePath => text().nullable()();
   TextColumn get genderIdentity => text().nullable()();
+  DateTimeColumn get dateOfBirth => dateTime().nullable()();
+  RealColumn get heightCm => real().nullable()();
   BoolColumn get onboardingCompleted =>
       boolean().withDefault(const Constant(false))();
   IntColumn get revision => integer().withDefault(const Constant(1))();
@@ -33,6 +80,8 @@ class LocalAppSettings extends Table {
   IntColumn get accentColor =>
       integer().withDefault(const Constant(0xFF0B78D1))();
   TextColumn get timeZone => text().withDefault(const Constant('UTC'))();
+  BoolColumn get useDeviceTimeZone =>
+      boolean().withDefault(const Constant(true))();
   TextColumn get clockFormat => text().withDefault(const Constant('24h'))();
   TextColumn get notificationSoundKey =>
       text().withDefault(const Constant('system'))();
@@ -45,7 +94,7 @@ class LocalAppSettings extends Table {
   BoolColumn get calendarShowCompleted =>
       boolean().withDefault(const Constant(true))();
   BoolColumn get applicationTrackingEnabled =>
-      boolean().withDefault(const Constant(false))();
+      boolean().withDefault(const Constant(true))();
   BoolColumn get windowTitleTrackingEnabled =>
       boolean().withDefault(const Constant(false))();
   BoolColumn get idleDetectionEnabled =>
@@ -64,10 +113,58 @@ class LocalAppSettings extends Table {
       boolean().withDefault(const Constant(false))();
   BoolColumn get activitySyncEnabled =>
       boolean().withDefault(const Constant(true))();
+  BoolColumn get activityRuleSyncEnabled =>
+      boolean().withDefault(const Constant(true))();
+  BoolColumn get detailedActivitySyncEnabled =>
+      boolean().withDefault(const Constant(false))();
+  IntColumn get localActivityRetentionDays =>
+      integer().withDefault(const Constant(30))();
+  BoolColumn get hideConfirmedSystemActivity =>
+      boolean().withDefault(const Constant(true))();
+  BoolColumn get showPossibleSystemActivity =>
+      boolean().withDefault(const Constant(true))();
   RealColumn get automaticConfidenceThreshold =>
       real().withDefault(const Constant(0.9))();
   IntColumn get minimumSuggestionDurationMs =>
       integer().withDefault(const Constant(30000))();
+  IntColumn get wakeTimeMinutes => integer().withDefault(const Constant(420))();
+  IntColumn get sleepTimeMinutes =>
+      integer().withDefault(const Constant(1320))();
+  TextColumn get workingDaysJson =>
+      text().withDefault(const Constant('[1,2,3,4,5]'))();
+  IntColumn get workStartMinutes =>
+      integer().withDefault(const Constant(540))();
+  IntColumn get workEndMinutes => integer().withDefault(const Constant(1020))();
+  IntColumn get quietStartMinutes =>
+      integer().withDefault(const Constant(1320))();
+  IntColumn get quietEndMinutes => integer().withDefault(const Constant(420))();
+  BoolColumn get sleepReminderEnabled =>
+      boolean().withDefault(const Constant(true))();
+  IntColumn get sleepReminderOffsetMinutes =>
+      integer().withDefault(const Constant(30))();
+  BoolColumn get phoneUsageAnalysisEnabled =>
+      boolean().withDefault(const Constant(false))();
+  TextColumn get coachingSensitivity =>
+      text().withDefault(const Constant('standard'))();
+  TextColumn get coachingTone =>
+      text().withDefault(const Constant('balanced'))();
+  BoolColumn get healthSummarySyncEnabled =>
+      boolean().withDefault(const Constant(false))();
+  TextColumn get healthReportPrivacy =>
+      text().withDefault(const Constant('ask'))();
+  TextColumn get notificationPreferencesJson => text().withDefault(
+    const Constant(
+      '{"task_reminders":true,"scheduled_starts":true,'
+      '"overdue_tasks":true,"focus_completed":true,'
+      '"short_break_completed":true,"long_break_completed":true,'
+      '"roadmaps":true,"activity_review":true,"coaching":true,'
+      '"sleep_health":true,"synchronization":true,"security":true,'
+      '"vibration":true}',
+    ),
+  )();
+  TextColumn get countryCode => text().withDefault(const Constant(''))();
+  TextColumn get dateFormat => text().withDefault(const Constant('locale'))();
+  IntColumn get firstDayOfWeek => integer().withDefault(const Constant(1))();
   IntColumn get revision => integer().withDefault(const Constant(1))();
   DateTimeColumn get createdAt => dateTime()();
   DateTimeColumn get updatedAt => dateTime()();
@@ -366,10 +463,16 @@ class LocalSyncStates extends Table {
 )
 class AppDatabase extends _$AppDatabase {
   AppDatabase([QueryExecutor? executor])
-    : super(executor ?? driftDatabase(name: 'taskmaster_pro'));
+    : super(executor ?? driftDatabase(name: localDatabaseNameForAccount(null)));
+
+  /// Opens a database that is private to [userId].  Production code must use
+  /// this constructor; the positional constructor is retained for in-memory
+  /// tests and the signed-out shell only.
+  AppDatabase.forAccount(String? userId)
+    : super(driftDatabase(name: localDatabaseNameForAccount(userId)));
 
   @override
-  int get schemaVersion => 9;
+  int get schemaVersion => 17;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -377,68 +480,235 @@ class AppDatabase extends _$AppDatabase {
       await migrator.createAll();
     },
     onUpgrade: (migrator, from, to) async {
+      // Early desktop builds were distributed with a partially-applied schema:
+      // SQLite's `user_version` could still be 9 while one or more columns from
+      // later versions had already been added. A regular `ADD COLUMN` then
+      // aborts startup with a duplicate-column error before the sync service
+      // can even restore the signed-in account. Treat migrations as
+      // idempotent so that those durable local databases can recover in place.
+      Future<bool> tableExists(String tableName) async {
+        final result = await customSelect(
+          "SELECT 1 AS present FROM sqlite_master "
+          "WHERE type = 'table' AND name = ? LIMIT 1",
+          variables: [Variable.withString(tableName)],
+        ).getSingleOrNull();
+        return result != null;
+      }
+
+      Future<void> createTableIfMissing(TableInfo table) async {
+        if (!await tableExists(table.actualTableName)) {
+          await migrator.createTable(table);
+        }
+      }
+
+      Future<void> addColumnIfMissing(
+        TableInfo table,
+        GeneratedColumn column,
+      ) async {
+        if (!await tableExists(table.actualTableName)) {
+          // A table introduced by the same recovered migration will contain
+          // every current column when it is created below.
+          return;
+        }
+        final columns = await customSelect(
+          'PRAGMA table_info(${table.actualTableName})',
+        ).get();
+        final exists = columns.any(
+          (row) => row.read<String>('name') == column.$name,
+        );
+        if (!exists) {
+          await migrator.addColumn(table, column);
+        }
+      }
+
       if (from < 2) {
-        await migrator.createTable(localEntityRecords);
+        await createTableIfMissing(localEntityRecords);
       }
       if (from < 3) {
-        await migrator.addColumn(localProfiles, localProfiles.genderIdentity);
-        await migrator.addColumn(
+        await addColumnIfMissing(localProfiles, localProfiles.genderIdentity);
+        await addColumnIfMissing(
           localAppSettings,
           localAppSettings.healthConnectEnabled,
         );
-        await migrator.addColumn(
+        await addColumnIfMissing(
           localAppSettings,
           localAppSettings.cycleTrackingEnabled,
         );
-        await migrator.addColumn(
+        await addColumnIfMissing(
           localAppSettings,
           localAppSettings.cycleStorageMode,
         );
-        await migrator.addColumn(
+        await addColumnIfMissing(
           localAppSettings,
           localAppSettings.calendarShowCompleted,
         );
       }
       if (from < 4) {
-        await migrator.createTable(localSyncStates);
+        await createTableIfMissing(localSyncStates);
       }
       if (from < 5) {
-        await migrator.addColumn(localRoadmaps, localRoadmaps.plannedStart);
-        await migrator.addColumn(localRoadmaps, localRoadmaps.finalOutcome);
-        await migrator.addColumn(
+        await addColumnIfMissing(localRoadmaps, localRoadmaps.plannedStart);
+        await addColumnIfMissing(localRoadmaps, localRoadmaps.finalOutcome);
+        await addColumnIfMissing(
           localRoadmaps,
           localRoadmaps.forecastConfidence,
         );
       }
       if (from < 6) {
-        await migrator.addColumn(localTasks, localTasks.dataJson);
+        await addColumnIfMissing(localTasks, localTasks.dataJson);
       }
       if (from < 7) {
-        await migrator.addColumn(localTasks, localTasks.occurrenceKey);
+        await addColumnIfMissing(localTasks, localTasks.occurrenceKey);
       }
       if (from < 8) {
-        await migrator.addColumn(
+        await addColumnIfMissing(
           localAppSettings,
           localAppSettings.applicationTrackingEnabled,
         );
-        await migrator.addColumn(
+        await addColumnIfMissing(
           localAppSettings,
           localAppSettings.windowTitleTrackingEnabled,
         );
-        await migrator.addColumn(
+        await addColumnIfMissing(
           localAppSettings,
           localAppSettings.idleDetectionEnabled,
         );
-        await migrator.addColumn(
+        await addColumnIfMissing(
           localAppSettings,
           localAppSettings.idleThresholdSeconds,
         );
       }
       if (from < 9) {
-        await migrator.addColumn(
+        await addColumnIfMissing(
           localAppSettings,
           localAppSettings.activitySyncEnabled,
         );
+      }
+      if (from < 10) {
+        await addColumnIfMissing(
+          localAppSettings,
+          localAppSettings.wakeTimeMinutes,
+        );
+        await addColumnIfMissing(
+          localAppSettings,
+          localAppSettings.sleepTimeMinutes,
+        );
+        await addColumnIfMissing(
+          localAppSettings,
+          localAppSettings.workingDaysJson,
+        );
+        await addColumnIfMissing(
+          localAppSettings,
+          localAppSettings.workStartMinutes,
+        );
+        await addColumnIfMissing(
+          localAppSettings,
+          localAppSettings.workEndMinutes,
+        );
+        await addColumnIfMissing(
+          localAppSettings,
+          localAppSettings.quietStartMinutes,
+        );
+        await addColumnIfMissing(
+          localAppSettings,
+          localAppSettings.quietEndMinutes,
+        );
+        await addColumnIfMissing(
+          localAppSettings,
+          localAppSettings.sleepReminderEnabled,
+        );
+        await addColumnIfMissing(
+          localAppSettings,
+          localAppSettings.sleepReminderOffsetMinutes,
+        );
+        await addColumnIfMissing(
+          localAppSettings,
+          localAppSettings.phoneUsageAnalysisEnabled,
+        );
+        await addColumnIfMissing(
+          localAppSettings,
+          localAppSettings.coachingSensitivity,
+        );
+        await addColumnIfMissing(
+          localAppSettings,
+          localAppSettings.healthSummarySyncEnabled,
+        );
+      }
+      if (from < 11) {
+        await addColumnIfMissing(localProfiles, localProfiles.dateOfBirth);
+      }
+      if (from < 12) {
+        await addColumnIfMissing(
+          localAppSettings,
+          localAppSettings.activityRuleSyncEnabled,
+        );
+        await addColumnIfMissing(
+          localAppSettings,
+          localAppSettings.detailedActivitySyncEnabled,
+        );
+        await addColumnIfMissing(
+          localAppSettings,
+          localAppSettings.localActivityRetentionDays,
+        );
+        await addColumnIfMissing(
+          localAppSettings,
+          localAppSettings.hideConfirmedSystemActivity,
+        );
+        await addColumnIfMissing(
+          localAppSettings,
+          localAppSettings.showPossibleSystemActivity,
+        );
+      }
+      if (from < 13) {
+        await addColumnIfMissing(
+          localAppSettings,
+          localAppSettings.coachingTone,
+        );
+        await addColumnIfMissing(
+          localAppSettings,
+          localAppSettings.healthReportPrivacy,
+        );
+        await addColumnIfMissing(
+          localAppSettings,
+          localAppSettings.notificationPreferencesJson,
+        );
+        await addColumnIfMissing(
+          localAppSettings,
+          localAppSettings.countryCode,
+        );
+        await addColumnIfMissing(localAppSettings, localAppSettings.dateFormat);
+        await addColumnIfMissing(
+          localAppSettings,
+          localAppSettings.firstDayOfWeek,
+        );
+      }
+      if (from < 14) {
+        // Preserve the settings record while moving the old single-account
+        // cache key to the authenticated account it belongs to.
+        await customStatement(
+          "UPDATE local_app_settings "
+          "SET id = 'app:' || user_id "
+          "WHERE id = 'app' AND user_id <> 'local'",
+        );
+      }
+      if (from < 15) {
+        // The original runtime cache used one global `runtime` row. Preserve
+        // it, but scope it to the account it belongs to so a signed-out
+        // account can never resume or pause the current account's task.
+        await customStatement(
+          "UPDATE local_runtime_states "
+          "SET id = 'runtime:' || user_id "
+          "WHERE id = 'runtime' AND user_id <> 'local'",
+        );
+      }
+      if (from < 16) {
+        await addColumnIfMissing(
+          localAppSettings,
+          localAppSettings.useDeviceTimeZone,
+        );
+      }
+      if (from < 17) {
+        await addColumnIfMissing(localProfiles, localProfiles.heightCm);
       }
     },
     beforeOpen: (details) async {

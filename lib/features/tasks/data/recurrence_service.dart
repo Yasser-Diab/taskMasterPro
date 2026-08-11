@@ -98,7 +98,7 @@ class RecurrenceService {
                 : source == null
                 ? <String, Object?>{}
                 : _configuration(source.dataJson);
-            await tasks.createTask(
+            final taskId = await tasks.createTask(
               TaskDraft(
                 title:
                     templateRow['title'] as String? ??
@@ -133,6 +133,18 @@ class RecurrenceService {
                 occurrenceKey: occurrenceKey,
                 configuration: executionSettings,
               ),
+            );
+            await _createGeneratedRelationships(
+              taskId: taskId,
+              templateId: templateId,
+              roadmapId:
+                  templateRow['roadmap_id'] as String? ?? source?.roadmapId,
+              phaseId:
+                  templateRow['roadmap_phase_id'] as String? ??
+                  source?.roadmapPhaseId,
+              plannedStart: plannedStart,
+              templateRow: templateRow,
+              ruleRow: ruleRow,
             );
             knownKeys.add(dedupeKey);
             generated++;
@@ -206,5 +218,152 @@ class RecurrenceService {
     return decoded is Map
         ? Map<String, Object?>.from(decoded)
         : <String, Object?>{};
+  }
+
+  Future<void> _createGeneratedRelationships({
+    required String taskId,
+    required String templateId,
+    required String? roadmapId,
+    required String? phaseId,
+    required DateTime? plannedStart,
+    required Map<String, Object?> templateRow,
+    required Map<String, Object?> ruleRow,
+  }) async {
+    if (roadmapId != null) {
+      final links = await entities.list(
+        entityType: 'roadmap_task_links',
+        parentId: roadmapId,
+      );
+      final linked = links.any((record) {
+        final data = entities.decode(record);
+        return record.secondaryParentId == taskId || data['task_id'] == taskId;
+      });
+      if (!linked) {
+        await entities.create(
+          EntityRecordDraft(
+            entityType: 'roadmap_task_links',
+            parentId: roadmapId,
+            secondaryParentId: taskId,
+            title: 'Recurring timetable connection',
+            data: {
+              'roadmap_id': roadmapId,
+              'task_id': taskId,
+              'phase_id': phaseId,
+              'relationship_type': 'primary',
+              'contribution_rule': 'completion_only',
+              'progress_weight': 1,
+            },
+            syncPayload: {
+              'roadmap_id': roadmapId,
+              'task_id': taskId,
+              'phase_id': phaseId,
+              'milestone_id': null,
+              'checkpoint_id': null,
+              'relationship_type': 'primary',
+              'contribution_rule': 'completion_only',
+              'progress_weight': 1,
+              'title': 'Recurring timetable connection',
+              'status': 'active',
+              'position': 0,
+            },
+          ),
+        );
+      }
+    }
+
+    final nestedData = templateRow['data'] is Map
+        ? Map<String, Object?>.from(templateRow['data'] as Map)
+        : const <String, Object?>{};
+    final executionSettings = templateRow['execution_settings'] is Map
+        ? Map<String, Object?>.from(templateRow['execution_settings'] as Map)
+        : const <String, Object?>{};
+    final resourceUrl =
+        nestedData['resource_url']?.toString() ??
+        executionSettings['suggested_resource']?.toString();
+    if (resourceUrl != null && resourceUrl.trim().isNotEmpty) {
+      await entities.create(
+        EntityRecordDraft(
+          entityType: 'task_resources',
+          parentId: taskId,
+          secondaryParentId: templateId,
+          title: templateRow['title']?.toString() ?? 'Study resource',
+          data: {
+            'task_occurrence_id': taskId,
+            'task_template_id': templateId,
+            'roadmap_id': roadmapId,
+            'name': templateRow['title']?.toString() ?? 'Study resource',
+            'resource_type': 'url',
+            'storage_location': 'url',
+            'storage_path': resourceUrl,
+            'privacy_state': 'private',
+          },
+          syncPayload: {
+            'task_occurrence_id': taskId,
+            'task_template_id': templateId,
+            'roadmap_id': roadmapId,
+            'name': templateRow['title']?.toString() ?? 'Study resource',
+            'resource_type': 'url',
+            'description': 'Recurring timetable resource',
+            'storage_location': 'url',
+            'storage_path': resourceUrl,
+            'local_path': null,
+            'privacy_state': 'private',
+            'last_opened_at': null,
+            'open_count': 0,
+          },
+        ),
+      );
+    }
+
+    if (plannedStart == null) return;
+    final defaults = templateRow['reminder_defaults'];
+    if (defaults is! Iterable) return;
+    var position = 0;
+    for (final rawDefault in defaults) {
+      if (rawDefault is! Map) continue;
+      final reminder = Map<String, Object?>.from(rawDefault);
+      if (reminder['enabled'] == false) continue;
+      final offsetMs =
+          (reminder['offset_ms'] as num?)?.toInt() ??
+          const Duration(minutes: 10).inMilliseconds;
+      final reminderType =
+          reminder['reminder_type']?.toString() ?? 'scheduled_start';
+      final scheduledAt = plannedStart.subtract(
+        Duration(milliseconds: offsetMs),
+      );
+      await entities.create(
+        EntityRecordDraft(
+          entityType: 'task_reminders',
+          parentId: taskId,
+          secondaryParentId: templateId,
+          title: reminderType,
+          status: 'enabled',
+          position: position.toDouble(),
+          data: {
+            'task_template_id': templateId,
+            'task_occurrence_id': taskId,
+            'reminder_type': reminderType,
+            'scheduled_at': scheduledAt.toUtc().toIso8601String(),
+            'offset_ms': offsetMs,
+            'sound_key': reminder['sound_key']?.toString() ?? 'selected',
+            'enabled': true,
+          },
+          syncPayload: {
+            'task_template_id': templateId,
+            'task_occurrence_id': taskId,
+            'reminder_type': reminderType,
+            'scheduled_at': scheduledAt.toUtc().toIso8601String(),
+            'offset_ms': offsetMs,
+            'repeat_rule': {
+              'frequency': ruleRow['frequency'],
+              'weekdays': ruleRow['weekdays'],
+            },
+            'sound_key': reminder['sound_key']?.toString() ?? 'selected',
+            'enabled': true,
+          },
+        ),
+      );
+      position++;
+    }
   }
 }

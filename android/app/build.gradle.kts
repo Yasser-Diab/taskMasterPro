@@ -47,11 +47,18 @@ android {
 
     buildTypes {
         release {
-            signingConfig = if (keystorePropertiesFile.exists()) {
-                signingConfigs.getByName("release")
-            } else {
-                signingConfigs.getByName("debug")
+            // Notification sounds are selected dynamically from Settings via
+            // RawResourceAndroidNotificationSound.  Resource shrinking cannot
+            // see those runtime names and would remove the MP3 files.
+            isMinifyEnabled = false
+            isShrinkResources = false
+            if (!keystorePropertiesFile.exists()) {
+                throw GradleException(
+                    "Release builds require android/key.properties and the " +
+                        "existing TaskMaster Pro release signing key.",
+                )
             }
+            signingConfig = signingConfigs.getByName("release")
         }
     }
 }
@@ -67,5 +74,8 @@ flutter {
 }
 
 dependencies {
+    // Native biometric CryptoObject support for the vault's Android Keystore
+    // wrapper.  The raw vault key is never persisted by the Dart layer.
+    implementation("androidx.biometric:biometric:1.1.0")
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
 }

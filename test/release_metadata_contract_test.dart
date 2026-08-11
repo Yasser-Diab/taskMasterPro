@@ -1,0 +1,68 @@
+import 'dart:io';
+
+import 'package:flutter_test/flutter_test.dart';
+
+String _read(String relativePath) =>
+    File('${Directory.current.path}/$relativePath').readAsStringSync();
+
+void main() {
+  test('release-facing version metadata is aligned to v0.0.28', () {
+    expect(_read('pubspec.yaml'), contains('version: 0.0.28+28'));
+    expect(_read('package.json'), contains('"version": "0.0.28"'));
+    expect(_read('package-lock.json'), contains('"version": "0.0.28"'));
+    expect(
+      _read('installer/taskmaster-pro.iss'),
+      contains('#define MyAppVersion "0.0.28"'),
+    );
+    expect(
+      _read('lib/core/platform/windows_shell_service.dart'),
+      contains("'version': '0.0.28'"),
+    );
+    expect(
+      _read('windows/runner/flutter_window.h'),
+      contains('What\'s new in v0.0.28'),
+    );
+    expect(
+      _read('lib/features/settings/presentation/settings_screen.dart'),
+      contains("String _version = '0.0.28';"),
+    );
+  });
+
+  test('package script uses only the staged toolchain and fails closed', () {
+    final script = _read('scripts/package-release.ps1');
+    final androidGradle = _read('android/app/build.gradle.kts');
+
+    expect(script, contains("\$toolRoot = 'E:\\codingTools'"));
+    expect(script, contains('Resolve-StagedTool'));
+    expect(script, contains('& \$npm ci'));
+    expect(script, contains('& \$flutter build windows --release'));
+    expect(script, contains('& \$flutter build apk --release'));
+    expect(script, isNot(contains('& npm ci')));
+    expect(script, isNot(contains('Get-Command iscc.exe')));
+    expect(script, contains('Refusing to generate a replacement key'));
+    expect(script, contains('Refusing to fall back to a debug'));
+    expect(
+      androidGradle,
+      contains('Release builds require android/key.properties'),
+    );
+    expect(androidGradle, isNot(contains('signingConfigs.getByName("debug")')));
+  });
+
+  test('Windows tray reveal preserves a maximized window placement', () {
+    final runner = _read('windows/runner/flutter_window.cpp');
+    final start = runner.indexOf('void FlutterWindow::RestoreAndFocus()');
+    expect(start, greaterThanOrEqualTo(0));
+    final end = runner.indexOf(
+      '\n}\n\nvoid FlutterWindow::SaveWindowPlacement',
+      start,
+    );
+    expect(end, greaterThan(start));
+    final restore = runner.substring(start, end);
+
+    expect(restore, contains('IsIconic(hwnd)'));
+    expect(restore, contains('SW_RESTORE'));
+    expect(restore, contains('IsZoomed(hwnd)'));
+    expect(restore, contains('SW_SHOWMAXIMIZED'));
+    expect(restore, contains('ShowWindow(hwnd, SW_SHOW);'));
+  });
+}

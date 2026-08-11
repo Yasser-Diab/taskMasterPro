@@ -5,6 +5,7 @@ import '../../../core/config/supabase_config.dart';
 import '../../../core/localization/app_localizations.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/theme/brand_logo.dart';
+import '../data/google_oauth_launcher.dart';
 
 enum _AuthMode { signIn, createAccount }
 
@@ -56,8 +57,7 @@ class _AuthScreenState extends State<AuthScreen> {
     } catch (_) {
       if (!mounted) return;
       setState(() {
-        _message =
-            'We could not connect just now. Your saved session and offline work are safe';
+        _message = context.l10n.text('auth_connection_failed');
       });
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -66,12 +66,12 @@ class _AuthScreenState extends State<AuthScreen> {
 
   String _friendlyAuthMessage(AuthException error) {
     if (error.statusCode == '429') {
-      return 'A link was sent recently. Give it a moment, then try again';
+      return context.l10n.text('auth_link_recently_sent');
     }
     if (_mode == _AuthMode.signIn) {
-      return 'Those sign-in details were not accepted. Check them or choose Google';
+      return context.l10n.text('auth_signin_rejected');
     }
-    return 'We could not finish creating the account. Review the details and try again';
+    return context.l10n.text('auth_signup_failed');
   }
 
   Future<void> _submit() async {
@@ -86,8 +86,7 @@ class _AuthScreenState extends State<AuthScreen> {
         case _AuthMode.createAccount:
           if (!_acceptPolicies) {
             setState(() {
-              _message =
-                  'Accept the Terms of Service and Privacy Policy to continue';
+              _message = context.l10n.text('auth_accept_policies_required');
             });
             return;
           }
@@ -106,12 +105,16 @@ class _AuthScreenState extends State<AuthScreen> {
 
   Future<void> _google() {
     return _run(() async {
-      final opened = await _auth.signInWithOAuth(
-        OAuthProvider.google,
+      // Obtain the PKCE URL through GoTrue, then launch it ourselves. The
+      // Supabase Flutter convenience helper unconditionally sends Google on
+      // Android to a full external browser, which can leave a browser surface
+      // visible after the app-link callback has already signed the user in.
+      final response = await _auth.getOAuthSignInUrl(
+        provider: OAuthProvider.google,
         redirectTo: SupabaseConfig.authCallback,
         scopes: 'email profile',
-        authScreenLaunchMode: LaunchMode.externalApplication,
       );
+      final opened = await launchGoogleOAuthUrl(Uri.parse(response.url));
       if (!opened) {
         throw const AuthException('Could not open the Google sign-in page');
       }
@@ -127,7 +130,7 @@ class _AuthScreenState extends State<AuthScreen> {
       );
       if (mounted) {
         setState(() {
-          _message = 'A fresh confirmation link is on its way';
+          _message = context.l10n.text('auth_confirmation_resent');
         });
       }
     });
@@ -135,7 +138,7 @@ class _AuthScreenState extends State<AuthScreen> {
 
   Future<void> _forgotPassword() {
     if (_email.text.trim().isEmpty) {
-      setState(() => _message = 'Enter your email to receive a reset link');
+      setState(() => _message = context.l10n.text('auth_enter_email_reset'));
       return Future.value();
     }
     return _run(() async {
@@ -144,7 +147,7 @@ class _AuthScreenState extends State<AuthScreen> {
         redirectTo: SupabaseConfig.authCallback,
       );
       if (mounted) {
-        setState(() => _message = 'Check your email for a secure reset link');
+        setState(() => _message = context.l10n.text('auth_reset_link_sent'));
       }
     });
   }
@@ -244,7 +247,12 @@ class _AuthIntro extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         final compact = constraints.maxWidth < 600;
-        final tileWidth = compact ? (constraints.maxWidth - 12) / 2 : 244.0;
+        final singleColumnFeatures = constraints.maxWidth < 520;
+        final tileWidth = singleColumnFeatures
+            ? constraints.maxWidth
+            : compact
+            ? (constraints.maxWidth - 12) / 2
+            : 244.0;
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -264,7 +272,7 @@ class _AuthIntro extends StatelessWidget {
                   vertical: 7,
                 ),
                 child: Text(
-                  'PLAN  ·  EXECUTE  ·  LEARN',
+                  context.l10n.text('auth_marketing_badge'),
                   style: theme.textTheme.labelMedium?.copyWith(
                     color: colors.primary,
                     fontWeight: FontWeight.w800,
@@ -275,9 +283,11 @@ class _AuthIntro extends StatelessWidget {
             ),
             SizedBox(height: compact ? 16 : 20),
             Text(
-              compact
-                  ? 'Bring every goal into focus'
-                  : 'Bring every goal\ninto focus',
+              context.l10n.text(
+                compact
+                    ? 'auth_marketing_headline_compact'
+                    : 'auth_marketing_headline',
+              ),
               style:
                   (compact
                           ? theme.textTheme.displaySmall
@@ -292,9 +302,7 @@ class _AuthIntro extends StatelessWidget {
             ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 570),
               child: Text(
-                'Shape ambitious goals into clear roadmaps, move through each '
-                'day with purpose, and let real effort guide what comes next — '
-                'online or offline',
+                context.l10n.text('auth_marketing_description'),
                 style: theme.textTheme.titleMedium?.copyWith(
                   color: colors.onSurfaceVariant,
                   height: 1.55,
@@ -309,26 +317,26 @@ class _AuthIntro extends StatelessWidget {
                 _FeatureTile(
                   width: tileWidth,
                   icon: Icons.route_rounded,
-                  title: 'Roadmaps',
-                  detail: 'A clear path from goal to action',
+                  title: context.l10n.text('roadmaps'),
+                  detail: context.l10n.text('auth_feature_roadmaps'),
                 ),
                 _FeatureTile(
                   width: tileWidth,
                   icon: Icons.offline_bolt_rounded,
-                  title: 'Local-first',
-                  detail: 'Keep moving without a connection',
+                  title: context.l10n.text('auth_feature_offline_title'),
+                  detail: context.l10n.text('auth_feature_offline'),
                 ),
                 _FeatureTile(
                   width: tileWidth,
                   icon: Icons.insights_rounded,
-                  title: 'Clear coaching',
-                  detail: 'Recommendations backed by evidence',
+                  title: context.l10n.text('auth_feature_coaching_title'),
+                  detail: context.l10n.text('auth_feature_coaching'),
                 ),
                 _FeatureTile(
                   width: tileWidth,
                   icon: Icons.devices_rounded,
-                  title: 'Your devices',
-                  detail: 'Continue wherever the day takes you',
+                  title: context.l10n.text('auth_feature_devices_title'),
+                  detail: context.l10n.text('auth_feature_devices'),
                 ),
               ],
             ),
@@ -478,16 +486,22 @@ class _AuthFormCard extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Text(
-          mode == _AuthMode.signIn ? 'Welcome back' : 'Create your workspace',
+          l10n.text(
+            mode == _AuthMode.signIn
+                ? 'auth_welcome_back'
+                : 'auth_create_workspace',
+          ),
           style: Theme.of(
             context,
           ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w900),
         ),
         const SizedBox(height: 6),
         Text(
-          mode == _AuthMode.signIn
-              ? 'Continue where your progress left off'
-              : 'A calmer system for ambitious work starts here',
+          l10n.text(
+            mode == _AuthMode.signIn
+                ? 'auth_continue_progress'
+                : 'auth_workspace_description',
+          ),
           style: TextStyle(color: colors.onSurfaceVariant),
         ),
         const SizedBox(height: 22),
@@ -517,16 +531,16 @@ class _AuthFormCard extends StatelessWidget {
           ),
           label: Text(l10n.text('continue_google')),
         ),
-        const Padding(
-          padding: EdgeInsets.symmetric(vertical: 17),
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 17),
           child: Row(
             children: [
-              Expanded(child: Divider()),
+              const Expanded(child: Divider()),
               Padding(
-                padding: EdgeInsets.symmetric(horizontal: 12),
-                child: Text('or use email'),
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: Text(l10n.text('auth_or_email')),
               ),
-              Expanded(child: Divider()),
+              const Expanded(child: Divider()),
             ],
           ),
         ),
@@ -539,7 +553,7 @@ class _AuthFormCard extends StatelessWidget {
               prefixIcon: const Icon(Icons.person_outline_rounded),
             ),
             validator: (value) => (value?.trim().isEmpty ?? true)
-                ? 'Add the name you would like to see'
+                ? l10n.text('auth_name_required')
                 : null,
           ),
           const SizedBox(height: 12),
@@ -556,7 +570,7 @@ class _AuthFormCard extends StatelessWidget {
           validator: (value) {
             final normalized = value?.trim() ?? '';
             if (!normalized.contains('@') || normalized.length < 5) {
-              return 'Enter a valid email address';
+              return l10n.text('auth_email_invalid');
             }
             return null;
           },
@@ -574,7 +588,9 @@ class _AuthFormCard extends StatelessWidget {
             prefixIcon: const Icon(Icons.lock_outline_rounded),
             suffixIcon: IconButton(
               onPressed: onToggleObscure,
-              tooltip: obscurePassword ? 'Show password' : 'Hide password',
+              tooltip: l10n.text(
+                obscurePassword ? 'auth_show_password' : 'auth_hide_password',
+              ),
               icon: Icon(
                 obscurePassword
                     ? Icons.visibility_outlined
@@ -582,8 +598,9 @@ class _AuthFormCard extends StatelessWidget {
               ),
             ),
           ),
-          validator: (value) =>
-              (value ?? '').length < 8 ? 'Use at least eight characters' : null,
+          validator: (value) => (value ?? '').length < 8
+              ? l10n.text('auth_password_length')
+              : null,
         ),
         if (mode == _AuthMode.createAccount) ...[
           const SizedBox(height: 12),
@@ -595,8 +612,9 @@ class _AuthFormCard extends StatelessWidget {
               labelText: l10n.text('confirm_password'),
               prefixIcon: const Icon(Icons.lock_reset_rounded),
             ),
-            validator: (value) =>
-                value != password.text ? 'Passwords do not match' : null,
+            validator: (value) => value != password.text
+                ? l10n.text('auth_passwords_mismatch')
+                : null,
           ),
           CheckboxListTile(
             contentPadding: EdgeInsets.zero,
@@ -637,7 +655,7 @@ class _AuthFormCard extends StatelessWidget {
         ),
         const SizedBox(height: 12),
         Text(
-          'Private by design · ordinary network problems never sign you out',
+          l10n.text('auth_privacy_note'),
           textAlign: TextAlign.center,
           style: Theme.of(
             context,
@@ -680,7 +698,7 @@ class _ConfirmationPanel extends StatelessWidget {
         ),
         const SizedBox(height: 22),
         Text(
-          'One click and you are in',
+          context.l10n.text('auth_confirmation_title'),
           textAlign: TextAlign.center,
           style: Theme.of(
             context,
@@ -688,7 +706,7 @@ class _ConfirmationPanel extends StatelessWidget {
         ),
         const SizedBox(height: 10),
         Text(
-          'We sent a confirmation link to',
+          context.l10n.text('auth_confirmation_sent_to'),
           style: TextStyle(color: colors.onSurfaceVariant),
         ),
         const SizedBox(height: 5),
@@ -699,8 +717,7 @@ class _ConfirmationPanel extends StatelessWidget {
         ),
         const SizedBox(height: 18),
         Text(
-          'Open the message on this device and choose Confirm email address. '
-          'TaskMaster Pro will reopen and finish sign-in automatically',
+          context.l10n.text('auth_confirmation_instructions'),
           textAlign: TextAlign.center,
           style: TextStyle(color: colors.onSurfaceVariant, height: 1.45),
         ),
@@ -717,12 +734,12 @@ class _ConfirmationPanel extends StatelessWidget {
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
               : const Icon(Icons.refresh_rounded),
-          label: const Text('Resend confirmation link'),
+          label: Text(context.l10n.text('auth_resend_confirmation')),
         ),
         const SizedBox(height: 8),
         TextButton(
           onPressed: busy ? null : onBackToSignIn,
-          child: const Text('Return to sign in'),
+          child: Text(context.l10n.text('auth_return_signin')),
         ),
       ],
     );

@@ -11,112 +11,245 @@ import '../../../core/localization/app_localizations.dart';
 import '../../../core/providers.dart';
 import '../../activity/data/activity_repository.dart';
 import '../../activity/presentation/activity_review_screen.dart';
+import '../../coaching/data/adaptive_coaching_service.dart';
+import '../../coaching/presentation/coaching_expression_visual.dart';
+import '../../tasks/data/task_execution_commands.dart';
+import '../../tasks/data/task_execution_providers.dart';
+import '../../tasks/domain/pomodoro_execution_state.dart';
+import '../../tasks/domain/task_occurrence_policy.dart';
 import '../../tasks/presentation/task_card.dart';
+import '../../tasks/presentation/task_completion_flow.dart';
 import '../../tasks/presentation/task_editor_dialog.dart';
+import '../../tasks/presentation/interruption_editor_dialog.dart';
+import '../../tasks/presentation/task_start_flow.dart';
+import '../../tasks/presentation/task_workspace_screen.dart';
+import 'today_recorded_sessions_screen.dart';
+
+/// Coaching decisions remain locale-neutral. Duration evidence crosses this
+/// boundary as milliseconds and is rendered here with the one shared,
+/// localized duration formatter instead of leaking raw minute counts.
+Map<String, Object?> _coachingDisplayValues(
+  AppLocalizations l10n,
+  Map<String, Object?> values,
+) {
+  final formatted = <String, Object?>{...values};
+  final durationMs = formatted.remove('duration_ms');
+  if (durationMs is num) {
+    formatted['duration'] = l10n.duration(
+      Duration(milliseconds: durationMs.round().clamp(0, 1 << 53).toInt()),
+    );
+  }
+  return formatted;
+}
 
 final todayTasksProvider = StreamProvider<List<LocalTask>>(
   (ref) => ref.watch(taskRepositoryProvider).watchTodayTasks(DateTime.now()),
 );
 
-final runtimeProvider = StreamProvider<LocalRuntime?>(
-  (ref) => ref.watch(taskRepositoryProvider).watchRuntime(),
+final allTasksProvider = StreamProvider<List<LocalTask>>(
+  (ref) => ref.watch(taskRepositoryProvider).watchTasks(),
 );
 
 class DashboardScreen extends ConsumerWidget {
-  const DashboardScreen({required this.user, super.key});
+  const DashboardScreen({
+    required this.user,
+    this.onOpenTasksFilter,
+    this.onOpenActivityFilter,
+    super.key,
+  });
 
   final User user;
+  final ValueChanged<String>? onOpenTasksFilter;
+  final ValueChanged<String>? onOpenActivityFilter;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final tasks = ref.watch(todayTasksProvider).value ?? const <LocalTask>[];
-    final runtime = ref.watch(runtimeProvider).value;
-    final activeTask = runtime?.activeTaskId == null
+    final allTasks = ref.watch(allTasksProvider).value ?? const <LocalTask>[];
+    final settings = ref.watch(appSettingsProvider).value;
+    final now = DateTime.now();
+    final timeZone = settings?.timeZone ?? 'UTC';
+    final localToday = TaskOccurrencePolicy.localDateAt(
+      now,
+      timeZone: timeZone,
+    );
+    final runtime = ref.watch(taskExecutionRuntimeProvider).value;
+    final recordedWork =
+        ref.watch(todayRecordedWorkSummaryProvider).value ??
+        TodayRecordedWorkSummary.empty;
+    final activeTaskState = runtime?.activeTaskId == null
         ? null
-        : tasks.where((task) => task.id == runtime!.activeTaskId).firstOrNull;
+        : ref.watch(taskExecutionTaskProvider(runtime!.activeTaskId!));
+    final activeTask = activeTaskState?.value;
     final readyTasks = tasks
         .where(
           (task) =>
               task.status != 'completed' &&
               task.status != 'cancelled' &&
-              task.id != activeTask?.id,
+              task.status != 'in_progress' &&
+              // The shared runtime ID is available before the individual
+              // task stream finishes loading, so it is the only safe way to
+              // keep an active task out of the suggestion list.
+              task.id != runtime?.activeTaskId &&
+              // A recurring task creates future occurrences with different
+              // IDs. While one occurrence is active, presenting another
+              // occurrence of the exact same template as "next" is just as
+              // contradictory to the user as showing the active occurrence.
+              (task.templateId == null ||
+                  task.templateId != activeTask?.templateId) &&
+              // A legacy recurrence import can omit the template identifier
+              // from one side of the local query. Keep the visible state
+              // coherent even during that migration window.
+              (activeTask == null || task.title != activeTask.title),
         )
         .toList();
+    final schedule = _buildSchedule(
+      day: DateTime.now(),
+      scheduledTasks: tasks,
+      allTasks: allTasks,
+      activeTask: activeTask,
+    );
     final nextTask = readyTasks.firstOrNull;
-    final completed = tasks.where((task) => task.status == 'completed').length;
-    final overdue = tasks.where((task) => task.status == 'overdue').length;
-    final plannedMs = tasks.fold<int>(
+    // Roadmap recommendations are useful cards, but they are not scheduled
+    // work and must never inflate today's planned/completed totals.
+    final scheduledTasks = schedule
+        .where((entry) => !entry.suggested)
+        .map((entry) => entry.task)
+        .toList();
+    final completed = allTasks
+        .where(
+          (task) => TaskOccurrencePolicy.isCompletedOn(
+            task,
+            localToday,
+            timeZone: timeZone,
+          ),
+        )
+        .length;
+    final overdue = TaskOccurrencePolicy.overdueOccurrences(
+      allTasks,
+      now: now,
+      timeZone: timeZone,
+    ).length;
+    final plannedMs = scheduledTasks.fold<int>(
       0,
       (total, task) => total + task.estimatedDurationMs,
     );
-    final activeMs = tasks.fold<int>(
-      0,
-      (total, task) => total + task.activeDurationMs,
-    );
-    final displayName =
-        user.userMetadata?['display_name'] as String? ??
-        user.userMetadata?['full_name'] as String? ??
-        user.email?.split('@').first ??
-        '';
+    final profile = ref.watch(localProfileProvider(user.id)).value;
+    final displayName = profile?.displayName.trim().isNotEmpty == true
+        ? profile!.displayName
+        : user.userMetadata?['display_name'] as String? ??
+              user.userMetadata?['full_name'] as String? ??
+              user.email?.split('@').first ??
+              '';
+    final age = _ageOn(profile?.dateOfBirth, DateTime.now());
 
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      body: CustomScrollView(
-        slivers: [
-          SliverPadding(
-            padding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
-            sliver: SliverToBoxAdapter(
-              child: _DashboardHeader(
-                displayName: displayName,
-                onQuickAdd: () => TaskEditorDialog.show(context),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // A desktop-sized gutter leaves too little usable width on a 360 px
+        // phone. Keep the generous spacing on larger layouts, but reserve
+        // room for the actual task content on compact screens.
+        final compact = constraints.maxWidth < 420;
+        final horizontalPadding = compact ? 16.0 : 24.0;
+        return Scaffold(
+          backgroundColor: Colors.transparent,
+          body: CustomScrollView(
+            slivers: [
+              SliverPadding(
+                padding: EdgeInsets.fromLTRB(
+                  horizontalPadding,
+                  compact ? 20 : 24,
+                  horizontalPadding,
+                  0,
+                ),
+                sliver: SliverToBoxAdapter(
+                  child: _DashboardHeader(
+                    displayName: displayName,
+                    onQuickAdd: () => TaskEditorDialog.show(context),
+                  ),
+                ),
               ),
-            ),
-          ),
-          SliverPadding(
-            padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
-            sliver: SliverList(
-              delegate: SliverChildListDelegate([
-                if (activeTask != null && runtime != null)
-                  _ActiveTaskPanel(task: activeTask, runtime: runtime)
-                else
-                  _NoActiveTask(onAdd: () => TaskEditorDialog.show(context)),
-                const SizedBox(height: 16),
-                LayoutBuilder(
-                  builder: (context, constraints) {
-                    final wide = constraints.maxWidth >= 900;
-                    final next = _NextTaskCard(task: nextTask);
-                    final attention = const _AttentionCard();
-                    if (!wide) {
-                      return Column(
-                        children: [next, const SizedBox(height: 16), attention],
-                      );
-                    }
-                    return Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(flex: 3, child: next),
-                        const SizedBox(width: 16),
-                        const Expanded(flex: 2, child: _AttentionCard()),
-                      ],
-                    );
-                  },
+              SliverPadding(
+                padding: EdgeInsets.fromLTRB(
+                  horizontalPadding,
+                  20,
+                  horizontalPadding,
+                  32,
                 ),
-                const SizedBox(height: 16),
-                _PerformanceGrid(
-                  plannedMs: plannedMs,
-                  activeMs: activeMs,
-                  completed: completed,
-                  overdue: overdue,
+                sliver: SliverList(
+                  delegate: SliverChildListDelegate([
+                    if (activeTask != null && runtime != null)
+                      _ActiveTaskPanel(task: activeTask, runtime: runtime)
+                    else if (runtime != null &&
+                        activeTaskState?.isLoading == true)
+                      const _RestoringActiveTaskPanel()
+                    else if (runtime != null)
+                      _UnavailableActiveTaskPanel(
+                        onRetry: () => unawaited(
+                          ref.read(syncServiceProvider).synchronizeNow(),
+                        ),
+                      )
+                    else
+                      _NoActiveTask(
+                        onAdd: () => TaskEditorDialog.show(context),
+                      ),
+                    const SizedBox(height: 16),
+                    LayoutBuilder(
+                      builder: (context, constraints) {
+                        final wide = constraints.maxWidth >= 900;
+                        final next = _NextTaskCard(task: nextTask);
+                        final attention = _AttentionCard(
+                          onOpenFilter: onOpenActivityFilter,
+                        );
+                        if (!wide) {
+                          return Column(
+                            children: [
+                              next,
+                              const SizedBox(height: 16),
+                              attention,
+                            ],
+                          );
+                        }
+                        return Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(flex: 3, child: next),
+                            const SizedBox(width: 16),
+                            Expanded(flex: 2, child: attention),
+                          ],
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                    _PerformanceGrid(
+                      plannedMs: plannedMs,
+                      recordedWork: recordedWork,
+                      runtime: runtime,
+                      completed: completed,
+                      overdue: overdue,
+                      onOpenTasksFilter: onOpenTasksFilter,
+                    ),
+                    const SizedBox(height: 16),
+                    _TodaySchedule(
+                      entries: schedule,
+                      activeTaskId: runtime?.activeTaskId,
+                      activeSessionState: runtime?.state,
+                    ),
+                    const SizedBox(height: 16),
+                    _AdaptiveCoachingCard(
+                      userName: displayName,
+                      age: age,
+                      createdAt: profile?.createdAt,
+                      tasks: allTasks,
+                      runtime: runtime,
+                      settings: settings,
+                    ),
+                  ]),
                 ),
-                const SizedBox(height: 16),
-                _TodaySchedule(tasks: tasks),
-                const SizedBox(height: 16),
-                const _CoachingCard(),
-              ]),
-            ),
+              ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 }
@@ -130,12 +263,15 @@ class _DashboardHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final now = DateTime.now();
-    final greeting = switch (now.hour) {
-      < 12 => 'Good morning',
-      < 18 => 'Good afternoon',
-      _ => 'Good evening',
+    final greetingKey = switch (now.hour) {
+      < 12 => 'dashboard_greeting_morning',
+      < 18 => 'dashboard_greeting_afternoon',
+      _ => 'dashboard_greeting_evening',
     };
-    final title = Column(
+    final greeting = context.l10n.format(greetingKey, {
+      'userName': displayName,
+    });
+    Widget title({required bool compact}) => Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
@@ -148,10 +284,12 @@ class _DashboardHeader extends StatelessWidget {
         ),
         const SizedBox(height: 4),
         Text(
-          '$greeting${displayName.isEmpty ? '' : ', $displayName'}',
-          style: Theme.of(
-            context,
-          ).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w800),
+          greeting,
+          style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+            fontSize: compact ? 29 : null,
+            height: compact ? 1.08 : null,
+            fontWeight: FontWeight.w800,
+          ),
         ),
       ],
     );
@@ -162,15 +300,20 @@ class _DashboardHeader extends StatelessWidget {
     );
     return LayoutBuilder(
       builder: (context, constraints) {
+        final compact = constraints.maxWidth < 420;
         if (constraints.maxWidth < 560) {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [title, const SizedBox(height: 14), add],
+            children: [
+              title(compact: compact),
+              const SizedBox(height: 14),
+              add,
+            ],
           );
         }
         return Row(
           children: [
-            Expanded(child: title),
+            Expanded(child: title(compact: compact)),
             const SizedBox(width: 16),
             add,
           ],
@@ -180,163 +323,281 @@ class _DashboardHeader extends StatelessWidget {
   }
 }
 
-class _ActiveTaskPanel extends ConsumerWidget {
+class _ActiveTaskPanel extends ConsumerStatefulWidget {
   const _ActiveTaskPanel({required this.task, required this.runtime});
 
   final LocalTask task;
   final LocalRuntime runtime;
 
-  Future<void> _action(
-    WidgetRef ref,
-    Future<void> Function() localAction,
-  ) async {
-    await localAction();
-    unawaited(ref.read(syncServiceProvider).drainOutbox());
+  @override
+  ConsumerState<_ActiveTaskPanel> createState() => _ActiveTaskPanelState();
+}
+
+class _ActiveTaskPanelState extends ConsumerState<_ActiveTaskPanel> {
+  bool _busy = false;
+
+  LocalTask get task => widget.task;
+  LocalRuntime get runtime => widget.runtime;
+
+  Future<void> _runBusy(Future<void> Function() localAction) async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      await TaskExecutionCommands.commitLocallyAndSynchronize(
+        localCommand: localAction,
+        synchronize: () => ref.read(syncServiceProvider).drainOutbox(),
+      );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _runPrimary(TaskExecutionPrimaryAction action) async {
+    await _runBusy(() async {
+      final repository = ref.read(taskRepositoryProvider);
+      switch (action) {
+        case TaskExecutionPrimaryAction.start:
+          await startTaskWithConfirmation(
+            context,
+            ref,
+            widget.task,
+            onOpenInAppResource: (url) {
+              unawaited(
+                TaskWorkspaceScreen.open(
+                  context,
+                  widget.task,
+                  initialSection: 3,
+                  initialBrowserUrl: url,
+                ),
+              );
+            },
+          );
+        case TaskExecutionPrimaryAction.pause:
+          await repository.pause(widget.task);
+        case TaskExecutionPrimaryAction.resume:
+          await repository.resume(widget.task);
+        case TaskExecutionPrimaryAction.startBreak:
+          await TaskExecutionCommands.startOfferedBreak(
+            repository,
+            widget.task,
+          );
+        case TaskExecutionPrimaryAction.startFocus:
+          await repository.finishBreak(widget.task);
+      }
+    });
+  }
+
+  Future<void> _skipBreak() async {
+    await _runBusy(
+      () => TaskExecutionCommands.skipOfferedBreak(
+        ref.read(taskRepositoryProvider),
+        widget.task,
+      ),
+    );
+  }
+
+  Future<void> _extendBreak() async {
+    await _runBusy(() async {
+      await TaskExecutionCommands.extendBreak(
+        repository: ref.read(taskRepositoryProvider),
+        task: widget.task,
+      );
+    });
   }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final isRunning = runtime.state == 'running';
+  Widget build(BuildContext context) {
+    final task = widget.task;
+    final runtime = widget.runtime;
+    if (runtime.state == 'running' || runtime.state == 'break') {
+      ref.watch(taskExecutionClockProvider);
+    }
+    final pomodoro = task.executionMode == 'pomodoro'
+        ? PomodoroExecutionSnapshot.fromTask(
+            task: task,
+            runtime: runtime,
+            now: DateTime.now().toUtc(),
+          )
+        : null;
+    final controls = TaskExecutionControlState.from(
+      taskId: task.id,
+      executionMode: task.executionMode,
+      runtime: runtime,
+      pomodoro: pomodoro,
+    );
+    final breakCompleted = pomodoro?.breakComplete ?? false;
     final estimate = Duration(milliseconds: task.estimatedDurationMs);
     return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(22),
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final narrow = constraints.maxWidth < 600;
-            final details = Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  context.l10n.text('active_task').toUpperCase(),
-                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                    color: Theme.of(context).colorScheme.primary,
-                    letterSpacing: 1.2,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  task.title,
-                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  '${task.executionMode} • planned ${_durationLabel(estimate)}',
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ],
-            );
-            final timer = _ElapsedClock(runtime: runtime);
-            final actions = Wrap(
-              spacing: 10,
-              runSpacing: 10,
-              children: [
-                FilledButton.icon(
-                  onPressed: () => _action(
-                    ref,
-                    () => isRunning
-                        ? ref.read(taskRepositoryProvider).pause(task)
-                        : ref.read(taskRepositoryProvider).resume(task),
-                  ),
-                  icon: Icon(isRunning ? Icons.pause : Icons.play_arrow),
-                  label: Text(
-                    context.l10n.text(isRunning ? 'pause' : 'resume'),
-                  ),
-                ),
-                OutlinedButton.icon(
-                  onPressed: () => _action(
-                    ref,
-                    () => ref.read(taskRepositoryProvider).complete(task),
-                  ),
-                  icon: const Icon(Icons.check),
-                  label: Text(context.l10n.text('complete')),
-                ),
-                IconButton.outlined(
-                  tooltip: 'Add interruption',
-                  onPressed: () => _addInterruption(context, ref),
-                  icon: const Icon(Icons.flash_on_outlined),
-                ),
-                IconButton.outlined(
-                  tooltip: 'Add note',
-                  onPressed: () => _addNote(context, ref),
-                  icon: const Icon(Icons.note_add_outlined),
-                ),
-              ],
-            );
-            if (narrow) {
-              return Column(
+      child: InkWell(
+        borderRadius: BorderRadius.circular(20),
+        onTap: () => TaskWorkspaceScreen.open(context, task, initialSection: 1),
+        child: Padding(
+          padding: const EdgeInsets.all(22),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final narrow = constraints.maxWidth < 600;
+              final details = Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  details,
-                  const SizedBox(height: 18),
+                  Text(
+                    context.l10n.text('active_task').toUpperCase(),
+                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                      color: Theme.of(context).colorScheme.primary,
+                      letterSpacing: 1.2,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    task.title,
+                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  _RuntimeStatusPill(
+                    state: runtime.state,
+                    breakCompleted: breakCompleted,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    context.l10n.format('planned_duration', {
+                      'mode': context.l10n.executionMode(task.executionMode),
+                      'duration': _durationLabel(context, estimate),
+                    }),
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              );
+              final timer = _ElapsedClock(
+                task: task,
+                runtime: runtime,
+                pomodoro: pomodoro,
+              );
+              final actions = Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                children: [
+                  FilledButton.icon(
+                    onPressed: _busy
+                        ? null
+                        : () => _runPrimary(controls.primary),
+                    icon: _busy
+                        ? const SizedBox.square(
+                            dimension: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : Icon(switch (controls.primary) {
+                            TaskExecutionPrimaryAction.pause => Icons.pause,
+                            TaskExecutionPrimaryAction.startBreak =>
+                              Icons.coffee_outlined,
+                            TaskExecutionPrimaryAction.startFocus =>
+                              Icons.center_focus_strong,
+                            _ => Icons.play_arrow,
+                          }),
+                    label: Text(
+                      context.l10n.text(switch (controls.primary) {
+                        TaskExecutionPrimaryAction.start => 'start',
+                        TaskExecutionPrimaryAction.pause => 'pause',
+                        TaskExecutionPrimaryAction.resume => 'resume',
+                        TaskExecutionPrimaryAction.startBreak =>
+                          'notification_start_break',
+                        TaskExecutionPrimaryAction.startFocus =>
+                          'notification_start_focus',
+                      }),
+                    ),
+                  ),
+                  if (controls.canStartBreakEarly)
+                    OutlinedButton.icon(
+                      onPressed: _busy
+                          ? null
+                          : () => _runBusy(
+                              () => ref
+                                  .read(taskRepositoryProvider)
+                                  .startBreak(task),
+                            ),
+                      icon: const Icon(Icons.coffee_outlined),
+                      label: Text(
+                        context.l10n.text('notification_start_break'),
+                      ),
+                    ),
+                  if (controls.canSkipBreak)
+                    OutlinedButton.icon(
+                      onPressed: _busy ? null : _skipBreak,
+                      icon: const Icon(Icons.skip_next_rounded),
+                      label: Text(context.l10n.text('pomodoro_skip_break')),
+                    ),
+                  if (controls.canExtendBreak)
+                    OutlinedButton.icon(
+                      onPressed: _busy ? null : _extendBreak,
+                      icon: const Icon(Icons.more_time),
+                      label: Text(
+                        context.l10n.text('notification_extend_break'),
+                      ),
+                    ),
+                  OutlinedButton.icon(
+                    onPressed: _busy
+                        ? null
+                        : () => _runBusy(
+                            () => completeTaskWithUndo(context, ref, task),
+                          ),
+                    icon: const Icon(Icons.check),
+                    label: Text(context.l10n.text('complete')),
+                  ),
+                  IconButton.outlined(
+                    tooltip: context.l10n.text('add_interruption'),
+                    onPressed: () => _addInterruption(context, ref),
+                    icon: const Icon(Icons.flash_on_outlined),
+                  ),
+                  IconButton.outlined(
+                    tooltip: context.l10n.text('add_note'),
+                    onPressed: () => _addNote(context, ref),
+                    icon: const Icon(Icons.note_add_outlined),
+                  ),
+                ],
+              );
+              if (narrow) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    details,
+                    const SizedBox(height: 18),
+                    timer,
+                    const SizedBox(height: 18),
+                    actions,
+                  ],
+                );
+              }
+              return Row(
+                children: [
+                  Expanded(child: details),
                   timer,
-                  const SizedBox(height: 18),
+                  const SizedBox(width: 24),
                   actions,
                 ],
               );
-            }
-            return Row(
-              children: [
-                Expanded(child: details),
-                timer,
-                const SizedBox(width: 24),
-                actions,
-              ],
-            );
-          },
+            },
+          ),
         ),
       ),
     );
   }
 
   Future<void> _addInterruption(BuildContext context, WidgetRef ref) async {
-    final reason = await _askDashboardText(
+    await InterruptionEditorDialog.show(
       context,
-      title: 'Record interruption',
-      label: 'What interrupted this task?',
+      task: task,
+      sessionId: runtime.sessionId,
     );
-    if (reason == null || reason.trim().isEmpty) return;
-    final now = DateTime.now().toUtc();
-    await ref
-        .read(entityRecordRepositoryProvider)
-        .create(
-          EntityRecordDraft(
-            entityType: 'interruptions',
-            parentId: task.id,
-            secondaryParentId: runtime.sessionId,
-            title: reason.trim(),
-            status: 'recorded',
-            data: {
-              'task_occurrence_id': task.id,
-              'session_id': runtime.sessionId,
-              'started_at': now.toIso8601String(),
-              'ended_at': now.toIso8601String(),
-              'interruption_type': 'manual',
-              'notes': reason.trim(),
-            },
-            syncPayload: {
-              'task_occurrence_id': task.id,
-              'session_id': runtime.sessionId,
-              'started_at': now.toIso8601String(),
-              'ended_at': now.toIso8601String(),
-              'interruption_type': 'manual',
-              'notes': reason.trim(),
-            },
-          ),
-        );
-    unawaited(ref.read(syncServiceProvider).drainOutbox());
   }
 
   Future<void> _addNote(BuildContext context, WidgetRef ref) async {
     final body = await _askDashboardText(
       context,
-      title: 'Add task note',
-      label: 'Note, decision or next step',
+      title: context.l10n.text('add_task_note'),
+      label: context.l10n.text('note_prompt'),
       lines: 4,
     );
     if (body == null || body.trim().isEmpty) return;
@@ -366,55 +627,59 @@ class _ActiveTaskPanel extends ConsumerWidget {
   }
 }
 
-class _ElapsedClock extends StatefulWidget {
-  const _ElapsedClock({required this.runtime});
+class _ElapsedClock extends StatelessWidget {
+  const _ElapsedClock({
+    required this.task,
+    required this.runtime,
+    required this.pomodoro,
+  });
 
+  final LocalTask task;
   final LocalRuntime runtime;
-
-  @override
-  State<_ElapsedClock> createState() => _ElapsedClockState();
-}
-
-class _ElapsedClockState extends State<_ElapsedClock> {
-  Timer? _timer;
-
-  @override
-  void initState() {
-    super.initState();
-    _timer = Timer.periodic(
-      const Duration(seconds: 1),
-      (_) => mounted ? setState(() {}) : null,
-    );
-  }
-
-  @override
-  void dispose() {
-    _timer?.cancel();
-    super.dispose();
-  }
+  final PomodoroExecutionSnapshot? pomodoro;
 
   @override
   Widget build(BuildContext context) {
-    var milliseconds = widget.runtime.accumulatedActiveMs;
-    if (widget.runtime.state == 'running' &&
-        widget.runtime.segmentStartedAt != null) {
-      milliseconds += DateTime.now()
-          .toUtc()
-          .difference(widget.runtime.segmentStartedAt!)
-          .inMilliseconds;
-    }
-    final duration = Duration(milliseconds: milliseconds);
+    final recordedMs = liveTaskRecordedWorkMs(
+      recordedMs: runtime.accumulatedActiveMs,
+      running: runtime.state == 'running',
+      segmentStartedAt: runtime.segmentStartedAt,
+      now: DateTime.now().toUtc(),
+    );
+    final overtimeMs = taskEffortOvertimeMs(
+      plannedMs: task.estimatedDurationMs,
+      recordedMs: recordedMs,
+    );
+    final showsOvertime =
+        pomodoro == null && runtime.state == 'running' && overtimeMs > 0;
     return Column(
       children: [
         Text(
-          _clockLabel(duration),
+          pomodoro == null
+              ? showsOvertime
+                    ? formatTaskEffortOvertime(overtimeMs)
+                    : formatTaskEffortCountdown(
+                        taskEffortRemainingMs(
+                          plannedMs: task.estimatedDurationMs,
+                          recordedMs: recordedMs,
+                        ),
+                      )
+              : formatPomodoroCountdown(pomodoro!.remainingMs),
           style: Theme.of(context).textTheme.headlineMedium?.copyWith(
             fontWeight: FontWeight.w800,
             fontFeatures: const [FontFeature.tabularFigures()],
           ),
         ),
         Text(
-          'active time',
+          pomodoro == null
+              ? context.l10n.text(
+                  showsOvertime ? 'overtime_label' : 'remaining',
+                )
+              : context.l10n.text(
+                  pomodoro!.isBreak
+                      ? 'pomodoro_break_session'
+                      : 'pomodoro_focus_session',
+                ),
           style: Theme.of(context).textTheme.labelSmall?.copyWith(
             color: Theme.of(context).colorScheme.onSurfaceVariant,
           ),
@@ -431,37 +696,115 @@ class _NoActiveTask extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final icon = CircleAvatar(
+      radius: 26,
+      backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+      child: Icon(
+        Icons.play_arrow_rounded,
+        color: Theme.of(context).colorScheme.primary,
+      ),
+    );
+    final copy = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          context.l10n.text('dashboard_no_active_task'),
+          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 18),
+        ),
+        const SizedBox(height: 4),
+        Text(context.l10n.text('dashboard_start_suggestion')),
+      ],
+    );
+    final add = OutlinedButton.icon(
+      onPressed: onAdd,
+      icon: const Icon(Icons.add),
+      label: Text(context.l10n.text('add_task')),
+    );
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(22),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            // Keeping both the action and explanatory copy in one row on a
+            // narrow handset gives the text only a few characters per line.
+            // Stack the independent action under the message instead.
+            if (constraints.maxWidth < 430) {
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      icon,
+                      const SizedBox(width: 16),
+                      Expanded(child: copy),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Align(
+                    alignment: AlignmentDirectional.centerStart,
+                    child: add,
+                  ),
+                ],
+              );
+            }
+            return Row(
+              children: [
+                icon,
+                const SizedBox(width: 16),
+                Expanded(child: copy),
+                const SizedBox(width: 12),
+                add,
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+/// Avoids the misleading “No task is running” empty state for the short
+/// interval where the authoritative runtime arrived before its task row.
+class _RestoringActiveTaskPanel extends StatelessWidget {
+  const _RestoringActiveTaskPanel();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Card(
+      child: Padding(
+        padding: EdgeInsets.all(22),
+        child: Center(child: CircularProgressIndicator()),
+      ),
+    );
+  }
+}
+
+/// A runtime can briefly outlive a deleted or not-yet-pulled task row. That is
+/// an actionable sync state, not an endless loading state that blocks the main
+/// dashboard with an unlabeled spinner.
+class _UnavailableActiveTaskPanel extends StatelessWidget {
+  const _UnavailableActiveTaskPanel({required this.onRetry});
+
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(22),
         child: Row(
           children: [
-            CircleAvatar(
-              radius: 26,
-              backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-              child: Icon(
-                Icons.play_arrow_rounded,
-                color: Theme.of(context).colorScheme.primary,
-              ),
+            Icon(
+              Icons.sync_problem_outlined,
+              color: Theme.of(context).colorScheme.error,
             ),
-            const SizedBox(width: 16),
-            const Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'No task is running',
-                    style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18),
-                  ),
-                  SizedBox(height: 4),
-                  Text('Start from today’s schedule or add a responsibility.'),
-                ],
-              ),
-            ),
-            OutlinedButton.icon(
-              onPressed: onAdd,
-              icon: const Icon(Icons.add),
-              label: const Text('Add'),
+            const SizedBox(width: 14),
+            Expanded(child: Text(context.l10n.text('sync_needs_attention'))),
+            TextButton.icon(
+              onPressed: onRetry,
+              icon: const Icon(Icons.refresh),
+              label: Text(context.l10n.text('retry')),
             ),
           ],
         ),
@@ -481,15 +824,15 @@ class _NextTaskCard extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _SectionTitle(
-          title: context.l10n.text('next_task'),
+          title: context.l10n.text('dashboard_next_suggested_task'),
           icon: Icons.auto_awesome,
         ),
         const SizedBox(height: 10),
         if (task == null)
-          const Card(
+          Card(
             child: Padding(
-              padding: EdgeInsets.all(24),
-              child: Text('No ready task requires attention.'),
+              padding: const EdgeInsets.all(24),
+              child: Text(context.l10n.text('dashboard_no_ready_task')),
             ),
           )
         else
@@ -500,7 +843,9 @@ class _NextTaskCard extends StatelessWidget {
 }
 
 class _AttentionCard extends ConsumerWidget {
-  const _AttentionCard();
+  const _AttentionCard({this.onOpenFilter});
+
+  final ValueChanged<String>? onOpenFilter;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -521,36 +866,55 @@ class _AttentionCard extends ConsumerWidget {
               entry.segment.idleState != null,
         )
         .length;
-    void openReview() {
+    void openReview(String filter) {
+      if (onOpenFilter != null) {
+        onOpenFilter!(filter);
+        return;
+      }
       Navigator.of(context).push(
-        MaterialPageRoute<void>(builder: (_) => const ActivityReviewScreen()),
+        MaterialPageRoute<void>(
+          builder: (_) => ActivityReviewScreen(initialFilter: filter),
+        ),
       );
     }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const _SectionTitle(title: 'Attention', icon: Icons.notifications_none),
+        _SectionTitle(
+          title: context.l10n.text('dashboard_needs_attention'),
+          icon: Icons.notifications_none,
+        ),
         const SizedBox(height: 10),
         Card(
           child: Column(
             children: [
               ListTile(
-                onTap: openReview,
+                onTap: () => openReview('cross_task'),
                 leading: const Icon(Icons.compare_arrows),
-                title: const Text('Cross-task work'),
-                subtitle: Text('$crossTask awaiting review'),
+                title: Text(context.l10n.text('dashboard_cross_task_review')),
+                subtitle: Text(
+                  context.l10n.count(
+                    'dashboard_item_review',
+                    'dashboard_items_review',
+                    crossTask,
+                  ),
+                ),
                 trailing: const Icon(Icons.chevron_right),
               ),
               const Divider(height: 1),
               ListTile(
-                onTap: openReview,
+                onTap: () => openReview('idle'),
                 leading: const Icon(Icons.hourglass_empty),
-                title: const Text('Technical idle'),
+                title: Text(context.l10n.text('dashboard_inactive_review')),
                 subtitle: Text(
                   idle == 0
-                      ? 'Nothing awaiting review'
-                      : '$idle awaiting review',
+                      ? context.l10n.text('dashboard_nothing_review')
+                      : context.l10n.count(
+                          'dashboard_item_review',
+                          'dashboard_items_review',
+                          idle,
+                        ),
                 ),
                 trailing: const Icon(Icons.chevron_right),
               ),
@@ -565,15 +929,19 @@ class _AttentionCard extends ConsumerWidget {
 class _PerformanceGrid extends StatelessWidget {
   const _PerformanceGrid({
     required this.plannedMs,
-    required this.activeMs,
+    required this.recordedWork,
+    required this.runtime,
     required this.completed,
     required this.overdue,
+    required this.onOpenTasksFilter,
   });
 
   final int plannedMs;
-  final int activeMs;
+  final TodayRecordedWorkSummary recordedWork;
+  final LocalRuntime? runtime;
   final int completed;
   final int overdue;
+  final ValueChanged<String>? onOpenTasksFilter;
 
   @override
   Widget build(BuildContext context) {
@@ -581,13 +949,20 @@ class _PerformanceGrid extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _SectionTitle(
-          title: context.l10n.text('daily_performance'),
+          title: context.l10n.text('dashboard_today_performance'),
           icon: Icons.analytics_outlined,
         ),
         const SizedBox(height: 10),
         LayoutBuilder(
           builder: (context, constraints) {
-            final columns = constraints.maxWidth >= 860 ? 4 : 2;
+            // Human-readable durations are intentionally not abbreviated.
+            // On a compact handset, one full-width metric is clearer than a
+            // two-column card that wraps "hours" and "minutes" vertically.
+            final columns = constraints.maxWidth >= 860
+                ? 4
+                : constraints.maxWidth >= 440
+                ? 2
+                : 1;
             final width = (constraints.maxWidth - (columns - 1) * 12) / columns;
             return Wrap(
               spacing: 12,
@@ -596,26 +971,46 @@ class _PerformanceGrid extends StatelessWidget {
                 _MetricCard(
                   width: width,
                   label: context.l10n.text('planned'),
-                  value: _durationLabel(Duration(milliseconds: plannedMs)),
+                  value: _durationLabel(
+                    context,
+                    Duration(milliseconds: plannedMs),
+                  ),
                   icon: Icons.event_note,
+                  onTap: onOpenTasksFilter == null
+                      ? null
+                      : () => onOpenTasksFilter!('today'),
                 ),
                 _MetricCard(
                   width: width,
-                  label: context.l10n.text('active_work'),
-                  value: _durationLabel(Duration(milliseconds: activeMs)),
+                  label: context.l10n.text('dashboard_actual_work'),
+                  valueWidget: _LivePerformanceWork(
+                    recordedWork: recordedWork,
+                    runtime: runtime,
+                  ),
                   icon: Icons.bolt,
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const TodayRecordedSessionsScreen(),
+                    ),
+                  ),
                 ),
                 _MetricCard(
                   width: width,
                   label: context.l10n.text('completed'),
                   value: '$completed',
                   icon: Icons.task_alt,
+                  onTap: onOpenTasksFilter == null
+                      ? null
+                      : () => onOpenTasksFilter!('completed_today'),
                 ),
                 _MetricCard(
                   width: width,
                   label: context.l10n.text('overdue'),
                   value: '$overdue',
                   icon: Icons.warning_amber,
+                  onTap: onOpenTasksFilter == null
+                      ? null
+                      : () => onOpenTasksFilter!('overdue'),
                 ),
               ],
             );
@@ -626,50 +1021,134 @@ class _PerformanceGrid extends StatelessWidget {
   }
 }
 
+class _LivePerformanceWork extends ConsumerWidget {
+  const _LivePerformanceWork({
+    required this.recordedWork,
+    required this.runtime,
+  });
+
+  final TodayRecordedWorkSummary recordedWork;
+  final LocalRuntime? runtime;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    if (runtime?.state == 'running') {
+      ref.watch(taskExecutionClockProvider);
+    }
+    var totalMs = recordedWork.totalMs;
+    final runtimeSessionId = runtime?.sessionId;
+    if (runtimeSessionId != null) {
+      totalMs -= recordedWork.bySessionId[runtimeSessionId] ?? 0;
+    }
+    var runtimeMs = runtime?.accumulatedActiveMs ?? 0;
+    if (runtime?.state == 'running' && runtime?.segmentStartedAt != null) {
+      runtimeMs += DateTime.now()
+          .toUtc()
+          .difference(runtime!.segmentStartedAt!)
+          .inMilliseconds;
+    }
+    return Text(
+      _durationLabel(
+        context,
+        Duration(milliseconds: (totalMs + runtimeMs).clamp(0, 1 << 62).toInt()),
+      ),
+      style: Theme.of(
+        context,
+      ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+    );
+  }
+}
+
+class _RuntimeStatusPill extends StatelessWidget {
+  const _RuntimeStatusPill({required this.state, this.breakCompleted = false});
+
+  final String state;
+  final bool breakCompleted;
+
+  @override
+  Widget build(BuildContext context) {
+    final isRunning = state == 'running';
+    final isBreak = state == 'break';
+    final label = isBreak
+        ? context.l10n.text(
+            breakCompleted
+                ? 'notification_break_completed_title'
+                : 'break_in_progress',
+          )
+        : context.l10n.taskStatus(isRunning ? 'running' : 'paused');
+    final color = isBreak
+        ? breakCompleted
+              ? Colors.cyan
+              : Colors.teal
+        : isRunning
+        ? Colors.green
+        : Colors.orange;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(color: color, fontWeight: FontWeight.w800),
+      ),
+    );
+  }
+}
+
 class _MetricCard extends StatelessWidget {
   const _MetricCard({
     required this.width,
     required this.label,
-    required this.value,
     required this.icon,
-  });
+    this.value,
+    this.valueWidget,
+    this.onTap,
+  }) : assert(value != null || valueWidget != null);
 
   final double width;
   final String label;
-  final String value;
+  final String? value;
+  final Widget? valueWidget;
   final IconData icon;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     return SizedBox(
       width: width,
       child: Card(
-        child: Padding(
-          padding: const EdgeInsets.all(18),
-          child: Row(
-            children: [
-              Icon(icon, color: Theme.of(context).colorScheme.primary),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      value,
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.w800,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(20),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.all(18),
+            child: Row(
+              children: [
+                Icon(icon, color: Theme.of(context).colorScheme.primary),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      valueWidget ??
+                          Text(
+                            value!,
+                            style: Theme.of(context).textTheme.titleLarge
+                                ?.copyWith(fontWeight: FontWeight.w800),
+                          ),
+                      Text(
+                        label,
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
                       ),
-                    ),
-                    Text(
-                      label,
-                      style: TextStyle(
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -677,10 +1156,101 @@ class _MetricCard extends StatelessWidget {
   }
 }
 
-class _TodaySchedule extends StatelessWidget {
-  const _TodaySchedule({required this.tasks});
+class _ScheduleEntry {
+  const _ScheduleEntry({required this.task, this.suggested = false});
 
-  final List<LocalTask> tasks;
+  final LocalTask task;
+  final bool suggested;
+}
+
+List<_ScheduleEntry> _buildSchedule({
+  required DateTime day,
+  required List<LocalTask> scheduledTasks,
+  required List<LocalTask> allTasks,
+  required LocalTask? activeTask,
+}) {
+  final logical = <String, LocalTask>{};
+  for (final task in scheduledTasks) {
+    final key = _scheduleKey(task);
+    // Repeated occurrences created before the recurrence migration can share
+    // a title and planning identity but still have different IDs.  The active
+    // occurrence must win that logical slot so the dated card uses the same
+    // canonical runtime state as the active-task panel.
+    if (activeTask != null && key == _scheduleKey(activeTask)) {
+      logical[key] = activeTask;
+      continue;
+    }
+    final existing = logical[key];
+    if (existing == null ||
+        _scheduleOrder(task).compareTo(_scheduleOrder(existing)) < 0) {
+      logical[key] = task;
+    }
+  }
+  final dayStart = DateTime(day.year, day.month, day.day);
+  final nextDayStart = dayStart.add(const Duration(days: 1));
+  final activeDate = activeTask?.scheduledDate?.toLocal();
+  if (activeTask != null &&
+      activeDate != null &&
+      !activeDate.isBefore(dayStart) &&
+      activeDate.isBefore(nextDayStart)) {
+    logical[_scheduleKey(activeTask)] = activeTask;
+  }
+  final scheduled = logical.values.toList()
+    ..sort((a, b) => _scheduleOrder(a).compareTo(_scheduleOrder(b)));
+
+  // A roadmap task is a recommendation, not a hidden duplicate.  It remains
+  // editable and is shown only when the user has no dated occurrence for the
+  // same logical work today.
+  final suggested =
+      allTasks
+          .where(
+            (task) =>
+                task.status != 'completed' &&
+                task.status != 'cancelled' &&
+                task.roadmapId != null &&
+                task.priority >= 3 &&
+                !logical.containsKey(_scheduleKey(task)) &&
+                (task.scheduledDate == null ||
+                    task.scheduledDate!.isAfter(
+                      day.add(const Duration(days: 1)),
+                    )),
+          )
+          .toList()
+        ..sort((a, b) => _scheduleOrder(a).compareTo(_scheduleOrder(b)));
+
+  return [
+    for (final task in scheduled) _ScheduleEntry(task: task),
+    for (final task in suggested.take(2))
+      _ScheduleEntry(task: task, suggested: true),
+  ];
+}
+
+String _scheduleKey(LocalTask task) {
+  if (task.templateId != null && task.templateId!.isNotEmpty) {
+    return 'template:${task.templateId}';
+  }
+  // Legacy recurring rows created before template IDs were persisted are
+  // recognized by their otherwise identical planning identity.
+  return 'task:${task.title.trim().toLowerCase()}:${task.roadmapId ?? ''}:${task.executionMode}:${task.estimatedDurationMs}';
+}
+
+DateTime _scheduleOrder(LocalTask task) {
+  return task.plannedStart ??
+      task.dueAt ??
+      task.scheduledDate ??
+      task.createdAt;
+}
+
+class _TodaySchedule extends StatelessWidget {
+  const _TodaySchedule({
+    required this.entries,
+    required this.activeTaskId,
+    required this.activeSessionState,
+  });
+
+  final List<_ScheduleEntry> entries;
+  final String? activeTaskId;
+  final String? activeSessionState;
 
   @override
   Widget build(BuildContext context) {
@@ -688,20 +1258,31 @@ class _TodaySchedule extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _SectionTitle(
-          title: '${context.l10n.text('today')}’s schedule',
+          title: context.l10n.text('dashboard_today_schedule'),
           icon: Icons.view_agenda_outlined,
         ),
         const SizedBox(height: 10),
-        if (tasks.isEmpty)
-          const Card(
+        if (entries.isEmpty)
+          Card(
             child: Padding(
-              padding: EdgeInsets.all(24),
-              child: Text('Nothing is scheduled for today.'),
+              padding: const EdgeInsets.all(24),
+              child: Text(context.l10n.text('dashboard_no_tasks_scheduled')),
             ),
           )
         else ...[
-          for (final task in tasks) ...[
-            TaskCard(task: task, compact: true),
+          for (final entry in entries) ...[
+            TaskCard(
+              task: entry.task,
+              compact: true,
+              suggested: entry.suggested,
+              activeSessionState: entry.task.id == activeTaskId
+                  ? activeSessionState
+                  : null,
+              // The dedicated active-task panel owns the pause/resume action.
+              // This dated row remains a truthful navigation/status reference
+              // instead of exposing a second competing control surface.
+              hideExecutionControl: entry.task.id == activeTaskId,
+            ),
             const SizedBox(height: 10),
           ],
         ],
@@ -710,51 +1291,652 @@ class _TodaySchedule extends StatelessWidget {
   }
 }
 
-class _CoachingCard extends StatelessWidget {
-  const _CoachingCard();
+class _AdaptiveCoachingCard extends ConsumerStatefulWidget {
+  const _AdaptiveCoachingCard({
+    required this.userName,
+    required this.age,
+    required this.createdAt,
+    required this.tasks,
+    required this.runtime,
+    required this.settings,
+  });
+
+  final String userName;
+  final int? age;
+  final DateTime? createdAt;
+  final List<LocalTask> tasks;
+  final LocalRuntime? runtime;
+  final LocalAppSetting? settings;
+
+  @override
+  ConsumerState<_AdaptiveCoachingCard> createState() =>
+      _AdaptiveCoachingCardState();
+}
+
+class _AdaptiveCoachingCardState extends ConsumerState<_AdaptiveCoachingCard> {
+  Future<AdaptiveCoachingInsight>? _insight;
+  AdaptiveCoachingInsight? _lastInsight;
+  bool _savingFeedback = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _insight = _load();
+  }
+
+  @override
+  void didUpdateWidget(covariant _AdaptiveCoachingCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.tasks != widget.tasks ||
+        oldWidget.runtime != widget.runtime ||
+        oldWidget.settings != widget.settings ||
+        oldWidget.createdAt != widget.createdAt ||
+        oldWidget.age != widget.age) {
+      _insight = _load();
+    }
+  }
+
+  Future<AdaptiveCoachingInsight> _load() {
+    return ref
+        .read(adaptiveCoachingServiceProvider)
+        .buildInsight(
+          tasks: widget.tasks,
+          runtime: widget.runtime,
+          settings: widget.settings,
+          accountCreatedAt: widget.createdAt,
+          age: widget.age,
+        );
+  }
+
+  Future<void> _submit(
+    AdaptiveCoachingInsight insight,
+    CoachingFeedbackKind kind,
+  ) async {
+    if (_savingFeedback) return;
+    setState(() => _savingFeedback = true);
+    try {
+      await ref
+          .read(adaptiveCoachingServiceProvider)
+          .submitFeedback(insight, kind);
+      if (!mounted) return;
+      setState(() => _insight = _load());
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(context.l10n.text('coaching_feedback_saved'))),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(context.l10n.text('coaching_feedback_failed'))),
+      );
+    } finally {
+      if (mounted) setState(() => _savingFeedback = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(22),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
+    return FutureBuilder<AdaptiveCoachingInsight>(
+      future: _insight,
+      initialData: _lastInsight,
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) {
+          return _CoachLoadingCard(
+            reducedMotion:
+                MediaQuery.maybeOf(context)?.disableAnimations ?? false,
+          );
+        }
+        _lastInsight = snapshot.requireData;
+        return _buildInsight(context, snapshot.requireData);
+      },
+    );
+  }
+
+  Widget _buildInsight(BuildContext context, AdaptiveCoachingInsight insight) {
+    final decision = insight.decision;
+    final reducedMotion =
+        MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+    final transitionDuration = reducedMotion
+        ? Duration.zero
+        : const Duration(milliseconds: 520);
+    final palette = _CoachMoodPalette.resolve(
+      context,
+      decision.mood,
+      themeKey: widget.settings?.themeKey,
+    );
+    final relatedTask = decision.relatedTaskId == null
+        ? null
+        : widget.tasks
+              .where((task) => task.id == decision.relatedTaskId)
+              .firstOrNull;
+    final relatedTaskIds = decision.relatedTaskIds.toSet();
+    final relatedTasks = widget.tasks
+        .where((task) => relatedTaskIds.contains(task.id))
+        .toList(growable: false);
+    final navigableTasks = relatedTasks.isNotEmpty
+        ? relatedTasks
+        : relatedTask == null
+        ? const <LocalTask>[]
+        : <LocalTask>[relatedTask];
+    void openRelatedTasks() {
+      if (navigableTasks.isEmpty) return;
+      if (navigableTasks.length == 1) {
+        TaskWorkspaceScreen.open(context, navigableTasks.single);
+        return;
+      }
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => _CoachingRelatedTasksScreen(tasks: navigableTasks),
+        ),
+      );
+    }
+
+    final title = context.l10n.format(decision.titleKey, {
+      'userName': widget.userName,
+    });
+    final body = context.l10n.format(decision.bodyKey, {
+      ..._coachingDisplayValues(context.l10n, decision.bodyValues),
+      'userName': widget.userName,
+    });
+    final details = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _CoachMoodBadge(
+          label: context.l10n.text(decision.mood.labelKey),
+          palette: palette,
+        ),
+        const SizedBox(height: 12),
+        Text(
+          title,
+          style: TextStyle(
+            color: palette.foreground,
+            fontWeight: FontWeight.w900,
+            fontSize: 21,
+            height: 1.16,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          body,
+          style: TextStyle(
+            color: palette.foreground.withValues(alpha: 0.86),
+            fontSize: 15,
+            height: 1.42,
+          ),
+        ),
+        if (decision.evidence.isNotEmpty) ...[
+          const SizedBox(height: 16),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final evidence in decision.evidence)
+                Chip(
+                  backgroundColor: palette.chipBackground,
+                  side: BorderSide(
+                    color: palette.border.withValues(alpha: 0.8),
+                  ),
+                  avatar: Icon(
+                    Icons.insights_rounded,
+                    size: 16,
+                    color: palette.accent,
+                  ),
+                  label: Text(
+                    context.l10n.format(
+                      evidence.key,
+                      _coachingDisplayValues(context.l10n, evidence.values),
+                    ),
+                    style: TextStyle(
+                      color: palette.foreground.withValues(alpha: 0.9),
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ],
+        const SizedBox(height: 12),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          crossAxisAlignment: WrapCrossAlignment.center,
           children: [
-            CircleAvatar(
-              backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-              child: const Icon(Icons.psychology_outlined),
+            Chip(
+              backgroundColor: palette.chipBackground,
+              side: BorderSide(color: palette.border.withValues(alpha: 0.65)),
+              avatar: Icon(Icons.tune_rounded, size: 16, color: palette.accent),
+              label: Text(
+                context.l10n.text(
+                  'coaching_tone_${widget.settings?.coachingTone ?? 'balanced'}',
+                ),
+                style: TextStyle(
+                  color: palette.foreground.withValues(alpha: 0.86),
+                ),
+              ),
             ),
-            const SizedBox(width: 16),
-            const Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Coaching will use evidence, not guesses',
-                    style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17),
+            if (relatedTask != null)
+              ActionChip(
+                backgroundColor: palette.actionBackground,
+                side: BorderSide(color: palette.accent.withValues(alpha: 0.6)),
+                avatar: Icon(
+                  Icons.task_alt_outlined,
+                  size: 16,
+                  color: palette.accent,
+                ),
+                label: Text(relatedTask.title, overflow: TextOverflow.ellipsis),
+                onPressed: () => TaskWorkspaceScreen.open(context, relatedTask),
+              ),
+            if (relatedTasks.isNotEmpty)
+              ActionChip(
+                backgroundColor: palette.actionBackground,
+                side: BorderSide(color: palette.accent.withValues(alpha: 0.6)),
+                avatar: Icon(
+                  Icons.view_list_rounded,
+                  size: 16,
+                  color: palette.accent,
+                ),
+                label: Text(
+                  decision.evidence.isEmpty
+                      ? context.l10n.text('overdue')
+                      : context.l10n.format(
+                          decision.evidence.first.key,
+                          decision.evidence.first.values,
+                        ),
+                ),
+                onPressed: openRelatedTasks,
+              ),
+            _CoachSuggestedBadge(palette: palette),
+          ],
+        ),
+      ],
+    );
+    final illustration = AnimatedSwitcher(
+      duration: transitionDuration,
+      switchInCurve: Curves.easeOutCubic,
+      switchOutCurve: Curves.easeInCubic,
+      transitionBuilder: (child, animation) => FadeTransition(
+        opacity: animation,
+        child: ScaleTransition(
+          scale: Tween(begin: 0.94, end: 1.0).animate(animation),
+          child: child,
+        ),
+      ),
+      child: Semantics(
+        key: ValueKey(decision.mood),
+        child: CoachingExpressionVisual(
+          expression: decision.expression,
+          semanticLabel: context.l10n.text(
+            decision.expression.semanticLabelKey,
+          ),
+          accent: palette.accent,
+          size: decision.compact ? 142 : 184,
+          background: palette.illustrationBackground,
+          border: palette.border,
+        ),
+      ),
+    );
+    final feedback = PopupMenuButton<CoachingFeedbackKind>(
+      enabled: !_savingFeedback,
+      tooltip: context.l10n.text('coaching_feedback'),
+      onSelected: (kind) => _submit(insight, kind),
+      itemBuilder: (context) => [
+        for (final kind in CoachingFeedbackKind.values)
+          PopupMenuItem(
+            value: kind,
+            child: Text(context.l10n.text(kind.labelKey)),
+          ),
+      ],
+      icon: _savingFeedback
+          ? const SizedBox.square(
+              dimension: 20,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : Icon(Icons.rate_review_outlined, color: palette.foreground),
+    );
+    final card = AnimatedContainer(
+      duration: transitionDuration,
+      curve: Curves.easeInOutCubic,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: AlignmentDirectional.topStart,
+          end: AlignmentDirectional.bottomEnd,
+          colors: [palette.backgroundStart, palette.backgroundEnd],
+        ),
+        borderRadius: BorderRadius.circular(26),
+        border: Border.all(color: palette.border),
+        boxShadow: [
+          BoxShadow(
+            color: palette.glow,
+            blurRadius: 30,
+            spreadRadius: -14,
+            offset: const Offset(0, 12),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(25),
+        child: Material(
+          color: Colors.transparent,
+          child: Stack(
+            children: [
+              PositionedDirectional(
+                top: -48,
+                end: -36,
+                child: IgnorePointer(
+                  child: AnimatedContainer(
+                    duration: transitionDuration,
+                    width: 170,
+                    height: 170,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: palette.accent.withValues(alpha: 0.08),
+                      boxShadow: [
+                        BoxShadow(
+                          color: palette.accent.withValues(alpha: 0.12),
+                          blurRadius: 46,
+                          spreadRadius: 12,
+                        ),
+                      ],
+                    ),
                   ),
-                  SizedBox(height: 6),
-                  Text(
-                    'Complete a few sessions and TaskMaster Pro will compare '
-                    'planned effort with actual effort before suggesting changes.',
-                  ),
-                  SizedBox(height: 10),
-                  Text(
-                    'Evidence: 0 comparable sessions • Confidence: not rated',
+                ),
+              ),
+              Padding(
+                padding: EdgeInsets.all(decision.compact ? 18 : 22),
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    if (constraints.maxWidth < 620) {
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Align(
+                            alignment: Alignment.center,
+                            child: illustration,
+                          ),
+                          const SizedBox(height: 16),
+                          details,
+                          Align(
+                            alignment: AlignmentDirectional.centerEnd,
+                            child: _CoachFeedbackButton(
+                              palette: palette,
+                              child: feedback,
+                            ),
+                          ),
+                        ],
+                      );
+                    }
+                    return Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        illustration,
+                        const SizedBox(width: 24),
+                        Expanded(child: details),
+                        const SizedBox(width: 10),
+                        _CoachFeedbackButton(palette: palette, child: feedback),
+                      ],
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (navigableTasks.isEmpty) return card;
+    return Semantics(
+      button: true,
+      label: title,
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        child: GestureDetector(
+          behavior: HitTestBehavior.translucent,
+          onTap: openRelatedTasks,
+          child: card,
+        ),
+      ),
+    );
+  }
+}
+
+class _CoachingRelatedTasksScreen extends StatelessWidget {
+  const _CoachingRelatedTasksScreen({required this.tasks});
+
+  final List<LocalTask> tasks;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      appBar: AppBar(title: Text(context.l10n.text('overdue'))),
+      body: ListView.separated(
+        padding: const EdgeInsets.all(20),
+        itemCount: tasks.length,
+        separatorBuilder: (_, _) => const SizedBox(height: 10),
+        itemBuilder: (context, index) => TaskCard(task: tasks[index]),
+      ),
+    );
+  }
+}
+
+class _CoachSuggestedBadge extends StatelessWidget {
+  const _CoachSuggestedBadge({required this.palette});
+
+  final _CoachMoodPalette palette;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+      decoration: BoxDecoration(
+        color: palette.actionBackground,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: palette.accent.withValues(alpha: 0.42)),
+      ),
+      child: Text(
+        context.l10n.text('schedule_suggested'),
+        style: TextStyle(color: palette.accent, fontWeight: FontWeight.w800),
+      ),
+    );
+  }
+}
+
+class _CoachLoadingCard extends StatelessWidget {
+  const _CoachLoadingCard({required this.reducedMotion});
+
+  final bool reducedMotion;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      constraints: const BoxConstraints(minHeight: 180),
+      padding: const EdgeInsets.all(22),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            scheme.surfaceContainerHigh,
+            Color.alphaBlend(
+              scheme.primary.withValues(alpha: 0.08),
+              scheme.surfaceContainer,
+            ),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(26),
+        border: Border.all(
+          color: scheme.outlineVariant.withValues(alpha: 0.65),
+        ),
+      ),
+      alignment: Alignment.center,
+      child: reducedMotion
+          ? Text(context.l10n.text('loading'))
+          : LinearProgressIndicator(
+              borderRadius: BorderRadius.circular(999),
+              minHeight: 5,
+            ),
+    );
+  }
+}
+
+class _CoachMoodBadge extends StatelessWidget {
+  const _CoachMoodBadge({required this.label, required this.palette});
+
+  final String label;
+  final _CoachMoodPalette palette;
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: AlignmentDirectional.centerStart,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
+        decoration: BoxDecoration(
+          color: palette.actionBackground,
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: palette.accent.withValues(alpha: 0.52)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 7,
+              height: 7,
+              decoration: BoxDecoration(
+                color: palette.accent,
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: palette.accent.withValues(alpha: 0.55),
+                    blurRadius: 8,
                   ),
                 ],
               ),
             ),
-            const SizedBox(width: 12),
-            IconButton.outlined(
-              tooltip: 'Helpful',
-              onPressed: null,
-              icon: const Icon(Icons.thumb_up_outlined),
+            const SizedBox(width: 7),
+            Text(
+              label,
+              style: TextStyle(
+                color: palette.foreground,
+                fontWeight: FontWeight.w800,
+                fontSize: 12,
+                letterSpacing: 0.15,
+              ),
             ),
           ],
         ),
       ),
+    );
+  }
+}
+
+class _CoachFeedbackButton extends StatelessWidget {
+  const _CoachFeedbackButton({required this.palette, required this.child});
+
+  final _CoachMoodPalette palette;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: palette.chipBackground,
+        shape: BoxShape.circle,
+        border: Border.all(color: palette.border.withValues(alpha: 0.75)),
+      ),
+      child: child,
+    );
+  }
+}
+
+class _CoachMoodPalette {
+  const _CoachMoodPalette({
+    required this.accent,
+    required this.foreground,
+    required this.backgroundStart,
+    required this.backgroundEnd,
+    required this.illustrationBackground,
+    required this.chipBackground,
+    required this.actionBackground,
+    required this.border,
+    required this.glow,
+  });
+
+  final Color accent;
+  final Color foreground;
+  final Color backgroundStart;
+  final Color backgroundEnd;
+  final Color illustrationBackground;
+  final Color chipBackground;
+  final Color actionBackground;
+  final Color border;
+  final Color glow;
+
+  static _CoachMoodPalette resolve(
+    BuildContext context,
+    CoachingMood mood, {
+    required String? themeKey,
+  }) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
+    final isGolden = themeKey == 'golden';
+    final (rawAccent, rawSecondary) = switch (mood) {
+      CoachingMood.celebrating => (
+        const Color(0xFF36D69A),
+        const Color(0xFFFFC857),
+      ),
+      CoachingMood.supportive => (
+        const Color(0xFF48D8FF),
+        const Color(0xFF6E8FFF),
+      ),
+      CoachingMood.firm => (const Color(0xFFFFAA4D), const Color(0xFFFF7166)),
+      CoachingMood.recovery => (
+        const Color(0xFF42D6C5),
+        const Color(0xFF9B8BFF),
+      ),
+      CoachingMood.planning => (
+        const Color(0xFF6DABFF),
+        const Color(0xFFB28BFF),
+      ),
+    };
+    final accent = isGolden
+        ? Color.lerp(rawAccent, const Color(0xFFFFC928), 0.26)!
+        : rawAccent;
+    final secondary = isGolden
+        ? Color.lerp(rawSecondary, const Color(0xFFE8B923), 0.18)!
+        : rawSecondary;
+    final base = isDark
+        ? scheme.surfaceContainerHigh
+        : scheme.surfaceContainerLowest;
+    final startOpacity = isDark ? 0.22 : 0.14;
+    final endOpacity = isDark ? 0.17 : 0.1;
+    final backgroundStart = Color.alphaBlend(
+      accent.withValues(alpha: startOpacity),
+      base,
+    );
+    final backgroundEnd = Color.alphaBlend(
+      secondary.withValues(alpha: endOpacity),
+      scheme.surfaceContainer,
+    );
+    return _CoachMoodPalette(
+      accent: accent,
+      foreground: scheme.onSurface,
+      backgroundStart: backgroundStart,
+      backgroundEnd: backgroundEnd,
+      illustrationBackground: Color.alphaBlend(
+        scheme.surface.withValues(alpha: isDark ? 0.58 : 0.74),
+        backgroundStart,
+      ),
+      chipBackground: Color.alphaBlend(
+        accent.withValues(alpha: isDark ? 0.12 : 0.09),
+        scheme.surface.withValues(alpha: isDark ? 0.78 : 0.9),
+      ),
+      actionBackground: accent.withValues(alpha: isDark ? 0.15 : 0.12),
+      border: Color.lerp(
+        accent,
+        scheme.outlineVariant,
+        isDark ? 0.42 : 0.56,
+      )!.withValues(alpha: 0.84),
+      glow: accent.withValues(alpha: isDark ? 0.22 : 0.14),
     );
   }
 }
@@ -782,19 +1964,18 @@ class _SectionTitle extends StatelessWidget {
   }
 }
 
-String _durationLabel(Duration duration) {
-  final hours = duration.inHours;
-  final minutes = duration.inMinutes.remainder(60);
-  if (hours == 0) return '${duration.inMinutes}m';
-  if (minutes == 0) return '${hours}h';
-  return '${hours}h ${minutes}m';
+String _durationLabel(BuildContext context, Duration duration) {
+  return context.l10n.duration(duration);
 }
 
-String _clockLabel(Duration duration) {
-  final hours = duration.inHours.toString().padLeft(2, '0');
-  final minutes = duration.inMinutes.remainder(60).toString().padLeft(2, '0');
-  final seconds = duration.inSeconds.remainder(60).toString().padLeft(2, '0');
-  return '$hours:$minutes:$seconds';
+int? _ageOn(DateTime? birthDate, DateTime today) {
+  if (birthDate == null) return null;
+  var age = today.year - birthDate.year;
+  if (today.month < birthDate.month ||
+      (today.month == birthDate.month && today.day < birthDate.day)) {
+    age -= 1;
+  }
+  return age < 0 ? null : age;
 }
 
 Future<String?> _askDashboardText(
@@ -819,11 +2000,11 @@ Future<String?> _askDashboardText(
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
+            child: Text(context.l10n.text('cancel')),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, controller.text),
-            child: const Text('Save'),
+            child: Text(context.l10n.text('save')),
           ),
         ],
       ),

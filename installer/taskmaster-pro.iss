@@ -1,5 +1,5 @@
 #ifndef MyAppVersion
-  #define MyAppVersion "0.0.25"
+  #define MyAppVersion "0.0.28"
 #endif
 #ifndef SourceDir
   #error SourceDir must point to the Flutter Windows release folder
@@ -25,7 +25,7 @@ DefaultDirName={localappdata}\Programs\TaskMaster Pro
 DefaultGroupName=TaskMaster Pro
 DisableProgramGroupPage=yes
 OutputDir={#OutputDir}
-OutputBaseFilename=TaskMaster-Pro-Windows-{#MyAppVersion}
+OutputBaseFilename=TaskMasterPro-{#MyAppVersion}-Windows-Setup
 SetupIconFile=..\windows\runner\resources\app_icon.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
 Compression=lzma2

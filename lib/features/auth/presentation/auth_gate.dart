@@ -4,12 +4,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../../core/localization/app_localizations.dart';
+import '../../../core/account/account_context.dart';
+import '../../../core/platform/windows_shell_service.dart';
 import '../../../core/providers.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../onboarding/presentation/onboarding_screen.dart';
-import '../../settings/data/settings_repository.dart';
+import '../../onboarding/presentation/android_permission_setup_gate.dart';
 import '../../shell/presentation/home_shell.dart';
 import 'auth_screen.dart';
+import 'password_recovery_controller.dart';
+import 'password_recovery_screen.dart';
 
 class AuthGate extends ConsumerStatefulWidget {
   const AuthGate({required this.themeKey, super.key});
@@ -20,17 +25,70 @@ class AuthGate extends ConsumerStatefulWidget {
   ConsumerState<AuthGate> createState() => _AuthGateState();
 }
 
-class _AuthGateState extends ConsumerState<AuthGate> {
+class _AuthGateState extends ConsumerState<AuthGate>
+    with WidgetsBindingObserver {
   String? _preparedUserId;
+  String? _activeAccountId;
+  String? _signedOutTrayLocale;
   Future<void>? _preparation;
+  Future<void> _accountTransition = Future<void>.value();
 
-  Future<void> _prepare(User user, SettingsRepository settings) {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed ||
+        ref.read(supabaseClientProvider).auth.currentUser == null) {
+      return;
+    }
+    // Re-run the idempotent sync start on resume. This covers Android's
+    // network hand-off and a missed Realtime event without asking the user to
+    // reopen the Synchronization screen or restart the app.
+    unawaited(ref.read(syncServiceProvider).start());
+  }
+
+  Future<void> _selectAccount(String? userId) {
+    if (_activeAccountId == userId) return _accountTransition;
+    _accountTransition = _accountTransition.then((_) async {
+      if (_activeAccountId == userId) return;
+      // Stop the old account before replacing the provider dependency.  The
+      // provider disposal then closes its dedicated database and cancels its
+      // Activity capture service.
+      await ref.read(syncServiceProvider).stop();
+      PaintingBinding.instance.imageCache.clear();
+      PaintingBinding.instance.imageCache.clearLiveImages();
+      if (!mounted) return;
+      ref.read(activeAccountIdProvider.notifier).select(userId);
+      _activeAccountId = userId;
+    });
+    return _accountTransition;
+  }
+
+  Future<void> _prepare(User user) {
     if (_preparedUserId == user.id && _preparation != null) {
       return _preparation!;
     }
     _preparedUserId = user.id;
     _preparation = () async {
+      await _selectAccount(user.id);
+      if (!mounted) return;
+      final settings = ref.read(settingsRepositoryProvider);
       await settings.ensureLocalAccount(user);
+      await settings.refreshDeviceTimeZoneIfAutomatic();
+      // Built-in task areas are account-scoped, deterministic records. This
+      // idempotent pass also upgrades existing accounts that completed
+      // onboarding before the full default catalogue was introduced.
+      await ref.read(taskRepositoryProvider).seedStarterDomains();
       // Remote registration, realtime and outbox draining must never block an
       // already authenticated user from opening their local workspace.
       unawaited(() async {
@@ -62,53 +120,89 @@ class _AuthGateState extends ConsumerState<AuthGate> {
   @override
   Widget build(BuildContext context) {
     final client = ref.watch(supabaseClientProvider);
-    return StreamBuilder<AuthState>(
-      stream: client.auth.onAuthStateChange,
-      initialData: AuthState(
-        AuthChangeEvent.initialSession,
-        client.auth.currentSession,
-      ),
-      builder: (context, snapshot) {
-        final session = snapshot.data?.session ?? client.auth.currentSession;
-        if (session == null) {
-          _preparedUserId = null;
-          _preparation = null;
-          return AuthScreen(themeKey: widget.themeKey);
-        }
+    return ValueListenableBuilder<bool>(
+      valueListenable: passwordRecoveryController,
+      builder: (context, recoveringPassword, _) => StreamBuilder<AuthState>(
+        stream: client.auth.onAuthStateChange,
+        initialData: AuthState(
+          AuthChangeEvent.initialSession,
+          client.auth.currentSession,
+        ),
+        builder: (context, snapshot) {
+          final session = snapshot.data?.session ?? client.auth.currentSession;
+          if (session == null) {
+            unawaited(_selectAccount(null));
+            _preparedUserId = null;
+            _preparation = null;
+            final localeCode =
+                ref.read(appSettingsProvider).value?.localeCode ?? 'en';
+            if (_signedOutTrayLocale != localeCode) {
+              _signedOutTrayLocale = localeCode;
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                unawaited(
+                  WindowsShellService.instance.updateTray(
+                    WindowsTrayState(
+                      signedIn: false,
+                      hasActiveTask: false,
+                      taskPaused: false,
+                      breakActive: false,
+                      activeTask: '',
+                      elapsed: '',
+                      syncLabel: '',
+                      syncAttention: false,
+                      localeCode: localeCode,
+                    ),
+                  ),
+                );
+              });
+            }
+            return AuthScreen(themeKey: widget.themeKey);
+          }
+          _signedOutTrayLocale = null;
 
-        final settings = ref.watch(settingsRepositoryProvider);
-        return FutureBuilder<void>(
-          future: _prepare(session.user, settings),
-          builder: (context, preparation) {
-            if (preparation.hasError) {
-              return _GateError(
-                message: preparation.error.toString(),
-                onRetry: () {
-                  setState(() {
-                    _preparation = null;
-                    _preparedUserId = null;
-                  });
+          if (recoveringPassword) {
+            return PasswordRecoveryScreen(email: session.user.email ?? '');
+          }
+
+          return FutureBuilder<void>(
+            future: _prepare(session.user),
+            builder: (context, preparation) {
+              if (preparation.hasError) {
+                return _GateError(
+                  onRetry: () {
+                    setState(() {
+                      _preparation = null;
+                      _preparedUserId = null;
+                    });
+                  },
+                );
+              }
+              if (preparation.connectionState != ConnectionState.done) {
+                return const _GateLoading();
+              }
+
+              final settings = ref.watch(settingsRepositoryProvider);
+              return StreamBuilder(
+                stream: settings.watchProfile(session.user.id),
+                builder: (context, profileSnapshot) {
+                  final profile = profileSnapshot.data;
+                  if (profile == null) return const _GateLoading();
+                  if (!profile.onboardingCompleted) {
+                    return OnboardingScreen(user: session.user);
+                  }
+                  return AndroidPermissionSetupGate(
+                    userId: session.user.id,
+                    child: HomeShell(
+                      user: session.user,
+                      themeKey: widget.themeKey,
+                    ),
+                  );
                 },
               );
-            }
-            if (preparation.connectionState != ConnectionState.done) {
-              return const _GateLoading();
-            }
-
-            return StreamBuilder(
-              stream: settings.watchProfile(session.user.id),
-              builder: (context, profileSnapshot) {
-                final profile = profileSnapshot.data;
-                if (profile == null) return const _GateLoading();
-                if (!profile.onboardingCompleted) {
-                  return OnboardingScreen(user: session.user);
-                }
-                return HomeShell(user: session.user, themeKey: widget.themeKey);
-              },
-            );
-          },
-        );
-      },
+            },
+          );
+        },
+      ),
     );
   }
 }
@@ -130,9 +224,8 @@ class _GateLoading extends StatelessWidget {
 }
 
 class _GateError extends StatelessWidget {
-  const _GateError({required this.message, required this.onRetry});
+  const _GateError({required this.onRetry});
 
-  final String message;
   final VoidCallback onRetry;
 
   @override
@@ -154,16 +247,19 @@ class _GateError extends StatelessWidget {
                   ),
                   const SizedBox(height: 16),
                   Text(
-                    'Account preparation needs attention',
+                    context.l10n.text('auth_preparation_attention'),
                     style: Theme.of(context).textTheme.titleLarge,
                   ),
                   const SizedBox(height: 8),
-                  Text(message, textAlign: TextAlign.center),
+                  Text(
+                    context.l10n.text('auth_preparation_detail'),
+                    textAlign: TextAlign.center,
+                  ),
                   const SizedBox(height: 20),
                   FilledButton.icon(
                     onPressed: onRetry,
                     icon: const Icon(Icons.refresh),
-                    label: const Text('Retry'),
+                    label: Text(context.l10n.text('retry')),
                   ),
                 ],
               ),

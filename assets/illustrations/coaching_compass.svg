@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 180" role="img">
+  <defs>
+    <linearGradient id="panel" x1="24" y1="18" x2="216" y2="164" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#173C69"/>
+      <stop offset="1" stop-color="#071B36"/>
+    </linearGradient>
+    <linearGradient id="orbit" x1="70" y1="42" x2="178" y2="142" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#53E4D1"/>
+      <stop offset=".52" stop-color="#69A7FF"/>
+      <stop offset="1" stop-color="#B98DFF"/>
+    </linearGradient>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="4" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  <rect x="12" y="10" width="216" height="160" rx="34" fill="url(#panel)"/>
+  <path d="M38 129C63 152 93 157 122 151C158 144 183 122 201 89" fill="none" stroke="#254E7B" stroke-width="2" stroke-linecap="round"/>
+  <path d="M44 111C66 133 92 141 120 137C150 132 176 112 193 82" fill="none" stroke="url(#orbit)" stroke-width="3" stroke-linecap="round" opacity=".82"/>
+  <circle cx="120" cy="89" r="47" fill="#0B2749" stroke="url(#orbit)" stroke-width="3"/>
+  <circle cx="120" cy="89" r="35" fill="none" stroke="#315D89" stroke-width="1.5" stroke-dasharray="3 7"/>
+  <path d="M120 57L131 80L155 89L131 98L120 121L109 98L85 89L109 80L120 57Z" fill="url(#orbit)" filter="url(#glow)"/>
+  <circle cx="120" cy="89" r="7" fill="#F4FBFF"/>
+  <circle cx="47" cy="56" r="5" fill="#53E4D1"/>
+  <circle cx="192" cy="54" r="4" fill="#B98DFF"/>
+  <circle cx="197" cy="124" r="3" fill="#69A7FF"/>
+  <path d="M47 56C73 31 100 24 128 28" fill="none" stroke="#53E4D1" stroke-width="2" stroke-linecap="round" opacity=".65"/>
+  <path d="M192 54C178 35 158 27 139 27" fill="none" stroke="#B98DFF" stroke-width="2" stroke-linecap="round" opacity=".65"/>
+</svg>
