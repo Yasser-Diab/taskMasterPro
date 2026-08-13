@@ -25,6 +25,97 @@ bool isTaskBrowserWebUrl(String value) {
       const {'http', 'https'}.contains(uri.scheme.toLowerCase());
 }
 
+/// Tracks one native WebView's main-frame navigation independently from its
+/// Flutter widget. Keeping this state explicit prevents a failed document from
+/// becoming a sticky tab-wide error after the user reloads or enters a new
+/// address, and lets late errors from an abandoned navigation be ignored.
+@visibleForTesting
+class TaskBrowserNavigationState {
+  TaskBrowserNavigationState(String initialUrl)
+    : _currentUrl = _safeWebUrl(initialUrl) ?? initialUrl;
+
+  String _currentUrl;
+  String? _failedUrl;
+
+  String get currentUrl => _currentUrl;
+  String? get failedUrl => _failedUrl;
+  bool get hasFailure => _failedUrl != null;
+
+  /// Starts (or redirects to) a main-frame document and clears any failure
+  /// belonging to the previous attempt.
+  void begin(String url) {
+    final safeUrl = _safeWebUrl(url);
+    if (safeUrl != null) _currentUrl = safeUrl;
+    _failedUrl = null;
+  }
+
+  /// Records only a failure for the active main-frame document. Android may
+  /// deliver a cancellation/error for an older request after a new navigation
+  /// has already begun; that late callback must not cover the new page.
+  bool fail({String? url, required bool isForMainFrame}) {
+    if (!isForMainFrame) return false;
+    final safeUrl = _safeWebUrl(url);
+    if (safeUrl != null && !_sameDocument(safeUrl, _currentUrl)) return false;
+    _failedUrl = safeUrl ?? _safeWebUrl(_currentUrl);
+    return _failedUrl != null;
+  }
+
+  /// A successful document clears its own failure. Some Android WebView
+  /// versions call onPageFinished for the internal error document after
+  /// onWebResourceError; retain that failure until a fresh navigation begins.
+  void finish(String url) {
+    final safeUrl = _safeWebUrl(url);
+    if (safeUrl == null) return;
+    _currentUrl = safeUrl;
+    if (_failedUrl == null || !_sameDocument(_failedUrl!, safeUrl)) {
+      _failedUrl = null;
+    }
+  }
+
+  String fallbackUrl(String initialUrl) =>
+      _failedUrl ??
+      _safeWebUrl(_currentUrl) ??
+      _safeWebUrl(initialUrl) ??
+      'https://www.google.com/';
+
+  static String? _safeWebUrl(String? value) {
+    if (value == null || !isTaskBrowserWebUrl(value)) return null;
+    return Uri.parse(value.trim()).toString();
+  }
+
+  static bool _sameDocument(String left, String right) {
+    final leftUri = Uri.tryParse(left);
+    final rightUri = Uri.tryParse(right);
+    if (leftUri == null || rightUri == null) return left == right;
+    return leftUri.replace(fragment: '') == rightUri.replace(fragment: '');
+  }
+}
+
+/// Decodes the one new-tab message shape accepted from either WebView. The
+/// browser bridge resolves relative links in JavaScript before posting them;
+/// this boundary still rejects executable and application schemes.
+@visibleForTesting
+String? taskBrowserNewTabUrl(Object? rawMessage) {
+  Object? decoded = rawMessage;
+  if (rawMessage is String) {
+    try {
+      decoded = jsonDecode(rawMessage);
+    } catch (_) {
+      decoded = rawMessage;
+    }
+  }
+  String? url;
+  if (decoded is Map) {
+    if (decoded['type']?.toString() != 'taskmaster-open-new-tab') return null;
+    url = decoded['url']?.toString();
+  } else if (decoded is String) {
+    // Android's JavaScript channel posts the already-resolved URL directly.
+    url = decoded;
+  }
+  if (url == null || !isTaskBrowserWebUrl(url)) return null;
+  return normalizeBrowserAddress(url);
+}
+
 const _newTabBridgeScript = r'''
 (() => {
   if (window.__taskmasterNewTabBridgeInstalled) return;
@@ -149,7 +240,8 @@ class _CrossPlatformWebViewState extends State<CrossPlatformWebView> {
   win.WebviewController? _windows;
   mobile.WebViewController? _mobile;
   final List<StreamSubscription<dynamic>> _subscriptions = [];
-  String? _error;
+  late final TaskBrowserNavigationState _navigation;
+  String? _fatalError;
   bool _ready = false;
   int _progress = 0;
   BrowserWorkspaceCheckpoint? _restorePending;
@@ -158,6 +250,7 @@ class _CrossPlatformWebViewState extends State<CrossPlatformWebView> {
   @override
   void initState() {
     super.initState();
+    _navigation = TaskBrowserNavigationState(widget.initialUrl);
     _restorePending = widget.restoreCheckpoint;
     unawaited(_initialize());
   }
@@ -170,6 +263,7 @@ class _CrossPlatformWebViewState extends State<CrossPlatformWebView> {
         _windows = controller;
         _subscriptions.add(
           controller.url.listen((url) {
+            _completeNavigation(url);
             widget.onUrlChanged(url);
             _scheduleCheckpointRestore(url);
           }),
@@ -195,10 +289,16 @@ class _CrossPlatformWebViewState extends State<CrossPlatformWebView> {
         );
         await controller.setDefaultContextMenusEnabled(true);
         widget.controller
-          .._load = controller.loadUrl
+          .._load = (url) async {
+            _beginNavigation(url);
+            await controller.loadUrl(url);
+          }
           .._back = controller.goBack
           .._forward = controller.goForward
-          .._reload = controller.reload
+          .._reload = () async {
+            _beginNavigation(_navigation.currentUrl);
+            await controller.reload();
+          }
           .._fillCredentials = (username, password) async {
             final result = await controller.executeScript(
               buildCredentialFillScript(username: username, password: password),
@@ -223,9 +323,12 @@ class _CrossPlatformWebViewState extends State<CrossPlatformWebView> {
               onProgress: (progress) {
                 if (mounted) setState(() => _progress = progress);
               },
-              onPageStarted: (_) =>
-                  unawaited(_installMobileNewTabBridge(controller)),
+              onPageStarted: (url) {
+                _beginNavigation(url);
+                unawaited(_installMobileNewTabBridge(controller));
+              },
               onPageFinished: (url) async {
+                _completeNavigation(url);
                 widget.onUrlChanged(url);
                 widget.onTitleChanged(await controller.getTitle() ?? url);
                 unawaited(_installMobileNewTabBridge(controller));
@@ -236,16 +339,19 @@ class _CrossPlatformWebViewState extends State<CrossPlatformWebView> {
                 if (url != null) widget.onUrlChanged(url);
               },
               onWebResourceError: (error) {
-                if (error.isForMainFrame == true && mounted) {
-                  setState(() => _error = 'browser_page_failed');
-                }
+                _recordNavigationFailure(
+                  url: error.url,
+                  isForMainFrame: error.isForMainFrame == true,
+                );
               },
             ),
           );
         await _prepareAndroidProfile(controller, widget.profileId);
         _mobile = controller;
-        widget.controller._load = (url) =>
-            controller.loadRequest(Uri.parse(url));
+        widget.controller._load = (url) async {
+          _beginNavigation(url);
+          await controller.loadRequest(Uri.parse(url));
+        };
         widget.controller._back = () async {
           if (await controller.canGoBack()) await controller.goBack();
         };
@@ -254,7 +360,10 @@ class _CrossPlatformWebViewState extends State<CrossPlatformWebView> {
             await controller.goForward();
           }
         };
-        widget.controller._reload = controller.reload;
+        widget.controller._reload = () async {
+          _beginNavigation(_navigation.currentUrl);
+          await controller.reload();
+        };
         widget.controller._fillCredentials = (username, password) async {
           final result = await controller.runJavaScriptReturningResult(
             buildCredentialFillScript(username: username, password: password),
@@ -266,13 +375,13 @@ class _CrossPlatformWebViewState extends State<CrossPlatformWebView> {
           .._restoreCheckpoint = _restoreCheckpointNow;
         await controller.loadRequest(Uri.parse(widget.initialUrl));
       } else {
-        _error = 'browser_platform_unavailable';
+        _fatalError = 'browser_platform_unavailable';
       }
       if (mounted) setState(() => _ready = true);
     } catch (_) {
       if (mounted) {
         setState(() {
-          _error = 'browser_page_failed';
+          _fatalError = 'browser_page_failed';
           _ready = true;
         });
       }
@@ -283,16 +392,39 @@ class _CrossPlatformWebViewState extends State<CrossPlatformWebView> {
     mobile.NavigationRequest request,
   ) async {
     if (isTaskBrowserWebUrl(request.url)) {
+      if (request.isMainFrame) _beginNavigation(request.url);
       return mobile.NavigationDecision.navigate;
     }
     final uri = Uri.tryParse(request.url);
     if (uri == null || !uri.hasScheme || uri.scheme == 'about') {
       return mobile.NavigationDecision.navigate;
     }
+    // An embedded frame cannot launch an external application on the user's
+    // behalf. Main-frame authentication, mail, phone and application links do
+    // need a real platform handler rather than an unsupported WebView load.
+    if (!request.isMainFrame) return mobile.NavigationDecision.prevent;
     // Authentication, mail, phone and application links need a real platform
     // handler rather than an unsupported WebView navigation.
     unawaited(launchUrl(uri, mode: LaunchMode.externalApplication));
     return mobile.NavigationDecision.prevent;
+  }
+
+  void _beginNavigation(String url) {
+    _navigation.begin(url);
+    if (mounted) setState(() {});
+  }
+
+  void _completeNavigation(String url) {
+    _navigation.finish(url);
+    if (mounted) setState(() {});
+  }
+
+  void _recordNavigationFailure({
+    required String? url,
+    required bool isForMainFrame,
+  }) {
+    final changed = _navigation.fail(url: url, isForMainFrame: isForMainFrame);
+    if (changed && mounted) setState(() {});
   }
 
   Future<void> _installMobileNewTabBridge(
@@ -370,26 +502,8 @@ class _CrossPlatformWebViewState extends State<CrossPlatformWebView> {
   }
 
   void _forwardNewTabRequest(dynamic rawMessage) {
-    String? url;
-    if (rawMessage is Map) {
-      final type = rawMessage['type']?.toString();
-      if (type == 'taskmaster-open-new-tab') {
-        url = rawMessage['url']?.toString();
-      }
-    } else if (rawMessage is String) {
-      try {
-        final decoded = jsonDecode(rawMessage);
-        if (decoded is Map &&
-            decoded['type']?.toString() == 'taskmaster-open-new-tab') {
-          url = decoded['url']?.toString();
-        }
-      } catch (_) {
-        // Android sends the URL itself through its JavaScript channel.
-        url = rawMessage;
-      }
-    }
-    if (url == null || !isTaskBrowserWebUrl(url)) return;
-    widget.onOpenNewTab?.call(normalizeBrowserAddress(url));
+    final url = taskBrowserNewTabUrl(rawMessage);
+    if (url != null) widget.onOpenNewTab?.call(url);
   }
 
   Future<void> _prepareWindowsProfile(String profileId) async {
@@ -449,28 +563,11 @@ class _CrossPlatformWebViewState extends State<CrossPlatformWebView> {
     if (!_ready) {
       return const Center(child: CircularProgressIndicator());
     }
-    if (_error != null) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(28),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.public_off_outlined, size: 48),
-              const SizedBox(height: 12),
-              Text(context.l10n.text(_error!), textAlign: TextAlign.center),
-              const SizedBox(height: 14),
-              OutlinedButton.icon(
-                onPressed: () => launchUrl(
-                  Uri.parse(widget.initialUrl),
-                  mode: LaunchMode.externalApplication,
-                ),
-                icon: const Icon(Icons.open_in_new),
-                label: Text(context.l10n.text('browser_open_system')),
-              ),
-            ],
-          ),
-        ),
+    if (_fatalError != null) {
+      return _failureSurface(
+        context,
+        errorKey: _fatalError!,
+        failedUrl: _navigation.fallbackUrl(widget.initialUrl),
       );
     }
     final child = Platform.isWindows
@@ -484,7 +581,72 @@ class _CrossPlatformWebViewState extends State<CrossPlatformWebView> {
             alignment: Alignment.topCenter,
             child: LinearProgressIndicator(value: _progress / 100),
           ),
+        if (_navigation.hasFailure)
+          Positioned.fill(
+            child: Material(
+              color: Theme.of(context).colorScheme.surface,
+              child: _failureSurface(
+                context,
+                errorKey: 'browser_page_failed',
+                failedUrl: _navigation.fallbackUrl(widget.initialUrl),
+                onRetry: () => widget.controller.load(
+                  _navigation.fallbackUrl(widget.initialUrl),
+                ),
+              ),
+            ),
+          ),
       ],
+    );
+  }
+
+  Widget _failureSurface(
+    BuildContext context, {
+    required String errorKey,
+    required String failedUrl,
+    VoidCallback? onRetry,
+  }) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(28),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.public_off_outlined, size: 48),
+            const SizedBox(height: 12),
+            Text(context.l10n.text(errorKey), textAlign: TextAlign.center),
+            const SizedBox(height: 8),
+            Text(
+              failedUrl,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+            const SizedBox(height: 14),
+            Wrap(
+              alignment: WrapAlignment.center,
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                if (onRetry != null)
+                  FilledButton.icon(
+                    onPressed: onRetry,
+                    icon: const Icon(Icons.refresh),
+                    label: Text(context.l10n.text('retry')),
+                  ),
+                OutlinedButton.icon(
+                  onPressed: () => launchUrl(
+                    Uri.parse(failedUrl),
+                    mode: LaunchMode.externalApplication,
+                  ),
+                  icon: const Icon(Icons.open_in_new),
+                  label: Text(context.l10n.text('browser_open_system')),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

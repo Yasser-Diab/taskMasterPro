@@ -55,6 +55,7 @@ void main() {
       'tasks_and_execution',
       'pomodoro',
       'activity_and_privacy',
+      'privacy_and_vault',
       'notifications_and_sounds',
       'health',
       'coaching',

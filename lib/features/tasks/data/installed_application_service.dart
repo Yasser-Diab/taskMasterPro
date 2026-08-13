@@ -18,6 +18,19 @@ class InstalledApplication {
 String normalizeApplicationIdentifier(String value) =>
     value.trim().toLowerCase();
 
+/// Mirrors `private.normalize_application_key` in the canonical database.
+///
+/// Activity discovery and task connections must send this value with the
+/// catalog create itself. Relying on a later server-side repair leaves a fresh
+/// install with a permanently rejected outbox command because the canonical
+/// column is intentionally NOT NULL.
+String normalizedApplicationKey(String value) {
+  final normalized = normalizeApplicationIdentifier(
+    value,
+  ).replaceAll(RegExp(r'[^a-z0-9]+'), '_').replaceAll(RegExp(r'^_+|_+$'), '');
+  return normalized.isEmpty ? 'unknown' : normalized;
+}
+
 /// Converts a technical package, executable, or legacy activity identifier
 /// into the stable user-facing product name used everywhere resources are
 /// rendered. Raw identifiers remain available for matching and diagnostics,

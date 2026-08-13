@@ -2572,22 +2572,37 @@ class _HistoryPanel extends ConsumerWidget {
         expression =
             expression &
             row.entityType.isIn(const [
+              'execution_sessions',
               'session_events',
+              'pomodoro_cycles',
               'interruptions',
               'task_notes',
               'activity_contributions',
               'task_completion_evidence',
+              'task_application_links',
+              'website_rules',
+              'task_resources',
+              'resource_activity',
+              'browser_history_events',
             ]);
         return expression;
       });
     return StreamBuilder<List<LocalEntityRecord>>(
       stream: query.watch(),
       builder: (context, snapshot) {
+        final allRecords = snapshot.data ?? const <LocalEntityRecord>[];
+        final sessionIds = <String>{
+          for (final record in allRecords)
+            if (record.entityType == 'execution_sessions' &&
+                _historyRecordReferencesTask(record, task.id, const {}))
+              record.id,
+        };
         final records = [
-          for (final record in snapshot.data ?? const <LocalEntityRecord>[])
-            if (record.parentId == task.id) record,
+          for (final record in allRecords)
+            if (_historyRecordReferencesTask(record, task.id, sessionIds))
+              record,
         ];
-        records.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+        records.sort((a, b) => _historyTime(b).compareTo(_historyTime(a)));
         final hasRecordedCompletion = records.any(
           (record) =>
               record.entityType == 'task_completion_evidence' &&
@@ -2628,6 +2643,19 @@ class _HistoryPanel extends ConsumerWidget {
                     title: context.l10n.text('task_created'),
                     time: task.createdAt,
                   ),
+                  if (task.plannedStart != null || task.scheduledDate != null)
+                    _HistoryRow(
+                      icon: Icons.event_outlined,
+                      title: context.l10n.text('history_scheduled'),
+                      time: task.plannedStart ?? task.scheduledDate!,
+                      details: task.plannedEnd == null
+                          ? null
+                          : context.l10n.format('history_planned_until', {
+                              'time': DateFormat.yMMMd(
+                                Localizations.localeOf(context).toLanguageTag(),
+                              ).add_jm().format(task.plannedEnd!.toLocal()),
+                            }),
+                    ),
                   if (task.actualStart != null)
                     _HistoryRow(
                       icon: Icons.play_arrow,
@@ -2644,7 +2672,8 @@ class _HistoryPanel extends ConsumerWidget {
                     _HistoryRow(
                       icon: _historyIcon(record.entityType),
                       title: _historyTitle(context, record),
-                      time: record.updatedAt,
+                      time: _historyTime(record),
+                      details: _historyDetails(context, record),
                       onTap: record.entityType == 'interruptions'
                           ? () => InterruptionEditorDialog.show(
                               context,
@@ -3028,36 +3057,72 @@ class _ConnectionList extends ConsumerWidget {
       builder: (context, snapshot) {
         final records = snapshot.data ?? const [];
         return Card(
+          key: ValueKey('connection-card-$title'),
           child: Padding(
-            padding: const EdgeInsets.all(18),
+            padding: const EdgeInsets.all(16),
             child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Row(
-                  children: [
-                    CircleAvatar(child: Icon(icon)),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            title,
-                            style: Theme.of(context).textTheme.titleMedium
-                                ?.copyWith(fontWeight: FontWeight.w700),
-                          ),
-                          Text(
-                            subtitle,
-                            style: Theme.of(context).textTheme.bodySmall,
-                          ),
-                        ],
-                      ),
-                    ),
-                    TextButton.icon(
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final compact = constraints.maxWidth < 420;
+                    final copy = Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          title,
+                          maxLines: compact ? 2 : 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.titleMedium
+                              ?.copyWith(fontWeight: FontWeight.w800),
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          subtitle,
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onSurfaceVariant,
+                              ),
+                        ),
+                      ],
+                    );
+                    final add = TextButton.icon(
                       onPressed: onAdd,
                       icon: const Icon(Icons.add),
                       label: Text(addLabel),
-                    ),
-                  ],
+                    );
+                    if (compact) {
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              CircleAvatar(radius: 20, child: Icon(icon)),
+                              const SizedBox(width: 12),
+                              Expanded(child: copy),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          Align(
+                            alignment: AlignmentDirectional.centerStart,
+                            child: add,
+                          ),
+                        ],
+                      );
+                    }
+                    return Row(
+                      children: [
+                        CircleAvatar(child: Icon(icon)),
+                        const SizedBox(width: 12),
+                        Expanded(child: copy),
+                        const SizedBox(width: 8),
+                        add,
+                      ],
+                    );
+                  },
                 ),
                 if (records.isNotEmpty) ...[
                   const Divider(height: 24),
@@ -3098,25 +3163,57 @@ class _ConnectionList extends ConsumerWidget {
                                 )
                               : null,
                         );
-                        return ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          leading: applicationEntries
-                              ? const Icon(Icons.apps_outlined)
-                              : null,
-                          title: Text(label),
-                          subtitle: description.isEmpty
-                              ? null
-                              : Text(description),
-                          trailing: IconButton(
-                            tooltip: context.l10n.text('remove_connection'),
-                            onPressed: () async {
-                              await entities.softDelete(record);
-                              unawaited(
-                                ref.read(syncServiceProvider).drainOutbox(),
-                              );
-                            },
-                            icon: const Icon(Icons.link_off),
-                          ),
+                        return Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            if (applicationEntries) ...[
+                              const Padding(
+                                padding: EdgeInsetsDirectional.only(top: 12),
+                                child: Icon(Icons.apps_outlined, size: 20),
+                              ),
+                              const SizedBox(width: 10),
+                            ],
+                            Expanded(
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 10,
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      label,
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .titleSmall
+                                          ?.copyWith(
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                    ),
+                                    if (description.isNotEmpty) ...[
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        description,
+                                        style: Theme.of(
+                                          context,
+                                        ).textTheme.bodySmall,
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ),
+                            ),
+                            IconButton(
+                              tooltip: context.l10n.text('remove_connection'),
+                              onPressed: () async {
+                                await entities.softDelete(record);
+                                unawaited(
+                                  ref.read(syncServiceProvider).drainOutbox(),
+                                );
+                              },
+                              icon: const Icon(Icons.link_off),
+                            ),
+                          ],
                         );
                       },
                     ),
@@ -3386,6 +3483,7 @@ class _HistoryRow extends StatelessWidget {
     required this.icon,
     required this.title,
     required this.time,
+    this.details,
     this.onTap,
     this.trailing,
   });
@@ -3393,6 +3491,7 @@ class _HistoryRow extends StatelessWidget {
   final IconData icon;
   final String title;
   final DateTime time;
+  final String? details;
   final VoidCallback? onTap;
   final Widget? trailing;
 
@@ -3404,9 +3503,12 @@ class _HistoryRow extends StatelessWidget {
       onTap: onTap,
       trailing: trailing,
       subtitle: Text(
-        DateFormat.yMMMd(
-          Localizations.localeOf(context).toLanguageTag(),
-        ).add_jm().format(time.toLocal()),
+        [
+          DateFormat.yMMMd(
+            Localizations.localeOf(context).toLanguageTag(),
+          ).add_jm().format(time.toLocal()),
+          if (details?.trim().isNotEmpty == true) details!.trim(),
+        ].join('\n'),
       ),
     );
   }
@@ -4557,10 +4659,15 @@ IconData _resourceIcon(String type) {
 
 IconData _historyIcon(String type) {
   return switch (type) {
+    'execution_sessions' => Icons.timer_outlined,
+    'pomodoro_cycles' => Icons.hourglass_bottom,
     'task_notes' => Icons.notes_outlined,
     'interruptions' => Icons.warning_amber,
     'activity_contributions' => Icons.call_merge,
     'task_completion_evidence' => Icons.task_alt,
+    'task_application_links' => Icons.apps_outlined,
+    'website_rules' => Icons.language,
+    'task_resources' || 'resource_activity' => Icons.open_in_new,
     _ => Icons.bolt,
   };
 }
@@ -4574,9 +4681,157 @@ String _historyTitle(BuildContext context, LocalEntityRecord record) {
       _ => 'task_history_event',
     });
   }
+  if (record.entityType == 'session_events') {
+    return context.l10n.text(switch (_recordEventType(record)) {
+      'start' || 'start_focus' || 'resume_focus' => 'history_focus_started',
+      'pause' => 'history_paused',
+      'resume' => 'history_resumed',
+      'finish_focus' || 'focus_completed' => 'history_focus_completed',
+      'start_break' => 'history_break_started',
+      'extend_break' => 'history_break_extended',
+      'skip_break' => 'history_break_skipped',
+      'overtime_started' => 'history_overtime_started',
+      'complete' => 'completed',
+      _ => 'session_events',
+    });
+  }
+  if (record.entityType == 'execution_sessions') {
+    return context.l10n.text('history_session_started');
+  }
+  if (record.entityType == 'pomodoro_cycles') {
+    return context.l10n.text('history_pomodoro_cycle');
+  }
+  if (record.entityType == 'task_application_links') {
+    return context.l10n.text('history_application_connected');
+  }
+  if (record.entityType == 'website_rules' ||
+      record.entityType == 'activity_contributions') {
+    return context.l10n.text('history_website_credited');
+  }
+  if (record.entityType == 'task_resources' ||
+      record.entityType == 'resource_activity' ||
+      record.entityType == 'browser_history_events') {
+    return context.l10n.text('history_resource_opened');
+  }
   return record.title.isEmpty
       ? _localizedEntityType(context, record.entityType)
-      : record.title;
+      : _historySafeLabel(record.title) ??
+            _localizedEntityType(context, record.entityType);
+}
+
+bool _historyRecordReferencesTask(
+  LocalEntityRecord record,
+  String taskId,
+  Set<String> sessionIds,
+) {
+  final data = _historyData(record);
+  final candidates = <Object?>[
+    record.parentId,
+    record.secondaryParentId,
+    data['task_occurrence_id'],
+    data['task_id'],
+    data['target_task_id'],
+  ];
+  if (candidates.any((value) => value?.toString() == taskId)) return true;
+  final sessionId = data['session_id']?.toString();
+  return sessionIds.contains(record.parentId) ||
+      sessionIds.contains(record.secondaryParentId) ||
+      (sessionId != null && sessionIds.contains(sessionId));
+}
+
+Map<String, Object?> _historyData(LocalEntityRecord record) {
+  try {
+    final decoded = jsonDecode(record.dataJson);
+    if (decoded is! Map) return const {};
+    final data = Map<String, Object?>.from(decoded);
+    final nested = data['data'];
+    if (nested is Map) data.addAll(Map<String, Object?>.from(nested));
+    final metadata = data['evidence_metadata'];
+    if (metadata is Map) data.addAll(Map<String, Object?>.from(metadata));
+    return data;
+  } catch (_) {
+    return const {};
+  }
+}
+
+DateTime _historyTime(LocalEntityRecord record) {
+  final data = _historyData(record);
+  for (final key in const [
+    'occurred_at',
+    'started_at',
+    'focus_started_at',
+    'break_started_at',
+    'completed_at',
+    'finished_at',
+    'ended_at',
+  ]) {
+    final value = data[key];
+    if (value is DateTime) return value;
+    if (value is String) {
+      final parsed = DateTime.tryParse(value);
+      if (parsed != null) return parsed;
+    }
+  }
+  return record.updatedAt;
+}
+
+String? _historyDetails(BuildContext context, LocalEntityRecord record) {
+  final data = _historyData(record);
+  int? durationMs;
+  for (final key in const [
+    'duration_ms',
+    'focus_duration_ms',
+    'break_duration_ms',
+    'active_duration_ms',
+    'accumulated_active_ms',
+    'credited_duration_ms',
+  ]) {
+    final value = data[key];
+    if (value is num && value > 0) {
+      durationMs = value.toInt();
+      break;
+    }
+  }
+  durationMs ??= switch (data['duration_seconds']) {
+    final num seconds when seconds > 0 => (seconds * 1000).round(),
+    _ => null,
+  };
+  final device = _historySafeLabel(
+    data['device_name']?.toString() ??
+        data['source_device_name']?.toString() ??
+        data['device_label']?.toString(),
+  );
+  final resource = _historySafeLabel(
+    data['resource_name']?.toString() ??
+        data['resource_title']?.toString() ??
+        data['application_name']?.toString() ??
+        data['display_name']?.toString() ??
+        data['registrable_domain']?.toString() ??
+        data['host']?.toString(),
+  );
+  final parts = <String>[
+    if (durationMs != null)
+      context.l10n.format('history_duration', {
+        'duration': context.l10n.duration(Duration(milliseconds: durationMs)),
+      }),
+    if (device != null)
+      context.l10n.format('history_device', {'device': device}),
+    if (resource != null)
+      context.l10n.format('history_resource', {'resource': resource}),
+  ];
+  return parts.isEmpty ? null : parts.join(' · ');
+}
+
+String? _historySafeLabel(String? value) {
+  final trimmed = value?.trim();
+  if (trimmed == null || trimmed.isEmpty) return null;
+  if (RegExp(
+    r'^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$',
+    caseSensitive: false,
+  ).hasMatch(trimmed)) {
+    return null;
+  }
+  return trimmed.replaceAll('_', ' ');
 }
 
 String? _lifecycleEventType(LocalEntityRecord record) {

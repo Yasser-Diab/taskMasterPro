@@ -28,10 +28,9 @@ class AuthGate extends ConsumerStatefulWidget {
 class _AuthGateState extends ConsumerState<AuthGate>
     with WidgetsBindingObserver {
   String? _preparedUserId;
-  String? _activeAccountId;
   String? _signedOutTrayLocale;
   Future<void>? _preparation;
-  Future<void> _accountTransition = Future<void>.value();
+  final _accountTransition = AccountDatabaseTransitionCoordinator();
 
   @override
   void initState() {
@@ -51,27 +50,41 @@ class _AuthGateState extends ConsumerState<AuthGate>
         ref.read(supabaseClientProvider).auth.currentUser == null) {
       return;
     }
-    // Re-run the idempotent sync start on resume. This covers Android's
-    // network hand-off and a missed Realtime event without asking the user to
-    // reopen the Synchronization screen or restart the app.
-    unawaited(ref.read(syncServiceProvider).start());
+    // A resume can be emitted by window focus, a permission sheet, or the
+    // OAuth browser. It is not evidence of a missed remote change, so never
+    // reinstall routines or run an authoritative pull here. The sync service
+    // already observes connectivity and only retries an interrupted Realtime
+    // join with bounded backoff.
+    unawaited(() async {
+      try {
+        await ref.read(syncServiceProvider).recoverAfterResume();
+      } catch (_) {
+        // Connectivity and canonical state are retried by the normal sync
+        // lifecycle; resume must never surface a synchronization dialog.
+      }
+    }());
   }
 
   Future<void> _selectAccount(String? userId) {
-    if (_activeAccountId == userId) return _accountTransition;
-    _accountTransition = _accountTransition.then((_) async {
-      if (_activeAccountId == userId) return;
-      // Stop the old account before replacing the provider dependency.  The
-      // provider disposal then closes its dedicated database and cancels its
-      // Activity capture service.
-      await ref.read(syncServiceProvider).stop();
-      PaintingBinding.instance.imageCache.clear();
-      PaintingBinding.instance.imageCache.clearLiveImages();
-      if (!mounted) return;
-      ref.read(activeAccountIdProvider.notifier).select(userId);
-      _activeAccountId = userId;
-    });
-    return _accountTransition;
+    // Stop and await every writer before closing the old account database.
+    // Riverpod disposes dependent providers independently, so relying on
+    // provider disposal order allowed Activity's final sample to race
+    // Drift's query-stream teardown during sign-out/account switching.
+    final sync = ref.read(syncServiceProvider);
+    final activity = ref.read(activityCaptureServiceProvider);
+    final database = ref.read(databaseProvider);
+    return _accountTransition.select(
+      userId,
+      stopSync: sync.stop,
+      stopActivity: activity.dispose,
+      closeDatabase: database.close,
+      activate: (selectedUserId) {
+        PaintingBinding.instance.imageCache.clear();
+        PaintingBinding.instance.imageCache.clearLiveImages();
+        if (!mounted) return;
+        ref.read(activeAccountIdProvider.notifier).select(selectedUserId);
+      },
+    );
   }
 
   Future<void> _prepare(User user) {
@@ -94,23 +107,23 @@ class _AuthGateState extends ConsumerState<AuthGate>
       unawaited(() async {
         try {
           await ref.read(syncServiceProvider).start();
-        } catch (_) {
-          // The periodic connectivity listener retries when the network or
-          // Supabase becomes available again.
-        }
-      }());
-      unawaited(() async {
-        try {
+          // A new device begins with an empty account database. Run the
+          // source-bound installer after the initial canonical pull so the
+          // imported plan marker is available on this first launch.
+          final routineResult = await ref
+              .read(ownerRoutineInstallerProvider)
+              .ensureInstalled();
           final generated = await ref
               .read(recurrenceServiceProvider)
               .generateUpcoming();
-          if (generated > 0) {
-            unawaited(ref.read(syncServiceProvider).drainOutbox());
+          if (routineResult.changed || generated > 0) {
+            await ref.read(syncServiceProvider).drainOutbox();
           }
           await ref.read(activityCaptureServiceProvider).start();
         } catch (_) {
-          // Recurrence generation and permission-dependent capture retry on
-          // the next launch without holding the local workspace hostage.
+          // Connectivity, recurrence generation and permission-dependent
+          // capture retry on the next lifecycle recovery without holding the
+          // local workspace hostage.
         }
       }());
     }();

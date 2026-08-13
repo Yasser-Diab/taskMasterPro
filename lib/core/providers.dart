@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -11,6 +9,7 @@ import '../features/roadmaps/data/roadmap_repository.dart';
 import '../features/settings/data/settings_repository.dart';
 import '../features/tasks/data/task_repository.dart';
 import '../features/tasks/data/recurrence_service.dart';
+import '../features/tasks/data/owner_routine_installer.dart';
 import '../features/tasks/data/task_resource_service.dart';
 import '../features/tasks/data/website_rule_service.dart';
 import 'data/entity_record_repository.dart';
@@ -20,7 +19,9 @@ import 'sync/sync_service.dart';
 final databaseProvider = Provider<AppDatabase>((ref) {
   final accountId = ref.watch(activeAccountIdProvider);
   final database = AppDatabase.forAccount(accountId);
-  ref.onDispose(() => unawaited(database.close()));
+  // AuthGate owns the ordered account transition. Closing here would race the
+  // Activity collector's asynchronous provider disposal and can tear down
+  // Drift while a final sample is still being written.
   return database;
 });
 
@@ -62,6 +63,14 @@ final recurrenceServiceProvider = Provider<RecurrenceService>(
   ),
 );
 
+final ownerRoutineInstallerProvider = Provider<OwnerRoutineInstaller>(
+  (ref) => OwnerRoutineInstaller(
+    database: ref.watch(databaseProvider),
+    entities: ref.watch(entityRecordRepositoryProvider),
+    settings: ref.watch(settingsRepositoryProvider),
+  ),
+);
+
 final roadmapRepositoryProvider = Provider<RoadmapRepository>(
   (ref) => RoadmapRepository(
     ref.watch(databaseProvider),
@@ -81,7 +90,6 @@ final activityCaptureServiceProvider = Provider<ActivityCaptureService>((ref) {
     database: ref.watch(databaseProvider),
     repository: ref.watch(activityRepositoryProvider),
   );
-  ref.onDispose(service.dispose);
   return service;
 });
 

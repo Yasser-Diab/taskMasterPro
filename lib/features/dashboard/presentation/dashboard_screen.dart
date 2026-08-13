@@ -21,8 +21,10 @@ import '../../tasks/presentation/task_card.dart';
 import '../../tasks/presentation/task_completion_flow.dart';
 import '../../tasks/presentation/task_editor_dialog.dart';
 import '../../tasks/presentation/interruption_editor_dialog.dart';
+import '../../tasks/presentation/standalone_pomodoro_screen.dart';
 import '../../tasks/presentation/task_start_flow.dart';
 import '../../tasks/presentation/task_workspace_screen.dart';
+import '../../tasks/domain/daily_planned_time.dart';
 import 'today_recorded_sessions_screen.dart';
 
 /// Coaching decisions remain locale-neutral. Duration evidence crosses this
@@ -130,10 +132,11 @@ class DashboardScreen extends ConsumerWidget {
       now: now,
       timeZone: timeZone,
     ).length;
-    final plannedMs = scheduledTasks.fold<int>(
-      0,
-      (total, task) => total + task.estimatedDurationMs,
-    );
+    final plannedMs = DailyPlannedTime.calculate(
+      scheduledTasks,
+      localDay: localToday,
+      timeZone: timeZone,
+    ).inMilliseconds;
     final profile = ref.watch(localProfileProvider(user.id)).value;
     final displayName = profile?.displayName.trim().isNotEmpty == true
         ? profile!.displayName
@@ -192,6 +195,22 @@ class DashboardScreen extends ConsumerWidget {
                       _NoActiveTask(
                         onAdd: () => TaskEditorDialog.show(context),
                       ),
+                    const SizedBox(height: 8),
+                    Align(
+                      alignment: AlignmentDirectional.centerEnd,
+                      child: ActionChip(
+                        key: const ValueKey(
+                          'dashboard-standalone-pomodoro-shortcut',
+                        ),
+                        avatar: const Icon(Icons.timer_outlined, size: 18),
+                        label: Text(context.l10n.text('standalone_pomodoro')),
+                        onPressed: () => Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) => const StandalonePomodoroScreen(),
+                          ),
+                        ),
+                      ),
+                    ),
                     const SizedBox(height: 16),
                     LayoutBuilder(
                       builder: (context, constraints) {
@@ -696,51 +715,54 @@ class _NoActiveTask extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final icon = CircleAvatar(
-      radius: 26,
-      backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-      child: Icon(
-        Icons.play_arrow_rounded,
-        color: Theme.of(context).colorScheme.primary,
-      ),
-    );
-    final copy = Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          context.l10n.text('dashboard_no_active_task'),
-          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 18),
-        ),
-        const SizedBox(height: 4),
-        Text(context.l10n.text('dashboard_start_suggestion')),
-      ],
-    );
-    final add = OutlinedButton.icon(
-      onPressed: onAdd,
-      icon: const Icon(Icons.add),
-      label: Text(context.l10n.text('add_task')),
-    );
     return Card(
+      key: const ValueKey('dashboard-no-active-task-card'),
       child: Padding(
-        padding: const EdgeInsets.all(22),
+        padding: const EdgeInsets.all(20),
         child: LayoutBuilder(
           builder: (context, constraints) {
-            // Keeping both the action and explanatory copy in one row on a
-            // narrow handset gives the text only a few characters per line.
-            // Stack the independent action under the message instead.
+            final colorScheme = Theme.of(context).colorScheme;
+            final icon = CircleAvatar(
+              radius: constraints.maxWidth < 360 ? 22 : 26,
+              backgroundColor: colorScheme.primaryContainer,
+              child: Icon(Icons.play_arrow_rounded, color: colorScheme.primary),
+            );
+            final title = Text(
+              context.l10n.text('dashboard_no_active_task'),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+            );
+            final description = Text(
+              context.l10n.text('dashboard_start_suggestion'),
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: colorScheme.onSurfaceVariant,
+              ),
+            );
+            final add = OutlinedButton.icon(
+              onPressed: onAdd,
+              icon: const Icon(Icons.add),
+              label: Text(context.l10n.text('add_task')),
+            );
+            // On a compact handset the description and action need the whole
+            // card width. Reserving their width beside a large play icon is
+            // what produced the word-by-word wrapping seen on real devices.
             if (constraints.maxWidth < 430) {
               return Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       icon,
-                      const SizedBox(width: 16),
-                      Expanded(child: copy),
+                      const SizedBox(width: 12),
+                      Expanded(child: title),
                     ],
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 12),
+                  description,
+                  const SizedBox(height: 14),
                   Align(
                     alignment: AlignmentDirectional.centerStart,
                     child: add,
@@ -752,7 +774,12 @@ class _NoActiveTask extends StatelessWidget {
               children: [
                 icon,
                 const SizedBox(width: 16),
-                Expanded(child: copy),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [title, const SizedBox(height: 4), description],
+                  ),
+                ),
                 const SizedBox(width: 12),
                 add,
               ],

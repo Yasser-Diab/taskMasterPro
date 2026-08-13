@@ -9,6 +9,7 @@ import 'package:taskmaster_pro/core/database/app_database.dart';
 import 'package:taskmaster_pro/core/sync/sync_service.dart';
 import 'package:taskmaster_pro/features/activity/data/activity_repository.dart';
 import 'package:taskmaster_pro/features/tasks/data/installed_application_service.dart';
+import 'package:taskmaster_pro/features/tasks/domain/task_domain_catalog.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -50,6 +51,17 @@ void main() {
     () {
       expect(authoritativeSnapshotEntityTypes, contains('task_resources'));
       expect(authoritativeSnapshotEntityTypes, contains('website_rules'));
+      expect(authoritativeSnapshotEntityTypes, contains('recurrence_rules'));
+      expect(authoritativeSnapshotEntityTypes, contains('task_templates'));
+      expect(authoritativeSnapshotEntityTypes, contains('task_reminders'));
+      expect(
+        authoritativeSnapshotEntityTypes.indexOf('recurrence_rules'),
+        lessThan(authoritativeSnapshotEntityTypes.indexOf('task_templates')),
+      );
+      expect(
+        authoritativeSnapshotEntityTypes.indexOf('task_templates'),
+        lessThan(authoritativeSnapshotEntityTypes.indexOf('task_occurrences')),
+      );
       expect(
         authoritativeSnapshotEntityTypes.indexOf('task_occurrences'),
         lessThan(authoritativeSnapshotEntityTypes.indexOf('task_resources')),
@@ -58,7 +70,11 @@ void main() {
         authoritativeSnapshotEntityTypes.indexOf('task_occurrences'),
         lessThan(authoritativeSnapshotEntityTypes.indexOf('website_rules')),
       );
-      expect(authoritativeSnapshotStateId('user-1'), 'sync:v3:user-1');
+      expect(
+        authoritativeSnapshotEntityTypes.indexOf('task_occurrences'),
+        lessThan(authoritativeSnapshotEntityTypes.indexOf('task_reminders')),
+      );
+      expect(authoritativeSnapshotStateId('user-1'), 'sync:v4:user-1');
     },
   );
 
@@ -600,7 +616,215 @@ void main() {
       ),
       isFalse,
     );
+    expect(
+      isProvenCanonicalDuplicateCreate(
+        commandType: 'create',
+        reason: 'revision_mismatch',
+        serverRevision: 2,
+        commandEntityId: domainId,
+        userId: owner,
+        canonicalRow: canonical,
+      ),
+      isFalse,
+      reason: 'The canonical row must prove the reported server revision.',
+    );
   });
+
+  test('any durable Area delivery history prevents command recreation', () {
+    for (final hasHistory in const [true, false]) {
+      expect(
+        shouldRestoreMissingParentCreate(
+          hasCanonicalCommandIdentity: false,
+          hasDurableDeliveryHistory: hasHistory,
+          isKnownRemoteRow: false,
+        ),
+        !hasHistory,
+      );
+    }
+    expect(
+      shouldRestoreMissingParentCreate(
+        hasCanonicalCommandIdentity: true,
+        hasDurableDeliveryHistory: false,
+        isKnownRemoteRow: false,
+      ),
+      isFalse,
+    );
+    expect(
+      shouldRestoreMissingParentCreate(
+        hasCanonicalCommandIdentity: false,
+        hasDurableDeliveryHistory: false,
+        isKnownRemoteRow: true,
+      ),
+      isFalse,
+    );
+  });
+
+  test(
+    'history-less deterministic Area reconstruction keeps built-in data',
+    () {
+      const owner = '5b4fd021-1342-4d0b-a8e0-04ff1b8d1abc';
+      final learning = TaskDomainCatalog.idFor(owner, 'learning');
+      expect(restoredTaskDomainData(userId: owner, domainId: learning), const {
+        'built_in': true,
+        'domain_key': 'learning',
+      });
+      expect(
+        restoredTaskDomainData(
+          userId: owner,
+          domainId: '4a509309-2aa4-4577-a20d-923bdd2e61ef',
+        ),
+        isEmpty,
+      );
+    },
+  );
+
+  test(
+    'same-ID Area conflicts retire only when create intent is identical',
+    () {
+      const owner = '5b4fd021-1342-4d0b-a8e0-04ff1b8d1abc';
+      final learning = TaskDomainCatalog.idFor(owner, 'learning');
+      final canonical = <String, dynamic>{
+        'id': learning,
+        'user_id': owner,
+        'name': 'Learning',
+        'icon_name': 'school',
+        'color_value': 4280289423,
+        'position': 1.0,
+        'data': const {'built_in': true, 'domain_key': 'learning'},
+      };
+      expect(
+        isSameTaskDomainCreateIntent(
+          userId: owner,
+          entityId: learning,
+          localPayload: const {
+            'name': 'Learning',
+            'icon_name': 'school',
+            'color_value': 4280289423,
+            'position': 1,
+            // This is the legacy payload that caused the real retry loop.
+            'data': <String, Object?>{},
+          },
+          canonicalRow: canonical,
+        ),
+        isTrue,
+      );
+      expect(
+        isSameTaskDomainCreateIntent(
+          userId: owner,
+          entityId: learning,
+          localPayload: const {
+            'name': 'Renamed learning',
+            'icon_name': 'school',
+            'color_value': 4280289423,
+            'position': 1,
+            'data': <String, Object?>{},
+          },
+          canonicalRow: canonical,
+        ),
+        isFalse,
+        reason: 'A user-visible Area edit remains a genuine conflict.',
+      );
+    },
+  );
+
+  test('application-rule convergence requires identical behavior intent', () {
+    const canonical = <String, dynamic>{
+      'application_id': '11111111-1111-4111-8111-111111111111',
+      'scope_type': 'task',
+      'scope_id': '22222222-2222-4222-8222-222222222222',
+      'classification': 'direct_task_work',
+      'target_type': 'task_occurrence',
+      'target_id': '22222222-2222-4222-8222-222222222222',
+      'contribution_type': 'productive',
+      'automatic_credit': true,
+      'priority': 200,
+    };
+    expect(
+      isSameApplicationRuleIntent(
+        localPayload: canonical,
+        canonicalRow: canonical,
+      ),
+      isTrue,
+    );
+    expect(
+      isSameApplicationRuleIntent(
+        localPayload: {...canonical, 'classification': 'distraction'},
+        canonicalRow: canonical,
+      ),
+      isFalse,
+      reason: 'A different classification is a genuine user edit.',
+    );
+    expect(
+      isSameApplicationRuleIntent(
+        localPayload: {...canonical, 'automatic_credit': false},
+        canonicalRow: canonical,
+      ),
+      isFalse,
+    );
+  });
+
+  test(
+    'legacy Amazon task-application aliases converge only for identical intent',
+    () {
+      const canonical = <String, dynamic>{
+        'id': '33333333-3333-4333-8333-333333333333',
+        'user_id': '5b4fd021-1342-4d0b-a8e0-04ff1b8d1abc',
+        'task_occurrence_id': '11111111-1111-4111-8111-111111111111',
+        'application_id': '22222222-2222-4222-8222-222222222222',
+        'relationship_type': 'supporting',
+        'raw_identifier_snapshot': 'com.amazon.mShop.android.shopping',
+        'normalized_application_key_snapshot':
+            'com.amazon.mshop.android.shopping',
+        'data': {
+          'classification': 'direct_task_work',
+          'automatic_credit': true,
+        },
+      };
+      const legacyAmazonPayload = <String, dynamic>{
+        'task_occurrence_id': '11111111-1111-4111-8111-111111111111',
+        'application_id': '22222222-2222-4222-8222-222222222222',
+        'platform': 'android',
+        'raw_identifier_snapshot': 'com.amazon.mShop.android.shopping',
+        'normalized_application_key_snapshot':
+            'com.amazon.mshop.android.shopping',
+        'relationship_type': 'supporting',
+        'classification': 'direct_task_work',
+        'automatic_credit': true,
+      };
+
+      expect(
+        isSameTaskApplicationLinkIntent(
+          localPayload: legacyAmazonPayload,
+          canonicalRow: canonical,
+        ),
+        isTrue,
+        reason:
+            'The Huawei v29 alias is the same active relationship even though its link UUID differs.',
+      );
+      expect(
+        isSameTaskApplicationLinkIntent(
+          localPayload: {
+            ...legacyAmazonPayload,
+            'classification': 'distraction',
+          },
+          canonicalRow: canonical,
+        ),
+        isFalse,
+        reason: 'A different classification must remain a user conflict.',
+      );
+      expect(
+        isSameTaskApplicationLinkIntent(
+          localPayload: {
+            ...legacyAmazonPayload,
+            'task_occurrence_id': '44444444-4444-4444-8444-444444444444',
+          },
+          canonicalRow: canonical,
+        ),
+        isFalse,
+        reason: 'A different task must never be merged by application name.',
+      );
+    },
+  );
 
   test('atomic Activity classifier has owner-scoped definer privileges', () {
     final migration = File(
@@ -647,6 +871,93 @@ void main() {
               'platform, application_identifier)',
         ),
         isTrue,
+      );
+    },
+  );
+
+  test('legacy catalog schema failures replay one normalized create', () {
+    const legacyError =
+        '{"reason":"invalid_command_payload","code":"23502",'
+        '"message":"null value in column normalized_application_key"}';
+    expect(
+      isLegacyApplicationCatalogContractFailure(
+        entityType: 'application_catalog',
+        commandType: 'create',
+        status: 'conflict',
+        lastError: legacyError,
+      ),
+      isTrue,
+    );
+    expect(
+      isLegacyApplicationCatalogContractFailure(
+        entityType: 'application_catalog',
+        commandType: 'create',
+        status: 'pending',
+        lastError: legacyError,
+      ),
+      isFalse,
+    );
+    expect(
+      normalizedApplicationCatalogCreatePayload(const {
+        'platform': 'Windows',
+        'application_identifier': 'windows|foreground_user_surface|chrome.exe',
+        'display_name': 'Google Chrome',
+      }),
+      containsPair(
+        'normalized_application_key',
+        'windows_foreground_user_surface_chrome_exe',
+      ),
+    );
+    expect(
+      normalizedApplicationCatalogCreatePayload(const {'platform': 'windows'}),
+      isNull,
+      reason: 'Malformed history must remain diagnostic instead of guessed.',
+    );
+  });
+
+  test(
+    'only a 23505 canonical built-in Area collision is an automatic alias',
+    () {
+      const payload = <String, Object?>{
+        'name': 'Learning',
+        'data': <String, Object?>{'built_in': true, 'domain_key': 'learning'},
+      };
+      expect(
+        isBuiltInTaskDomainUniqueConflict(
+          entityType: 'task_domains',
+          commandType: 'create',
+          errorCode: '23505',
+          errorMessage:
+              'duplicate key violates task_domains_user_builtin_key_unique '
+              '(user_id, domain_key)',
+          payload: payload,
+        ),
+        isTrue,
+      );
+      expect(
+        isBuiltInTaskDomainUniqueConflict(
+          entityType: 'task_domains',
+          commandType: 'create',
+          errorCode: '23505',
+          errorMessage:
+              'duplicate key violates task_domains_user_builtin_key_unique',
+          payload: const {
+            'name': 'My work',
+            'data': <String, Object?>{'built_in': false},
+          },
+        ),
+        isFalse,
+        reason: 'A custom Area collision remains genuine user intent.',
+      );
+      expect(
+        isBuiltInTaskDomainUniqueConflict(
+          entityType: 'task_domains',
+          commandType: 'create',
+          errorCode: '42501',
+          errorMessage: 'permission denied',
+          payload: payload,
+        ),
+        isFalse,
       );
     },
   );
@@ -920,7 +1231,55 @@ void main() {
     },
   );
 
-  test('an idle outbox never turns the maintenance tick into a pull loop', () {
+  test('healthy idle Realtime performs no timer-driven remote recovery', () {
+    for (var resume = 0; resume < 22; resume++) {
+      expect(
+        shouldReuseStartedSyncService(
+          startedForUserId: 'account-a',
+          requestedUserId: 'account-a',
+        ),
+        isTrue,
+        reason: 'Resume $resume must reuse workers without a REST pull.',
+      );
+    }
+    expect(
+      shouldReuseStartedSyncService(
+        startedForUserId: 'account-a',
+        requestedUserId: 'account-b',
+      ),
+      isFalse,
+    );
+    expect(
+      shouldRunRemoteRecovery(
+        connectivityRestored: false,
+        realtimeRecovered: false,
+        realtimeGapExpired: false,
+        snapshotInvalidated: false,
+        explicitlyRequested: false,
+      ),
+      isFalse,
+      reason:
+          'Five idle minutes (or any idle duration) must create zero fallback reads.',
+    );
+    for (final recovery in const [
+      (true, false, false, false, false),
+      (false, true, false, false, false),
+      (false, false, true, false, false),
+      (false, false, false, true, false),
+      (false, false, false, false, true),
+    ]) {
+      expect(
+        shouldRunRemoteRecovery(
+          connectivityRestored: recovery.$1,
+          realtimeRecovered: recovery.$2,
+          realtimeGapExpired: recovery.$3,
+          snapshotInvalidated: recovery.$4,
+          explicitlyRequested: recovery.$5,
+        ),
+        isTrue,
+      );
+    }
+
     final source = File('lib/core/sync/sync_service.dart').readAsStringSync();
     final emptyOutboxBlock = RegExp(
       r'if \(commands\.isEmpty\) \{(?<body>[\s\S]*?)\n    \}',
@@ -931,7 +1290,17 @@ void main() {
       emptyOutboxBlock!.namedGroup('body'),
       isNot(contains('pullChanges')),
     );
-    expect(source, contains('const Duration(minutes: 2)'));
+    expect(source, isNot(contains('Timer.periodic(')));
+    expect(
+      source,
+      contains('const _deviceAuthorizationTtl = Duration(minutes: 30)'),
+    );
+    expect(source, contains('realtimeGapExpired: firstFallbackForOutage'));
+    expect(source, isNot(contains('_realtimeRecoveryAttemptedForGap')));
+    expect(realtimeReconnectDelay(0), const Duration(seconds: 20));
+    expect(realtimeReconnectDelay(1), const Duration(seconds: 40));
+    expect(realtimeReconnectDelay(4), const Duration(seconds: 320));
+    expect(realtimeReconnectDelay(40), const Duration(seconds: 320));
     final shell = File(
       'lib/features/shell/presentation/home_shell.dart',
     ).readAsStringSync();
@@ -942,6 +1311,33 @@ void main() {
           'The 15-second Windows tray tick must use cached sync health rather than poll account devices.',
     );
   });
+
+  test(
+    'duplicate Realtime handlers are derived from measured channel state',
+    () {
+      expect(
+        duplicateRealtimeHandlerCount(
+          activeAccountChannels: 1,
+          registeredEventHandlers: 1,
+        ),
+        0,
+      );
+      expect(
+        duplicateRealtimeHandlerCount(
+          activeAccountChannels: 1,
+          registeredEventHandlers: 3,
+        ),
+        2,
+      );
+      expect(
+        duplicateRealtimeHandlerCount(
+          activeAccountChannels: 0,
+          registeredEventHandlers: 1,
+        ),
+        1,
+      );
+    },
+  );
 
   test('an overlapping sync wake-up replays after the current pass', () async {
     final operation = ReplayableSyncOperation();
@@ -986,7 +1382,7 @@ void main() {
         conflicts: 0,
         recoveryConnectionAvailable: false,
       ),
-      SyncHealth.attention,
+      SyncHealth.syncing,
     );
     expect(
       deriveSyncHealth(

@@ -1186,64 +1186,113 @@ class _TaskBrowserWorkspaceState extends ConsumerState<TaskBrowserWorkspace>
         final selectedData = _displayData(selected);
         final selectedUrl = _tabUrl(selected);
         final selectedBrowser = _browserFor(selected.id);
+        final phone = MediaQuery.sizeOf(context).width < 520;
         return Column(
           children: [
             Material(
               color: Theme.of(context).colorScheme.surfaceContainer,
               child: Column(
                 children: [
-                  SizedBox(
-                    height: 48,
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: ListView(
-                            scrollDirection: Axis.horizontal,
-                            padding: const EdgeInsets.fromLTRB(8, 6, 4, 0),
-                            children: [
-                              for (final tab in tabs)
-                                _BrowserTabChip(
-                                  tab: tab,
-                                  data: _displayData(tab),
-                                  selected: tab.id == selected.id,
-                                  onSelect: () => _selectTab(tab, tabs),
-                                  onClose: () => _closeTab(tab, tabs),
+                  if (phone)
+                    Padding(
+                      padding: const EdgeInsetsDirectional.fromSTEB(8, 6, 4, 0),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: _BrowserTabChip(
+                              tab: selected,
+                              data: selectedData,
+                              selected: true,
+                              compact: true,
+                              onSelect: () => _selectTab(selected, tabs),
+                              onClose: () => _closeTab(selected, tabs),
+                            ),
+                          ),
+                          IconButton(
+                            tooltip: context.l10n.text('browser_new_tab'),
+                            onPressed: () => _newTab(tabs),
+                            icon: const Icon(Icons.add),
+                          ),
+                          IconButton(
+                            visualDensity: VisualDensity.compact,
+                            tooltip: context.l10n.text(
+                              widget.fullScreen
+                                  ? 'browser_exit_full_screen'
+                                  : 'browser_full_screen',
+                            ),
+                            onPressed: _toggleFullScreen,
+                            icon: Icon(
+                              widget.fullScreen
+                                  ? Icons.fullscreen_exit
+                                  : Icons.fullscreen,
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  else
+                    SizedBox(
+                      height: 48,
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: ListView(
+                              scrollDirection: Axis.horizontal,
+                              padding: const EdgeInsets.fromLTRB(8, 6, 4, 0),
+                              children: [
+                                for (final tab in tabs)
+                                  _BrowserTabChip(
+                                    tab: tab,
+                                    data: _displayData(tab),
+                                    selected: tab.id == selected.id,
+                                    onSelect: () => _selectTab(tab, tabs),
+                                    onClose: () => _closeTab(tab, tabs),
+                                  ),
+                                IconButton(
+                                  tooltip: context.l10n.text('browser_new_tab'),
+                                  onPressed: () => _newTab(tabs),
+                                  icon: const Icon(Icons.add),
                                 ),
-                              IconButton(
-                                tooltip: context.l10n.text('browser_new_tab'),
-                                onPressed: () => _newTab(tabs),
-                                icon: const Icon(Icons.add),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
-                        ),
-                        _BrowserTaskControlPill(task: widget.task),
-                        IconButton(
-                          visualDensity: VisualDensity.compact,
-                          tooltip: context.l10n.text(
-                            widget.fullScreen
-                                ? 'browser_exit_full_screen'
-                                : 'browser_full_screen',
+                          _BrowserTaskControlPill(task: widget.task),
+                          IconButton(
+                            visualDensity: VisualDensity.compact,
+                            tooltip: context.l10n.text(
+                              widget.fullScreen
+                                  ? 'browser_exit_full_screen'
+                                  : 'browser_full_screen',
+                            ),
+                            onPressed: _toggleFullScreen,
+                            icon: Icon(
+                              widget.fullScreen
+                                  ? Icons.fullscreen_exit
+                                  : Icons.fullscreen,
+                            ),
                           ),
-                          onPressed: _toggleFullScreen,
-                          icon: Icon(
-                            widget.fullScreen
-                                ? Icons.fullscreen_exit
-                                : Icons.fullscreen,
-                          ),
-                        ),
-                        const SizedBox(width: 4),
-                      ],
+                          const SizedBox(width: 4),
+                        ],
+                      ),
                     ),
-                  ),
+                  if (phone)
+                    Padding(
+                      padding: const EdgeInsetsDirectional.fromSTEB(8, 4, 8, 0),
+                      child: _BrowserTaskControlPill(
+                        task: widget.task,
+                        fillAvailableWidth: true,
+                      ),
+                    ),
                   Padding(
                     padding: const EdgeInsets.fromLTRB(8, 6, 8, 8),
                     child: LayoutBuilder(
                       builder: (context, constraints) {
                         final compact = constraints.maxWidth < 620;
+                        final veryCompact = constraints.maxWidth < 380;
                         return Row(
                           children: [
                             IconButton(
+                              visualDensity: VisualDensity.compact,
                               tooltip: context.l10n.text('back'),
                               onPressed: selectedBrowser.back,
                               icon: const Icon(Icons.arrow_back),
@@ -1255,6 +1304,7 @@ class _TaskBrowserWorkspaceState extends ConsumerState<TaskBrowserWorkspace>
                                 icon: const Icon(Icons.arrow_forward),
                               ),
                             IconButton(
+                              visualDensity: VisualDensity.compact,
                               tooltip: context.l10n.text('browser_refresh'),
                               onPressed: selectedBrowser.reload,
                               icon: const Icon(Icons.refresh),
@@ -1269,7 +1319,9 @@ class _TaskBrowserWorkspaceState extends ConsumerState<TaskBrowserWorkspace>
                                   hintText: context.l10n.text(
                                     'browser_search_address',
                                   ),
-                                  prefixIcon: const Icon(Icons.search),
+                                  prefixIcon: veryCompact
+                                      ? null
+                                      : const Icon(Icons.search),
                                 ),
                               ),
                             ),
@@ -1291,6 +1343,7 @@ class _TaskBrowserWorkspaceState extends ConsumerState<TaskBrowserWorkspace>
                               ),
                             if (compact)
                               PopupMenuButton<String>(
+                                padding: EdgeInsets.zero,
                                 tooltip: context.l10n.text(
                                   'browser_tab_actions',
                                 ),
@@ -1330,121 +1383,132 @@ class _TaskBrowserWorkspaceState extends ConsumerState<TaskBrowserWorkspace>
                                 ],
                                 icon: const Icon(Icons.more_horiz),
                               ),
-                            PopupMenuButton<String>(
-                              tooltip: context.l10n.text('browser_tab_actions'),
-                              onSelected: (action) async {
-                                final data = _data(selected);
-                                switch (action) {
-                                  case 'pin':
-                                    data['is_pinned'] =
-                                        !(data['is_pinned'] == true);
-                                    await ref
-                                        .read(entityRecordRepositoryProvider)
-                                        .update(
-                                          selected,
-                                          data: data,
-                                          syncPayload: {
-                                            'is_pinned': data['is_pinned'],
-                                          },
-                                        );
-                                  case 'rename':
-                                    await _renameTab(selected);
-                                  case 'duplicate':
-                                    await _createTab(
-                                      workspaceId: _workspaceId!,
-                                      url: selectedUrl,
-                                      position: tabs.length.toDouble(),
-                                    );
-                                  case 'close_others':
-                                    await _closeOtherTabs(selected, tabs);
-                                  case 'reopen':
-                                    await _reopenClosedTab();
-                                  case 'move':
-                                    await _moveTabToTask(selected);
-                                  case 'external':
-                                    await launchUrl(
-                                      Uri.parse(selectedUrl),
-                                      mode: LaunchMode.externalApplication,
-                                    );
-                                  case 'remember':
-                                    await _rememberWebsite(selected);
-                                  case 'save_sign_in':
-                                    await _saveSignInToVault(selectedUrl);
-                                  case 'fill_sign_in':
-                                    await _fillFromVault(selectedUrl);
-                                }
-                              },
-                              itemBuilder: (_) => [
-                                PopupMenuItem(
-                                  value: 'pin',
-                                  child: Text(
-                                    selectedData['is_pinned'] == true
-                                        ? context.l10n.text('browser_unpin_tab')
-                                        : context.l10n.text('browser_pin_tab'),
-                                  ),
+                            if (!veryCompact)
+                              PopupMenuButton<String>(
+                                tooltip: context.l10n.text(
+                                  'browser_tab_actions',
                                 ),
-                                PopupMenuItem(
-                                  value: 'rename',
-                                  child: Text(
-                                    context.l10n.text('browser_rename_tab'),
-                                  ),
-                                ),
-                                PopupMenuItem(
-                                  value: 'duplicate',
-                                  child: Text(
-                                    context.l10n.text('browser_duplicate_tab'),
-                                  ),
-                                ),
-                                PopupMenuItem(
-                                  value: 'close_others',
-                                  child: Text(
-                                    context.l10n.text('browser_close_others'),
-                                  ),
-                                ),
-                                PopupMenuItem(
-                                  value: 'reopen',
-                                  child: Text(
-                                    context.l10n.text('browser_reopen_tab'),
-                                  ),
-                                ),
-                                PopupMenuItem(
-                                  value: 'move',
-                                  child: Text(
-                                    context.l10n.text('browser_move_tab'),
-                                  ),
-                                ),
-                                PopupMenuItem(
-                                  value: 'remember',
-                                  child: Text(
-                                    context.l10n.text(
-                                      'browser_connect_website',
+                                onSelected: (action) async {
+                                  final data = _data(selected);
+                                  switch (action) {
+                                    case 'pin':
+                                      data['is_pinned'] =
+                                          !(data['is_pinned'] == true);
+                                      await ref
+                                          .read(entityRecordRepositoryProvider)
+                                          .update(
+                                            selected,
+                                            data: data,
+                                            syncPayload: {
+                                              'is_pinned': data['is_pinned'],
+                                            },
+                                          );
+                                    case 'rename':
+                                      await _renameTab(selected);
+                                    case 'duplicate':
+                                      await _createTab(
+                                        workspaceId: _workspaceId!,
+                                        url: selectedUrl,
+                                        position: tabs.length.toDouble(),
+                                      );
+                                    case 'close_others':
+                                      await _closeOtherTabs(selected, tabs);
+                                    case 'reopen':
+                                      await _reopenClosedTab();
+                                    case 'move':
+                                      await _moveTabToTask(selected);
+                                    case 'external':
+                                      await launchUrl(
+                                        Uri.parse(selectedUrl),
+                                        mode: LaunchMode.externalApplication,
+                                      );
+                                    case 'remember':
+                                      await _rememberWebsite(selected);
+                                    case 'save_sign_in':
+                                      await _saveSignInToVault(selectedUrl);
+                                    case 'fill_sign_in':
+                                      await _fillFromVault(selectedUrl);
+                                  }
+                                },
+                                itemBuilder: (_) => [
+                                  PopupMenuItem(
+                                    value: 'pin',
+                                    child: Text(
+                                      selectedData['is_pinned'] == true
+                                          ? context.l10n.text(
+                                              'browser_unpin_tab',
+                                            )
+                                          : context.l10n.text(
+                                              'browser_pin_tab',
+                                            ),
                                     ),
                                   ),
-                                ),
-                                PopupMenuItem(
-                                  value: 'save_sign_in',
-                                  child: Text(
-                                    context.l10n.text(
-                                      'browser_save_sign_in_vault',
+                                  PopupMenuItem(
+                                    value: 'rename',
+                                    child: Text(
+                                      context.l10n.text('browser_rename_tab'),
                                     ),
                                   ),
-                                ),
-                                PopupMenuItem(
-                                  value: 'fill_sign_in',
-                                  child: Text(
-                                    context.l10n.text(
-                                      'browser_fill_sign_in_vault',
+                                  PopupMenuItem(
+                                    value: 'duplicate',
+                                    child: Text(
+                                      context.l10n.text(
+                                        'browser_duplicate_tab',
+                                      ),
                                     ),
                                   ),
-                                ),
-                                PopupMenuItem(
-                                  value: 'external',
-                                  child: Text(
-                                    context.l10n.text('browser_open_external'),
+                                  PopupMenuItem(
+                                    value: 'close_others',
+                                    child: Text(
+                                      context.l10n.text('browser_close_others'),
+                                    ),
                                   ),
-                                ),
-                              ],
-                            ),
+                                  PopupMenuItem(
+                                    value: 'reopen',
+                                    child: Text(
+                                      context.l10n.text('browser_reopen_tab'),
+                                    ),
+                                  ),
+                                  PopupMenuItem(
+                                    value: 'move',
+                                    child: Text(
+                                      context.l10n.text('browser_move_tab'),
+                                    ),
+                                  ),
+                                  PopupMenuItem(
+                                    value: 'remember',
+                                    child: Text(
+                                      context.l10n.text(
+                                        'browser_connect_website',
+                                      ),
+                                    ),
+                                  ),
+                                  PopupMenuItem(
+                                    value: 'save_sign_in',
+                                    child: Text(
+                                      context.l10n.text(
+                                        'browser_save_sign_in_vault',
+                                      ),
+                                    ),
+                                  ),
+                                  PopupMenuItem(
+                                    value: 'fill_sign_in',
+                                    child: Text(
+                                      context.l10n.text(
+                                        'browser_fill_sign_in_vault',
+                                      ),
+                                    ),
+                                  ),
+                                  PopupMenuItem(
+                                    value: 'external',
+                                    child: Text(
+                                      context.l10n.text(
+                                        'browser_open_external',
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
                           ],
                         );
                       },
@@ -1516,9 +1580,13 @@ class _TaskBrowserWorkspaceState extends ConsumerState<TaskBrowserWorkspace>
 }
 
 class _BrowserTaskControlPill extends ConsumerStatefulWidget {
-  const _BrowserTaskControlPill({required this.task});
+  const _BrowserTaskControlPill({
+    required this.task,
+    this.fillAvailableWidth = false,
+  });
 
   final LocalTask task;
+  final bool fillAvailableWidth;
 
   @override
   ConsumerState<_BrowserTaskControlPill> createState() =>
@@ -1575,7 +1643,11 @@ class _BrowserTaskControlPillState
     );
     final actionLabel = _browserControlLabel(context, controls.primary);
     final status = ownsTask ? runtime!.state : task.status;
-    final pillWidth = compact ? 118.0 : 250.0;
+    final pillWidth = widget.fillAvailableWidth
+        ? double.infinity
+        : compact
+        ? 118.0
+        : 250.0;
     return Semantics(
       label:
           '${task.title}, $time, ${context.l10n.taskStatus(status)}. '
@@ -1776,6 +1848,7 @@ class _BrowserTabChip extends StatelessWidget {
     required this.selected,
     required this.onSelect,
     required this.onClose,
+    this.compact = false,
   });
 
   final LocalEntityRecord tab;
@@ -1783,6 +1856,7 @@ class _BrowserTabChip extends StatelessWidget {
   final bool selected;
   final VoidCallback onSelect;
   final VoidCallback onClose;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -1795,7 +1869,7 @@ class _BrowserTabChip extends StatelessWidget {
         onTap: onSelect,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
         child: SizedBox(
-          width: 190,
+          width: compact ? null : 190,
           child: Row(
             children: [
               const SizedBox(width: 10),

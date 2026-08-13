@@ -92,5 +92,11 @@ void main() {
     );
     expect(browser, contains('formatTaskEffortCountdown('));
     expect(browser, contains('taskEffortRemainingMs('));
+    expect(
+      homeShell,
+      contains('recordedMs: recordedMs'),
+      reason:
+          'The alarm boundary must subtract the live segment instead of scheduling from persisted accumulated work alone.',
+    );
   });
 }

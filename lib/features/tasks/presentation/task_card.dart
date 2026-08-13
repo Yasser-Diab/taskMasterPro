@@ -50,7 +50,9 @@ class TaskCard extends ConsumerWidget {
         ? 'in_progress'
         : activeSessionState ?? task.status;
     final completed = effectiveStatus == 'completed';
-    final minutes = (task.estimatedDurationMs / 60000).round();
+    final estimatedDuration = Duration(
+      milliseconds: task.estimatedDurationMs.clamp(0, 1 << 62),
+    );
 
     return Card(
       child: InkWell(
@@ -95,9 +97,7 @@ class TaskCard extends ConsumerWidget {
                         ),
                         _Meta(
                           icon: Icons.timer_outlined,
-                          label: context.l10n.format('duration_minutes', {
-                            'count': minutes,
-                          }),
+                          label: context.l10n.duration(estimatedDuration),
                         ),
                         _StatusPill(
                           status: effectiveStatus,

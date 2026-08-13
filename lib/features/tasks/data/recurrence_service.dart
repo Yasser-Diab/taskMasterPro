@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import '../../../core/data/entity_record_repository.dart';
 import '../../../core/database/app_database.dart';
+import '../domain/recurring_occurrence_identity.dart';
 import 'task_repository.dart';
 
 class RecurrenceService {
@@ -9,24 +10,41 @@ class RecurrenceService {
     required this.database,
     required this.entities,
     required this.tasks,
+    this.now,
   });
 
   final AppDatabase database;
   final EntityRecordRepository entities;
   final TaskRepository tasks;
+  final DateTime Function()? now;
+  Future<void> _generationTail = Future<void>.value();
 
-  Future<int> generateUpcoming({int horizonDays = 60}) async {
+  /// Materializes a rolling near-term window. Seven days keeps daily/weekly
+  /// work available offline without uploading months of child rows on every
+  /// newly connected device; the idempotent pass advances on launch/resume.
+  Future<int> generateUpcoming({int horizonDays = 7}) {
+    final operation = _generationTail.then(
+      (_) => _generateUpcoming(horizonDays: horizonDays),
+    );
+    _generationTail = operation.then<void>(
+      (_) {},
+      onError: (Object _, StackTrace _) {},
+    );
+    return operation;
+  }
+
+  Future<int> _generateUpcoming({required int horizonDays}) async {
     final rules = await entities.list(entityType: 'recurrence_rules');
     if (rules.isEmpty) return 0;
     final existing = await (database.select(
       database.localTasks,
-    )..where((row) => row.deletedAt.isNull())).get();
+    )..where((row) => row.userId.equals(entities.userId))).get();
     final knownKeys = <String>{
       for (final task in existing)
         if (task.templateId != null && task.occurrenceKey != null)
           '${task.templateId}:${task.occurrenceKey}',
     };
-    final todayValue = DateTime.now();
+    final todayValue = now?.call() ?? DateTime.now();
     final today = DateTime(todayValue.year, todayValue.month, todayValue.day);
     final horizon = today.add(Duration(days: horizonDays));
     var generated = 0;
@@ -100,6 +118,11 @@ class RecurrenceService {
                 : _configuration(source.dataJson);
             final taskId = await tasks.createTask(
               TaskDraft(
+                id: recurringOccurrenceId(
+                  userId: entities.userId,
+                  templateId: templateId,
+                  occurrenceKey: occurrenceKey,
+                ),
                 title:
                     templateRow['title'] as String? ??
                     source?.title ??
@@ -241,6 +264,11 @@ class RecurrenceService {
       if (!linked) {
         await entities.create(
           EntityRecordDraft(
+            id: recurringRelationshipId(
+              userId: entities.userId,
+              taskId: taskId,
+              relationshipKind: 'roadmap-link',
+            ),
             entityType: 'roadmap_task_links',
             parentId: roadmapId,
             secondaryParentId: taskId,
@@ -281,17 +309,26 @@ class RecurrenceService {
         nestedData['resource_url']?.toString() ??
         executionSettings['suggested_resource']?.toString();
     if (resourceUrl != null && resourceUrl.trim().isNotEmpty) {
+      final resourceName =
+          nestedData['resource_name']?.toString() ??
+          templateRow['title']?.toString() ??
+          'Study resource';
       await entities.create(
         EntityRecordDraft(
+          id: recurringRelationshipId(
+            userId: entities.userId,
+            taskId: taskId,
+            relationshipKind: 'resource',
+          ),
           entityType: 'task_resources',
           parentId: taskId,
           secondaryParentId: templateId,
-          title: templateRow['title']?.toString() ?? 'Study resource',
+          title: resourceName,
           data: {
             'task_occurrence_id': taskId,
             'task_template_id': templateId,
             'roadmap_id': roadmapId,
-            'name': templateRow['title']?.toString() ?? 'Study resource',
+            'name': resourceName,
             'resource_type': 'url',
             'storage_location': 'url',
             'storage_path': resourceUrl,
@@ -301,7 +338,7 @@ class RecurrenceService {
             'task_occurrence_id': taskId,
             'task_template_id': templateId,
             'roadmap_id': roadmapId,
-            'name': templateRow['title']?.toString() ?? 'Study resource',
+            'name': resourceName,
             'resource_type': 'url',
             'description': 'Recurring timetable resource',
             'storage_location': 'url',
@@ -333,6 +370,12 @@ class RecurrenceService {
       );
       await entities.create(
         EntityRecordDraft(
+          id: recurringRelationshipId(
+            userId: entities.userId,
+            taskId: taskId,
+            relationshipKind: 'reminder',
+            position: position,
+          ),
           entityType: 'task_reminders',
           parentId: taskId,
           secondaryParentId: templateId,

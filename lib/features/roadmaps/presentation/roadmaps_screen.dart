@@ -8,6 +8,7 @@ import '../../../core/database/app_database.dart';
 import '../../../core/localization/app_localizations.dart';
 import '../../../core/providers.dart';
 import '../../reports/presentation/performance_report_screen.dart';
+import '../../tasks/domain/task_occurrence_policy.dart';
 import '../../tasks/presentation/task_card.dart';
 import '../../tasks/presentation/task_editor_dialog.dart';
 import '../data/roadmap_repository.dart';
@@ -1293,6 +1294,32 @@ class _LinkedWork extends ConsumerWidget {
   }
 }
 
+class StoredRoadmapForecastRange {
+  const StoredRoadmapForecastRange({required this.start, required this.end});
+
+  final DateTime start;
+  final DateTime end;
+}
+
+/// Builds a cautious display range around the persisted forecast date. The UI
+/// never recomputes velocity or advertises a precise day delta; it only widens
+/// the stored estimate according to its persisted evidence confidence.
+StoredRoadmapForecastRange? storedRoadmapForecastRange(LocalRoadmap roadmap) {
+  final forecast = roadmap.forecastTargetDate;
+  if (forecast == null || roadmap.forecastConfidence == 'insufficient') {
+    return null;
+  }
+  final radius = switch (roadmap.forecastConfidence) {
+    'high' => 7,
+    'medium' => 14,
+    _ => 28,
+  };
+  return StoredRoadmapForecastRange(
+    start: forecast.subtract(Duration(days: radius)),
+    end: forecast.add(Duration(days: radius)),
+  );
+}
+
 class _RoadmapForecast extends StatelessWidget {
   const _RoadmapForecast({
     required this.roadmap,
@@ -1313,9 +1340,24 @@ class _RoadmapForecast extends StatelessWidget {
     final original = roadmap.originalTargetDate;
     final forecast = roadmap.forecastTargetDate;
     final insufficientEvidence = roadmap.forecastConfidence == 'insufficient';
-    final variance = original == null || forecast == null
+    final range = storedRoadmapForecastRange(roadmap);
+    final completedOccurrences = tasks
+        .where(TaskOccurrencePolicy.isCompletedOccurrence)
+        .length;
+    final earlyEstimate =
+        !insufficientEvidence &&
+        (roadmap.forecastConfidence == 'low' || completedOccurrences < 5);
+    final requiredEffortMs = effectiveRoadmapRequiredEffortMs(roadmap, tasks);
+    final rangeStart = range == null
         ? null
-        : forecast.difference(original).inDays;
+        : DateFormat.yMMMd(
+            context.l10n.locale.toLanguageTag(),
+          ).format(range.start);
+    final rangeEnd = range == null
+        ? null
+        : DateFormat.yMMMd(
+            context.l10n.locale.toLanguageTag(),
+          ).format(range.end);
     return ListView(
       padding: const EdgeInsets.all(20),
       children: [
@@ -1337,18 +1379,15 @@ class _RoadmapForecast extends StatelessWidget {
                       ? context.l10n.text('roadmap_forecast_insufficient')
                       : forecast == null
                       ? context.l10n.text('roadmap_forecast_missing')
-                      : variance == null || variance == 0
-                      ? context.l10n.format('roadmap_forecast_unchanged', {
-                          'date': DateFormat.yMMMMd(
-                            context.l10n.locale.toLanguageTag(),
-                          ).format(forecast),
+                      : earlyEstimate
+                      ? context.l10n.format('roadmap_forecast_early_estimate', {
+                          'start': rangeStart!,
+                          'end': rangeEnd!,
                         })
-                      : context.l10n.format(
-                          variance > 0
-                              ? 'roadmap_forecast_later'
-                              : 'roadmap_forecast_earlier',
-                          {'days': variance.abs()},
-                        ),
+                      : context.l10n.format('roadmap_forecast_range', {
+                          'start': rangeStart!,
+                          'end': rangeEnd!,
+                        }),
                   style: Theme.of(context).textTheme.titleLarge,
                 ),
                 const SizedBox(height: 18),
@@ -1408,14 +1447,11 @@ class _RoadmapForecast extends StatelessWidget {
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  context.l10n.format('roadmap_effort_summary', {
-                    'recorded': context.l10n.duration(
-                      Duration(milliseconds: roadmap.completedEffortMs),
-                    ),
-                    'planned': context.l10n.duration(
-                      Duration(milliseconds: roadmap.requiredEffortMs ?? 0),
-                    ),
-                  }),
+                  roadmapEffortSummary(
+                    context.l10n,
+                    recordedEffortMs: roadmap.completedEffortMs,
+                    requiredEffortMs: requiredEffortMs,
+                  ),
                 ),
               ],
             ),
@@ -1424,6 +1460,27 @@ class _RoadmapForecast extends StatelessWidget {
       ],
     );
   }
+}
+
+String roadmapEffortSummary(
+  AppLocalizations l10n, {
+  required int recordedEffortMs,
+  required int? requiredEffortMs,
+}) {
+  final recorded = l10n.duration(
+    Duration(milliseconds: recordedEffortMs.clamp(0, 1 << 62)),
+  );
+  if (requiredEffortMs == null || requiredEffortMs <= 0) {
+    return l10n.format('roadmap_effort_summary_unavailable', {
+      'recorded': recorded,
+    });
+  }
+  return l10n.format('roadmap_effort_summary', {
+    'recorded': recorded,
+    'planned': l10n.duration(
+      Duration(milliseconds: requiredEffortMs.clamp(0, 1 << 62)),
+    ),
+  });
 }
 
 class _ProgressExplanation extends StatelessWidget {

@@ -11,8 +11,14 @@ import '../../../core/platform/device_identity.dart';
 import '../domain/task_domain_catalog.dart';
 import '../domain/task_schedule_policy.dart';
 
+bool shouldSeedStarterDomain({
+  required bool hasLocalRecord,
+  required bool hasCommandHistory,
+}) => !hasLocalRecord && !hasCommandHistory;
+
 class TaskDraft {
   const TaskDraft({
+    this.id,
     required this.title,
     this.description = '',
     this.domainId,
@@ -30,6 +36,9 @@ class TaskDraft {
     this.configuration = const {},
   });
 
+  /// Optional permanent identity for deterministic system-owned records.
+  /// Normal user-created work continues to receive a random UUID.
+  final String? id;
   final String title;
   final String description;
   final String? domainId;
@@ -354,6 +363,67 @@ class TaskRepository {
     );
   }
 
+  /// Projects the task fields changed by the canonical runtime RPC without
+  /// creating a second task-occurrence command. The runtime command is the
+  /// sole durable intent; this row is only its immediate local projection.
+  Future<void> _applyRuntimeTaskProjection(
+    LocalTask task, {
+    required _RuntimeCommandIdentity command,
+    required DateTime now,
+    String? status,
+    bool ensureActualStart = false,
+    int? activeDurationMs,
+    DateTime? actualFinish,
+    double? explicitProgress,
+    bool clearActiveBreakExtension = false,
+    int revisionIncrement = 1,
+  }) async {
+    final projectedProgress =
+        explicitProgress ??
+        (activeDurationMs == null
+            ? null
+            : task.estimatedDurationMs <= 0
+            ? task.progress
+            : (activeDurationMs / task.estimatedDurationMs).clamp(0.0, 1.0));
+    final projectedConfiguration = clearActiveBreakExtension
+        ? ({..._configuration(task)}..remove('active_break_extension_ms'))
+        : null;
+    final changed =
+        await (database.update(database.localTasks)..where(
+              (row) =>
+                  row.id.equals(task.id) &
+                  row.userId.equals(_userId) &
+                  row.revision.equals(task.revision),
+            ))
+            .write(
+              LocalTasksCompanion(
+                status: status == null ? const Value.absent() : Value(status),
+                actualStart: ensureActualStart
+                    ? Value(task.actualStart ?? now)
+                    : const Value.absent(),
+                activeDurationMs: activeDurationMs == null
+                    ? const Value.absent()
+                    : Value(activeDurationMs),
+                actualFinish: actualFinish == null
+                    ? const Value.absent()
+                    : Value(actualFinish),
+                progress: projectedProgress == null
+                    ? const Value.absent()
+                    : Value(projectedProgress),
+                dataJson: projectedConfiguration == null
+                    ? const Value.absent()
+                    : Value(jsonEncode(projectedConfiguration)),
+                revision: Value(task.revision + revisionIncrement),
+                updatedAt: Value(now),
+                updatedByDeviceId: Value(command.deviceId),
+                lastCommandId: Value(command.commandId),
+              ),
+            );
+    if (changed != 1) {
+      throw StateError('Task runtime projection lost its revision guard.');
+    }
+  }
+
   Future<LocalRuntime?> _storedRuntime() {
     return (database.select(database.localRuntimeStates)..where(
           (row) => row.id.equals(_runtimeId) & row.userId.equals(_userId),
@@ -376,6 +446,26 @@ class TaskRepository {
       if (existing != null &&
           existing.deletedAt == null &&
           existing.archivedAt == null) {
+        continue;
+      }
+      final priorCommand =
+          await (database.select(database.localOutboxCommands)
+                ..where(
+                  (row) =>
+                      row.userId.equals(_userId) &
+                      row.entityType.equals('task_domains') &
+                      row.entityId.equals(id),
+                )
+                ..limit(1))
+              .getSingleOrNull();
+      // A pulled/deleted canonical Area or a previously delivered starter
+      // command is durable history. Login/onboarding must not manufacture a
+      // new command ID for it on every bootstrap and turn normal convergence
+      // into a revision conflict. Only a truly unseen built-in is seeded.
+      if (!shouldSeedStarterDomain(
+        hasLocalRecord: existing != null,
+        hasCommandHistory: priorCommand != null,
+      )) {
         continue;
       }
       final commandId = _uuid.v4();
@@ -610,7 +700,7 @@ class TaskRepository {
     final now = DateTime.now().toUtc();
     final deviceId = await DeviceIdentity.accountId(_userId);
     final sequence = await DeviceIdentity.nextSequence(_userId);
-    final taskId = _uuid.v4();
+    final taskId = draft.id ?? _uuid.v4();
     final commandId = _uuid.v4();
     final scheduled = draft.scheduledDate ?? DateTime.now();
     final payload = <String, Object?>{
@@ -1026,7 +1116,21 @@ class TaskRepository {
       // while leaving the optimistic runtime at revision 1.
       final runtimeRevision = storedRuntime?.revision ?? 1;
       final command = await _newRuntimeCommandIdentity();
-      await changeStatus(latest, 'in_progress');
+      await _applyRuntimeTaskProjection(
+        latest,
+        command: command,
+        now: now,
+        status: 'in_progress',
+        ensureActualStart: true,
+      );
+      await _applyRuntimeSessionProjection(
+        sessionId: sessionId,
+        command: command,
+        previousRuntime: null,
+        state: 'running',
+        now: now,
+        accumulatedActiveMs: 0,
+      );
       await database
           .into(database.localRuntimeStates)
           .insertOnConflictUpdate(
@@ -1107,54 +1211,66 @@ class TaskRepository {
       final previousActiveMs = runtime.accumulatedActiveMs + elapsed;
       final command = await _newRuntimeCommandIdentity();
 
-      await (database.update(database.localTasks)..where(
-            (row) =>
-                row.id.equals(previousTask.id) & row.userId.equals(_userId),
-          ))
-          .write(
-            LocalTasksCompanion(
-              status: Value(
-                action == ActiveTaskSwitchAction.finishCurrent
-                    ? 'completed'
-                    : 'paused',
-              ),
-              activeDurationMs: Value(previousActiveMs),
-              actualFinish: action == ActiveTaskSwitchAction.finishCurrent
-                  ? Value(now)
-                  : const Value.absent(),
-              progress: action == ActiveTaskSwitchAction.finishCurrent
-                  ? const Value(1)
-                  : const Value.absent(),
-              updatedAt: Value(now),
-            ),
-          );
-      await (database.update(database.localTasks)..where(
-            (row) =>
-                row.id.equals(selectedTask.id) & row.userId.equals(_userId),
-          ))
-          .write(
-            LocalTasksCompanion(
-              status: const Value('in_progress'),
-              actualStart: Value(selectedTask.actualStart ?? now),
-              updatedAt: Value(now),
-            ),
-          );
-      await (database.update(database.localRuntimeStates)..where(
-            (row) => row.id.equals(_runtimeId) & row.userId.equals(_userId),
-          ))
-          .write(
-            LocalRuntimeStatesCompanion(
-              activeTaskId: Value(selectedTask.id),
-              sessionId: Value(newSessionId),
-              state: const Value('running'),
-              segmentStartedAt: Value(now),
-              accumulatedActiveMs: const Value(0),
-              accumulatedPausedMs: const Value(0),
-              revision: Value(runtime.revision + 1),
-              updatedAt: Value(now),
-              lastCommandId: Value(command.commandId),
-            ),
-          );
+      final finishesPrevious = action == ActiveTaskSwitchAction.finishCurrent;
+      await _applyRuntimeTaskProjection(
+        previousTask,
+        command: command,
+        now: now,
+        status: finishesPrevious ? 'completed' : 'paused',
+        activeDurationMs: previousActiveMs,
+        actualFinish: finishesPrevious ? now : null,
+        explicitProgress: finishesPrevious ? 1 : null,
+      );
+      await _applyRuntimeSessionProjection(
+        sessionId: runtime.sessionId!,
+        command: command,
+        previousRuntime: runtime,
+        state: finishesPrevious ? 'completed' : 'paused',
+        now: now,
+        finishedAt: finishesPrevious ? now : null,
+        accumulatedActiveMs: previousActiveMs,
+      );
+      await _applyRuntimeTaskProjection(
+        selectedTask,
+        command: command,
+        now: now,
+        status: 'in_progress',
+        ensureActualStart: true,
+      );
+      await _applyRuntimeSessionProjection(
+        sessionId: newSessionId,
+        command: command,
+        previousRuntime: null,
+        state: 'running',
+        now: now,
+        accumulatedActiveMs: 0,
+      );
+      final changed =
+          await (database.update(database.localRuntimeStates)..where(
+                (row) =>
+                    row.id.equals(_runtimeId) &
+                    row.userId.equals(_userId) &
+                    row.activeTaskId.equals(previousTask.id) &
+                    row.sessionId.equals(runtime.sessionId!) &
+                    row.state.isIn(const ['running', 'paused', 'break']) &
+                    row.revision.equals(runtime.revision),
+              ))
+              .write(
+                LocalRuntimeStatesCompanion(
+                  activeTaskId: Value(selectedTask.id),
+                  sessionId: Value(newSessionId),
+                  state: const Value('running'),
+                  segmentStartedAt: Value(now),
+                  accumulatedActiveMs: const Value(0),
+                  accumulatedPausedMs: const Value(0),
+                  revision: Value(runtime.revision + 1),
+                  updatedAt: Value(now),
+                  lastCommandId: Value(command.commandId),
+                ),
+              );
+      if (changed != 1) {
+        throw StateError('Runtime switch lost its revision guard.');
+      }
       await _recordInterruption(
         sessionId: runtime.sessionId,
         taskId: previousTask.id,
@@ -1210,9 +1326,17 @@ class TaskRepository {
                 ),
               );
       if (changed != 1) return;
-      await changeStatus(currentTask, 'paused', activeDurationMs: recorded);
-      await _updateExecutionSession(
-        runtime,
+      await _applyRuntimeTaskProjection(
+        currentTask,
+        command: command,
+        now: now,
+        status: 'paused',
+        activeDurationMs: recorded,
+      );
+      await _applyRuntimeSessionProjection(
+        sessionId: runtime.sessionId!,
+        command: command,
+        previousRuntime: runtime,
         state: 'paused',
         now: now,
         accumulatedActiveMs: recorded,
@@ -1266,8 +1390,19 @@ class TaskRepository {
                 ),
               );
       if (changed != 1) return;
-      await changeStatus(currentTask, 'in_progress');
-      await _updateExecutionSession(runtime, state: 'running', now: now);
+      await _applyRuntimeTaskProjection(
+        currentTask,
+        command: command,
+        now: now,
+        status: 'in_progress',
+      );
+      await _applyRuntimeSessionProjection(
+        sessionId: sessionId,
+        command: command,
+        previousRuntime: runtime,
+        state: 'running',
+        now: now,
+      );
       await _queueRuntimeTransition(
         command: command,
         sessionId: sessionId,
@@ -1294,10 +1429,6 @@ class TaskRepository {
           runtime.state != 'running') {
         return;
       }
-      // An extension belongs to one break only. Clearing any completed
-      // break's extension before the next one starts prevents a previous
-      // five-minute choice from silently lengthening every later break.
-      await _clearActiveBreakExtension(currentTask);
       final now = DateTime.now().toUtc();
       // A delayed notification action must never turn one 25-minute focus
       // interval into an hour of focused work. Raw wall time is capped at the
@@ -1305,6 +1436,9 @@ class TaskRepository {
       final elapsed = _recordableSegmentMs(currentTask, runtime, now);
       final recorded = runtime.accumulatedActiveMs + elapsed;
       final command = await _newRuntimeCommandIdentity();
+      final hasStaleBreakExtension = _configuration(
+        currentTask,
+      ).containsKey('active_break_extension_ms');
       final changed =
           await (database.update(database.localRuntimeStates)..where(
                 (row) =>
@@ -1325,8 +1459,21 @@ class TaskRepository {
                 ),
               );
       if (changed != 1) return;
-      await _updateExecutionSession(
-        runtime,
+      await _applyRuntimeTaskProjection(
+        currentTask,
+        command: command,
+        now: now,
+        activeDurationMs: recorded,
+        clearActiveBreakExtension: true,
+        // The guarded RPC first records the focus boundary, then removes a
+        // legacy/stale extension only when one exists. Mirror both canonical
+        // task-row revisions under the one runtime command identity.
+        revisionIncrement: hasStaleBreakExtension ? 2 : 1,
+      );
+      await _applyRuntimeSessionProjection(
+        sessionId: runtime.sessionId!,
+        command: command,
+        previousRuntime: runtime,
         state: 'break',
         now: now,
         accumulatedActiveMs: recorded,
@@ -1376,7 +1523,24 @@ class TaskRepository {
                 ),
               );
       if (changed != 1) return;
-      await _updateExecutionSession(runtime, state: 'running', now: now);
+      final hasActiveBreakExtension = _configuration(
+        currentTask,
+      ).containsKey('active_break_extension_ms');
+      if (hasActiveBreakExtension) {
+        await _applyRuntimeTaskProjection(
+          currentTask,
+          command: command,
+          now: now,
+          clearActiveBreakExtension: true,
+        );
+      }
+      await _applyRuntimeSessionProjection(
+        sessionId: runtime.sessionId!,
+        command: command,
+        previousRuntime: runtime,
+        state: 'running',
+        now: now,
+      );
       await _queueRuntimeTransition(
         command: command,
         sessionId: runtime.sessionId!,
@@ -1385,7 +1549,6 @@ class TaskRepository {
         runtimeRevision: runtime.revision,
         now: now,
       );
-      await _clearActiveBreakExtension(currentTask);
     });
   }
 
@@ -1421,6 +1584,9 @@ class TaskRepository {
 
       final recorded = runtime.accumulatedActiveMs + recordable;
       final command = await _newRuntimeCommandIdentity();
+      final hasStaleBreakExtension = _configuration(
+        currentTask,
+      ).containsKey('active_break_extension_ms');
       final changed =
           await (database.update(database.localRuntimeStates)..where(
                 (row) =>
@@ -1441,8 +1607,19 @@ class TaskRepository {
                 ),
               );
       if (changed != 1) return false;
-      await _updateExecutionSession(
-        runtime,
+      await _applyRuntimeTaskProjection(
+        currentTask,
+        command: command,
+        now: now,
+        status: 'in_progress',
+        activeDurationMs: recorded,
+        clearActiveBreakExtension: true,
+        revisionIncrement: hasStaleBreakExtension ? 2 : 1,
+      );
+      await _applyRuntimeSessionProjection(
+        sessionId: runtime.sessionId!,
+        command: command,
+        previousRuntime: runtime,
         state: 'running',
         now: now,
         accumulatedActiveMs: recorded,
@@ -2279,21 +2456,26 @@ class TaskRepository {
     );
   }
 
-  Future<void> _updateExecutionSession(
-    LocalRuntime? runtime, {
+  Future<void> _applyRuntimeSessionProjection({
+    required String sessionId,
+    required _RuntimeCommandIdentity command,
+    required LocalRuntime? previousRuntime,
     required String state,
     required DateTime now,
     DateTime? finishedAt,
     int? accumulatedActiveMs,
   }) async {
-    final sessionId = runtime?.sessionId;
-    if (sessionId == null) return;
     final session = await entities.get(sessionId);
-    if (session == null) return;
+    if (session == null) {
+      throw StateError('Runtime session projection target is missing.');
+    }
     final data = entities.decode(session);
     final segmentElapsed =
-        runtime?.state == 'running' && runtime?.segmentStartedAt != null
-        ? now.difference(runtime!.segmentStartedAt!).inMilliseconds
+        previousRuntime?.state == 'running' &&
+            previousRuntime?.segmentStartedAt != null
+        ? now
+              .difference(previousRuntime!.segmentStartedAt!.toUtc())
+              .inMilliseconds
         : 0;
     final active =
         accumulatedActiveMs ??
@@ -2307,22 +2489,33 @@ class TaskRepository {
       ..['current_pomodoro_segment'] = state == 'break'
           ? 'break'
           : state == 'running'
-          ? 'focus'
+          ? data['mode'] == 'pomodoro'
+                ? 'focus'
+                : null
           : data['current_pomodoro_segment']
       ..['finished_at'] = finishedAt?.toIso8601String()
       ..['accumulated_active_ms'] = active;
-    await entities.update(
-      session,
-      status: state,
-      data: data,
-      syncPayload: {
-        'state': state,
-        'active_segment_started_at': data['active_segment_started_at'],
-        'finished_at': data['finished_at'],
-        'accumulated_active_ms': active,
-        'current_pomodoro_segment': data['current_pomodoro_segment'],
-      },
-    );
+    final changed =
+        await (database.update(database.localEntityRecords)..where(
+              (row) =>
+                  row.id.equals(session.id) &
+                  row.userId.equals(_userId) &
+                  row.entityType.equals('execution_sessions') &
+                  row.revision.equals(session.revision),
+            ))
+            .write(
+              LocalEntityRecordsCompanion(
+                status: Value(state),
+                dataJson: Value(jsonEncode(data)),
+                revision: Value(session.revision + 1),
+                updatedAt: Value(now),
+                updatedByDeviceId: Value(command.deviceId),
+                lastCommandId: Value(command.commandId),
+              ),
+            );
+    if (changed != 1) {
+      throw StateError('Session runtime projection lost its revision guard.');
+    }
   }
 
   Future<void> _cancelLocalExecutionSession(
@@ -2697,15 +2890,6 @@ class TaskRepository {
     return value is Map
         ? Map<String, Object?>.from(value)
         : <String, Object?>{};
-  }
-
-  Future<void> _clearActiveBreakExtension(LocalTask task) async {
-    final latest = await getTask(task.id);
-    if (latest == null) return;
-    final configuration = _configuration(latest);
-    if (!configuration.containsKey('active_break_extension_ms')) return;
-    final updated = {...configuration}..remove('active_break_extension_ms');
-    await updateConfiguration(latest, updated);
   }
 
   int _recordableSegmentMs(LocalTask task, LocalRuntime runtime, DateTime now) {

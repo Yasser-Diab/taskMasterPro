@@ -494,6 +494,25 @@ class MainActivity : FlutterFragmentActivity() {
                         )
                     }
                 }
+                "writeExecutionAlarmLedger" -> {
+                    val ownerId = call.argument<String>("ownerId")
+                    val ledgerJson = call.argument<String>("ledgerJson")
+                    if (ownerId.isNullOrBlank() || ledgerJson.isNullOrBlank()) {
+                        result.error(
+                            "missing_ledger",
+                            "An owner and execution ledger are required",
+                            null,
+                        )
+                    } else {
+                        getSharedPreferences(
+                            "taskmaster.execution_alarm_ledger.v0028",
+                            Context.MODE_PRIVATE,
+                        ).edit()
+                            .putString(ownerId, ledgerJson)
+                            .apply()
+                        result.success(null)
+                    }
+                }
                 "openNotificationChannelSettings" -> {
                     val channelId = call.argument<String>("channelId")
                     if (channelId.isNullOrBlank()) {

@@ -63,7 +63,6 @@ void main() {
       'reports',
       'appearance',
       'synchronization',
-      'connected_devices',
       'help_and_diagnostics',
       'about_and_legal',
     ]) {
@@ -74,6 +73,10 @@ void main() {
       );
     }
     expect(
+      settingsSectionDestination('connected_devices'),
+      SettingsSectionDestination.connectedDevices,
+    );
+    expect(
       settingsSectionDestination('coaching'),
       SettingsSectionDestination.coachingPreferences,
     );
@@ -81,6 +84,23 @@ void main() {
       settingsSectionDestination('notifications_and_sounds'),
       SettingsSectionDestination.notificationsAndSounds,
     );
+    expect(
+      settingsSectionDestination('privacy_and_vault'),
+      SettingsSectionDestination.vault,
+    );
+  });
+
+  test('canonical settings registry has unique typed ownership metadata', () {
+    expect(hasDuplicateCanonicalSettings(), isFalse);
+    expect(
+      canonicalSetting('pomodoro.focus_duration').taskOverrideAllowed,
+      isTrue,
+    );
+    expect(
+      canonicalSetting('activity.application_tracking').scope,
+      CanonicalSettingScope.device,
+    );
+    expect(canonicalSetting('vault.autofill').sectionKey, 'privacy_and_vault');
   });
 
   test('legal links are absent from the app updates section', () {

@@ -5,6 +5,7 @@ import 'package:path/path.dart' as path;
 
 import '../../../core/database/app_database.dart';
 import '../../tasks/data/installed_application_service.dart';
+import '../domain/activity_reporting_policy.dart';
 
 enum ActivityTimeKind { active, idle, uncertain }
 
@@ -48,6 +49,7 @@ class ActivityGroupSummary {
     required this.periods,
     required this.containsBreak,
     required this.containsCrossTask,
+    required this.suggestionSource,
   });
 
   final String key;
@@ -62,6 +64,7 @@ class ActivityGroupSummary {
   final List<ActivityPeriodSummary> periods;
   final bool containsBreak;
   final bool containsCrossTask;
+  final String? suggestionSource;
 
   DateTime get firstDetected => periods
       .map((period) => period.startedAt)
@@ -98,7 +101,9 @@ class ActivityAggregationService {
     String? taskId,
   }) async {
     final attributionBySegment = <String, List<Map<String, Object?>>>{};
-    for (final attribution in attributions) {
+    for (final attribution in latestActivityAttributionBySegment(
+      attributions,
+    ).values) {
       attributionBySegment
           .putIfAbsent(attribution.activitySegmentId, () => [])
           .add({
@@ -106,10 +111,16 @@ class ActivityAggregationService {
             'target_id': attribution.targetId,
             'status': attribution.attributionStatus,
             'confidence': attribution.confidence,
+            'suggested_by': attribution.confirmedByUser
+                ? 'user_confirmed'
+                : attribution.attributionStatus == 'automatic'
+                ? 'learned_from_usage'
+                : 'taskmaster_suggestion',
           });
     }
     final input = <Map<String, Object?>>[];
     for (final segment in segments) {
+      if (isTaskMasterSelfActivity(segment)) continue;
       final started = segment.startedAt.isBefore(rangeStartUtc)
           ? rangeStartUtc
           : segment.startedAt;
@@ -178,6 +189,7 @@ class ActivityAggregationService {
             ],
             containsBreak: group['contains_break'] as bool,
             containsCrossTask: group['contains_cross_task'] as bool,
+            suggestionSource: group['suggestion_source'] as String?,
           ),
       ],
       totalMs: result['total_ms'] as int,
@@ -266,6 +278,7 @@ class ActivityAggregationService {
           'uncertain_ms': 0,
           'classifications': <String, int>{},
           'targets': <String, int>{},
+          'suggestion_sources': <String, int>{},
           'periods': <Map<String, Object?>>[],
           'contains_break': false,
           'contains_cross_task': false,
@@ -281,6 +294,12 @@ class ActivityAggregationService {
       if (targetId != null) {
         final targets = group['targets'] as Map<String, int>;
         targets[targetId] = (targets[targetId] ?? 0) + allocatedMs;
+      }
+      final suggestionSource = attribution?['suggested_by'] as String?;
+      if (suggestionSource != null) {
+        final sources = group['suggestion_sources'] as Map<String, int>;
+        sources[suggestionSource] =
+            (sources[suggestionSource] ?? 0) + allocatedMs;
       }
       final metadata = _metadata(segment);
       final sourceTaskId = metadata['source_task_id'] as String?;
@@ -314,6 +333,8 @@ class ActivityAggregationService {
       final classifications =
           group.remove('classifications') as Map<String, int>;
       final targets = group.remove('targets') as Map<String, int>;
+      final suggestionSources =
+          group.remove('suggestion_sources') as Map<String, int>;
       final classification = classifications.entries.reduce(
         (a, b) => a.value >= b.value ? a : b,
       );
@@ -321,14 +342,23 @@ class ActivityAggregationService {
       group['related_task_id'] = targets.isEmpty
           ? null
           : targets.entries.reduce((a, b) => a.value >= b.value ? a : b).key;
+      group['suggestion_source'] = suggestionSources.isEmpty
+          ? null
+          : suggestionSources.entries
+                .reduce((a, b) => a.value >= b.value ? a : b)
+                .key;
       final periods = group['periods'] as List<Map<String, Object?>>;
       periods.sort(
         (a, b) => (a['started_at'] as int).compareTo(b['started_at'] as int),
       );
-      total += group['total_ms'] as int;
-      active += group['active_ms'] as int;
-      idle += group['idle_ms'] as int;
-      uncertain += group['uncertain_ms'] as int;
+      // System periods remain in the raw grouped audit, clearly labelled, but
+      // cannot inflate any Activity metric.
+      if (!isSystemActivityClassification(classification.key)) {
+        total += group['total_ms'] as int;
+        active += group['active_ms'] as int;
+        idle += group['idle_ms'] as int;
+        uncertain += group['uncertain_ms'] as int;
+      }
       if (const {
         'unclassified',
         'unknown',

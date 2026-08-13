@@ -9,6 +9,7 @@ import '../../../core/data/entity_record_repository.dart';
 import '../../../core/platform/device_identity.dart';
 import '../../tasks/data/installed_application_service.dart';
 import '../../tasks/data/website_rule_service.dart';
+import '../domain/activity_reporting_policy.dart';
 import 'activity_privacy_policy.dart';
 
 /// Stable per-account identity for an observed application.
@@ -110,6 +111,7 @@ class ActivityResolution {
     this.creditedDuration,
     this.rememberRule = false,
     this.isAutomatic = false,
+    this.taskAllocations = const [],
   });
 
   final String status;
@@ -120,6 +122,74 @@ class ActivityResolution {
   final Duration? creditedDuration;
   final bool rememberRule;
   final bool isAutomatic;
+  final List<ActivityTaskAllocation> taskAllocations;
+}
+
+class ActivityTaskAllocation {
+  const ActivityTaskAllocation({
+    required this.targetTaskId,
+    required this.percentage,
+  });
+
+  final String targetTaskId;
+  final int percentage;
+}
+
+/// Validates one physical Activity interval's explicit task allocation.
+///
+/// Unallocated time is allowed, but duplicate task targets, non-positive
+/// percentages, and totals above the physical interval are rejected.
+List<ActivityTaskAllocation> validateActivityTaskAllocations(
+  Iterable<ActivityTaskAllocation> allocations,
+) {
+  final result = allocations.toList(growable: false);
+  if (result.isEmpty) {
+    throw ArgumentError.value(
+      result,
+      'allocations',
+      'Select at least one task',
+    );
+  }
+  final seen = <String>{};
+  var total = 0;
+  for (final allocation in result) {
+    if (allocation.targetTaskId.trim().isEmpty ||
+        !seen.add(allocation.targetTaskId)) {
+      throw ArgumentError.value(
+        allocation.targetTaskId,
+        'allocations',
+        'Each selected task must be unique',
+      );
+    }
+    if (allocation.percentage <= 0 || allocation.percentage > 100) {
+      throw ArgumentError.value(
+        allocation.percentage,
+        'allocations',
+        'Each allocation must be between 1 and 100 percent',
+      );
+    }
+    total += allocation.percentage;
+  }
+  if (total > 100) {
+    throw ArgumentError.value(
+      total,
+      'allocations',
+      'Allocated time cannot exceed 100 percent',
+    );
+  }
+  return result;
+}
+
+int activityAllocatedDurationMs({
+  required int physicalDurationMs,
+  required int percentage,
+}) {
+  if (physicalDurationMs < 0 || percentage < 0 || percentage > 100) {
+    throw ArgumentError('Invalid Activity allocation');
+  }
+  // Integer division deliberately rounds down, so several allocations can
+  // never exceed the source interval due to rounding.
+  return (physicalDurationMs * percentage) ~/ 100;
 }
 
 class _AtomicActivityRule {
@@ -143,13 +213,15 @@ class _AtomicActivityRule {
 }
 
 class ActivityRepository {
-  ActivityRepository(this.database, this.client);
+  ActivityRepository(this.database, this.client)
+    : _userId = client.auth.currentUser?.id ?? 'local';
 
   final AppDatabase database;
   final SupabaseClient client;
+  final String _userId;
+  Future<void> _captureTail = Future<void>.value();
   static const _uuid = Uuid();
 
-  String get _userId => client.auth.currentUser?.id ?? 'local';
   String get currentUserId => _userId;
   String get settingsId => localAppSettingsId(_userId);
 
@@ -168,17 +240,71 @@ class ActivityRepository {
     double confidence = 0.9,
     bool createReview = true,
     bool isFinalized = true,
+  }) {
+    return _serializeCapture(
+      () => _captureRawSegment(
+        segmentId: segmentId,
+        startedAt: startedAt,
+        endedAt: endedAt,
+        sourceType: sourceType,
+        processName: processName,
+        windowTitle: windowTitle,
+        idleState: idleState,
+        packageName: packageName,
+        domain: domain,
+        url: url,
+        pageTitle: pageTitle,
+        confidence: confidence,
+        createReview: createReview,
+        isFinalized: isFinalized,
+      ),
+    );
+  }
+
+  Future<T> _serializeCapture<T>(Future<T> Function() operation) {
+    final result = _captureTail.then((_) => operation());
+    // A failed capture is returned to its caller, but must not poison the
+    // repository's serialization tail and prevent every later sample.
+    _captureTail = result.then<void>((_) {}, onError: (_, _) {});
+    return result;
+  }
+
+  Future<String> _captureRawSegment({
+    String? segmentId,
+    required DateTime startedAt,
+    required DateTime endedAt,
+    required String sourceType,
+    String? processName,
+    String? windowTitle,
+    String? idleState,
+    String? packageName,
+    String? domain,
+    String? url,
+    String? pageTitle,
+    double confidence = 0.9,
+    bool createReview = true,
+    bool isFinalized = true,
   }) async {
     if (!endedAt.isAfter(startedAt)) {
       throw ArgumentError('Activity segment must have a positive duration');
     }
+    final requestedId = segmentId ?? _uuid.v4();
     final existing = segmentId == null
         ? null
         : await (database.select(database.localActivitySegments)..where(
                 (row) => row.id.equals(segmentId) & row.userId.equals(_userId),
               ))
               .getSingleOrNull();
-    final id = existing?.id ?? segmentId ?? _uuid.v4();
+    if (existing != null &&
+        (existing.startedAt.toUtc().millisecondsSinceEpoch ~/ 1000 !=
+                startedAt.toUtc().millisecondsSinceEpoch ~/ 1000 ||
+            existing.sourceType != sourceType ||
+            existing.processName != processName)) {
+      throw StateError(
+        'Activity segment identity cannot be reused for different data',
+      );
+    }
+    final id = existing?.id ?? requestedId;
     final deviceId =
         existing?.deviceId ?? await DeviceIdentity.accountId(_userId);
     final deviceEventId =
@@ -256,6 +382,11 @@ class ActivityRepository {
                 createdAt: now,
                 updatedAt: now,
               ),
+              // Android history and final collector flushes can report the exact
+              // same immutable segment more than once. Primary-key identity makes
+              // that retry idempotent; serialization above ensures a conflicting
+              // payload never races through this path and remains observable.
+              mode: InsertMode.insertOrIgnore,
             );
       } else {
         await (database.update(
@@ -505,15 +636,20 @@ class ActivityRepository {
             OrderingTerm.desc(database.localActivityReviews.priority),
             OrderingTerm.desc(database.localActivityReviews.createdAt),
           ]);
-    return query.watch().map(
-      (rows) => [
-        for (final row in rows)
+    return query.watch().map((rows) {
+      final result = <ActivityReviewEntry>[];
+      for (final row in rows) {
+        final segment = row.readTable(database.localActivitySegments);
+        if (isTaskMasterSelfActivity(segment)) continue;
+        result.add(
           ActivityReviewEntry(
             review: row.readTable(database.localActivityReviews),
-            segment: row.readTable(database.localActivitySegments),
+            segment: segment,
           ),
-      ],
-    );
+        );
+      }
+      return result;
+    });
   }
 
   Future<ActivityReviewEntry?> reviewEntryForSegment(String segmentId) async {
@@ -522,7 +658,7 @@ class ActivityRepository {
               (row) => row.id.equals(segmentId) & row.deletedAt.isNull(),
             ))
             .getSingleOrNull();
-    if (segment == null) return null;
+    if (segment == null || isTaskMasterSelfActivity(segment)) return null;
     final existing =
         await (database.select(database.localActivityReviews)
               ..where(
@@ -579,6 +715,48 @@ class ActivityRepository {
     ActivityReviewEntry entry,
     ActivityResolution resolution,
   ) async {
+    final requestedAllocations = resolution.taskAllocations;
+    if (requestedAllocations.isNotEmpty) {
+      final allocations = validateActivityTaskAllocations(requestedAllocations);
+      final primary = allocations.first;
+      final physicalDurationMs = entry.duration.inMilliseconds;
+      await _resolveSingle(
+        entry,
+        ActivityResolution(
+          status: resolution.status,
+          classification: resolution.classification,
+          targetType: 'task_occurrence',
+          targetId: primary.targetTaskId,
+          contributionType:
+              resolution.contributionType ?? 'active_work_seconds',
+          creditedDuration: Duration(
+            milliseconds: activityAllocatedDurationMs(
+              physicalDurationMs: physicalDurationMs,
+              percentage: primary.percentage,
+            ),
+          ),
+          rememberRule: resolution.rememberRule,
+          isAutomatic: resolution.isAutomatic,
+        ),
+      );
+      for (final allocation in allocations.skip(1)) {
+        await _addAllocatedTaskContribution(
+          entry: entry,
+          classification: resolution.classification,
+          contributionType:
+              resolution.contributionType ?? 'active_work_seconds',
+          allocation: allocation,
+        );
+      }
+      return;
+    }
+    await _resolveSingle(entry, resolution);
+  }
+
+  Future<void> _resolveSingle(
+    ActivityReviewEntry entry,
+    ActivityResolution resolution,
+  ) async {
     final settings = await (database.select(
       database.localAppSettings,
     )..where((row) => row.id.equals(settingsId))).getSingleOrNull();
@@ -589,6 +767,7 @@ class ActivityRepository {
     final synchronizeDetailedActivity = privacyPolicy
         .allowsDetailedActivityUpload(settings);
     final shouldCredit =
+        activityClassificationAllowsCredit(resolution.classification) &&
         resolution.status == 'confirmed' &&
         resolution.targetId != null &&
         resolution.contributionType != null;
@@ -674,6 +853,44 @@ class ActivityRepository {
           updatedAt: Value(now),
         ),
       );
+      final previousContributions =
+          await (database.select(database.localContributions)..where(
+                (row) =>
+                    row.activitySegmentId.equals(entry.segment.id) &
+                    row.deletedAt.isNull(),
+              ))
+              .get();
+      await (database.update(database.localAttributions)..where(
+            (row) =>
+                row.activitySegmentId.equals(entry.segment.id) &
+                row.id.equals(attributionId).not() &
+                row.deletedAt.isNull(),
+          ))
+          .write(
+            LocalAttributionsCompanion(
+              deletedAt: Value(now),
+              updatedAt: Value(now),
+            ),
+          );
+      for (final previous in previousContributions) {
+        if (contributionId != null && previous.id == contributionId) continue;
+        await (database.update(
+          database.localContributions,
+        )..where((row) => row.id.equals(previous.id))).write(
+          LocalContributionsCompanion(
+            deletedAt: Value(now),
+            updatedAt: Value(now),
+          ),
+        );
+        await (database.update(
+          database.localEntityRecords,
+        )..where((row) => row.id.equals(previous.id))).write(
+          LocalEntityRecordsCompanion(
+            deletedAt: Value(now),
+            updatedAt: Value(now),
+          ),
+        );
+      }
       await database
           .into(database.localAttributions)
           .insertOnConflictUpdate(
@@ -697,6 +914,14 @@ class ActivityRepository {
               updatedAt: now,
             ),
           );
+      await (database.update(
+        database.localAttributions,
+      )..where((row) => row.id.equals(attributionId))).write(
+        LocalAttributionsCompanion(
+          deletedAt: const Value(null),
+          updatedAt: Value(now),
+        ),
+      );
 
       if (shouldCredit) {
         final isCrossTask =
@@ -724,6 +949,14 @@ class ActivityRepository {
                 updatedAt: now,
               ),
             );
+        await (database.update(
+          database.localContributions,
+        )..where((row) => row.id.equals(contributionId))).write(
+          LocalContributionsCompanion(
+            deletedAt: const Value(null),
+            updatedAt: Value(now),
+          ),
+        );
         await database
             .into(database.localEntityRecords)
             .insertOnConflictUpdate(
@@ -856,6 +1089,165 @@ class ActivityRepository {
         synchronize: synchronizeContributions,
       );
     }
+  }
+
+  Future<void> _addAllocatedTaskContribution({
+    required ActivityReviewEntry entry,
+    required String classification,
+    required String contributionType,
+    required ActivityTaskAllocation allocation,
+  }) async {
+    final settings = await (database.select(
+      database.localAppSettings,
+    )..where((row) => row.id.equals(settingsId))).getSingleOrNull();
+    final privacyPolicy = await ActivityPrivacyPolicy.load(database, _userId);
+    final synchronize = privacyPolicy.allowsApprovedContributionUpload(
+      settings,
+    );
+    final task =
+        await (database.select(database.localTasks)..where(
+              (row) =>
+                  row.userId.equals(_userId) &
+                  row.id.equals(allocation.targetTaskId) &
+                  row.deletedAt.isNull(),
+            ))
+            .getSingleOrNull();
+    if (task == null) {
+      throw ArgumentError.value(
+        allocation.targetTaskId,
+        'allocation.targetTaskId',
+        'Task is not available',
+      );
+    }
+
+    final now = DateTime.now().toUtc();
+    final deviceId = await DeviceIdentity.accountId(_userId);
+    final metadataValue = jsonDecode(entry.segment.rawMetadataJson);
+    final metadata = metadataValue is Map
+        ? Map<String, Object?>.from(metadataValue)
+        : const <String, Object?>{};
+    final sourceTaskId = metadata['source_task_id'] as String?;
+    final sourceSessionId = metadata['source_session_id'] as String?;
+    final physicalDurationMs = entry.duration.inMilliseconds;
+    final creditedDurationMs = activityAllocatedDurationMs(
+      physicalDurationMs: physicalDurationMs,
+      percentage: allocation.percentage,
+    );
+    final attributionId = activityAttributionIdFor(
+      userId: _userId,
+      reviewItemId: entry.review.id,
+      classification: classification,
+      targetTaskId: allocation.targetTaskId,
+    );
+    final contributionId = activityContributionIdFor(
+      userId: _userId,
+      activitySegmentId: entry.segment.id,
+      targetTaskId: allocation.targetTaskId,
+      contributionType: contributionType,
+    );
+    final attributionCommandId = _uuid.v4();
+    final contributionCommandId = _uuid.v4();
+
+    await database.transaction(() async {
+      await database
+          .into(database.localAttributions)
+          .insertOnConflictUpdate(
+            LocalAttributionsCompanion.insert(
+              id: attributionId,
+              userId: _userId,
+              activitySegmentId: entry.segment.id,
+              targetType: 'task_occurrence',
+              targetId: Value(allocation.targetTaskId),
+              classification: classification,
+              confidence: entry.review.confidence ?? 1,
+              attributionStatus: const Value('confirmed'),
+              confirmedByUser: const Value(true),
+              createdAt: now,
+              updatedAt: now,
+            ),
+          );
+      await database
+          .into(database.localContributions)
+          .insertOnConflictUpdate(
+            LocalContributionsCompanion.insert(
+              id: contributionId,
+              userId: _userId,
+              activitySegmentId: entry.segment.id,
+              attributionId: attributionId,
+              targetType: 'task_occurrence',
+              targetId: Value(allocation.targetTaskId),
+              contributionType: contributionType,
+              physicalDurationMs: physicalDurationMs,
+              creditedDurationMs: creditedDurationMs,
+              isUnscheduled: Value(sourceTaskId != allocation.targetTaskId),
+              isCrossTask: Value(
+                sourceTaskId != null && sourceTaskId != allocation.targetTaskId,
+              ),
+              isIdleDerived: Value(entry.segment.idleState == 'technical_idle'),
+              createdAt: now,
+              updatedAt: now,
+            ),
+          );
+      if (synchronize) {
+        await _enqueue(
+          commandId: attributionCommandId,
+          deviceId: deviceId,
+          sequence: await DeviceIdentity.nextSequence(_userId),
+          entityType: 'activity_attributions',
+          entityId: attributionId,
+          payload: {
+            'activity_segment_id': entry.segment.id,
+            'target_type': 'task_occurrence',
+            'target_id': allocation.targetTaskId,
+            'classification': classification,
+            'confidence': entry.review.confidence ?? 1,
+            'attribution_status': 'confirmed',
+            'suggested_by': 'user_review',
+            'confirmed_by_user': true,
+            'data': {
+              'review_item_id': entry.review.id,
+              'allocation_percentage': allocation.percentage,
+            },
+          },
+          now: now,
+        );
+        await _enqueue(
+          commandId: contributionCommandId,
+          deviceId: deviceId,
+          sequence: await DeviceIdentity.nextSequence(_userId),
+          entityType: 'activity_contributions',
+          entityId: contributionId,
+          payload: {
+            'activity_segment_id': entry.segment.id,
+            'activity_attribution_id': attributionId,
+            'target_type': 'task_occurrence',
+            'target_id': allocation.targetTaskId,
+            'contribution_type': contributionType,
+            'physical_duration_ms': physicalDurationMs,
+            'credited_duration_ms': creditedDurationMs,
+            'source_task_id': sourceTaskId,
+            'source_session_id': sourceSessionId,
+            'is_unscheduled': sourceTaskId != allocation.targetTaskId,
+            'is_cross_task':
+                sourceTaskId != null && sourceTaskId != allocation.targetTaskId,
+            'is_idle_derived': entry.segment.idleState == 'technical_idle',
+            'is_automatic': false,
+            'data': {
+              'allocation_percentage': allocation.percentage,
+              'classification_source': 'user',
+            },
+          },
+          now: now,
+        );
+      }
+    });
+    await _applyPermittedRoadmapEffects(
+      taskId: allocation.targetTaskId,
+      contributionId: contributionId,
+      contributionType: contributionType,
+      creditedDurationMs: creditedDurationMs,
+      synchronize: synchronize,
+    );
   }
 
   Future<void> _applyPermittedRoadmapEffects({
@@ -1000,41 +1392,62 @@ class ActivityRepository {
     required bool synchronize,
   }) async {
     final entities = EntityRecordRepository(database, client);
-    await entities.create(
-      EntityRecordDraft(
-        id: id,
-        entityType: 'classification_feedback',
-        title: _readableClassification(resolution.classification),
-        parentId: entry.segment.id,
-        status: resolution.status,
-        synchronize: synchronize,
-        data: {
-          'activity_segment_id': entry.segment.id,
-          'domain': entry.segment.domain,
-          'suggested_classification': entry.review.suggestedClassification,
-          'chosen_classification': resolution.classification,
-          'suggested_target_type': entry.review.suggestedTargetType,
-          'suggested_target_id': entry.review.suggestedTargetId,
-          'chosen_target_type': resolution.targetType,
-          'chosen_target_id': resolution.targetId,
-          'feedback_type': resolution.rememberRule
-              ? 'confirmed_and_remembered'
-              : resolution.status,
-        },
-        syncPayload: {
-          'activity_segment_id': entry.segment.id,
-          'application_id': null,
-          'domain': entry.segment.domain,
-          'suggested_classification': entry.review.suggestedClassification,
-          'chosen_classification': resolution.classification,
-          'suggested_target_type': entry.review.suggestedTargetType,
-          'suggested_target_id': entry.review.suggestedTargetId,
-          'chosen_target_type': resolution.targetType,
-          'chosen_target_id': resolution.targetId,
-          'feedback_type': resolution.rememberRule
-              ? 'confirmed_and_remembered'
-              : resolution.status,
-        },
+    final data = <String, Object?>{
+      'activity_segment_id': entry.segment.id,
+      'domain': entry.segment.domain,
+      'suggested_classification': entry.review.suggestedClassification,
+      'chosen_classification': resolution.classification,
+      'suggested_target_type': entry.review.suggestedTargetType,
+      'suggested_target_id': entry.review.suggestedTargetId,
+      'chosen_target_type': resolution.targetType,
+      'chosen_target_id': resolution.targetId,
+      'feedback_type': resolution.rememberRule
+          ? 'confirmed_and_remembered'
+          : resolution.status,
+    };
+    final existing = await entities.getIncludingDeleted(id);
+    if (existing == null) {
+      await entities.create(
+        EntityRecordDraft(
+          id: id,
+          entityType: 'classification_feedback',
+          title: _readableClassification(resolution.classification),
+          parentId: entry.segment.id,
+          status: resolution.status,
+          synchronize: synchronize,
+          data: data,
+          syncPayload: {
+            'activity_segment_id': entry.segment.id,
+            'application_id': null,
+            'domain': entry.segment.domain,
+            'suggested_classification': entry.review.suggestedClassification,
+            'chosen_classification': resolution.classification,
+            'suggested_target_type': entry.review.suggestedTargetType,
+            'suggested_target_id': entry.review.suggestedTargetId,
+            'chosen_target_type': resolution.targetType,
+            'chosen_target_id': resolution.targetId,
+            'feedback_type': resolution.rememberRule
+                ? 'confirmed_and_remembered'
+                : resolution.status,
+          },
+        ),
+      );
+      return;
+    }
+    // The feedback ID is deliberately deterministic. Re-reviewing a period
+    // updates its projection instead of failing on a duplicate primary key
+    // after the Activity decision has already committed.
+    await (database.update(
+      database.localEntityRecords,
+    )..where((row) => row.id.equals(id) & row.userId.equals(_userId))).write(
+      LocalEntityRecordsCompanion(
+        title: Value(_readableClassification(resolution.classification)),
+        parentId: Value(entry.segment.id),
+        status: Value(resolution.status),
+        dataJson: Value(jsonEncode(data)),
+        revision: Value(existing.revision + 1),
+        updatedAt: Value(DateTime.now().toUtc()),
+        deletedAt: const Value(null),
       ),
     );
   }
@@ -1103,10 +1516,13 @@ class ActivityRepository {
         );
     final deviceId = await DeviceIdentity.accountId(_userId);
     final displayName = _privacySafeLabel(entry.segment);
+    final normalizedKey = normalizedApplicationKey(identifier);
     final catalogData = <String, Object?>{
       'platform': platform,
       'application_identifier': identifier.toLowerCase(),
+      'normalized_application_key': normalizedKey,
       'display_name': displayName,
+      'default_display_name': displayName,
       'classification': resolution.classification,
     };
     final ruleData = <String, Object?>{
@@ -1213,13 +1629,21 @@ class ActivityRepository {
             data: {
               'platform': platform,
               'application_identifier': identifier,
+              'normalized_application_key': normalizedApplicationKey(
+                identifier,
+              ),
               'display_name': entry.segment.processName ?? identifier,
+              'default_display_name': entry.segment.processName ?? identifier,
               'classification': resolution.classification,
             },
             syncPayload: {
               'platform': platform,
               'application_identifier': identifier,
+              'normalized_application_key': normalizedApplicationKey(
+                identifier,
+              ),
               'display_name': entry.segment.processName ?? identifier,
+              'default_display_name': entry.segment.processName ?? identifier,
               'publisher': null,
               'icon_path': null,
               'classification': resolution.classification,
@@ -1322,13 +1746,21 @@ class ActivityRepository {
             data: {
               'platform': platform,
               'application_identifier': identifier.toLowerCase(),
+              'normalized_application_key': normalizedApplicationKey(
+                identifier,
+              ),
               'display_name': _privacySafeLabel(entry.segment),
+              'default_display_name': _privacySafeLabel(entry.segment),
               'classification': resolution.classification,
             },
             syncPayload: {
               'platform': platform,
               'application_identifier': identifier.toLowerCase(),
+              'normalized_application_key': normalizedApplicationKey(
+                identifier,
+              ),
               'display_name': _privacySafeLabel(entry.segment),
+              'default_display_name': _privacySafeLabel(entry.segment),
               'publisher': null,
               'icon_path': null,
               'classification': resolution.classification,

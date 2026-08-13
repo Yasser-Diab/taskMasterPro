@@ -15,6 +15,7 @@ import '../../../core/database/app_database.dart';
 import '../../../core/localization/app_localizations.dart';
 import '../../tasks/data/installed_application_service.dart';
 import '../../../core/time/time_zone_service.dart';
+import '../../tasks/domain/daily_planned_time.dart';
 import '../../tasks/domain/task_domain_catalog.dart';
 import '../../tasks/domain/task_occurrence_policy.dart';
 
@@ -158,6 +159,32 @@ class PerformanceReportDailyPoint {
   final int completedTasks;
 }
 
+/// A report row for either one standalone task or all occurrences generated
+/// from the same recurring template.
+class PerformanceReportTaskGroup {
+  const PerformanceReportTaskGroup({
+    required this.id,
+    required this.title,
+    required this.recurring,
+    required this.occurrences,
+    required this.completed,
+    required this.missed,
+    required this.upcoming,
+    required this.plannedMs,
+    required this.recordedMs,
+  });
+
+  final String id;
+  final String title;
+  final bool recurring;
+  final int occurrences;
+  final int completed;
+  final int missed;
+  final int upcoming;
+  final int plannedMs;
+  final int recordedMs;
+}
+
 /// Derived report values with no sample, random, or placeholder data.
 ///
 /// Both the interactive report and exported PDF consume this projection, so
@@ -181,6 +208,9 @@ class PerformanceReportFacts {
     required this.websites,
     required this.taskDomains,
     required this.roadmaps,
+    required this.phases,
+    required this.interruptionTypes,
+    required this.taskWork,
   });
 
   final int plannedMs;
@@ -200,6 +230,9 @@ class PerformanceReportFacts {
   final List<PerformanceReportBreakdown> websites;
   final List<PerformanceReportBreakdown> taskDomains;
   final List<PerformanceReportBreakdown> roadmaps;
+  final List<PerformanceReportBreakdown> phases;
+  final List<PerformanceReportBreakdown> interruptionTypes;
+  final List<PerformanceReportBreakdown> taskWork;
 
   bool get hasRecordedData =>
       productiveMs > 0 ||
@@ -437,6 +470,10 @@ class PerformanceReportService {
       _interruptionIntervals(snapshot.interruptions, effectiveNow),
       options,
     );
+    final interruptionTypeDurations = _allocateLabelsByDay(
+      _interruptionIntervals(snapshot.interruptions, effectiveNow),
+      options,
+    );
 
     final activityAllocation = _allocateActivityByDay(
       _activityIntervals(snapshot.activity, l10n),
@@ -458,6 +495,7 @@ class PerformanceReportService {
     };
     final domainDurations = <String, int>{};
     final roadmapDurations = <String, int>{};
+    final phaseDurations = <String, int>{};
     for (final task in snapshot.tasks) {
       final active = activeByTask[task.id] ?? 0;
       final domainId = task.domainId ?? '';
@@ -474,11 +512,22 @@ class PerformanceReportService {
           ifAbsent: () => active,
         );
       }
+      final phaseId = task.roadmapPhaseId;
+      if (phaseId != null && phaseId.isNotEmpty) {
+        phaseDurations.update(
+          phaseId,
+          (value) => value + active,
+          ifAbsent: () => active,
+        );
+      }
     }
     final userId =
         snapshot.profile?.userId ?? snapshot.tasks.firstOrNull?.userId ?? '';
     final roadmapNames = {
       for (final roadmap in snapshot.roadmaps) roadmap.id: roadmap.title,
+    };
+    final phaseNames = {
+      for (final phase in snapshot.phases) phase.id: phase.title,
     };
 
     final startDay = _startOfDay(options.from);
@@ -489,24 +538,17 @@ class PerformanceReportService {
       !day.isAfter(endDay);
       day = day.add(const Duration(days: 1))
     ) {
-      daily[day] = (planned: 0, active: 0, completed: 0);
+      daily[day] = (
+        planned: DailyPlannedTime.calculate(
+          snapshot.tasks,
+          localDay: day,
+          timeZone: options.timeZone,
+        ).inMilliseconds,
+        active: 0,
+        completed: 0,
+      );
     }
     for (final task in snapshot.tasks) {
-      final plannedAt = task.plannedStart ?? task.scheduledDate;
-      if (plannedAt != null) {
-        final day = TaskOccurrencePolicy.localDateAt(
-          plannedAt,
-          timeZone: options.timeZone,
-        );
-        final current = daily[day];
-        if (current != null) {
-          daily[day] = (
-            planned: current.planned + task.estimatedDurationMs,
-            active: current.active,
-            completed: current.completed,
-          );
-        }
-      }
       final completedAt = task.actualFinish;
       if (task.status == 'completed' && completedAt != null) {
         final day = TaskOccurrencePolicy.localDateAt(
@@ -564,10 +606,7 @@ class PerformanceReportService {
       timeZone: options.timeZone,
     ).length;
     return PerformanceReportFacts(
-      plannedMs: snapshot.tasks.fold<int>(
-        0,
-        (sum, task) => sum + task.estimatedDurationMs,
-      ),
+      plannedMs: daily.values.fold<int>(0, (sum, value) => sum + value.planned),
       productiveMs: productiveMs,
       focusMs: focusMs,
       breakMs: breakMs,
@@ -606,7 +645,103 @@ class PerformanceReportService {
             ? roadmapNames[id]!.trim()
             : l10n.text('report_roadmap_unavailable'),
       ),
+      phases: ordered(
+        phaseDurations,
+        (id) => phaseNames[id]?.trim().isNotEmpty == true
+            ? phaseNames[id]!.trim()
+            : l10n.text('report_phase_unavailable'),
+      ),
+      interruptionTypes: ordered(interruptionTypeDurations, (id) {
+        final localizationKey = switch (id) {
+          'device_internet_problem' => 'interruption_type_device_problem',
+          'cross_task' => 'activity_contributions',
+          'phone_call' ||
+          'family_need' ||
+          'work_problem' ||
+          'visitor' ||
+          'meeting' ||
+          'personal_need' ||
+          'emergency' ||
+          'distraction' ||
+          'other' => 'interruption_type_$id',
+          _ => 'interruption_type_other',
+        };
+        return l10n.text(localizationKey);
+      }),
+      taskWork: ordered(
+        activeByTask,
+        (id) => tasksById[id]?.title ?? l10n.text('report_task_unavailable'),
+      ),
     );
+  }
+
+  /// Collapses recurring occurrences to a single report row while retaining
+  /// the outcome counts and the union-allocated work credited to every task.
+  static List<PerformanceReportTaskGroup> taskGroupsForReport(
+    Iterable<LocalTask> tasks,
+    PerformanceReportFacts facts, {
+    DateTime? now,
+    String timeZone = 'UTC',
+  }) {
+    final occurrenceList = tasks.toList(growable: false);
+    final overdueIds = TaskOccurrencePolicy.overdueOccurrences(
+      occurrenceList,
+      now: (now ?? DateTime.now()).toUtc(),
+      timeZone: timeZone,
+    ).map((task) => task.id).toSet();
+    final recordedByTask = {
+      for (final entry in facts.taskWork) entry.id: entry.durationMs,
+    };
+    final grouped = <String, List<LocalTask>>{};
+    for (final task in occurrenceList) {
+      final templateId = task.templateId?.trim();
+      final key = templateId == null || templateId.isEmpty
+          ? 'task:${task.id}'
+          : 'template:$templateId';
+      grouped.putIfAbsent(key, () => []).add(task);
+    }
+    final result = <PerformanceReportTaskGroup>[];
+    for (final entry in grouped.entries) {
+      final occurrences = entry.value
+        ..sort((left, right) {
+          final leftAt =
+              left.plannedStart ?? left.scheduledDate ?? left.createdAt;
+          final rightAt =
+              right.plannedStart ?? right.scheduledDate ?? right.createdAt;
+          return leftAt.compareTo(rightAt);
+        });
+      final completed = occurrences
+          .where(TaskOccurrencePolicy.isCompletedOccurrence)
+          .length;
+      final missed = occurrences
+          .where(
+            (task) =>
+                task.status.toLowerCase() == 'missed' ||
+                overdueIds.contains(task.id),
+          )
+          .length;
+      result.add(
+        PerformanceReportTaskGroup(
+          id: entry.key,
+          title: occurrences.first.title,
+          recurring: !entry.key.startsWith('task:'),
+          occurrences: occurrences.length,
+          completed: completed,
+          missed: missed,
+          upcoming: math.max(0, occurrences.length - completed - missed),
+          plannedMs: occurrences.fold<int>(
+            0,
+            (sum, task) => sum + task.estimatedDurationMs,
+          ),
+          recordedMs: occurrences.fold<int>(
+            0,
+            (sum, task) => sum + (recordedByTask[task.id] ?? 0),
+          ),
+        ),
+      );
+    }
+    result.sort((left, right) => left.title.compareTo(right.title));
+    return List.unmodifiable(result);
   }
 
   /// Resolves linked roadmap identities before report rendering.
@@ -1210,7 +1345,14 @@ class PerformanceReportService {
           ? start.add(Duration(milliseconds: durationMs))
           : (ended == null && durationMs == 0 ? effectiveNow : end);
       if (boundedEnd.isAfter(start)) {
-        result.add(_ReportInterval(start: start, end: boundedEnd));
+        final type = data['interruption_type']?.toString().trim();
+        result.add(
+          _ReportInterval(
+            start: start,
+            end: boundedEnd,
+            label: type == null || type.isEmpty ? 'other' : type,
+          ),
+        );
       }
     }
     return result;
@@ -1285,6 +1427,59 @@ class PerformanceReportService {
       total += _unionDuration(_clipIntervals(intervals, day.start, day.end));
     }
     return total;
+  }
+
+  static Map<String, int> _allocateLabelsByDay(
+    Iterable<_ReportInterval> intervals,
+    PerformanceReportOptions options,
+  ) {
+    final result = <String, int>{};
+    for (final day in _reportDays(options)) {
+      _addAll(
+        result,
+        _allocateLabelIntervals(_clipIntervals(intervals, day.start, day.end)),
+      );
+    }
+    return result;
+  }
+
+  /// Allocates each physical slice once even when two categorized records
+  /// overlap. This keeps the category chart equal to the elapsed-time union.
+  static Map<String, int> _allocateLabelIntervals(
+    Iterable<_ReportInterval> source,
+  ) {
+    final intervals = source.where((interval) => interval.isPositive).toList();
+    final boundaries = _intervalBoundaries(intervals);
+    final result = <String, int>{};
+    for (var index = 0; index + 1 < boundaries.length; index++) {
+      final start = boundaries[index];
+      final end = boundaries[index + 1];
+      if (!end.isAfter(start)) continue;
+      final labels =
+          intervals
+              .where(
+                (interval) =>
+                    !interval.start.isAfter(start) &&
+                    !interval.end.isBefore(end),
+              )
+              .map((interval) => interval.label?.trim() ?? '')
+              .where((label) => label.isNotEmpty)
+              .toSet()
+              .toList()
+            ..sort();
+      if (labels.isEmpty) continue;
+      _splitDuration(end.difference(start).inMilliseconds, labels, (
+        label,
+        shareMs,
+      ) {
+        result.update(
+          label,
+          (value) => value + shareMs,
+          ifAbsent: () => shareMs,
+        );
+      });
+    }
+    return result;
   }
 
   static List<_ReportInterval> _clipIntervals(
@@ -1956,6 +2151,11 @@ class PerformanceReportService {
     final dateTimeFormat = DateFormat.yMMMd(options.localeCode).add_jm();
     final healthSummaries = healthSummariesForReport(snapshot.health, options);
     final facts = factsForSnapshot(snapshot, options, l10n);
+    final taskGroups = taskGroupsForReport(
+      snapshot.tasks,
+      facts,
+      timeZone: options.timeZone,
+    );
     String duration(int milliseconds) =>
         l10n.duration(Duration(milliseconds: milliseconds));
     final delays = snapshot.tasks
@@ -2139,6 +2339,54 @@ class PerformanceReportService {
                               .toDouble(),
                     },
                   ),
+                  if (facts.focusMs > 0 || facts.continuousMs > 0) ...[
+                    pw.SizedBox(height: 12),
+                    _durationChart(
+                      title: l10n.text('report_focus_vs_continuous'),
+                      values: {
+                        l10n.text('report_focus_time'): facts.focusMs,
+                        l10n.text('report_continuous_work'): facts.continuousMs,
+                      },
+                      duration: duration,
+                      rtl: rtl,
+                    ),
+                  ],
+                  if (facts.focusMs > 0 || facts.breakMs > 0) ...[
+                    pw.SizedBox(height: 12),
+                    _durationChart(
+                      title: l10n.text('report_focus_vs_break'),
+                      values: {
+                        l10n.text('report_focus_time'): facts.focusMs,
+                        l10n.text('report_break_time'): facts.breakMs,
+                      },
+                      duration: duration,
+                      rtl: rtl,
+                    ),
+                  ],
+                  if (facts.taskDomains.isNotEmpty) ...[
+                    pw.SizedBox(height: 12),
+                    _durationChart(
+                      title: l10n.text('report_work_by_area'),
+                      values: {
+                        for (final entry in facts.taskDomains.take(6))
+                          entry.label: entry.durationMs,
+                      },
+                      duration: duration,
+                      rtl: rtl,
+                    ),
+                  ],
+                  if (facts.interruptionTypes.isNotEmpty) ...[
+                    pw.SizedBox(height: 12),
+                    _durationChart(
+                      title: l10n.text('report_interruption_distribution'),
+                      values: {
+                        for (final entry in facts.interruptionTypes.take(6))
+                          entry.label: entry.durationMs,
+                      },
+                      duration: duration,
+                      rtl: rtl,
+                    ),
+                  ],
                   if (facts.daily.any(
                     (point) => point.plannedMs > 0 || point.productiveMs > 0,
                   )) ...[
@@ -2175,6 +2423,29 @@ class PerformanceReportService {
                             }),
                           ),
                         ),
+                  if (facts.phases.isNotEmpty) ...[
+                    pw.SizedBox(height: 12),
+                    _durationChart(
+                      title: l10n.text('report_phase_progress'),
+                      values: {
+                        for (final entry in facts.phases.take(8))
+                          entry.label: entry.durationMs,
+                      },
+                      duration: duration,
+                      rtl: rtl,
+                    ),
+                  ] else if (facts.roadmaps.isNotEmpty) ...[
+                    pw.SizedBox(height: 12),
+                    _durationChart(
+                      title: l10n.text('report_roadmap_progress'),
+                      values: {
+                        for (final entry in facts.roadmaps.take(8))
+                          entry.label: entry.durationMs,
+                      },
+                      duration: duration,
+                      rtl: rtl,
+                    ),
+                  ],
                   pw.SizedBox(height: 18),
                 ],
               ),
@@ -2183,19 +2454,7 @@ class PerformanceReportService {
           if (options.sections.contains('tasks')) {
             widgets.add(pw.NewPage(freeSpace: 240));
             widgets.add(_sectionTitle(l10n.text('report_tasks'), rtl));
-            widgets.add(
-              _taskTable(snapshot.tasks.take(4).toList(), l10n, duration, rtl),
-            );
-            if (snapshot.tasks.length > 4) {
-              widgets.add(
-                _taskTable(
-                  snapshot.tasks.skip(4).toList(),
-                  l10n,
-                  duration,
-                  rtl,
-                ),
-              );
-            }
+            widgets.add(_taskGroupTable(taskGroups, l10n, duration, rtl));
             widgets.add(pw.SizedBox(height: 18));
           }
           if (options.sections.contains('activity')) {
@@ -2468,49 +2727,133 @@ class PerformanceReportService {
     );
   }
 
-  pw.Widget _taskTable(
-    List<LocalTask> tasks,
+  pw.Widget _durationChart({
+    required String title,
+    required Map<String, int> values,
+    required String Function(int) duration,
+    required bool rtl,
+  }) {
+    final visible = Map<String, int>.fromEntries(
+      values.entries.where((entry) => entry.value > 0),
+    );
+    if (visible.isEmpty) return pw.SizedBox();
+    final maximum = visible.values.reduce(math.max);
+    return pw.Container(
+      padding: const pw.EdgeInsets.all(9),
+      decoration: pw.BoxDecoration(
+        color: PdfColors.blueGrey50,
+        border: pw.Border.all(color: PdfColors.blueGrey200),
+        borderRadius: const pw.BorderRadius.all(pw.Radius.circular(7)),
+      ),
+      child: pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+        children: [
+          pw.Text(
+            title,
+            textAlign: rtl ? pw.TextAlign.right : pw.TextAlign.left,
+            style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9),
+          ),
+          pw.SizedBox(height: 5),
+          ...visible.entries.map(
+            (entry) => pw.Padding(
+              padding: const pw.EdgeInsets.only(bottom: 4),
+              child: pw.Row(
+                children: [
+                  pw.SizedBox(
+                    width: 105,
+                    child: pw.Text(
+                      entry.key,
+                      style: const pw.TextStyle(fontSize: 7),
+                    ),
+                  ),
+                  pw.SizedBox(
+                    width: 220,
+                    child: pw.Container(
+                      height: 8,
+                      alignment: rtl
+                          ? pw.Alignment.centerRight
+                          : pw.Alignment.centerLeft,
+                      decoration: const pw.BoxDecoration(
+                        color: PdfColors.blueGrey100,
+                        borderRadius: pw.BorderRadius.all(
+                          pw.Radius.circular(4),
+                        ),
+                      ),
+                      child: pw.Row(
+                        mainAxisAlignment: rtl
+                            ? pw.MainAxisAlignment.end
+                            : pw.MainAxisAlignment.start,
+                        children: [
+                          pw.Container(
+                            width: 220 * (entry.value / maximum),
+                            height: 8,
+                            decoration: const pw.BoxDecoration(
+                              color: PdfColors.teal500,
+                              borderRadius: pw.BorderRadius.all(
+                                pw.Radius.circular(4),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  pw.SizedBox(width: 7),
+                  pw.SizedBox(
+                    width: 75,
+                    child: pw.Text(
+                      duration(entry.value),
+                      style: const pw.TextStyle(fontSize: 7),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  pw.Widget _taskGroupTable(
+    List<PerformanceReportTaskGroup> groups,
     AppLocalizations l10n,
     String Function(int) duration,
     bool rtl,
   ) {
-    if (tasks.isEmpty) return pw.Text(l10n.text('report_no_tasks'));
+    if (groups.isEmpty) return pw.Text(l10n.text('report_no_tasks'));
     return pw.TableHelper.fromTextArray(
       headerAlignment: rtl ? pw.Alignment.centerRight : pw.Alignment.centerLeft,
       cellAlignment: rtl ? pw.Alignment.centerRight : pw.Alignment.centerLeft,
       headerDirection: rtl ? pw.TextDirection.rtl : pw.TextDirection.ltr,
       tableDirection: rtl ? pw.TextDirection.rtl : pw.TextDirection.ltr,
-      headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 8),
-      cellStyle: const pw.TextStyle(fontSize: 8),
-      cellBuilder: (index, value, row) {
-        final text = value.toString();
-        final cellRtl = index == 0 ? _containsRtlText(text) : rtl;
-        return pw.Directionality(
-          textDirection: cellRtl ? pw.TextDirection.rtl : pw.TextDirection.ltr,
-          child: pw.Text(
-            text,
-            textAlign: cellRtl ? pw.TextAlign.right : pw.TextAlign.left,
-            style: const pw.TextStyle(fontSize: 8),
-          ),
-        );
-      },
+      headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 7),
+      cellStyle: const pw.TextStyle(fontSize: 7),
       headerDecoration: const pw.BoxDecoration(color: PdfColors.blueGrey100),
       headers: [
         l10n.text('task_title'),
-        l10n.text('status'),
-        l10n.text('report_planned_effort'),
-        l10n.text('report_active_work'),
-        l10n.text('progress'),
+        l10n.text('report_occurrences'),
+        l10n.text('status_completed'),
+        l10n.text('status_missed'),
+        l10n.text('report_upcoming'),
+        l10n.text('report_recorded'),
       ],
-      data: tasks.take(40).map((task) {
-        return [
-          task.title,
-          l10n.taskStatus(task.status),
-          duration(task.estimatedDurationMs),
-          duration(task.activeDurationMs),
-          '${(task.progress * 100).round()}%',
-        ];
-      }).toList(),
+      data: groups
+          .take(40)
+          .map((group) {
+            final title = group.recurring
+                ? '${group.title}\n${l10n.text('report_recurring_task')}'
+                : group.title;
+            return [
+              title,
+              group.occurrences.toString(),
+              group.completed.toString(),
+              group.missed.toString(),
+              group.upcoming.toString(),
+              duration(group.recordedMs),
+            ];
+          })
+          .toList(growable: false),
     );
   }
 
@@ -2610,9 +2953,6 @@ class PerformanceReportService {
       ],
     );
   }
-
-  bool _containsRtlText(String value) =>
-      RegExp(r'[\u0590-\u08FF]').hasMatch(value);
 
   pw.Widget _healthSummary(
     List<PerformanceHealthSummaryEntry> entries,

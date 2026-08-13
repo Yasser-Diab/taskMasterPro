@@ -9,6 +9,7 @@ import '../../../core/localization/app_localizations.dart';
 import '../../../core/providers.dart';
 import '../data/activity_aggregation_service.dart';
 import '../data/activity_repository.dart';
+import 'activity_badges.dart';
 
 final activityReviewProvider = StreamProvider<List<ActivityReviewEntry>>(
   (ref) => ref.watch(activityRepositoryProvider).watchReviewQueue(),
@@ -344,20 +345,20 @@ class _ActivityReviewScreenState extends ConsumerState<ActivityReviewScreen> {
                     .read(activityRepositoryProvider)
                     .listTaskTargets();
                 if (!context.mounted) return;
-                final taskId = await showDialog<String>(
-                  context: context,
-                  builder: (context) =>
-                      _TaskPickerDialog(tasks: tasks, copy: copy),
-                );
-                if (taskId != null && context.mounted) {
+                final allocations =
+                    await showDialog<List<ActivityTaskAllocation>>(
+                      context: context,
+                      builder: (context) =>
+                          _TaskPickerDialog(tasks: tasks, copy: copy),
+                    );
+                if (allocations != null && context.mounted) {
                   Navigator.pop(
                     context,
                     ActivityResolution(
                       status: 'confirmed',
                       classification: 'direct_task_work',
-                      targetType: 'task_occurrence',
-                      targetId: taskId,
                       contributionType: 'active_work_seconds',
+                      taskAllocations: allocations,
                     ),
                   );
                 }
@@ -807,9 +808,19 @@ class _GroupedActivityCard extends StatelessWidget {
           backgroundColor: Theme.of(context).colorScheme.primaryContainer,
           child: Icon(_iconFor(group.sourceType)),
         ),
-        title: Text(
-          group.name,
-          style: const TextStyle(fontWeight: FontWeight.w800),
+        title: Row(
+          children: [
+            Expanded(
+              child: Text(
+                group.name,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontWeight: FontWeight.w800),
+              ),
+            ),
+            const SizedBox(width: 8),
+            ActivityClassificationBadge(classification: group.classification),
+          ],
         ),
         subtitle: Padding(
           padding: const EdgeInsets.only(top: 6),
@@ -829,15 +840,17 @@ class _GroupedActivityCard extends StatelessWidget {
                 '${copy.lastUsed}: ${DateFormat.jm(locale).format(last)}',
               ),
               Text(
-                '${copy.classification}: '
-                '${copy.classificationName(group.classification)}',
-              ),
-              Text(
                 copy.storageState(group.classification),
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
                   color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
               ),
+              if (activitySuggestionLabel(copy.l10n, group.suggestionSource)
+                  case final tag?)
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Wrap(children: [ActivitySuggestionBadge(label: tag)]),
+                ),
             ],
           ),
         ),
@@ -907,36 +920,111 @@ class _GroupedActivityCard extends StatelessWidget {
   }
 }
 
-class _TaskPickerDialog extends StatelessWidget {
+class _TaskPickerDialog extends StatefulWidget {
   const _TaskPickerDialog({required this.tasks, required this.copy});
 
   final List<LocalTask> tasks;
   final _ActivityCopy copy;
 
   @override
+  State<_TaskPickerDialog> createState() => _TaskPickerDialogState();
+}
+
+class _TaskPickerDialogState extends State<_TaskPickerDialog> {
+  final Map<String, int> _percentages = {};
+
+  int get _total => _percentages.values.fold(0, (sum, value) => sum + value);
+
+  void _toggle(LocalTask task, bool selected) {
+    setState(() {
+      if (!selected) {
+        _percentages.remove(task.id);
+        return;
+      }
+      final remaining = 100 - _total;
+      if (remaining <= 0) return;
+      _percentages[task.id] = remaining;
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: Text(copy.assignAnotherTask),
+      title: Text(widget.copy.creditToTasks),
       content: SizedBox(
         width: 480,
-        child: tasks.isEmpty
-            ? Text(copy.noTaskTargets)
+        child: widget.tasks.isEmpty
+            ? Text(widget.copy.noTaskTargets)
             : ListView(
                 shrinkWrap: true,
                 children: [
-                  for (final task in tasks)
-                    ListTile(
+                  Text(widget.copy.allocationHelp),
+                  const SizedBox(height: 8),
+                  for (final task in widget.tasks) ...[
+                    CheckboxListTile(
+                      contentPadding: EdgeInsets.zero,
+                      value: _percentages.containsKey(task.id),
                       title: Text(task.title),
                       subtitle: Text(task.status),
-                      onTap: () => Navigator.pop(context, task.id),
+                      onChanged: (value) => _toggle(task, value ?? false),
                     ),
+                    if (_percentages.containsKey(task.id))
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Slider(
+                              value: _percentages[task.id]!.toDouble(),
+                              min: 1,
+                              max: 100,
+                              divisions: 99,
+                              label: '${_percentages[task.id]}%',
+                              onChanged: (value) {
+                                final otherTotal =
+                                    _total - _percentages[task.id]!;
+                                final maximum = 100 - otherTotal;
+                                setState(() {
+                                  _percentages[task.id] = value.round().clamp(
+                                    1,
+                                    maximum,
+                                  );
+                                });
+                              },
+                            ),
+                          ),
+                          SizedBox(
+                            width: 52,
+                            child: Text(
+                              '${_percentages[task.id]}%',
+                              textAlign: TextAlign.end,
+                            ),
+                          ),
+                        ],
+                      ),
+                  ],
+                  const SizedBox(height: 8),
+                  Text(
+                    widget.copy.allocatedTotal(_total),
+                    style: Theme.of(context).textTheme.labelLarge,
+                  ),
                 ],
               ),
       ),
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context),
-          child: Text(copy.cancel),
+          child: Text(widget.copy.cancel),
+        ),
+        FilledButton(
+          onPressed: _percentages.isEmpty || _total > 100
+              ? null
+              : () => Navigator.pop(context, [
+                  for (final entry in _percentages.entries)
+                    ActivityTaskAllocation(
+                      targetTaskId: entry.key,
+                      percentage: entry.value,
+                    ),
+                ]),
+          child: Text(widget.copy.applyAllocation),
         ),
       ],
     );
@@ -1022,6 +1110,7 @@ extension on ActivityResolution {
     creditedDuration: creditedDuration,
     rememberRule: rememberRule ?? this.rememberRule,
     isAutomatic: isAutomatic,
+    taskAllocations: taskAllocations,
   );
 }
 
@@ -1058,6 +1147,11 @@ class _ActivityCopy {
   String get reviewActivity => l10n.text('activity_review');
   String get loadMore => l10n.text('activity_load_more');
   String get assignAnotherTask => l10n.text('activity_assign_task');
+  String get creditToTasks => l10n.text('activity_credit_to_tasks');
+  String get allocationHelp => l10n.text('activity_allocation_help');
+  String allocatedTotal(int percentage) =>
+      l10n.format('activity_allocated_total', {'percentage': percentage});
+  String get applyAllocation => l10n.text('activity_apply_allocation');
   String get usefulReading => l10n.text('activity_useful_reading');
   String get supportingWork => l10n.text('activity_supporting_work');
   String get markDistraction => l10n.text('activity_mark_distraction');
@@ -1080,22 +1174,7 @@ class _ActivityCopy {
   String get noReviewDetail => l10n.text('activity_none_review_detail');
 
   String classificationName(String value) {
-    return switch (value) {
-      'direct_task_work' => l10n.text('classification_related'),
-      'supporting_work' => supportingWork,
-      'research' => l10n.text('classification_research'),
-      'communication' => l10n.text('classification_communication'),
-      'learning' => l10n.text('classification_learning'),
-      'reading' || 'passive_useful_activity' => usefulReading,
-      'distraction' => markDistraction,
-      'unrelated' => l10n.text('classification_not_related'),
-      'generally_unrelated' => generallyUnrelated,
-      'system_activity' => l10n.text('system_activity'),
-      'possible_system_activity' => l10n.text('possible_system_activity'),
-      'user_application' => l10n.text('user_application'),
-      'idle' || 'technical_idle' => idle,
-      _ => needsReview,
-    };
+    return activityClassificationLabel(l10n, value);
   }
 
   String storageState(String classification) {

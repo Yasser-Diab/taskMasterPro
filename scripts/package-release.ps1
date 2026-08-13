@@ -133,7 +133,10 @@ $env:JAVA_HOME = $javaHome
 $env:ANDROID_HOME = $androidSdkRoot
 $env:ANDROID_SDK_ROOT = $androidSdkRoot
 $env:PUB_CACHE = Join-Path $toolRoot 'pub-cache'
-$env:GRADLE_USER_HOME = Join-Path $toolRoot 'gradle-home'
+# Keep TaskMaster Pro's release cache isolated from other staged Android
+# projects. A killed build must not corrupt a shared Gradle lock protocol and
+# make a later production package fail before compilation starts.
+$env:GRADLE_USER_HOME = Join-Path $toolRoot 'gradle-home-taskmasterpro'
 
 # Flutter keeps SDK preferences per Flutter installation.  Pin them here as
 # well as in the process environment so a former drive letter cannot override

@@ -8,21 +8,12 @@ import '../../../core/providers.dart';
 import '../../../core/sync/sync_service.dart';
 
 class SynchronizationPanel extends ConsumerStatefulWidget {
-  const SynchronizationPanel({super.key, this.showDevices = false});
-
-  final bool showDevices;
+  const SynchronizationPanel({super.key});
 
   static Future<void> show(BuildContext context) {
     return showDialog<void>(
       context: context,
       builder: (_) => const SynchronizationPanel(),
-    );
-  }
-
-  static Future<void> showConnectedDevices(BuildContext context) {
-    return showDialog<void>(
-      context: context,
-      builder: (_) => const SynchronizationPanel(showDevices: true),
     );
   }
 
@@ -34,12 +25,13 @@ class SynchronizationPanel extends ConsumerStatefulWidget {
 class _SynchronizationPanelState extends ConsumerState<SynchronizationPanel> {
   late Future<SyncSnapshot> _snapshot;
   bool _syncing = false;
-  String? _revokingDeviceId;
 
   @override
   void initState() {
     super.initState();
-    _snapshot = ref.read(syncServiceProvider).getSnapshot();
+    _snapshot = ref
+        .read(syncServiceProvider)
+        .getSnapshot(checkRemoteDevices: false);
   }
 
   Future<void> _syncNow() async {
@@ -48,7 +40,7 @@ class _SynchronizationPanelState extends ConsumerState<SynchronizationPanel> {
     final service = ref.read(syncServiceProvider);
     try {
       await service.synchronizeNow();
-      final snapshot = await service.getSnapshot();
+      final snapshot = await service.getSnapshot(checkRemoteDevices: false);
       if (!mounted) return;
       setState(() => _snapshot = Future.value(snapshot));
       final (message, actionRequired) = !snapshot.connectionAvailable
@@ -94,56 +86,18 @@ class _SynchronizationPanelState extends ConsumerState<SynchronizationPanel> {
     }
   }
 
-  Future<void> _revokeDevice(Map<String, dynamic> device) async {
-    final targetId = device['id'] as String?;
-    if (targetId == null || _revokingDeviceId != null) return;
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(context.l10n.text('sign_out_device_question')),
-        content: Text(context.l10n.text('sign_out_device_explanation')),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: Text(context.l10n.text('cancel')),
-          ),
-          FilledButton.icon(
-            onPressed: () => Navigator.pop(context, true),
-            icon: const Icon(Icons.logout),
-            label: Text(context.l10n.text('sign_out_device')),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true || !mounted) return;
-    setState(() => _revokingDeviceId = targetId);
-    try {
-      final service = ref.read(syncServiceProvider);
-      await service.revokeOtherDevice(targetId);
-      final snapshot = await service.getSnapshot();
-      if (!mounted) return;
-      setState(() => _snapshot = Future.value(snapshot));
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.l10n.text('device_signed_out'))),
-      );
-    } catch (_) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.l10n.text('sync_failed_saved'))),
-      );
-    } finally {
-      if (mounted) setState(() => _revokingDeviceId = null);
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
+    final viewport = MediaQuery.sizeOf(context);
+    final compact = viewport.width < 430;
     return Dialog(
-      child: ConstrainedBox(
-        constraints: BoxConstraints(
-          maxWidth: widget.showDevices ? 560 : 440,
-          maxHeight: widget.showDevices ? 700 : 500,
-        ),
+      insetPadding: EdgeInsets.symmetric(
+        horizontal: compact ? 12 : 24,
+        vertical: compact ? 20 : 24,
+      ),
+      child: SizedBox(
+        width: 440,
+        height: (viewport.height - (compact ? 40 : 48)).clamp(320.0, 560.0),
         child: FutureBuilder<SyncSnapshot>(
           future: _snapshot,
           builder: (context, snapshot) {
@@ -152,14 +106,21 @@ class _SynchronizationPanelState extends ConsumerState<SynchronizationPanel> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(24, 20, 12, 12),
+                  padding: EdgeInsetsDirectional.fromSTEB(
+                    compact ? 16 : 24,
+                    compact ? 12 : 20,
+                    compact ? 6 : 12,
+                    compact ? 8 : 12,
+                  ),
                   child: Row(
                     children: [
-                      const Icon(Icons.sync_rounded),
-                      const SizedBox(width: 12),
+                      const Icon(Icons.sync_rounded, size: 22),
+                      SizedBox(width: compact ? 8 : 12),
                       Expanded(
                         child: Text(
                           context.l10n.text('synchronization'),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
                           style: Theme.of(context).textTheme.titleLarge
                               ?.copyWith(fontWeight: FontWeight.w800),
                         ),
@@ -182,7 +143,9 @@ class _SynchronizationPanelState extends ConsumerState<SynchronizationPanel> {
                           ),
                         )
                       : ListView(
-                          padding: const EdgeInsets.all(24),
+                          keyboardDismissBehavior:
+                              ScrollViewKeyboardDismissBehavior.onDrag,
+                          padding: EdgeInsets.all(compact ? 16 : 24),
                           children: [
                             _StatusCard(snapshot: data),
                             const SizedBox(height: 16),
@@ -218,54 +181,21 @@ class _SynchronizationPanelState extends ConsumerState<SynchronizationPanel> {
                               ),
                               value: '${data.failedChanges}',
                             ),
-                            if (widget.showDevices)
-                              _DetailRow(
-                                icon: Icons.devices_outlined,
-                                label: context.l10n.text('sync_current_device'),
-                                value: data.deviceName,
-                              ),
-                            if (widget.showDevices)
-                              _DetailRow(
-                                icon: Icons.account_circle_outlined,
-                                label: context.l10n.text(
-                                  'sync_connected_account',
-                                ),
-                                value:
-                                    data.accountEmail ??
-                                    context.l10n.text('signed_out'),
-                              ),
-                            if (widget.showDevices &&
-                                data.otherDevices.isNotEmpty) ...[
-                              const SizedBox(height: 18),
-                              Text(
-                                context.l10n.text('connected_devices'),
-                                style: Theme.of(context).textTheme.titleMedium
-                                    ?.copyWith(fontWeight: FontWeight.w700),
-                              ),
-                              const SizedBox(height: 8),
-                              for (final device in data.otherDevices)
-                                _ConnectedDeviceTile(
-                                  device: device,
-                                  isCurrent:
-                                      device['id'] == data.currentDeviceId,
-                                  busy: _revokingDeviceId == device['id'],
-                                  onRevoke: () => _revokeDevice(device),
-                                ),
-                            ],
                           ],
                         ),
                 ),
                 const Divider(height: 1),
                 Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
+                  padding: EdgeInsets.all(compact ? 12 : 16),
+                  child: Wrap(
+                    alignment: WrapAlignment.end,
+                    spacing: 8,
+                    runSpacing: 8,
                     children: [
                       TextButton(
                         onPressed: () => Navigator.pop(context),
                         child: Text(context.l10n.text('close')),
                       ),
-                      const SizedBox(width: 8),
                       FilledButton.icon(
                         onPressed: _syncing ? null : _syncNow,
                         icon: _syncing
@@ -829,92 +759,6 @@ String _conflictCategoryLabel(
   return context.l10n.text(key);
 }
 
-class _ConnectedDeviceTile extends StatelessWidget {
-  const _ConnectedDeviceTile({
-    required this.device,
-    required this.isCurrent,
-    required this.busy,
-    required this.onRevoke,
-  });
-
-  final Map<String, dynamic> device;
-  final bool isCurrent;
-  final bool busy;
-  final VoidCallback onRevoke;
-
-  @override
-  Widget build(BuildContext context) {
-    final l10n = context.l10n;
-    final lastSeen = DateTime.tryParse(
-      device['last_seen_at'] as String? ?? '',
-    )?.toLocal();
-    final platform = device['platform'] == 'android'
-        ? l10n.text('device_platform_android')
-        : l10n.text('device_platform_windows');
-    final version = l10n.format('version_label', {
-      'version': device['app_version'] ?? '—',
-    });
-    final lastActive = lastSeen == null
-        ? null
-        : '${l10n.text('last_active')}: ${DateFormat.yMMMd().add_jm().format(lastSeen)}';
-    return Semantics(
-      container: true,
-      label: isCurrent
-          ? '${device['device_name']}, ${l10n.text('this_device')}'
-          : '${device['device_name']}, $platform',
-      child: ListTile(
-        dense: true,
-        contentPadding: EdgeInsets.zero,
-        minVerticalPadding: 10,
-        leading: Icon(
-          device['platform'] == 'android'
-              ? Icons.phone_android_outlined
-              : Icons.computer_outlined,
-        ),
-        title: Row(
-          children: [
-            Expanded(
-              child: Text(
-                device['device_name'] as String? ??
-                    l10n.text('taskmaster_device'),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-            if (isCurrent) ...[
-              const SizedBox(width: 8),
-              Chip(
-                avatar: const Icon(Icons.check_circle, size: 16),
-                label: Text(l10n.text('this_device')),
-                side: BorderSide.none,
-                visualDensity: VisualDensity.compact,
-                backgroundColor: Colors.green.withValues(alpha: 0.16),
-                labelStyle: TextStyle(
-                  color: Theme.of(context).colorScheme.onSurface,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ],
-          ],
-        ),
-        subtitle: Text([platform, version, ?lastActive].join(' · ')),
-        trailing: isCurrent
-            ? null
-            : IconButton(
-                tooltip: l10n.text('sign_out_device'),
-                onPressed: busy ? null : onRevoke,
-                icon: busy
-                    ? const SizedBox.square(
-                        dimension: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.delete_outline),
-              ),
-      ),
-    );
-  }
-}
-
 class _StatusCard extends StatelessWidget {
   const _StatusCard({required this.snapshot});
 
@@ -952,6 +796,7 @@ class _StatusCard extends StatelessWidget {
             Theme.of(context).colorScheme.primary,
           );
     return Card(
+      key: const ValueKey('synchronization-status-card'),
       color: color.withValues(alpha: 0.11),
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -993,12 +838,36 @@ class _DetailRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ListTile(
-      dense: true,
-      contentPadding: EdgeInsets.zero,
-      leading: Icon(icon),
-      title: Text(label),
-      subtitle: Text(value),
+    final compact = MediaQuery.sizeOf(context).width < 430;
+    return Padding(
+      padding: EdgeInsets.symmetric(vertical: compact ? 7 : 5),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: compact ? 22 : 24),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  value,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

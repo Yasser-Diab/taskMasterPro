@@ -15,6 +15,7 @@ import '../../../core/providers.dart';
 import '../../tasks/data/task_execution_providers.dart';
 import '../../tasks/presentation/interruption_editor_dialog.dart';
 import '../data/activity_aggregation_service.dart';
+import 'activity_badges.dart';
 import 'activity_review_screen.dart';
 
 class TaskActivityPanel extends ConsumerStatefulWidget {
@@ -261,14 +262,41 @@ class _TaskActivityPanelState extends ConsumerState<TaskActivityPanel>
                     ? Icons.description_outlined
                     : Icons.apps,
               ),
-              title: Text(
-                group.name,
-                style: const TextStyle(fontWeight: FontWeight.w700),
+              title: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      group.name,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  ActivityClassificationBadge(
+                    classification: group.classification,
+                    maxWidth: 132,
+                  ),
+                ],
               ),
-              subtitle: Text(
-                '${context.l10n.duration(Duration(milliseconds: group.totalMs))} · '
-                '${group.periods.length} '
-                '${context.l10n.text('activity_periods')}',
+              subtitle: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '${context.l10n.duration(Duration(milliseconds: group.totalMs))} · '
+                    '${group.periods.length} '
+                    '${context.l10n.text('activity_periods')}',
+                  ),
+                  if (activitySuggestionLabel(
+                        context.l10n,
+                        group.suggestionSource,
+                      )
+                      case final tag?)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: ActivitySuggestionBadge(label: tag),
+                    ),
+                ],
               ),
               children: [
                 for (final period in group.periods.take(50))

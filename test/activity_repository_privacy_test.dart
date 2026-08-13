@@ -134,4 +134,61 @@ void main() {
       expect((payload['data'] as Map)['capture_state'], 'finalized');
     },
   );
+
+  test('duplicate immutable capture is idempotent', () async {
+    final now = DateTime.now().toUtc();
+    const segmentId = 'android-history-com.example-1000-2000';
+
+    final results = await Future.wait([
+      repository.captureRawSegment(
+        segmentId: segmentId,
+        startedAt: now,
+        endedAt: now.add(const Duration(minutes: 1)),
+        sourceType: 'android_usage_history',
+        processName: 'com.example',
+      ),
+      repository.captureRawSegment(
+        segmentId: segmentId,
+        startedAt: now,
+        endedAt: now.add(const Duration(minutes: 1)),
+        sourceType: 'android_usage_history',
+        processName: 'com.example',
+      ),
+    ]);
+
+    expect(results, everyElement(segmentId));
+    final segments = await database
+        .select(database.localActivitySegments)
+        .get();
+    expect(segments, hasLength(1));
+    expect(segments.single.id, segmentId);
+    final reviews = await database.select(database.localActivityReviews).get();
+    expect(reviews, hasLength(1));
+  });
+
+  test('segment identity reuse with different data is rejected', () async {
+    final now = DateTime.now().toUtc();
+    await repository.captureRawSegment(
+      segmentId: 'immutable-segment',
+      startedAt: now,
+      endedAt: now.add(const Duration(minutes: 1)),
+      sourceType: 'android_usage_history',
+      processName: 'com.example.one',
+    );
+
+    await expectLater(
+      repository.captureRawSegment(
+        segmentId: 'immutable-segment',
+        startedAt: now,
+        endedAt: now.add(const Duration(minutes: 1)),
+        sourceType: 'android_usage_history',
+        processName: 'com.example.two',
+      ),
+      throwsStateError,
+    );
+    expect(
+      await database.select(database.localActivitySegments).get(),
+      hasLength(1),
+    );
+  });
 }

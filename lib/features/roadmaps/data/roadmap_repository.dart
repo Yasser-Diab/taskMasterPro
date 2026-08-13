@@ -10,6 +10,7 @@ import '../../../core/account/owner_bootstrap.dart';
 import '../../../core/database/app_database.dart';
 import '../../../core/platform/device_identity.dart';
 import '../../tasks/data/task_repository.dart';
+import '../../tasks/domain/task_schedule_policy.dart';
 
 class RoadmapDraft {
   const RoadmapDraft({
@@ -75,6 +76,34 @@ class RoadmapForecastObservation {
 
   final DateTime day;
   final int effortMs;
+}
+
+/// The roadmap's effective planned effort.
+///
+/// Imported legacy roadmaps can have a null/zero roadmap-level effort even
+/// after their linked tasks have acquired canonical durations. Prefer an
+/// explicit positive roadmap total, otherwise derive the denominator from
+/// each linked occurrence's authoritative planning window or estimate.
+int? effectiveRoadmapRequiredEffortMs(
+  LocalRoadmap roadmap,
+  Iterable<LocalTask> linkedTasks,
+) {
+  final explicit = roadmap.requiredEffortMs;
+  if (explicit != null && explicit > 0) return explicit;
+
+  var total = 0;
+  for (final task in linkedTasks) {
+    if (task.deletedAt != null) continue;
+    final window = TaskSchedulePolicy.resolve(
+      task.plannedStart,
+      task.plannedEnd,
+    );
+    final taskEffortMs =
+        window?.duration.inMilliseconds ??
+        (task.estimatedDurationMs > 0 ? task.estimatedDurationMs : 0);
+    total += taskEffortMs;
+  }
+  return total > 0 ? total : null;
 }
 
 RoadmapForecastProjection projectRoadmapForecast({
@@ -1372,11 +1401,9 @@ class RoadmapRepository {
         )
         .fold<int>(0, (sum, item) => sum + item.creditedDurationMs);
     final completedEffort = directEffort + attributedEffort;
-    if (roadmap.requiredEffortMs != null && roadmap.requiredEffortMs! > 0) {
-      weightedValues.add((
-        (completedEffort / roadmap.requiredEffortMs!).clamp(0, 1),
-        2,
-      ));
+    final requiredEffortMs = effectiveRoadmapRequiredEffortMs(roadmap, tasks);
+    if (requiredEffortMs != null) {
+      weightedValues.add(((completedEffort / requiredEffortMs).clamp(0, 1), 2));
     }
     final totalWeight = weightedValues.fold<double>(
       0,
@@ -1402,7 +1429,7 @@ class RoadmapRepository {
           ),
     ];
     final projection = projectRoadmapForecast(
-      requiredEffortMs: roadmap.requiredEffortMs ?? 0,
+      requiredEffortMs: requiredEffortMs ?? 0,
       completedEffortMs: completedEffort,
       completedTaskCount: completedTaskCount,
       observations: observations,
@@ -1423,6 +1450,8 @@ class RoadmapRepository {
         : 'low';
     await _updateFields(roadmap, {
       'progress': progress.clamp(0, 1),
+      if ((roadmap.requiredEffortMs ?? 0) <= 0 && requiredEffortMs != null)
+        'required_effort_ms': requiredEffortMs,
       'completed_effort_ms': completedEffort,
       'forecast_target_date': forecast == null ? null : _dateOnly(forecast),
       'risk_level': risk,
@@ -1476,6 +1505,9 @@ class RoadmapRepository {
               : const Value.absent(),
           completedEffortMs: payload.containsKey('completed_effort_ms')
               ? Value((payload['completed_effort_ms']! as num).toInt())
+              : const Value.absent(),
+          requiredEffortMs: payload.containsKey('required_effort_ms')
+              ? Value((payload['required_effort_ms']! as num).toInt())
               : const Value.absent(),
           forecastTargetDate: payload.containsKey('forecast_target_date')
               ? Value(_date(payload['forecast_target_date']))

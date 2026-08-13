@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 
 import '../../../core/database/app_database.dart';
+import '../domain/activity_reporting_policy.dart';
 import 'activity_repository.dart';
 
 /// Broad device-use tracking is optional, but a task that is actively running
@@ -39,9 +40,12 @@ class ActivityCaptureService {
   String? _androidHistorySessionId;
   DateTime? _lastAndroidHistoryLookupAt;
   bool _sampling = false;
+  bool _stopping = false;
+  Completer<void>? _sampleCompletion;
 
   Future<void> start() async {
     if (!Platform.isWindows && !Platform.isAndroid) return;
+    if (_stopping) return;
     await repository.purgeExpiredLocalActivity();
     _timer ??= Timer.periodic(
       const Duration(seconds: 2),
@@ -61,8 +65,10 @@ class ActivityCaptureService {
   }
 
   Future<void> _sample() async {
-    if (_sampling) return;
+    if (_sampling || _stopping) return;
     _sampling = true;
+    final completion = Completer<void>();
+    _sampleCompletion = completion;
     try {
       final settings =
           await (database.select(database.localAppSettings)
@@ -99,6 +105,18 @@ class ActivityCaptureService {
           raw['applicationName'] as String? ??
           '';
       if (process.isEmpty) return;
+      final isSelf =
+          raw['isTaskMasterWindow'] == true ||
+          isTaskMasterActivityIdentity(process);
+      if (isSelf) {
+        final now = DateTime.now().toUtc();
+        await _flush(now, settings, isFinalized: true);
+        _current = null;
+        _segmentStartedAt = null;
+        _lastSegmentUpdateAt = null;
+        _currentSegmentId = null;
+        return;
+      }
       final windowTitle = settings?.windowTitleTrackingEnabled == true
           ? raw['windowTitle'] as String?
           : null;
@@ -138,6 +156,10 @@ class ActivityCaptureService {
       // Capture is permission-dependent. The next compact sample retries.
     } finally {
       _sampling = false;
+      if (!completion.isCompleted) completion.complete();
+      if (identical(_sampleCompletion, completion)) {
+        _sampleCompletion = null;
+      }
     }
   }
 
@@ -185,6 +207,7 @@ class ActivityCaptureService {
       if (process.isEmpty || startedMillis == null || endedMillis == null) {
         continue;
       }
+      if (isTaskMasterActivityIdentity(process)) continue;
       final startedAt = DateTime.fromMillisecondsSinceEpoch(
         startedMillis,
         isUtc: true,
@@ -223,6 +246,8 @@ class ActivityCaptureService {
     final sample = _current;
     final startedAt = _segmentStartedAt;
     if (sample == null ||
+        sample.isTaskMasterWindow ||
+        isTaskMasterActivityIdentity(sample.processName) ||
         startedAt == null ||
         endedAt.difference(startedAt).inMilliseconds < 900) {
       return;
@@ -247,8 +272,22 @@ class ActivityCaptureService {
   }
 
   Future<void> dispose() async {
+    if (_stopping) {
+      await _sampleCompletion?.future;
+      return;
+    }
+    _stopping = true;
     _timer?.cancel();
+    _timer = null;
+    // A timer callback may already be reading settings/runtime or writing a
+    // captured segment. The account database must remain open until that
+    // sample has fully left the repository.
+    await _sampleCompletion?.future;
     await _flush(DateTime.now().toUtc(), null, isFinalized: true);
+    _current = null;
+    _segmentStartedAt = null;
+    _lastSegmentUpdateAt = null;
+    _currentSegmentId = null;
   }
 }
 

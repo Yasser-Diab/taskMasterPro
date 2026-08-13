@@ -162,4 +162,19 @@ void main() {
       );
     },
   );
+
+  test('starter Area bootstrap respects record and command history', () {
+    expect(
+      shouldSeedStarterDomain(hasLocalRecord: false, hasCommandHistory: false),
+      isTrue,
+    );
+    expect(
+      shouldSeedStarterDomain(hasLocalRecord: true, hasCommandHistory: false),
+      isFalse,
+    );
+    expect(
+      shouldSeedStarterDomain(hasLocalRecord: false, hasCommandHistory: true),
+      isFalse,
+    );
+  });
 }

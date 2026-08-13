@@ -30,6 +30,13 @@ constexpr UINT kTrayCommandDeletion = 62016;
 constexpr wchar_t kTrayTooltip[] = L"TaskMaster Pro";
 constexpr wchar_t kWindowRegistryPath[] =
     L"Software\\Y. A. Diab\\TaskMaster Pro\\Window";
+// Version 2 could overwrite a real maximized state with a transient
+// SIZE_RESTORED notification while the window was being hidden to the tray.
+// Ignore those records so an affected installation starts from the healthy
+// 1280x720 default once and then writes the corrected format.
+constexpr DWORD kWindowPlacementVersion = 3;
+constexpr int kMinimumRestoredWidth = 960;
+constexpr int kMinimumRestoredHeight = 640;
 
 std::optional<flutter::EncodableMap> ArgumentMap(
     const flutter::EncodableValue* arguments) {
@@ -105,6 +112,7 @@ bool FlutterWindow::OnCreate() {
   }
 
   RestoreWindowPlacement();
+  window_placement_ready_ = true;
   RECT frame = GetClientArea();
 
   // The size here must match the window dimensions to avoid unnecessary surface
@@ -308,6 +316,34 @@ LRESULT
 FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
                               WPARAM const wparam,
                               LPARAM const lparam) noexcept {
+  // Capture placement before a Flutter plugin can consume the native message.
+  // In particular, window_manager handles WM_SIZE/WM_CLOSE on some builds;
+  // saving only after plugin dispatch left the registry at an old 720x520
+  // normal rectangle and lost the maximized bit.
+  if (window_placement_ready_) {
+    if (message == WM_SYSCOMMAND) {
+      switch (wparam & 0xFFF0) {
+        case SC_MAXIMIZE:
+          window_maximized_ = true;
+          break;
+        case SC_RESTORE:
+          window_maximized_ = false;
+          break;
+      }
+    } else if (message == WM_SIZE && wparam == SIZE_MAXIMIZED) {
+      window_maximized_ = true;
+      SaveWindowPlacement();
+    } else if (message == WM_SIZE && wparam == SIZE_RESTORED &&
+               IsWindowVisible(hwnd)) {
+      // Hiding a maximized window can emit SIZE_RESTORED on some Windows and
+      // plugin combinations. It is not a user restore once the HWND is hidden.
+      window_maximized_ = false;
+      SaveWindowPlacement();
+    } else if (message == WM_EXITSIZEMOVE || message == WM_CLOSE) {
+      SaveWindowPlacement();
+    }
+  }
+
   // Give Flutter, including plugins, an opportunity to handle window messages.
   if (flutter_controller_) {
     std::optional<LRESULT> result =
@@ -321,7 +357,6 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
   switch (message) {
     case WM_CLOSE:
       if (!exit_requested_) {
-        SaveWindowPlacement();
         ShowWindow(hwnd, SW_HIDE);
         if (tray_added_ && !RegistryFlagEnabled(L"TrayExplanationShown")) {
           tray_icon_data_.uFlags = NIF_INFO;
@@ -334,12 +369,6 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
           SetRegistryFlag(L"TrayExplanationShown");
         }
         return 0;
-      }
-      break;
-    case WM_MOVE:
-    case WM_SIZE:
-      if (wparam != SIZE_MINIMIZED) {
-        SaveWindowPlacement();
       }
       break;
     case kTrayCallbackMessage:
@@ -525,14 +554,13 @@ void FlutterWindow::RestoreAndFocus() {
     return;
   }
 
-  // SW_RESTORE also unmaximizes a hidden maximized window. Closing to the
-  // tray therefore used to reopen the application at its normal bounds (for
-  // example 720x520) instead of the user's maximized layout. Only use it for
-  // an actually minimized window; otherwise reveal the existing state.
-  if (IsIconic(hwnd)) {
-    ShowWindow(hwnd, SW_RESTORE);
-  } else if (IsZoomed(hwnd)) {
+  // SW_RESTORE can unmaximize a hidden maximized window. Use the durable
+  // in-process state as well as IsZoomed because some Windows builds stop
+  // reporting a hidden window as zoomed.
+  if (window_maximized_ || IsZoomed(hwnd)) {
     ShowWindow(hwnd, SW_SHOWMAXIMIZED);
+  } else if (IsIconic(hwnd)) {
+    ShowWindow(hwnd, SW_RESTORE);
   } else {
     ShowWindow(hwnd, SW_SHOW);
   }
@@ -554,6 +582,8 @@ void FlutterWindow::SaveWindowPlacement() {
                       KEY_SET_VALUE, nullptr, &key, nullptr) != ERROR_SUCCESS) {
     return;
   }
+  const bool maximized = window_maximized_ || IsZoomed(hwnd) ||
+                         placement.showCmd == SW_SHOWMAXIMIZED;
   const DWORD values[] = {
       static_cast<DWORD>(placement.rcNormalPosition.left),
       static_cast<DWORD>(placement.rcNormalPosition.top),
@@ -561,13 +591,24 @@ void FlutterWindow::SaveWindowPlacement() {
                          placement.rcNormalPosition.left),
       static_cast<DWORD>(placement.rcNormalPosition.bottom -
                          placement.rcNormalPosition.top),
-      IsZoomed(hwnd) ? 1u : 0u,
+      maximized ? 1u : 0u,
   };
   const wchar_t* names[] = {L"X", L"Y", L"Width", L"Height", L"Maximized"};
+  const DWORD invalid_version = 0;
+  RegSetValueExW(key, L"PlacementVersion", 0, REG_DWORD,
+                 reinterpret_cast<const BYTE*>(&invalid_version),
+                 sizeof(invalid_version));
+  bool stored = true;
   for (size_t index = 0; index < std::size(values); ++index) {
-    RegSetValueExW(key, names[index], 0, REG_DWORD,
-                   reinterpret_cast<const BYTE*>(&values[index]),
-                   sizeof(DWORD));
+    stored = stored &&
+             RegSetValueExW(key, names[index], 0, REG_DWORD,
+                            reinterpret_cast<const BYTE*>(&values[index]),
+                            sizeof(DWORD)) == ERROR_SUCCESS;
+  }
+  if (stored) {
+    RegSetValueExW(key, L"PlacementVersion", 0, REG_DWORD,
+                   reinterpret_cast<const BYTE*>(&kWindowPlacementVersion),
+                   sizeof(kWindowPlacementVersion));
   }
   RegCloseKey(key);
 }
@@ -576,6 +617,18 @@ void FlutterWindow::RestoreWindowPlacement() {
   HKEY key = nullptr;
   if (RegOpenKeyExW(HKEY_CURRENT_USER, kWindowRegistryPath, 0, KEY_QUERY_VALUE,
                     &key) != ERROR_SUCCESS) {
+    return;
+  }
+  DWORD placement_version = 0;
+  DWORD placement_version_type = 0;
+  DWORD placement_version_size = sizeof(placement_version);
+  if (RegQueryValueExW(key, L"PlacementVersion", nullptr,
+                       &placement_version_type,
+                       reinterpret_cast<BYTE*>(&placement_version),
+                       &placement_version_size) != ERROR_SUCCESS ||
+      placement_version_type != REG_DWORD ||
+      placement_version != kWindowPlacementVersion) {
+    RegCloseKey(key);
     return;
   }
   DWORD values[5] = {};
@@ -599,8 +652,11 @@ void FlutterWindow::RestoreWindowPlacement() {
 
   int x = static_cast<int>(values[0]);
   int y = static_cast<int>(values[1]);
-  int width = std::max(720, static_cast<int>(values[2]));
-  int height = std::max(520, static_cast<int>(values[3]));
+  if (values[2] == 0 || values[3] == 0) {
+    return;
+  }
+  int width = std::max(kMinimumRestoredWidth, static_cast<int>(values[2]));
+  int height = std::max(kMinimumRestoredHeight, static_cast<int>(values[3]));
   RECT desired = {x, y, x + width, y + height};
   const HMONITOR monitor =
       MonitorFromRect(&desired, MONITOR_DEFAULTTONEAREST);
@@ -608,16 +664,21 @@ void FlutterWindow::RestoreWindowPlacement() {
   info.cbSize = sizeof(MONITORINFO);
   if (GetMonitorInfoW(monitor, &info)) {
     const RECT work = info.rcWork;
-    width = std::min(width, static_cast<int>(work.right - work.left));
-    height = std::min(height, static_cast<int>(work.bottom - work.top));
+    const int work_width = static_cast<int>(work.right - work.left);
+    const int work_height = static_cast<int>(work.bottom - work.top);
+    const int minimum_width = std::min(kMinimumRestoredWidth, work_width);
+    const int minimum_height = std::min(kMinimumRestoredHeight, work_height);
+    width = std::clamp(width, minimum_width, work_width);
+    height = std::clamp(height, minimum_height, work_height);
     x = std::clamp(x, static_cast<int>(work.left),
                    static_cast<int>(work.right) - width);
     y = std::clamp(y, static_cast<int>(work.top),
                    static_cast<int>(work.bottom) - height);
   }
+  restore_maximized_ = values[4] != 0;
+  window_maximized_ = restore_maximized_;
   SetWindowPos(GetHandle(), nullptr, x, y, width, height,
                SWP_NOZORDER | SWP_NOACTIVATE);
-  restore_maximized_ = values[4] != 0;
 }
 
 void FlutterWindow::ExitApplication() {

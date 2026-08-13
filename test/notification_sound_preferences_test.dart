@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:taskmaster_pro/core/notifications/notification_sounds.dart';
 
@@ -159,6 +160,234 @@ void main() {
       ),
       isFalse,
     );
+  });
+
+  test('a cancelled interval can be replaced by its next schedule', () {
+    final cancelled = <String, Object?>{
+      'task_id': 'task-1',
+      'notification_id': 'old-notification',
+      'state': 'cancelled',
+    };
+
+    expect(
+      executionLedgerTransitionAllowed(
+        existing: cancelled,
+        requestedState: 'scheduled',
+        notificationId: 'new-notification',
+      ),
+      isTrue,
+    );
+    expect(
+      executionLedgerTransitionAllowed(
+        existing: {
+          ...cancelled,
+          'notification_id': 'new-notification',
+          'state': 'scheduled',
+        },
+        requestedState: 'cancelled',
+        notificationId: 'old-notification',
+      ),
+      isFalse,
+    );
+  });
+
+  test(
+    'running execution cards expose canonical pause and resume controls',
+    () {
+      final notificationSource = File(
+        'lib/core/notifications/notification_sounds.dart',
+      ).readAsStringSync();
+      final shellSource = File(
+        'lib/features/shell/presentation/home_shell.dart',
+      ).readAsStringSync();
+
+      expect(notificationSource, contains('showExecutionStatus'));
+      expect(notificationSource, contains("('pause', 'pause')"));
+      expect(notificationSource, contains("('resume', 'resume')"));
+      expect(notificationSource, contains('chronometerCountDown: !paused'));
+      expect(shellSource, contains("case 'pause':"));
+      expect(shellSource, contains("case 'resume':"));
+    },
+  );
+
+  test('notification mutations are acknowledged only after local acceptance', () {
+    final shellSource = File(
+      'lib/features/shell/presentation/home_shell.dart',
+    ).readAsStringSync();
+
+    expect(
+      shellSource,
+      isNot(
+        contains(
+          "case 'pause':\n        await localNotificationService.cancelExecutionCompletion",
+        ),
+      ),
+    );
+    expect(
+      shellSource,
+      isNot(
+        contains(
+          "case 'resume':\n        await localNotificationService.cancelExecutionCompletion",
+        ),
+      ),
+    );
+    expect(
+      shellSource,
+      contains('if (requiresExecutionValidation && transitionAccepted)'),
+    );
+    expect(
+      shellSource,
+      contains(
+        'transitionAccepted = await TaskExecutionCommands.skipOfferedBreak',
+      ),
+    );
+  });
+
+  test(
+    'Android execution commands launch canonical UI and never dismiss early',
+    () {
+      const mutations = <String>{
+        'pause',
+        'resume',
+        'start_break',
+        'start_focus',
+        'continue_working',
+        'extend_break',
+        'finish_task',
+      };
+
+      for (final action in mutations) {
+        final delivery = executionNotificationActionDelivery(action);
+        expect(
+          delivery.showsUserInterface,
+          isTrue,
+          reason: '$action must reach HomeShell canonical command handling',
+        );
+        expect(
+          delivery.cancelNotification,
+          isFalse,
+          reason: '$action must keep its card until the command is accepted',
+        );
+      }
+
+      final dismiss = executionNotificationActionDelivery('dismiss');
+      expect(dismiss.showsUserInterface, isFalse);
+      expect(dismiss.cancelNotification, isTrue);
+    },
+  );
+
+  test('cold-start notification actions run before ledger reconciliation', () {
+    final shellSource = File(
+      'lib/features/shell/presentation/home_shell.dart',
+    ).readAsStringSync();
+    final ordered = shellSource.substring(
+      shellSource.indexOf(
+        'Future<void> _restoreNotificationAuthorityAfterLaunchAction()',
+      ),
+      shellSource.indexOf(
+        'Future<void> _restoreCanonicalNotificationAuthority()',
+      ),
+    );
+
+    expect(ordered, contains('await _drainNotificationLaunchActions();'));
+    expect(
+      ordered.indexOf('await _drainNotificationLaunchActions();'),
+      lessThan(
+        ordered.indexOf('await _restoreCanonicalNotificationAuthority();'),
+      ),
+    );
+  });
+
+  test('Android foreground action PendingIntents preserve the payload', () {
+    final nativePlugin = File(
+      'third_party/flutter_local_notifications/android/src/main/java/'
+      'com/dexterous/flutterlocalnotifications/'
+      'FlutterLocalNotificationsPlugin.java',
+    ).readAsStringSync();
+
+    expect(nativePlugin, contains('SELECT_FOREGROUND_NOTIFICATION_ACTION'));
+    expect(nativePlugin, contains('PendingIntent.getActivity('));
+    expect(nativePlugin, contains('.putExtra(ACTION_ID, action.id)'));
+    expect(
+      nativePlugin,
+      contains('.putExtra(PAYLOAD, notificationDetails.payload)'),
+    );
+    expect(
+      nativePlugin,
+      contains('channel.invokeMethod("didReceiveNotificationResponse"'),
+    );
+  });
+
+  test('startup retires obsolete owned execution alarms, not reminders', () {
+    final boundary = DateTime.utc(2026, 8, 13, 10, 25);
+    final currentExecution = LocalNotificationService.ownedPayloadForOwner(
+      ownerId: 'owner-1',
+      route: 'task/current-task',
+      eventType: 'focus_completed',
+      boundaryAtUtc: boundary,
+      notificationId: 'notification-current',
+      sessionId: 'session-current',
+      runtimeRevision: 7,
+      intervalId: 'session-current:running:focus',
+    );
+    final otherOwnerReminder = LocalNotificationService.ownedPayloadForOwner(
+      ownerId: 'owner-2',
+      route: 'task/other-owner-task',
+    );
+    final currentOwnerReminder = LocalNotificationService.ownedPayloadForOwner(
+      ownerId: 'owner-1',
+      route: 'task/reminder-task',
+    );
+
+    final obsolete = obsoleteOwnedTaskNotificationIds(
+      ownerId: 'owner-1',
+      pending: [
+        PendingNotificationRequest(1, 'Legacy', null, 'task/legacy-task'),
+        PendingNotificationRequest(2, 'Old owner', null, otherOwnerReminder),
+        PendingNotificationRequest(3, 'Execution', null, currentExecution),
+        PendingNotificationRequest(4, 'Reminder', null, currentOwnerReminder),
+        const PendingNotificationRequest(
+          5,
+          'Wellbeing',
+          null,
+          'settings/wellbeing',
+        ),
+      ],
+    );
+
+    expect(obsolete, {1, 2, 3, 4});
+    expect(isExecutionNotificationTag('execution:id:focus_completed'), isTrue);
+    expect(isExecutionNotificationTag('reminder:id:task_reminders'), isFalse);
+    expect(isExecutionNotificationTag('wellbeing:sleep'), isFalse);
+  });
+
+  test('Android receiver validates execution identity before display', () {
+    final receiver = File(
+      'third_party/flutter_local_notifications/android/src/main/java/'
+      'com/dexterous/flutterlocalnotifications/'
+      'ScheduledNotificationReceiver.java',
+    ).readAsStringSync();
+    final manifest = File(
+      'android/app/src/main/AndroidManifest.xml',
+    ).readAsStringSync();
+    final mainActivity = File(
+      'android/app/src/main/kotlin/pro/taskmaster/taskmaster_pro/'
+      'MainActivity.kt',
+    ).readAsStringSync();
+
+    expect(receiver, contains('executionIdentityIsCurrent('));
+    expect(receiver, contains('event_type'));
+    expect(receiver, contains('runtime_revision'));
+    expect(receiver, contains('notification_id'));
+    expect(receiver, contains('Suppressed stale TaskMaster'));
+    expect(
+      manifest,
+      contains(
+        'com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver',
+      ),
+    );
+    expect(mainActivity, contains('writeExecutionAlarmLedger'));
+    expect(mainActivity, contains('taskmaster.execution_alarm_ledger.v0028'));
   });
 
   test(

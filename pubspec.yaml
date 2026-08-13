@@ -1,7 +1,7 @@
 name: taskmaster_pro
 description: Local-first execution, roadmap, and evidence-based coaching for Windows and Android.
 publish_to: none
-version: 0.0.28+28
+version: 0.0.28+32
 
 environment:
   sdk: ^3.12.2
@@ -60,6 +60,12 @@ dev_dependencies:
   mocktail: 1.0.5
 
 dependency_overrides:
+  # AlarmManager can deliver a cancelled PendingIntent on vendor Android
+  # builds. The upstream receiver posts before Dart can validate interval
+  # identity, so the audited Android receiver patch suppresses stale execution
+  # cards at delivery time using TaskMaster's local per-device ledger.
+  flutter_local_notifications:
+    path: third_party/flutter_local_notifications
   # The upstream Windows FFI implementation lets WinRT scheduling exceptions
   # cross the native boundary and terminate the process. Keep the small,
   # audited patch in-repo until the upstream package handles those failures.

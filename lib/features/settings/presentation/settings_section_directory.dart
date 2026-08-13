@@ -14,6 +14,7 @@ class SettingsSectionDirectory extends StatelessWidget {
     'tasks_and_execution' => Icons.task_alt_outlined,
     'pomodoro' => Icons.timer_outlined,
     'activity_and_privacy' => Icons.shield_outlined,
+    'privacy_and_vault' => Icons.password_outlined,
     'notifications_and_sounds' => Icons.notifications_outlined,
     'health' => Icons.health_and_safety_outlined,
     'coaching' => Icons.explore_outlined,

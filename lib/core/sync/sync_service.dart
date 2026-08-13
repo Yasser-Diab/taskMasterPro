@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:collection/collection.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:drift/drift.dart';
 import 'package:flutter/foundation.dart';
@@ -12,10 +13,36 @@ import '../database/app_database.dart';
 import '../platform/device_identity.dart';
 import '../../features/activity/data/activity_privacy_policy.dart';
 import '../../features/roadmaps/data/roadmap_repository.dart';
+import '../../features/tasks/data/installed_application_service.dart';
+import '../../features/tasks/domain/task_domain_catalog.dart';
 
 enum SyncHealth { offline, idle, syncing, attention }
 
 enum SyncDeliveryFailureKind { retryable, permanent, applicationCatalogAlias }
+
+@visibleForTesting
+bool isBuiltInTaskDomainUniqueConflict({
+  required String entityType,
+  required String commandType,
+  required String? errorCode,
+  required String errorMessage,
+  required Map<String, Object?> payload,
+}) {
+  final data = payload['data'];
+  final domainData = data is Map
+      ? Map<String, Object?>.from(data)
+      : const <String, Object?>{};
+  final domainKey = domainData['domain_key'] as String?;
+  final message = errorMessage.toLowerCase();
+  return entityType == 'task_domains' &&
+      commandType == 'create' &&
+      errorCode?.trim().toUpperCase() == '23505' &&
+      domainData['built_in'] == true &&
+      domainKey != null &&
+      domainKey.trim().isNotEmpty &&
+      (message.contains('task_domains_user_builtin_key_unique') ||
+          (message.contains('domain_key') && message.contains('built_in')));
+}
 
 enum SyncConflictCategory {
   alreadyApplied,
@@ -152,6 +179,54 @@ bool isLegacyPendingApplicationCatalogAlias({
 }
 
 @visibleForTesting
+bool isLegacyApplicationCatalogContractFailure({
+  required String entityType,
+  required String commandType,
+  required String status,
+  required String? lastError,
+}) {
+  final message = lastError?.toLowerCase() ?? '';
+  return entityType == 'application_catalog' &&
+      commandType == 'create' &&
+      status == 'conflict' &&
+      message.contains('23502') &&
+      (message.contains('normalized_application_key') ||
+          message.contains('default_display_name'));
+}
+
+/// Upgrades the v0.0.28 Activity catalog create contract without changing its
+/// semantic identity. This is also applied to pending commands before their
+/// first delivery so a newly discovered application cannot enter the legacy
+/// conflict path.
+@visibleForTesting
+Map<String, dynamic>? normalizedApplicationCatalogCreatePayload(
+  Map<String, dynamic> payload,
+) {
+  final platform = (payload['platform'] as String?)?.trim().toLowerCase();
+  final identifier = (payload['application_identifier'] as String?)?.trim();
+  if (platform == null ||
+      platform.isEmpty ||
+      identifier == null ||
+      identifier.isEmpty) {
+    return null;
+  }
+  final displayName =
+      (payload['default_display_name'] as String?)?.trim().isNotEmpty == true
+      ? (payload['default_display_name'] as String).trim()
+      : (payload['display_name'] as String?)?.trim().isNotEmpty == true
+      ? (payload['display_name'] as String).trim()
+      : identifier;
+  return <String, dynamic>{
+    ...payload,
+    'platform': platform,
+    'application_identifier': identifier.toLowerCase(),
+    'normalized_application_key': normalizedApplicationKey(identifier),
+    'display_name': displayName,
+    'default_display_name': displayName,
+  };
+}
+
+@visibleForTesting
 bool isPermanentSyncInfrastructureFailure({
   required String? errorCode,
   required String errorMessage,
@@ -226,6 +301,51 @@ bool shouldRunAuthoritativeSnapshot({
 bool hasUsableDurableSyncCursor(int? lastChangeSequence) =>
     lastChangeSequence != null && lastChangeSequence > 0;
 
+/// Starting the account-bound workers is idempotent. App lifecycle resume can
+/// be emitted for a window focus change, a permission sheet, or an OAuth tab;
+/// none of those events proves that a remote change was missed.
+@visibleForTesting
+bool shouldReuseStartedSyncService({
+  required String? startedForUserId,
+  required String requestedUserId,
+}) => startedForUserId == requestedUserId;
+
+/// Realtime reconnects continue with bounded exponential backoff. This delay
+/// schedules only another channel join; a given outage generation is allowed
+/// at most one incremental catch-up pull.
+@visibleForTesting
+Duration realtimeReconnectDelay(int completedAttempts) {
+  final exponent = completedAttempts.clamp(0, 4);
+  return Duration(seconds: 20 * (1 << exponent));
+}
+
+/// Realtime owns healthy idle convergence. A remote read is warranted only at
+/// a lifecycle boundary where events may have been missed, never because a
+/// fixed maintenance interval elapsed.
+@visibleForTesting
+bool shouldRunRemoteRecovery({
+  required bool connectivityRestored,
+  required bool realtimeRecovered,
+  required bool realtimeGapExpired,
+  required bool snapshotInvalidated,
+  required bool explicitlyRequested,
+}) =>
+    connectivityRestored ||
+    realtimeRecovered ||
+    realtimeGapExpired ||
+    snapshotInvalidated ||
+    explicitlyRequested;
+
+@visibleForTesting
+int duplicateRealtimeHandlerCount({
+  required int activeAccountChannels,
+  required int registeredEventHandlers,
+}) {
+  final expectedHandlers = activeAccountChannels;
+  final excess = registeredEventHandlers - expectedHandlers;
+  return excess > 0 ? excess : 0;
+}
+
 /// Entity tables needed to make a first device bootstrap usable before the
 /// incremental cursor advances. Keep task resources and their task-scoped
 /// website relationships here: a fresh device cannot recover either record
@@ -235,16 +355,18 @@ const authoritativeSnapshotEntityTypes = <String>[
   'profiles',
   'user_settings',
   'task_domains',
+  'recurrence_rules',
+  'task_templates',
   'task_occurrences',
   'task_resources',
   'website_rules',
+  'task_reminders',
   'execution_sessions',
   'user_runtime_state',
   'session_events',
   'pomodoro_cycles',
   'task_completion_evidence',
   'checklist_items',
-  'task_templates',
   'roadmaps',
   'roadmap_phases',
   'roadmap_milestones',
@@ -272,10 +394,12 @@ const authoritativeSnapshotEntityTypes = <String>[
 /// `task_resources`, which made imported URL resources permanently invisible
 /// until a later change touched each row. v2 still omitted the corresponding
 /// `website_rules`, so the task's Website Connections could remain absent even
-/// when its Resources were present. Bumping this epoch performs one bounded,
-/// authoritative repair snapshot for the incomplete local cache; it does not
-/// alter server state or replay local commands.
-const _authoritativeSnapshotCursorEpoch = 3;
+/// when its Resources were present. v3 also omitted recurrence rules and task
+/// reminders, leaving a second device unable to generate or alert the owner's
+/// imported routine. Bumping this epoch performs one bounded, authoritative
+/// repair snapshot for the incomplete local cache; it does not alter server
+/// state or replay local commands.
+const _authoritativeSnapshotCursorEpoch = 4;
 
 @visibleForTesting
 String authoritativeSnapshotStateId(String userId) =>
@@ -369,8 +493,240 @@ bool isProvenCanonicalDuplicateCreate({
   if (canonicalRow == null || canonicalRow['deleted_at'] != null) {
     return false;
   }
+  if (reason == 'revision_mismatch') {
+    final reportedRevision = switch (serverRevision) {
+      num value => value.toInt(),
+      String value => int.tryParse(value.trim()),
+      _ => null,
+    };
+    final canonicalRevision = switch (canonicalRow['revision']) {
+      num value => value.toInt(),
+      String value => int.tryParse(value.trim()),
+      _ => null,
+    };
+    if (reportedRevision == null ||
+        canonicalRevision == null ||
+        canonicalRevision < reportedRevision) {
+      return false;
+    }
+  }
   return canonicalRow['id'] == commandEntityId &&
       canonicalRow['user_id'] == userId;
+}
+
+/// Missing-parent recovery is allowed only for rows that have never entered
+/// the durable delivery pipeline. A conflict, superseded command, or accepted
+/// command is still delivery history: manufacturing a fresh command ID for it
+/// would turn one old problem into an unbounded retry/egress loop.
+@visibleForTesting
+bool shouldRestoreMissingParentCreate({
+  required bool hasCanonicalCommandIdentity,
+  required bool hasDurableDeliveryHistory,
+  required bool isKnownRemoteRow,
+}) =>
+    !hasCanonicalCommandIdentity &&
+    !hasDurableDeliveryHistory &&
+    !isKnownRemoteRow;
+
+/// Reconstructs the semantic metadata omitted by pre-v0.0.28 starter-Area
+/// commands. Stable UUID-v5 identity is the proof; display names are never
+/// used to guess whether a custom Area is built in.
+@visibleForTesting
+Map<String, Object?> restoredTaskDomainData({
+  required String userId,
+  required String domainId,
+}) {
+  final domainKey = TaskDomainCatalog.builtInKeyForId(userId, domainId);
+  if (domainKey == null) return const <String, Object?>{};
+  return <String, Object?>{'built_in': true, 'domain_key': domainKey};
+}
+
+Map<String, dynamic> _nestedData(Map<String, dynamic> row) {
+  final value = row['data'];
+  return value is Map
+      ? Map<String, dynamic>.from(value)
+      : const <String, dynamic>{};
+}
+
+bool _sameNullableString(Object? left, Object? right) {
+  String? normalize(Object? value) {
+    if (value == null) return null;
+    final text = value.toString().trim();
+    return text.isEmpty ? null : text;
+  }
+
+  return normalize(left) == normalize(right);
+}
+
+bool _sameNullableFoldedString(Object? left, Object? right) {
+  String? normalize(Object? value) {
+    if (value == null) return null;
+    final text = value.toString().trim().toLowerCase();
+    return text.isEmpty ? null : text;
+  }
+
+  return normalize(left) == normalize(right);
+}
+
+String? _normalizedApplicationIdentity(Object? value) {
+  if (value == null) return null;
+  final normalized = value
+      .toString()
+      .trim()
+      .toLowerCase()
+      .replaceAll(RegExp('[^a-z0-9]+'), '_')
+      .replaceAll(RegExp('^_+|_+\$'), '');
+  return normalized.isEmpty ? null : normalized;
+}
+
+/// A deterministic built-in Area UUID proves the semantic Area even for an
+/// old payload whose `data` object was empty. Custom Areas require their full
+/// user-authored create intent to match the canonical row.
+@visibleForTesting
+bool isSameTaskDomainCreateIntent({
+  required String userId,
+  required String entityId,
+  required Map<String, dynamic> localPayload,
+  required Map<String, dynamic> canonicalRow,
+}) {
+  final builtInKey = TaskDomainCatalog.builtInKeyForId(userId, entityId);
+  final localData = _nestedData(localPayload);
+  final canonicalData = _nestedData(canonicalRow);
+  if (builtInKey != null) {
+    final localKey = localData['domain_key'];
+    final canonicalKey = canonicalData['domain_key'];
+    if (localData['built_in'] == false || canonicalData['built_in'] == false) {
+      return false;
+    }
+    if (localKey != null && localKey != builtInKey) return false;
+    if (canonicalKey != null && canonicalKey != builtInKey) return false;
+  }
+
+  bool sameNumber(String key, {num fallback = 0}) {
+    final local = localPayload[key] as num? ?? fallback;
+    final remote = canonicalRow[key] as num? ?? fallback;
+    return local.toDouble() == remote.toDouble();
+  }
+
+  final sameVisibleFields =
+      _sameNullableString(localPayload['name'], canonicalRow['name']) &&
+      _sameNullableString(
+        localPayload['icon_name'],
+        canonicalRow['icon_name'],
+      ) &&
+      sameNumber('color_value') &&
+      sameNumber('position');
+  if (!sameVisibleFields) return false;
+  return builtInKey != null ||
+      const DeepCollectionEquality().equals(localData, canonicalData);
+}
+
+/// The server unique key proves only application + scope identity. It does
+/// not prove that a local classification edit has already happened, so every
+/// behavior field must also match before the conflict can disappear.
+@visibleForTesting
+bool isSameApplicationRuleIntent({
+  required Map<String, dynamic> localPayload,
+  required Map<String, dynamic> canonicalRow,
+}) {
+  for (final key in const <String>[
+    'application_id',
+    'scope_type',
+    'scope_id',
+    'classification',
+    'target_type',
+    'target_id',
+    'contribution_type',
+  ]) {
+    if (!_sameNullableString(localPayload[key], canonicalRow[key])) {
+      return false;
+    }
+  }
+  final localAutomatic = localPayload['automatic_credit'] as bool? ?? false;
+  final remoteAutomatic = canonicalRow['automatic_credit'] as bool? ?? false;
+  if (localAutomatic != remoteAutomatic) return false;
+  final localPriority = (localPayload['priority'] as num?)?.toInt() ?? 0;
+  final remotePriority = (canonicalRow['priority'] as num?)?.toInt() ?? 0;
+  return localPriority == remotePriority;
+}
+
+/// A historical task/application link may have been created with a random
+/// UUID before permanent relationship identities were introduced. The
+/// server's unique key proves only the task/application pair, so retire the
+/// alias only when the behavior stored by both sides is also equivalent.
+@visibleForTesting
+bool isSameTaskApplicationLinkIntent({
+  required Map<String, dynamic> localPayload,
+  required Map<String, dynamic> canonicalRow,
+}) {
+  bool sameRequired(String key) =>
+      _sameNullableString(localPayload[key], canonicalRow[key]);
+
+  if (!sameRequired('task_occurrence_id') || !sameRequired('application_id')) {
+    return false;
+  }
+
+  final localRelationship =
+      (localPayload['relationship_type'] as String?)?.trim().toLowerCase() ??
+      'supporting';
+  final remoteRelationship =
+      (canonicalRow['relationship_type'] as String?)?.trim().toLowerCase() ??
+      'supporting';
+  if (localRelationship != remoteRelationship) return false;
+
+  final canonicalData = _nestedData(canonicalRow);
+  final localData = _nestedData(localPayload);
+  final localClassification =
+      (localPayload['classification'] as String?) ??
+      (localData['classification'] as String?) ??
+      'direct_task_work';
+  final remoteClassification =
+      (canonicalRow['classification'] as String?) ??
+      (canonicalData['classification'] as String?) ??
+      'direct_task_work';
+  if (!_sameNullableString(localClassification, remoteClassification)) {
+    return false;
+  }
+  final localAutomatic =
+      (localPayload['automatic_credit'] as bool?) ??
+      (localData['automatic_credit'] as bool?) ??
+      true;
+  final remoteAutomatic =
+      (canonicalRow['automatic_credit'] as bool?) ??
+      (canonicalData['automatic_credit'] as bool?) ??
+      true;
+  if (localAutomatic != remoteAutomatic) return false;
+
+  // Platform and normalized application identity are redundant with the
+  // application UUID on current rows, but when both sides carry them they are
+  // useful extra proof for legacy aliases. A missing legacy snapshot is not a
+  // mismatch; a contradictory snapshot is.
+  for (final key in const ['platform', 'raw_identifier_snapshot']) {
+    final local = localPayload[key] as String?;
+    final remote = canonicalRow[key] as String?;
+    if (local != null &&
+        local.trim().isNotEmpty &&
+        remote != null &&
+        remote.trim().isNotEmpty &&
+        !_sameNullableFoldedString(local, remote)) {
+      return false;
+    }
+  }
+  final localNormalized = _normalizedApplicationIdentity(
+    localPayload['normalized_application_key_snapshot'] ??
+        localPayload['raw_identifier_snapshot'] ??
+        localPayload['raw_identifier'],
+  );
+  final remoteNormalized = _normalizedApplicationIdentity(
+    canonicalRow['normalized_application_key_snapshot'] ??
+        canonicalRow['raw_identifier_snapshot'],
+  );
+  if (localNormalized != null &&
+      remoteNormalized != null &&
+      localNormalized != remoteNormalized) {
+    return false;
+  }
+  return true;
 }
 
 @visibleForTesting
@@ -483,7 +839,7 @@ SyncHealth deriveSyncHealth({
     return SyncHealth.attention;
   }
   if (pendingChanges > 0) return SyncHealth.syncing;
-  if (!recoveryConnectionAvailable) return SyncHealth.attention;
+  if (!recoveryConnectionAvailable) return SyncHealth.syncing;
   return SyncHealth.idle;
 }
 
@@ -713,7 +1069,10 @@ class SyncService {
 
   final _health = StreamController<SyncHealth>.broadcast();
   StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
+  // One-shot timer for a durable command's persisted retry deadline. It is
+  // intentionally not a periodic synchronization worker.
   Timer? _drainTimer;
+  Timer? _realtimeRecoveryTimer;
   RealtimeChannel? _channel;
   SyncHealth _currentHealth = SyncHealth.syncing;
   bool _liveConnectionAvailable = false;
@@ -727,11 +1086,25 @@ class SyncService {
   bool _snapshotRetryRequired = false;
   String? _startedForUserId;
   DateTime? _lastDeviceAuthorizationCheck;
-  DateTime? _lastFallbackPullAt;
   Timer? _realtimePullTimer;
   final Map<String, _MutableSyncTrafficDiagnostic> _traffic = {};
   String? _subscribedForUserId;
   int _registeredRealtimeHandlers = 0;
+  Future<void>? _subscriptionFuture;
+  bool _initialSyncComplete = false;
+  bool _connectivityWasOffline = false;
+  bool _realtimeGapObserved = false;
+  int _realtimeOutageGeneration = 0;
+  int _realtimeFallbackGeneration = -1;
+  int _realtimeCatchUpGeneration = -1;
+  int _realtimeReconnectAttempts = 0;
+  bool _pendingConnectivityRecovery = false;
+  bool _pendingRealtimeRecovery = false;
+  bool _pendingRealtimeGapRecovery = false;
+  bool _pendingExplicitRecovery = false;
+  bool _pendingRealtimeResubscribe = false;
+
+  static const _deviceAuthorizationTtl = Duration(minutes: 30);
 
   Stream<SyncHealth> get health => _health.stream;
   SyncHealth get currentHealth => _currentHealth;
@@ -746,15 +1119,18 @@ class SyncService {
     return List.unmodifiable(rows);
   }
 
-  SyncConnectionDiagnostic getConnectionDiagnostics() =>
-      SyncConnectionDiagnostic(
-        activeRealtimeConnections: _liveConnectionAvailable ? 1 : 0,
-        activeAccountChannels: _channel == null ? 0 : 1,
+  SyncConnectionDiagnostic getConnectionDiagnostics() {
+    final activeAccountChannels = _channel == null ? 0 : 1;
+    return SyncConnectionDiagnostic(
+      activeRealtimeConnections: _liveConnectionAvailable ? 1 : 0,
+      activeAccountChannels: activeAccountChannels,
+      registeredEventHandlers: _registeredRealtimeHandlers,
+      duplicateHandlersDetected: duplicateRealtimeHandlerCount(
+        activeAccountChannels: activeAccountChannels,
         registeredEventHandlers: _registeredRealtimeHandlers,
-        // Duplicate creation is prevented before registering a handler, so a
-        // duplicate can never become live state.
-        duplicateHandlersDetected: 0,
-      );
+      ),
+    );
+  }
 
   void _recordTraffic(
     String source, {
@@ -783,6 +1159,20 @@ class SyncService {
     row.lastSynchronization = DateTime.now().toUtc();
   }
 
+  Future<T> _trackedRemote<T>(
+    String source,
+    Future<T> Function() request, {
+    Object? uploaded,
+    String? fingerprint,
+  }) async {
+    // Count the attempt before awaiting it so diagnostics include failed and
+    // timed-out traffic, not only successful responses.
+    _recordTraffic(source, uploaded: uploaded, fingerprint: fingerprint);
+    final response = await request();
+    _recordTraffic(source, downloaded: response, requests: 0);
+    return response;
+  }
+
   int _encodedSize(Object? value) {
     if (value == null) return 0;
     try {
@@ -809,6 +1199,8 @@ class SyncService {
     ];
     _drainTimer?.cancel();
     _drainTimer = null;
+    _realtimeRecoveryTimer?.cancel();
+    _realtimeRecoveryTimer = null;
     _realtimePullTimer?.cancel();
     _realtimePullTimer = null;
     await _connectivitySubscription?.cancel();
@@ -817,13 +1209,25 @@ class SyncService {
     _channel = null;
     _subscribedForUserId = null;
     _registeredRealtimeHandlers = 0;
+    _subscriptionFuture = null;
     await waitForInFlightSyncOperations(operations);
     _startedForUserId = null;
     _snapshotRetryRequired = false;
     _liveConnectionAvailable = false;
     _fallbackCheckAvailable = false;
     _lastDeviceAuthorizationCheck = null;
-    _lastFallbackPullAt = null;
+    _initialSyncComplete = false;
+    _connectivityWasOffline = false;
+    _realtimeGapObserved = false;
+    _realtimeOutageGeneration = 0;
+    _realtimeFallbackGeneration = -1;
+    _realtimeCatchUpGeneration = -1;
+    _realtimeReconnectAttempts = 0;
+    _pendingConnectivityRecovery = false;
+    _pendingRealtimeRecovery = false;
+    _pendingRealtimeGapRecovery = false;
+    _pendingExplicitRecovery = false;
+    _pendingRealtimeResubscribe = false;
     _traffic.clear();
     _setHealth(SyncHealth.offline);
   }
@@ -836,11 +1240,13 @@ class SyncService {
   Future<void> start() async {
     var user = client.auth.currentUser;
     if (user == null) return;
-    // Auth restoration and an Android network hand-off can call start more
-    // than once.  Reuse the durable workers for the same account, but make
-    // every such call an immediate recovery attempt rather than a no-op.
-    if (_startedForUserId == user.id) {
-      await _synchronizeNow();
+    // Auth restoration and app/window resume can call start many times for the
+    // same account. Reusing the workers must perform zero remote reads: one
+    // permission sheet previously caused a complete incremental replay here.
+    if (shouldReuseStartedSyncService(
+      startedForUserId: _startedForUserId,
+      requestedUserId: user.id,
+    )) {
       return;
     }
     if (_startedForUserId != null) {
@@ -852,6 +1258,7 @@ class SyncService {
     final generation = _accountGeneration;
     _startedForUserId = user.id;
     _snapshotRetryRequired = false;
+    _initialSyncComplete = false;
 
     // A device-registration or identifier repair failure is not allowed to
     // suppress the reconnect listener and fallback pull for the whole app.
@@ -871,19 +1278,21 @@ class SyncService {
       results,
     ) {
       if (results.every((result) => result == ConnectivityResult.none)) {
+        _connectivityWasOffline = true;
+        _fallbackCheckAvailable = false;
         _setHealth(SyncHealth.offline);
         return;
       }
-      unawaited(_synchronizeNow());
+      if (_connectivityWasOffline) {
+        _connectivityWasOffline = false;
+        unawaited(
+          _synchronizeNow(
+            connectivityRestored: true,
+            forceRealtimeResubscribe: true,
+          ),
+        );
+      }
     });
-    _drainTimer ??= Timer.periodic(
-      // Realtime remains the within-seconds path. This timer is only the
-      // incremental recovery net; running the full repair/pull pipeline every
-      // three seconds kept large local accounts busy even with an empty
-      // outbox and made execution controls feel unresponsive.
-      const Duration(seconds: 30),
-      (_) => unawaited(_synchronizeNow()),
-    );
     await _runBestEffort(_subscribeToAccount);
     if (!_isCurrentOperation(generation, user.id)) return;
     await _runBestEffort(_reconcileCanonicalState);
@@ -900,6 +1309,39 @@ class SyncService {
     // A pull or local cache repair may fail independently. Never let that
     // prevent the durable outbox from delivering otherwise valid user work.
     await drainOutbox();
+    if (!_isCurrentOperation(generation, user.id)) return;
+    _initialSyncComplete = true;
+    if (!_liveConnectionAvailable) {
+      _scheduleRealtimeRecovery();
+    }
+  }
+
+  /// Handles a lifecycle resume without treating focus changes as evidence of
+  /// remote work. Connectivity transitions are already delivered by the
+  /// connectivity subscription; this method only restores the visible state
+  /// and ensures an interrupted Realtime join still has a bounded retry.
+  Future<void> recoverAfterResume() async {
+    final user = client.auth.currentUser;
+    if (user == null || _startedForUserId != user.id) return;
+    final connectivity = await Connectivity().checkConnectivity();
+    if (connectivity.every((result) => result == ConnectivityResult.none)) {
+      _connectivityWasOffline = true;
+      _fallbackCheckAvailable = false;
+      _setHealth(SyncHealth.offline);
+      return;
+    }
+    if (_connectivityWasOffline) {
+      _connectivityWasOffline = false;
+      await _synchronizeNow(
+        connectivityRestored: true,
+        forceRealtimeResubscribe: true,
+      );
+      return;
+    }
+    if (!_liveConnectionAvailable) {
+      _setHealth(SyncHealth.syncing);
+      _scheduleRealtimeRecovery();
+    }
   }
 
   Future<void> _runBestEffort(Future<void> Function() action) async {
@@ -1148,15 +1590,17 @@ class SyncService {
     final deviceId = await DeviceIdentity.accountId(user.id);
     final packageInfo = await PackageInfo.fromPlatform();
     try {
-      final response = await client.rpc<Object?>(
-        'register_account_device',
-        params: {
-          'p_device_id': deviceId,
-          'p_device_name': DeviceIdentity.displayName,
-          'p_platform': DeviceIdentity.platform,
-          'p_app_version': packageInfo.version,
-          'p_device_public_key': null,
-        },
+      final params = <String, Object?>{
+        'p_device_id': deviceId,
+        'p_device_name': DeviceIdentity.displayName,
+        'p_platform': DeviceIdentity.platform,
+        'p_app_version': packageInfo.version,
+        'p_device_public_key': null,
+      };
+      final response = await _trackedRemote<Object?>(
+        'rpc:register_account_device',
+        () => client.rpc<Object?>('register_account_device', params: params),
+        uploaded: params,
       );
       final result = response is Map
           ? Map<String, dynamic>.from(response)
@@ -1220,18 +1664,23 @@ class SyncService {
     if (!force &&
         _lastDeviceAuthorizationCheck != null &&
         now.difference(_lastDeviceAuthorizationCheck!) <
-            const Duration(minutes: 2)) {
+            _deviceAuthorizationTtl) {
       return true;
     }
     _lastDeviceAuthorizationCheck = now;
     final deviceId = await DeviceIdentity.accountId(user.id);
     ensureCurrent();
-    final record = await client
-        .from('account_devices')
-        .select('revoked_at')
-        .eq('id', deviceId)
-        .eq('user_id', user.id)
-        .maybeSingle();
+    final record = await _trackedRemote<Map<String, dynamic>?>(
+      'table:account_devices.authorization',
+      () => client
+          .from('account_devices')
+          .select('revoked_at')
+          .eq('id', deviceId)
+          .eq('user_id', user.id)
+          .maybeSingle(),
+      uploaded: {'id': deviceId},
+      fingerprint: 'authorization:$deviceId',
+    );
     ensureCurrent();
     if (record != null && record['revoked_at'] == null) return true;
 
@@ -1260,33 +1709,49 @@ class SyncService {
     if (targetDeviceId == currentDeviceId) {
       throw ArgumentError('use_local_sign_out');
     }
-    await client.rpc<Object?>(
-      'revoke_account_device',
-      params: {
-        'p_command_id': _uuid.v4(),
-        'p_requesting_device_id': currentDeviceId,
-        'p_device_sequence': await DeviceIdentity.nextSequence(user.id),
-        'p_target_device_id': targetDeviceId,
-      },
+    final params = <String, Object?>{
+      'p_command_id': _uuid.v4(),
+      'p_requesting_device_id': currentDeviceId,
+      'p_device_sequence': await DeviceIdentity.nextSequence(user.id),
+      'p_target_device_id': targetDeviceId,
+    };
+    await _trackedRemote<Object?>(
+      'rpc:revoke_account_device',
+      () => client.rpc<Object?>('revoke_account_device', params: params),
+      uploaded: params,
     );
     await pullChanges();
   }
 
-  Future<void> _subscribeToAccount() async {
+  Future<void> _subscribeToAccount({bool force = false}) {
+    final existing = _subscriptionFuture;
+    if (existing != null) return existing;
+    late final Future<void> operation;
+    operation = _subscribeToAccountInternal(force: force).whenComplete(() {
+      if (identical(_subscriptionFuture, operation)) {
+        _subscriptionFuture = null;
+      }
+    });
+    _subscriptionFuture = operation;
+    return operation;
+  }
+
+  Future<void> _subscribeToAccountInternal({required bool force}) async {
     final user = client.auth.currentUser;
     if (user == null) return;
-    if (_channel != null && _subscribedForUserId == user.id) {
+    if (!force && _channel != null && _subscribedForUserId == user.id) {
       return;
     }
     await _channel?.unsubscribe();
     _registeredRealtimeHandlers = 0;
-    _channel = client.channel(
+    final channel = client.channel(
       'taskmaster:user:${user.id}:runtime',
       opts: const RealtimeChannelConfig(private: true),
     );
+    _channel = channel;
     _subscribedForUserId = user.id;
-    _registeredRealtimeHandlers = 1;
-    _channel!
+    _registeredRealtimeHandlers += 1;
+    channel
         .onBroadcast(
           event: 'entity_changed',
           callback: (payload) {
@@ -1307,21 +1772,81 @@ class SyncService {
           },
         )
         .subscribe((status, _) {
-          _liveConnectionAvailable =
-              status == RealtimeSubscribeStatus.subscribed;
-          if (!_liveConnectionAvailable &&
-              status == RealtimeSubscribeStatus.channelError) {
-            _setHealth(SyncHealth.attention);
+          if (!identical(_channel, channel)) return;
+          final wasLive = _liveConnectionAvailable;
+          final subscribed = status == RealtimeSubscribeStatus.subscribed;
+          _liveConnectionAvailable = subscribed;
+          if (subscribed) {
+            _realtimeRecoveryTimer?.cancel();
+            _realtimeRecoveryTimer = null;
+            final recoveredFromGap = _realtimeGapObserved && !wasLive;
+            final recoveredGeneration = _realtimeOutageGeneration;
+            _realtimeGapObserved = false;
+            _realtimeReconnectAttempts = 0;
+            if (recoveredFromGap &&
+                _initialSyncComplete &&
+                _realtimeCatchUpGeneration != recoveredGeneration &&
+                _synchronizeOperation.inFlight == null) {
+              _realtimeCatchUpGeneration = recoveredGeneration;
+              unawaited(_synchronizeNow(realtimeRecovered: true));
+            }
+          } else {
+            if (!_realtimeGapObserved) {
+              _realtimeGapObserved = true;
+              _realtimeOutageGeneration += 1;
+              _realtimeReconnectAttempts = 0;
+            }
+            _fallbackCheckAvailable = false;
+            if (_currentHealth != SyncHealth.offline) {
+              _setHealth(SyncHealth.syncing);
+            }
+            if (_initialSyncComplete) _scheduleRealtimeRecovery();
           }
         });
   }
 
-  /// Runs both directions even when there is no local work.  The previous
-  /// implementation returned early for an empty outbox, which left a passive
-  /// device stale until restart despite a remote change being available.
-  Future<void> _synchronizeNow() {
+  void _scheduleRealtimeRecovery() {
+    if (_realtimeRecoveryTimer != null || _startedForUserId == null) {
+      return;
+    }
+    final delay = realtimeReconnectDelay(_realtimeReconnectAttempts);
+    _realtimeRecoveryTimer = Timer(delay, () {
+      _realtimeRecoveryTimer = null;
+      if (!_liveConnectionAvailable && _startedForUserId != null) {
+        _realtimeReconnectAttempts += 1;
+        final outageGeneration = _realtimeOutageGeneration;
+        final firstFallbackForOutage =
+            _realtimeFallbackGeneration != outageGeneration;
+        if (firstFallbackForOutage) {
+          _realtimeFallbackGeneration = outageGeneration;
+          _realtimeCatchUpGeneration = outageGeneration;
+        }
+        unawaited(
+          _synchronizeNow(
+            realtimeGapExpired: firstFallbackForOutage,
+            forceRealtimeResubscribe: true,
+          ),
+        );
+      }
+    });
+  }
+
+  /// Runs both directions when a real recovery boundary or explicit user
+  /// action requires it. Repeated lifecycle resumes do not enter this path.
+  Future<void> _synchronizeNow({
+    bool connectivityRestored = false,
+    bool realtimeRecovered = false,
+    bool realtimeGapExpired = false,
+    bool explicitlyRequested = false,
+    bool forceRealtimeResubscribe = false,
+  }) {
     final userId = _startedForUserId;
     if (userId == null) return Future<void>.value();
+    _pendingConnectivityRecovery |= connectivityRestored;
+    _pendingRealtimeRecovery |= realtimeRecovered;
+    _pendingRealtimeGapRecovery |= realtimeGapExpired;
+    _pendingExplicitRecovery |= explicitlyRequested;
+    _pendingRealtimeResubscribe |= forceRealtimeResubscribe;
     final generation = _accountGeneration;
     return _synchronizeOperation.run(
       () => _synchronizeNowInternal(generation, userId),
@@ -1330,6 +1855,16 @@ class SyncService {
 
   Future<void> _synchronizeNowInternal(int generation, String userId) async {
     try {
+      final connectivityRestored = _pendingConnectivityRecovery;
+      final realtimeRecovered = _pendingRealtimeRecovery;
+      final realtimeGapExpired = _pendingRealtimeGapRecovery;
+      final explicitlyRequested = _pendingExplicitRecovery;
+      final forceRealtimeResubscribe = _pendingRealtimeResubscribe;
+      _pendingConnectivityRecovery = false;
+      _pendingRealtimeRecovery = false;
+      _pendingRealtimeGapRecovery = false;
+      _pendingExplicitRecovery = false;
+      _pendingRealtimeResubscribe = false;
       _ensureCurrentOperation(generation, userId);
       if (!await _ensureCurrentDeviceAuthorized(
         generation: generation,
@@ -1338,25 +1873,27 @@ class SyncService {
         return;
       }
       _ensureCurrentOperation(generation, userId);
+      if (forceRealtimeResubscribe) {
+        await _runBestEffort(() => _subscribeToAccount(force: true));
+        _ensureCurrentOperation(generation, userId);
+      }
       if (_snapshotRetryRequired) {
         await _runBestEffort(_reconcileCanonicalState);
         _ensureCurrentOperation(generation, userId);
       }
-      final now = DateTime.now().toUtc();
-      final fallbackPullDue =
-          !_liveConnectionAvailable ||
-          _lastFallbackPullAt == null ||
-          now.difference(_lastFallbackPullAt!) >= const Duration(minutes: 2);
-      // Realtime is the normal within-seconds path. The incremental cursor is
-      // a bounded recovery check, not a fixed high-frequency account poll.
-      if (!_snapshotRetryRequired && fallbackPullDue) {
-        unawaited(pullChanges());
-      }
-      await drainOutbox();
-      _ensureCurrentOperation(generation, userId);
-      if (fallbackPullDue) {
+      final recoverRemote = shouldRunRemoteRecovery(
+        connectivityRestored: connectivityRestored,
+        realtimeRecovered: realtimeRecovered,
+        realtimeGapExpired: realtimeGapExpired,
+        snapshotInvalidated: _snapshotRetryRequired,
+        explicitlyRequested: explicitlyRequested,
+      );
+      if (!_snapshotRetryRequired && recoverRemote) {
+        await pullChanges();
+        _ensureCurrentOperation(generation, userId);
         await _runBestEffort(_restoreCanonicalRuntime);
       }
+      await drainOutbox();
     } on _StaleSyncOperation {
       // The next account owns the database namespace now.
     }
@@ -1378,7 +1915,7 @@ class SyncService {
             ),
           );
     }
-    await _synchronizeNow();
+    await _synchronizeNow(explicitlyRequested: true);
   }
 
   Future<List<SyncConflictNotice>> getConflictNotices() async {
@@ -1785,6 +2322,8 @@ class SyncService {
   Future<void> drainOutbox() {
     final userId = _startedForUserId;
     if (userId == null) return Future<void>.value();
+    _drainTimer?.cancel();
+    _drainTimer = null;
     final generation = _accountGeneration;
     return _drainOperation.run(() => _drainOutboxTracked(generation, userId));
   }
@@ -1794,7 +2333,35 @@ class SyncService {
       await _drainOutboxInternal(generation, userId);
     } on _StaleSyncOperation {
       // Account switches invalidate delivery without mutating retry state.
+    } finally {
+      await _scheduleNextOutboxRetry(generation, userId);
     }
+  }
+
+  Future<void> _scheduleNextOutboxRetry(int generation, String userId) async {
+    if (!_isCurrentOperation(generation, userId)) return;
+    final rows =
+        await (database.select(database.localOutboxCommands)
+              ..where(
+                (row) =>
+                    row.userId.equals(userId) &
+                    row.status.equals('pending') &
+                    row.nextAttemptAt.isNotNull(),
+              )
+              ..orderBy([(row) => OrderingTerm.asc(row.nextAttemptAt)])
+              ..limit(1))
+            .get();
+    if (!_isCurrentOperation(generation, userId) || rows.isEmpty) return;
+    final nextAttemptAt = rows.first.nextAttemptAt;
+    if (nextAttemptAt == null) return;
+    final delay = nextAttemptAt.difference(DateTime.now());
+    _drainTimer?.cancel();
+    _drainTimer = Timer(delay.isNegative ? Duration.zero : delay, () {
+      _drainTimer = null;
+      if (_isCurrentOperation(generation, userId)) {
+        unawaited(drainOutbox());
+      }
+    });
   }
 
   Future<void> _drainOutboxInternal(int generation, String userId) async {
@@ -1825,6 +2392,10 @@ class SyncService {
     await _runBestEffort(
       () => _makeLegacyApplicationCatalogAliasesDue(user.id),
     );
+    _ensureCurrentOperation(generation, userId);
+    await _runBestEffort(
+      () => _repairLegacyApplicationCatalogContractFailures(user.id),
+    );
     final connectivity = await Connectivity().checkConnectivity();
     _ensureCurrentOperation(generation, userId);
     if (connectivity.every((result) => result == ConnectivityResult.none)) {
@@ -1852,10 +2423,9 @@ class SyncService {
           : left.deviceSequence.compareTo(right.deviceSequence);
     });
     if (commands.isEmpty) {
-      // An idle device is synchronized by its private Realtime channel and
-      // the bounded fallback in _synchronizeNowInternal.  Pulling here turns
-      // the 30-second maintenance tick into an account-wide polling loop,
-      // even when nothing has changed.
+      // A healthy idle device is synchronized by its private Realtime channel.
+      // Remote reads happen only after a missed-Realtime or connection
+      // transition, never because this local queue happens to be empty.
       return;
     }
 
@@ -2194,6 +2764,24 @@ class SyncService {
       } catch (error) {
         _ensureCurrentOperation(generation, userId);
         final errorCode = error is PostgrestException ? error.code : null;
+        final failedPayload = _payloadMap(command.payloadJson);
+        if (isBuiltInTaskDomainUniqueConflict(
+          entityType: command.entityType,
+          commandType: command.commandType,
+          errorCode: errorCode,
+          errorMessage: error.toString(),
+          payload: failedPayload,
+        )) {
+          final recovered = await _recoverBuiltInTaskDomainAlias(
+            command,
+            generation: generation,
+            userId: userId,
+          );
+          if (recovered) {
+            commandIndex += 1;
+            continue;
+          }
+        }
         final failureKind = classifySyncDeliveryFailure(
           entityType: command.entityType,
           commandType: command.commandType,
@@ -2373,6 +2961,101 @@ class SyncService {
     }
   }
 
+  /// Replays one corrected create for catalog rows rejected by the v0.0.27
+  /// normalized schema. The rejected command ID stays immutable and becomes
+  /// superseded; retries use one new durable command ID and the same stable
+  /// entity UUID. A second startup sees the replacement history and is a
+  /// no-op, so this can never become an egress loop.
+  Future<void> _repairLegacyApplicationCatalogContractFailures(
+    String userId,
+  ) async {
+    final candidates =
+        await (database.select(database.localOutboxCommands)..where(
+              (row) =>
+                  row.userId.equals(userId) &
+                  row.status.isIn(const ['pending', 'conflict']) &
+                  row.entityType.equals('application_catalog') &
+                  row.commandType.equals('create'),
+            ))
+            .get();
+    for (final command in candidates) {
+      final repaired = normalizedApplicationCatalogCreatePayload(
+        _payloadMap(command.payloadJson),
+      );
+      if (repaired == null) continue;
+      if (command.status == 'pending') {
+        final currentPayload = _payloadMap(command.payloadJson);
+        if (currentPayload['normalized_application_key'] ==
+                repaired['normalized_application_key'] &&
+            currentPayload['default_display_name'] ==
+                repaired['default_display_name']) {
+          continue;
+        }
+        await (database.update(
+          database.localOutboxCommands,
+        )..where((row) => row.commandId.equals(command.commandId))).write(
+          LocalOutboxCommandsCompanion(
+            payloadJson: Value(jsonEncode(repaired)),
+            lastError: const Value(null),
+            nextAttemptAt: const Value(null),
+          ),
+        );
+        continue;
+      }
+      if (!isLegacyApplicationCatalogContractFailure(
+        entityType: command.entityType,
+        commandType: command.commandType,
+        status: command.status,
+        lastError: command.lastError,
+      )) {
+        continue;
+      }
+
+      final alreadyReplayed =
+          await (database.select(database.localOutboxCommands)
+                ..where(
+                  (row) =>
+                      row.userId.equals(userId) &
+                      row.entityType.equals('application_catalog') &
+                      row.entityId.equals(command.entityId) &
+                      row.commandType.equals('create') &
+                      row.commandId.equals(command.commandId).not(),
+                )
+                ..limit(1))
+              .getSingleOrNull();
+      if (alreadyReplayed != null) {
+        await _supersedeCommands([command]);
+        continue;
+      }
+
+      final now = DateTime.now().toUtc();
+      await database.transaction(() async {
+        await _supersedeCommands([command]);
+        await database
+            .into(database.localOutboxCommands)
+            .insert(
+              LocalOutboxCommandsCompanion.insert(
+                commandId: _uuid.v4(),
+                userId: userId,
+                deviceId: command.deviceId,
+                deviceSequence: await DeviceIdentity.nextSequence(userId),
+                entityType: command.entityType,
+                entityId: command.entityId,
+                commandType: command.commandType,
+                baseRevision: command.baseRevision,
+                payloadJson: jsonEncode(repaired),
+                clientTimestamp: now,
+                createdAt: now,
+              ),
+            );
+      });
+      await _markRemoteConflictResolved(
+        command,
+        strategy: 'local_command_already_superseded',
+      );
+    }
+  }
+
   Future<void> _restoreMissingParentCommands(String userId) async {
     // Starter domains used to be inserted directly into SQLite before an
     // account was connected. They therefore had no outbox command, leaving
@@ -2407,20 +3090,23 @@ class SyncService {
     for (final domain in domains) {
       // A row pulled from the server already carries a command identity.  It
       // is not a legacy local starter domain and must never be re-created.
-      if (domain.lastCommandId != null) continue;
-      if (remoteIds.contains(domain.id)) continue;
-      final exists =
+      final history =
           await (database.select(database.localOutboxCommands)
                 ..where(
                   (row) =>
                       row.userId.equals(userId) &
                       row.entityType.equals('task_domains') &
-                      row.entityId.equals(domain.id) &
-                      row.status.isIn(const ['pending', 'accepted']),
+                      row.entityId.equals(domain.id),
                 )
                 ..limit(1))
               .getSingleOrNull();
-      if (exists != null) continue;
+      if (!shouldRestoreMissingParentCreate(
+        hasCanonicalCommandIdentity: domain.lastCommandId != null,
+        hasDurableDeliveryHistory: history != null,
+        isKnownRemoteRow: remoteIds.contains(domain.id),
+      )) {
+        continue;
+      }
       final commandId = _uuid.v4();
       await database.transaction(() async {
         await database
@@ -2440,7 +3126,10 @@ class SyncService {
                   'icon_name': domain.iconName,
                   'color_value': _databaseColorValue(domain.colorValue),
                   'position': domain.position,
-                  'data': <String, Object?>{},
+                  'data': restoredTaskDomainData(
+                    userId: userId,
+                    domainId: domain.id,
+                  ),
                 }),
                 clientTimestamp: now,
                 createdAt: now,
@@ -4120,6 +4809,156 @@ class SyncService {
     return 'server_rejected_command';
   }
 
+  /// Converges an old, randomly-identified starter Area with the permanent
+  /// account/domain-key UUID created by the canonical database seed.
+  ///
+  /// The recovery is deliberately narrower than general `23505` handling:
+  /// only a built-in payload carrying a known catalog key can enter it. RLS
+  /// proves ownership of the fetched row, and all local task/outbox references
+  /// are repointed before the alias command is retired. User-created Areas
+  /// therefore remain ordinary conflicts instead of being merged by name.
+  Future<bool> _recoverBuiltInTaskDomainAlias(
+    LocalOutboxCommand command, {
+    required int generation,
+    required String userId,
+  }) async {
+    final payload = _payloadMap(command.payloadJson);
+    final data = payload['data'];
+    final domainData = data is Map
+        ? Map<String, Object?>.from(data)
+        : const <String, Object?>{};
+    final domainKey = (domainData['domain_key'] as String?)?.trim();
+    if (domainData['built_in'] != true ||
+        domainKey == null ||
+        TaskDomainCatalog.definitions.every(
+          (definition) => definition.key != domainKey,
+        )) {
+      return false;
+    }
+
+    try {
+      _ensureCurrentOperation(generation, userId);
+      final rows = await client
+          .from('task_domains')
+          .select()
+          .contains('data', {'built_in': true, 'domain_key': domainKey})
+          .isFilter('deleted_at', null)
+          .limit(1);
+      _ensureCurrentOperation(generation, userId);
+      if (rows.isEmpty) return false;
+      final canonical = Map<String, dynamic>.from(rows.first);
+      final canonicalId = canonical['id'] as String?;
+      if (canonicalId == null || canonical['user_id'] != userId) return false;
+
+      final expectedId = TaskDomainCatalog.idFor(userId, domainKey);
+      if (canonicalId != expectedId) return false;
+
+      await _applyDomain(canonical);
+      _ensureCurrentOperation(generation, userId);
+      if (canonicalId != command.entityId) {
+        await _repointLocalTaskDomainReferences(
+          userId: userId,
+          aliasId: command.entityId,
+          canonicalId: canonicalId,
+        );
+        _ensureCurrentOperation(generation, userId);
+      }
+
+      final now = DateTime.now().toUtc();
+      await database.transaction(() async {
+        if (canonicalId != command.entityId) {
+          await (database.update(database.localDomains)..where(
+                (row) =>
+                    row.userId.equals(userId) & row.id.equals(command.entityId),
+              ))
+              .write(
+                LocalDomainsCompanion(
+                  archivedAt: Value(now),
+                  updatedAt: Value(now),
+                  deletedAt: Value(now),
+                ),
+              );
+        }
+        await (database.update(database.localOutboxCommands)..where(
+              (row) =>
+                  row.userId.equals(userId) &
+                  row.commandId.equals(command.commandId),
+            ))
+            .write(
+              const LocalOutboxCommandsCompanion(
+                status: Value('superseded'),
+                lastError: Value(null),
+                nextAttemptAt: Value(null),
+              ),
+            );
+      });
+      await _markRemoteConflictResolved(
+        command,
+        strategy: 'idempotent_duplicate_create',
+      );
+      return true;
+    } on _StaleSyncOperation {
+      rethrow;
+    } catch (_) {
+      // Keep the command durable until the canonical owner row and its stable
+      // built-in identity can both be proven online.
+      return false;
+    }
+  }
+
+  Future<void> _repointLocalTaskDomainReferences({
+    required String userId,
+    required String aliasId,
+    required String canonicalId,
+  }) async {
+    final now = DateTime.now().toUtc();
+    final referencedTasks =
+        await (database.select(database.localTasks)..where(
+              (row) => row.userId.equals(userId) & row.domainId.equals(aliasId),
+            ))
+            .get();
+    for (final task in referencedTasks) {
+      final unresolved =
+          await (database.select(database.localOutboxCommands)..where(
+                (row) =>
+                    row.userId.equals(userId) &
+                    row.entityType.equals('task_occurrences') &
+                    row.entityId.equals(task.id) &
+                    row.status.isIn(const ['pending', 'conflict']),
+              ))
+              .get();
+      await database.transaction(() async {
+        await (database.update(database.localTasks)..where(
+              (row) => row.userId.equals(userId) & row.id.equals(task.id),
+            ))
+            .write(
+              LocalTasksCompanion(
+                domainId: Value(canonicalId),
+                updatedAt: Value(now),
+              ),
+            );
+        for (final pending in unresolved) {
+          final repairedPayload = _replaceUuidInValue(
+            _payloadMap(pending.payloadJson),
+            aliasId,
+            canonicalId,
+          );
+          await (database.update(
+            database.localOutboxCommands,
+          )..where((row) => row.commandId.equals(pending.commandId))).write(
+            LocalOutboxCommandsCompanion(
+              payloadJson: Value(jsonEncode(repairedPayload)),
+              status: const Value('pending'),
+              attemptCount: const Value(0),
+              nextAttemptAt: Value(now),
+              lastError: const Value(null),
+            ),
+          );
+        }
+      });
+    }
+  }
+
   /// Converges two offline discoveries of the same application catalog row.
   ///
   /// The server's natural-key constraint proves that the existing row is the
@@ -4557,7 +5396,6 @@ class SyncService {
     await _supersedeCanonicalConflicts();
     _ensureCurrentOperation(generation, userId);
     await _settleHealth();
-    _lastFallbackPullAt = DateTime.now().toUtc();
   }
 
   /// Applies one change-log page with a bounded number of network reads.
@@ -4741,6 +5579,7 @@ class SyncService {
     await _reconcileRemoteConflictDecisions(user.id);
     await _reconcileTaskOccurrenceAliases(user.id);
     await _reconcileRoadmapTaskLinkAliases(user.id);
+    await _reconcileTaskApplicationLinkAliases(user.id);
     await _reconcileLegacyActivityCommandConflicts(user.id);
     await _reconcileDuplicateCreates(user.id);
     await _reconcileStaleLifecycleConflicts(user.id);
@@ -4888,7 +5727,14 @@ class SyncService {
           errorText.contains('unique_constraint') ||
           errorText.contains('invalid_command_contract') ||
           errorText.contains('23505');
-      if (!isExpectedConvergence) continue;
+      // A legacy application-rule command may have been reported with a
+      // generic transport reason even though the atomic classifier already
+      // committed it. Its canonical semantic row is stronger evidence than
+      // the historical error label. Other entity types retain their narrow
+      // reason allow-list.
+      if (!isExpectedConvergence && command.entityType != 'application_rules') {
+        continue;
+      }
       final payload = _payloadMap(command.payloadJson);
       try {
         Map<String, dynamic>? canonical;
@@ -4961,6 +5807,15 @@ class SyncService {
           }
         }
         if (canonical != null) {
+          if (command.entityType == 'application_rules' &&
+              !isSameApplicationRuleIntent(
+                localPayload: payload,
+                canonicalRow: canonical,
+              )) {
+            // The unique scope is the same, but the behavior differs. This is
+            // a genuine user edit and must remain available for review.
+            continue;
+          }
           if (command.entityType != 'activity_review_queue' ||
               canonical['id'] == command.entityId) {
             await _applyEntity(command.entityType, canonical);
@@ -5186,6 +6041,22 @@ class SyncService {
         userId: userId,
         canonicalRow: canonical,
       )) {
+        return false;
+      }
+      if (command.entityType == 'task_domains' &&
+          !isSameTaskDomainCreateIntent(
+            userId: userId,
+            entityId: command.entityId,
+            localPayload: _payloadMap(command.payloadJson),
+            canonicalRow: canonical,
+          )) {
+        return false;
+      }
+      if (command.entityType == 'application_rules' &&
+          !isSameApplicationRuleIntent(
+            localPayload: _payloadMap(command.payloadJson),
+            canonicalRow: canonical,
+          )) {
         return false;
       }
       await _applyEntity(remoteEntityType, canonical);
@@ -5568,6 +6439,79 @@ class SyncService {
     }
   }
 
+  /// Adopts the canonical task/application relationship when an older client
+  /// created the same semantic link with a random UUID.
+  ///
+  /// This is deliberately stricter than a name match: RLS must return an
+  /// active owner row with the same task, canonical application, relationship
+  /// type, classification, and automatic-credit behavior. Any differing user
+  /// intent remains a real conflict for review.
+  Future<void> _reconcileTaskApplicationLinkAliases(String userId) async {
+    final candidates =
+        await (database.select(database.localOutboxCommands)..where(
+              (row) =>
+                  row.userId.equals(userId) &
+                  row.status.equals('conflict') &
+                  row.entityType.equals('task_application_links') &
+                  row.commandType.equals('create'),
+            ))
+            .get();
+    for (final command in candidates) {
+      final payload = _payloadMap(command.payloadJson);
+      final taskId = _uuidOrNull(payload['task_occurrence_id'] as String?);
+      final applicationId = _uuidOrNull(payload['application_id'] as String?);
+      if (taskId == null || applicationId == null) continue;
+      try {
+        final rows = await client
+            .from('task_application_links')
+            .select()
+            .eq('task_occurrence_id', taskId)
+            .eq('application_id', applicationId)
+            .isFilter('deleted_at', null)
+            .limit(1);
+        if (rows.isEmpty) continue;
+        final canonical = Map<String, dynamic>.from(rows.first);
+        final canonicalId = canonical['id'] as String?;
+        if (canonicalId == null ||
+            canonical['user_id'] != userId ||
+            !isSameTaskApplicationLinkIntent(
+              localPayload: payload,
+              canonicalRow: canonical,
+            )) {
+          continue;
+        }
+
+        await _applyEntity('task_application_links', canonical);
+        final now = DateTime.now().toUtc();
+        await database.transaction(() async {
+          if (canonicalId != command.entityId) {
+            await (database.update(database.localEntityRecords)..where(
+                  (row) =>
+                      row.userId.equals(userId) &
+                      row.entityType.equals('task_application_links') &
+                      row.id.equals(command.entityId),
+                ))
+                .write(
+                  LocalEntityRecordsCompanion(
+                    status: const Value('canonical_alias'),
+                    updatedAt: Value(now),
+                    deletedAt: Value(now),
+                  ),
+                );
+          }
+          await _supersedeCommands([command]);
+        });
+        await _markRemoteConflictResolved(
+          command,
+          strategy: 'idempotent_duplicate_create',
+        );
+      } catch (_) {
+        // A canonical owner-scoped semantic relationship is required before
+        // a historical alias can disappear from user diagnostics.
+      }
+    }
+  }
+
   Object? _replaceUuidInValue(Object? value, String oldId, String newId) {
     if (value is String) return value == oldId ? newId : value;
     if (value is List) {
@@ -5643,7 +6587,7 @@ class SyncService {
           : snapshot.pendingChanges > 0
           ? SyncHealth.syncing
           : !snapshot.liveConnectionAvailable
-          ? SyncHealth.attention
+          ? SyncHealth.syncing
           : SyncHealth.idle,
     );
   }
@@ -5711,17 +6655,22 @@ class SyncService {
     List<Map<String, dynamic>> devices = const [];
     if (checkRemoteDevices && online && user != null) {
       try {
-        devices =
-            (await client
-                    .from('account_devices')
-                    .select(
-                      'id,device_name,platform,app_version,last_seen_at,revoked_at',
-                    )
-                    .isFilter('deleted_at', null)
-                    .isFilter('revoked_at', null)
-                    .order('last_seen_at', ascending: false))
-                .map(Map<String, dynamic>.from)
-                .toList();
+        final remoteDevices = await _trackedRemote<List<dynamic>>(
+          'table:account_devices.list',
+          () => client
+              .from('account_devices')
+              .select(
+                'id,device_name,platform,app_version,last_seen_at,revoked_at',
+              )
+              .isFilter('deleted_at', null)
+              .isFilter('revoked_at', null)
+              .order('last_seen_at', ascending: false),
+          fingerprint: 'active-devices',
+        );
+        devices = [
+          for (final row in remoteDevices)
+            Map<String, dynamic>.from(row as Map),
+        ];
       } catch (_) {
         devices = const [];
       }
@@ -6476,11 +7425,15 @@ class SyncService {
   Future<void> _restoreCanonicalRuntime({bool force = false}) async {
     final user = client.auth.currentUser;
     if (user == null) return;
-    final remote = await client
-        .from('user_runtime_state')
-        .select()
-        .eq('user_id', user.id)
-        .maybeSingle();
+    final remote = await _trackedRemote<Map<String, dynamic>?>(
+      'table:user_runtime_state.recovery',
+      () => client
+          .from('user_runtime_state')
+          .select()
+          .eq('user_id', user.id)
+          .maybeSingle(),
+      fingerprint: 'runtime:${user.id}',
+    );
     if (remote == null) return;
     await _applyRemoteRuntime(Map<String, dynamic>.from(remote), force: force);
   }

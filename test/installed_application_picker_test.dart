@@ -106,6 +106,17 @@ void main() {
     );
   });
 
+  test('catalog normalized keys exactly match the database contract', () {
+    expect(normalizedApplicationKey(' COM.DUOLINGO '), 'com_duolingo');
+    expect(
+      normalizedApplicationKey(
+        r'windows|foreground_user_surface|ShellExperienceHost.exe',
+      ),
+      'windows_foreground_user_surface_shellexperiencehost_exe',
+    );
+    expect(normalizedApplicationKey('---'), 'unknown');
+  });
+
   test('application label fallback never returns an empty chip', () {
     expect(
       resolvedApplicationDisplayName(

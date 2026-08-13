@@ -51,6 +51,8 @@ class FlutterWindow : public Win32Window {
   bool tray_added_ = false;
   bool exit_requested_ = false;
   bool restore_maximized_ = false;
+  bool window_maximized_ = false;
+  bool window_placement_ready_ = false;
   bool tray_signed_in_ = false;
   bool tray_has_active_task_ = false;
   bool tray_task_paused_ = false;

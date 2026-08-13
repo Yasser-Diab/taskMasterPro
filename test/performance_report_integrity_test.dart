@@ -23,19 +23,28 @@ void main() {
   LocalTask task({
     required String id,
     String mode = 'continuous',
+    String? templateId,
+    String? status,
+    DateTime? scheduledDate,
+    DateTime? plannedStart,
+    DateTime? plannedEnd,
+    Duration estimate = const Duration(hours: 1),
     DateTime? actualStart,
     DateTime? actualFinish,
     int activeMs = 0,
   }) => LocalTask(
     id: id,
     userId: 'user-1',
+    templateId: templateId,
     title: id,
     description: '',
-    status: actualFinish == null ? 'running' : 'completed',
+    status: status ?? (actualFinish == null ? 'running' : 'completed'),
     priority: 2,
     executionMode: mode,
-    scheduledDate: actualStart,
-    estimatedDurationMs: const Duration(hours: 1).inMilliseconds,
+    scheduledDate: scheduledDate ?? actualStart,
+    plannedStart: plannedStart,
+    plannedEnd: plannedEnd,
+    estimatedDurationMs: estimate.inMilliseconds,
     actualStart: actualStart,
     actualFinish: actualFinish,
     activeDurationMs: activeMs,
@@ -267,6 +276,74 @@ void main() {
   );
 
   test(
+    'planned report totals use each day interval union and exclude outside dates',
+    () {
+      final data = snapshot(
+        tasks: [
+          task(
+            id: 'day-1-work',
+            scheduledDate: DateTime.utc(2026, 7, 10),
+            plannedStart: DateTime.utc(2026, 7, 10, 0, 9),
+            plannedEnd: DateTime.utc(2026, 7, 10, 17, 30),
+            estimate: const Duration(hours: 17, minutes: 21),
+          ),
+          task(
+            id: 'day-1-nested-study',
+            scheduledDate: DateTime.utc(2026, 7, 10),
+            plannedStart: DateTime.utc(2026, 7, 10, 6, 30),
+            plannedEnd: DateTime.utc(2026, 7, 10, 7, 10),
+            estimate: const Duration(minutes: 40),
+          ),
+          task(
+            id: 'day-2-long',
+            scheduledDate: DateTime.utc(2026, 7, 11),
+            plannedStart: DateTime.utc(2026, 7, 11),
+            plannedEnd: DateTime.utc(2026, 7, 12, 6),
+            estimate: const Duration(hours: 30),
+          ),
+          task(
+            id: 'outside-range',
+            scheduledDate: DateTime.utc(2026, 7, 12),
+            plannedStart: DateTime.utc(2026, 7, 12, 8),
+            plannedEnd: DateTime.utc(2026, 7, 12, 9),
+          ),
+        ],
+      );
+
+      final facts = PerformanceReportService.factsForSnapshot(
+        data,
+        options(from: DateTime(2026, 7, 10), to: DateTime(2026, 7, 11)),
+        l10n,
+      );
+      final byDay = {for (final point in facts.daily) point.day: point};
+
+      expect(
+        byDay[DateTime(2026, 7, 10)]!.plannedMs,
+        const Duration(hours: 17, minutes: 21).inMilliseconds,
+      );
+      expect(
+        byDay[DateTime(2026, 7, 11)]!.plannedMs,
+        const Duration(hours: 24).inMilliseconds,
+      );
+      expect(
+        facts.daily.every(
+          (point) =>
+              point.plannedMs <= const Duration(hours: 24).inMilliseconds,
+        ),
+        isTrue,
+      );
+      expect(
+        facts.plannedMs,
+        facts.daily.fold<int>(0, (sum, point) => sum + point.plannedMs),
+      );
+      expect(
+        facts.plannedMs,
+        const Duration(hours: 41, minutes: 21).inMilliseconds,
+      );
+    },
+  );
+
+  test(
     'deduplicates overlapping device activity and normalizes visible names',
     () {
       final ten = DateTime.utc(2026, 7, 12, 10);
@@ -338,4 +415,44 @@ void main() {
       expect(labels.join(' '), isNot(contains('freecodecamp.org/learn')));
     },
   );
+
+  test('groups recurring occurrences and preserves union-allocated work', () {
+    final ten = DateTime.utc(2026, 7, 14, 10);
+    final occurrences = [
+      task(
+        id: 'lesson-1',
+        templateId: 'lesson-template',
+        actualStart: ten,
+        actualFinish: ten.add(const Duration(minutes: 20)),
+        activeMs: const Duration(minutes: 20).inMilliseconds,
+      ),
+      task(id: 'lesson-2', templateId: 'lesson-template', status: 'missed'),
+      task(id: 'lesson-3', templateId: 'lesson-template', status: 'scheduled'),
+    ];
+    final data = snapshot(tasks: occurrences);
+    final facts = PerformanceReportService.factsForSnapshot(
+      data,
+      options(),
+      l10n,
+      now: DateTime.utc(2026, 7, 14, 12),
+    );
+
+    final group = PerformanceReportService.taskGroupsForReport(
+      occurrences,
+      facts,
+      now: DateTime.utc(2026, 7, 14, 12),
+    ).single;
+
+    expect(group.recurring, isTrue);
+    expect(group.occurrences, 3);
+    expect(group.completed, 1);
+    expect(group.missed, 1);
+    expect(group.upcoming, 1);
+    expect(
+      group.plannedMs,
+      const Duration(hours: 3).inMilliseconds,
+      reason: 'Per-template occurrence effort remains intentionally additive.',
+    );
+    expect(group.recordedMs, const Duration(minutes: 20).inMilliseconds);
+  });
 }

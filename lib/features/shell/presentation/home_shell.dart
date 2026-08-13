@@ -30,6 +30,7 @@ import '../../settings/presentation/notifications_sounds_screen.dart';
 import '../../settings/presentation/schedule_wellbeing_screen.dart';
 import '../../sync/presentation/synchronization_panel.dart';
 import '../../tasks/data/task_execution_commands.dart';
+import '../../tasks/data/execution_exclusivity_coordinator.dart';
 import '../../tasks/data/task_execution_providers.dart';
 import '../domain/home_shell_back_navigation.dart';
 import '../../tasks/domain/pomodoro_execution_state.dart';
@@ -37,6 +38,7 @@ import '../../tasks/domain/task_list_projection.dart';
 import '../../tasks/presentation/task_completion_flow.dart';
 import '../../tasks/presentation/interruption_editor_dialog.dart';
 import '../../tasks/presentation/tasks_screen.dart';
+import '../../tasks/presentation/standalone_pomodoro_screen.dart';
 import '../../tasks/presentation/task_start_flow.dart';
 import '../../tasks/presentation/task_workspace_screen.dart';
 
@@ -50,6 +52,18 @@ final syncHealthProvider = StreamProvider<SyncHealth>((ref) async* {
 /// compact handset.  Keep the semantic names and long-press tooltips, while
 /// switching to an icon-first navigation bar before labels start wrapping.
 bool usesCompactBottomNavigation(double maxWidth) => maxWidth < 600;
+
+enum ShellSyncVisualState { offline, pending, synced, attention }
+
+@visibleForTesting
+ShellSyncVisualState shellSyncVisualState(SyncHealth health) {
+  return switch (health) {
+    SyncHealth.offline => ShellSyncVisualState.offline,
+    SyncHealth.syncing => ShellSyncVisualState.pending,
+    SyncHealth.idle => ShellSyncVisualState.synced,
+    SyncHealth.attention => ShellSyncVisualState.attention,
+  };
+}
 
 class HomeShell extends ConsumerStatefulWidget {
   const HomeShell({required this.user, required this.themeKey, super.key});
@@ -92,6 +106,7 @@ class _HomeShellState extends ConsumerState<HomeShell> with RouteAware {
   int? _lastExecutionRevision;
   DateTime? _lastExecutionSegmentStartedAt;
   Future<void> _executionAlarmQueue = Future<void>.value();
+  StreamSubscription<List<LocalEntityRecord>>? _taskReminderSubscription;
   ModalRoute<dynamic>? _route;
 
   @override
@@ -109,14 +124,9 @@ class _HomeShellState extends ConsumerState<HomeShell> with RouteAware {
         ),
       );
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      unawaited(_drainNotificationLaunchActions());
-      unawaited(_synchronizePersistedTaskReminders());
+      unawaited(_restoreNotificationAuthorityAfterLaunchAction());
       unawaited(_refreshTray());
       unawaited(_advanceAutomaticPomodoroBoundary());
-      _runtimeSubscription = ref
-          .read(taskRepositoryProvider)
-          .watchRuntime()
-          .listen(_queueExecutionAlarmSynchronization);
     });
     _trayCommands = WindowsShellService.instance.commands.listen(
       _handleTrayCommand,
@@ -129,6 +139,17 @@ class _HomeShellState extends ConsumerState<HomeShell> with RouteAware {
       const Duration(seconds: 1),
       (_) => unawaited(_advanceAutomaticPomodoroBoundary()),
     );
+  }
+
+  Future<void> _restoreNotificationAuthorityAfterLaunchAction() async {
+    // A mutating Android action launches the foreground app so it can use the
+    // same account-scoped repository command as Dashboard/Execute. Execute the
+    // action before startup reconciliation supersedes the exact ledger row it
+    // must validate. Running these concurrently made a cold-start Pause look
+    // like a dismiss-only button.
+    await _drainNotificationLaunchActions();
+    if (!mounted) return;
+    await _restoreCanonicalNotificationAuthority();
   }
 
   @override
@@ -169,6 +190,35 @@ class _HomeShellState extends ConsumerState<HomeShell> with RouteAware {
     }
   }
 
+  Future<void> _restoreCanonicalNotificationAuthority() async {
+    // Android vendors can restore AlarmManager entries and active cards after
+    // an application process was killed. Reconcile the device-owned queue
+    // before watching runtime changes so an obsolete focus/break boundary is
+    // never allowed to race the freshly restored canonical session.
+    await localNotificationService.reconcileOwnedTaskNotificationsOnStartup(
+      ownerId: widget.user.id,
+    );
+    if (!mounted) return;
+    await _synchronizePersistedTaskReminders(force: true);
+    if (!mounted) return;
+    final repository = ref.read(taskRepositoryProvider);
+    _runtimeSubscription = repository.watchRuntime().listen(
+      _queueExecutionAlarmSynchronization,
+    );
+    _queueExecutionAlarmSynchronization(await repository.getRuntime());
+    final database = ref.read(databaseProvider);
+    _taskReminderSubscription =
+        (database.select(database.localEntityRecords)..where(
+              (row) =>
+                  row.userId.equals(widget.user.id) &
+                  row.entityType.equals('task_reminders'),
+            ))
+            .watch()
+            .listen(
+              (_) => unawaited(_synchronizePersistedTaskReminders(force: true)),
+            );
+  }
+
   @override
   void dispose() {
     appRouteObserver.unsubscribe(this);
@@ -177,6 +227,7 @@ class _HomeShellState extends ConsumerState<HomeShell> with RouteAware {
     }
     unawaited(_trayCommands?.cancel());
     unawaited(_runtimeSubscription?.cancel());
+    unawaited(_taskReminderSubscription?.cancel());
     _trayRefresh?.cancel();
     _automaticBoundaryRefresh?.cancel();
     super.dispose();
@@ -332,10 +383,7 @@ class _HomeShellState extends ConsumerState<HomeShell> with RouteAware {
     _lastExecutionRevision = runtime?.revision;
     _lastExecutionSegmentStartedAt = runtime?.segmentStartedAt;
     final taskId = runtime?.activeTaskId;
-    if (taskId == null ||
-        runtime == null ||
-        runtime.state == 'idle' ||
-        runtime.state == 'paused') {
+    if (taskId == null || runtime == null || runtime.state == 'idle') {
       // Completing a task clears activeTaskId.  Keep the prior slot long
       // enough to cancel/supersede it, otherwise its old alarm survives and
       // fires after completion.
@@ -387,10 +435,13 @@ class _HomeShellState extends ConsumerState<HomeShell> with RouteAware {
       final intendedMs = task.estimatedDurationMs >= 60000
           ? task.estimatedDurationMs
           : const Duration(minutes: 30).inMilliseconds;
-      remainingMs = (intendedMs - runtime.accumulatedActiveMs).clamp(
-        60000,
-        intendedMs,
+      final recordedMs = liveTaskRecordedWorkMs(
+        recordedMs: runtime.accumulatedActiveMs,
+        running: runtime.state == 'running',
+        segmentStartedAt: runtime.segmentStartedAt,
+        now: now,
       );
+      remainingMs = (intendedMs - recordedMs).clamp(60000, intendedMs);
       eventType = 'duration_completed';
     }
     final category = eventType == 'duration_completed'
@@ -417,27 +468,45 @@ class _HomeShellState extends ConsumerState<HomeShell> with RouteAware {
       runtime.segmentStartedAt?.toUtc().toIso8601String() ??
           runtime.updatedAt.toUtc().toIso8601String(),
     ].join(':');
-    await localNotificationService.scheduleExecutionCompletion(
-      id: LocalNotificationService.executionNotificationId(task.id),
-      taskId: task.id,
-      taskTitle: task.title,
-      eventType: eventType,
-      scheduledAtUtc: scheduledAtUtc,
-      sound: sound,
-      sessionId: runtime.sessionId,
-      runtimeRevision: runtime.revision,
-      intervalId: intervalId,
-      category: category,
-      enabled: NotificationSounds.categoryEnabled(
-        preferencesJson: preferencesJson,
+    if (runtime.state != 'paused') {
+      await localNotificationService.scheduleExecutionCompletion(
+        id: LocalNotificationService.executionNotificationId(task.id),
+        taskId: task.id,
+        taskTitle: task.title,
+        eventType: eventType,
+        scheduledAtUtc: scheduledAtUtc,
+        sound: sound,
+        sessionId: runtime.sessionId,
+        runtimeRevision: runtime.revision,
+        intervalId: intervalId,
         category: category,
-      ),
-      vibration: NotificationSounds.vibrationForCategory(
-        preferencesJson: preferencesJson,
-        category: category,
-      ),
-      localeCode: settings?.localeCode ?? 'en',
-    );
+        enabled: NotificationSounds.categoryEnabled(
+          preferencesJson: preferencesJson,
+          category: category,
+        ),
+        vibration: NotificationSounds.vibrationForCategory(
+          preferencesJson: preferencesJson,
+          category: category,
+        ),
+        localeCode: settings?.localeCode ?? 'en',
+      );
+    }
+    if (runtime.sessionId case final sessionId?) {
+      await localNotificationService.showExecutionStatus(
+        id: LocalNotificationService.executionNotificationId(task.id),
+        taskId: task.id,
+        taskTitle: task.title,
+        state: runtime.state,
+        boundaryAtUtc: scheduledAtUtc,
+        sound: sound,
+        sessionId: sessionId,
+        runtimeRevision: runtime.revision,
+        intervalId: intervalId,
+        eventType: eventType,
+        vibration: false,
+        localeCode: settings?.localeCode ?? 'en',
+      );
+    }
   }
 
   void _queueExecutionAlarmSynchronization(LocalRuntime? runtime) {
@@ -652,6 +721,10 @@ class _HomeShellState extends ConsumerState<HomeShell> with RouteAware {
         reminderType: reminderType,
         scheduledAtUtc: scheduledAt,
         sound: sound,
+        ownerId: widget.user.id,
+        occurrenceId: task.occurrenceKey,
+        taskRevision: task.revision,
+        reminderRevision: record.revision,
         category: category,
         enabled: true,
         vibration: NotificationSounds.vibrationForCategory(
@@ -938,6 +1011,7 @@ class _HomeShellState extends ConsumerState<HomeShell> with RouteAware {
         ownedPayload.eventType == 'break_completed' ||
         ownedPayload.eventType == 'short_break_completed' ||
         ownedPayload.eventType == 'long_break_completed';
+    var transitionAccepted = true;
     switch (actionId) {
       case 'start':
         if (mounted) {
@@ -959,25 +1033,46 @@ class _HomeShellState extends ConsumerState<HomeShell> with RouteAware {
         }
       case 'complete':
         if (mounted) await completeTaskWithUndo(context, ref, task);
+      case 'pause':
+        final before = await repository.getRuntime();
+        await repository.pause(task);
+        final after = await repository.getRuntime();
+        transitionAccepted =
+            before?.activeTaskId == task.id &&
+            before?.state == 'running' &&
+            after?.activeTaskId == task.id &&
+            after?.state == 'paused' &&
+            after!.revision > before!.revision;
+      case 'resume':
+        final before = await repository.getRuntime();
+        await repository.resume(task);
+        final after = await repository.getRuntime();
+        transitionAccepted =
+            before?.activeTaskId == task.id &&
+            before?.state == 'paused' &&
+            after?.activeTaskId == task.id &&
+            after?.state == 'running' &&
+            after!.revision > before!.revision;
       case 'start_break':
         if (isFocusBoundary) {
-          await TaskExecutionCommands.startOfferedBreak(
+          transitionAccepted = await TaskExecutionCommands.startOfferedBreak(
             repository,
             task,
             expectedBoundaryAt: expectedBoundaryAt,
-            beforeTransition: () =>
-                localNotificationService.cancelExecutionCompletion(task.id),
           );
+        } else {
+          transitionAccepted = false;
         }
       case 'start_focus':
         if (isBreakBoundary) {
-          await TaskExecutionCommands.startFocusFromCompletedBreak(
-            repository,
-            task,
-            expectedBoundaryAt: expectedBoundaryAt,
-            beforeTransition: () =>
-                localNotificationService.cancelExecutionCompletion(task.id),
-          );
+          transitionAccepted =
+              await TaskExecutionCommands.startFocusFromCompletedBreak(
+                repository,
+                task,
+                expectedBoundaryAt: expectedBoundaryAt,
+              );
+        } else {
+          transitionAccepted = false;
         }
       case 'finish_task':
         if (mounted) await completeTaskWithUndo(context, ref, task);
@@ -987,21 +1082,23 @@ class _HomeShellState extends ConsumerState<HomeShell> with RouteAware {
         // one revision-guarded canonical transition that starts the next
         // focus without publishing an intermediate break state.
         if (isFocusBoundary) {
-          await TaskExecutionCommands.skipOfferedBreak(
+          transitionAccepted = await TaskExecutionCommands.skipOfferedBreak(
             repository,
             task,
             expectedBoundaryAt: expectedBoundaryAt,
-            beforeTransition: () =>
-                localNotificationService.cancelExecutionCompletion(task.id),
           );
+        } else {
+          transitionAccepted = false;
         }
       case 'extend_break':
         if (isBreakBoundary) {
-          await TaskExecutionCommands.extendBreak(
+          transitionAccepted = await TaskExecutionCommands.extendBreak(
             repository: repository,
             task: task,
             expectedBoundaryAt: expectedBoundaryAt,
           );
+        } else {
+          transitionAccepted = false;
         }
       case 'review_break':
         if (mounted) _selectDestination(4);
@@ -1043,7 +1140,7 @@ class _HomeShellState extends ConsumerState<HomeShell> with RouteAware {
       default:
         if (mounted) await TaskWorkspaceScreen.open(context, task);
     }
-    if (requiresExecutionValidation) {
+    if (requiresExecutionValidation && transitionAccepted) {
       await localNotificationService.markExecutionNotificationHandled(
         ownedPayload,
       );
@@ -1104,6 +1201,10 @@ class _HomeShellState extends ConsumerState<HomeShell> with RouteAware {
 
   @override
   Widget build(BuildContext context) {
+    // Keep the account-scoped local execution gate alive for the authenticated
+    // shell. A canonical runtime activation from another device then stops a
+    // restored standalone timer even when its screen is not open.
+    ref.watch(executionExclusivityCoordinatorProvider);
     ref.listen(appSettingsProvider, (previous, next) {
       final settings = next.value;
       if (settings != null &&
@@ -1259,6 +1360,25 @@ class _HomeShellState extends ConsumerState<HomeShell> with RouteAware {
                                 label: Text(destination.$3),
                               ),
                           ],
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+                        child: ListTile(
+                          key: const ValueKey<String>(
+                            'sidebar-standalone-pomodoro-destination',
+                          ),
+                          dense: true,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          leading: const Icon(Icons.timer_outlined),
+                          title: Text(l10n.text('standalone_pomodoro')),
+                          onTap: () => Navigator.of(context).push(
+                            MaterialPageRoute<void>(
+                              builder: (_) => const StandalonePomodoroScreen(),
+                            ),
+                          ),
                         ),
                       ),
                       const _CompactActiveTaskBar(),
@@ -1479,21 +1599,30 @@ class _SyncFooterState extends ConsumerState<_SyncFooter>
   @override
   Widget build(BuildContext context) {
     final health = ref.watch(syncHealthProvider).value ?? SyncHealth.idle;
-    final (icon, key, color) = switch (health) {
-      SyncHealth.offline => (
-        Icons.cloud_off_outlined,
-        'sync_you_offline',
+    final visualState = shellSyncVisualState(health);
+    final (icon, key, color, background) = switch (visualState) {
+      ShellSyncVisualState.offline => (
+        null,
+        'sync_offline_compact',
         Theme.of(context).colorScheme.onSurfaceVariant,
+        Theme.of(context).colorScheme.surfaceContainerHighest,
       ),
-      SyncHealth.syncing => (Icons.sync, 'sync_latest', Colors.orange),
-      SyncHealth.attention => (
-        Icons.sync_problem,
+      ShellSyncVisualState.pending => (
+        Icons.sync_rounded,
+        'sync_latest',
+        Theme.of(context).colorScheme.primary,
+        Theme.of(context).colorScheme.primary,
+      ),
+      ShellSyncVisualState.attention => (
+        Icons.sync_problem_rounded,
         'sync_needs_attention',
         Theme.of(context).colorScheme.error,
+        Theme.of(context).colorScheme.error,
       ),
-      SyncHealth.idle => (
+      ShellSyncVisualState.synced => (
         Icons.cloud_done_outlined,
         'sync_all_changes',
+        TaskMasterTheme.green,
         TaskMasterTheme.green,
       ),
     };
@@ -1504,7 +1633,7 @@ class _SyncFooterState extends ConsumerState<_SyncFooter>
         ..stop()
         ..value = 0;
     }
-    final syncIcon = Icon(icon, size: 21, color: color);
+    final syncIcon = icon == null ? null : Icon(icon, size: 20, color: color);
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       child: Align(
@@ -1514,13 +1643,40 @@ class _SyncFooterState extends ConsumerState<_SyncFooter>
           label: context.l10n.text(key),
           child: Tooltip(
             message: context.l10n.text(key),
-            child: IconButton.filledTonal(
-              onPressed: () => SynchronizationPanel.show(context),
-              visualDensity: VisualDensity.compact,
-              icon: health == SyncHealth.syncing
-                  ? RotationTransition(turns: _rotation, child: syncIcon)
-                  : syncIcon,
-            ),
+            child: visualState == ShellSyncVisualState.offline
+                ? TextButton(
+                    key: const ValueKey('sync-offline-indicator'),
+                    onPressed: () => SynchronizationPanel.show(context),
+                    style: TextButton.styleFrom(
+                      foregroundColor: color,
+                      backgroundColor: background,
+                      minimumSize: Size.zero,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 7,
+                      ),
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      side: BorderSide(color: color.withValues(alpha: 0.24)),
+                    ),
+                    child: Text(
+                      context.l10n.text(key),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  )
+                : IconButton(
+                    onPressed: () => SynchronizationPanel.show(context),
+                    visualDensity: VisualDensity.compact,
+                    style: IconButton.styleFrom(
+                      backgroundColor: background.withValues(alpha: 0.12),
+                      side: BorderSide(
+                        color: background.withValues(alpha: 0.24),
+                      ),
+                    ),
+                    icon: health == SyncHealth.syncing
+                        ? RotationTransition(turns: _rotation, child: syncIcon!)
+                        : syncIcon!,
+                  ),
           ),
         ),
       ),

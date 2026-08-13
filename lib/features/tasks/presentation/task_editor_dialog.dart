@@ -576,14 +576,25 @@ class _TaskEditorDialogState extends ConsumerState<TaskEditorDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final viewport = MediaQuery.sizeOf(context);
+    final compact = viewport.width < 520;
     return Dialog(
-      insetPadding: const EdgeInsets.all(16),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 860, maxHeight: 820),
+      insetPadding: EdgeInsets.symmetric(
+        horizontal: compact ? 8 : 16,
+        vertical: compact ? 12 : 16,
+      ),
+      child: SizedBox(
+        width: 860,
+        height: (viewport.height - (compact ? 24 : 32)).clamp(360.0, 820.0),
         child: Column(
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(24, 18, 14, 8),
+              padding: EdgeInsetsDirectional.fromSTEB(
+                compact ? 16 : 24,
+                compact ? 12 : 18,
+                compact ? 6 : 14,
+                8,
+              ),
               child: Row(
                 children: [
                   Expanded(
@@ -642,7 +653,9 @@ class _TaskEditorDialogState extends ConsumerState<TaskEditorDialog> {
               child: Form(
                 key: _formKey,
                 child: SingleChildScrollView(
-                  padding: const EdgeInsets.all(24),
+                  keyboardDismissBehavior:
+                      ScrollViewKeyboardDismissBehavior.onDrag,
+                  padding: EdgeInsets.all(compact ? 16 : 24),
                   child: switch (_step) {
                     0 => _basics(),
                     1 => _schedule(),
@@ -655,39 +668,56 @@ class _TaskEditorDialogState extends ConsumerState<TaskEditorDialog> {
             ),
             const Divider(height: 1),
             Padding(
-              padding: const EdgeInsets.all(16),
-              child: Row(
-                children: [
-                  if (_step > 0)
-                    TextButton.icon(
-                      onPressed: () => _setStep(_step - 1),
-                      icon: const Icon(Icons.arrow_back),
-                      label: Text(context.l10n.text('back')),
-                    ),
-                  const Spacer(),
-                  TextButton(
+              padding: EdgeInsets.all(compact ? 10 : 16),
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final previous = _step > 0
+                      ? TextButton.icon(
+                          onPressed: () => _setStep(_step - 1),
+                          icon: const Icon(Icons.arrow_back),
+                          label: Text(context.l10n.text('back')),
+                        )
+                      : null;
+                  final cancel = TextButton(
                     onPressed: _busy ? null : () => Navigator.pop(context),
                     child: Text(context.l10n.text('cancel')),
-                  ),
-                  const SizedBox(width: 10),
-                  if (_step < 4)
-                    FilledButton.icon(
-                      onPressed: () => _setStep(_step + 1),
-                      icon: const Icon(Icons.arrow_forward),
-                      label: Text(context.l10n.text('continue')),
-                    )
-                  else
-                    FilledButton.icon(
-                      onPressed: _busy ? null : _save,
-                      icon: _busy
-                          ? const SizedBox.square(
-                              dimension: 18,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.save_outlined),
-                      label: Text(context.l10n.text('save')),
-                    ),
-                ],
+                  );
+                  final primary = _step < 4
+                      ? FilledButton.icon(
+                          onPressed: () => _setStep(_step + 1),
+                          icon: const Icon(Icons.arrow_forward),
+                          label: Text(context.l10n.text('continue')),
+                        )
+                      : FilledButton.icon(
+                          onPressed: _busy ? null : _save,
+                          icon: _busy
+                              ? const SizedBox.square(
+                                  dimension: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Icon(Icons.save_outlined),
+                          label: Text(context.l10n.text('save')),
+                        );
+                  if (constraints.maxWidth < 390) {
+                    return Wrap(
+                      alignment: WrapAlignment.end,
+                      spacing: 4,
+                      runSpacing: 4,
+                      children: [?previous, cancel, primary],
+                    );
+                  }
+                  return Row(
+                    children: [
+                      ?previous,
+                      const Spacer(),
+                      cancel,
+                      const SizedBox(width: 10),
+                      primary,
+                    ],
+                  );
+                },
               ),
             ),
           ],

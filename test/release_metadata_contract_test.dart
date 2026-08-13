@@ -7,7 +7,7 @@ String _read(String relativePath) =>
 
 void main() {
   test('release-facing version metadata is aligned to v0.0.28', () {
-    expect(_read('pubspec.yaml'), contains('version: 0.0.28+28'));
+    expect(_read('pubspec.yaml'), contains('version: 0.0.28+32'));
     expect(_read('package.json'), contains('"version": "0.0.28"'));
     expect(_read('package-lock.json'), contains('"version": "0.0.28"'));
     expect(
@@ -64,5 +64,28 @@ void main() {
     expect(restore, contains('IsZoomed(hwnd)'));
     expect(restore, contains('SW_SHOWMAXIMIZED'));
     expect(restore, contains('ShowWindow(hwnd, SW_SHOW);'));
+  });
+
+  test('Windows persists placement before plugins consume native messages', () {
+    final runner = _read('windows/runner/flutter_window.cpp');
+    final handlerStart = runner.indexOf('FlutterWindow::MessageHandler(');
+    final pluginDispatch = runner.indexOf(
+      '// Give Flutter, including plugins, an opportunity',
+      handlerStart,
+    );
+    final nativeCapture = runner.indexOf(
+      'if (window_placement_ready_) {',
+      handlerStart,
+    );
+
+    expect(handlerStart, greaterThanOrEqualTo(0));
+    expect(nativeCapture, greaterThan(handlerStart));
+    expect(nativeCapture, lessThan(pluginDispatch));
+    expect(runner, contains('wparam == SIZE_MAXIMIZED'));
+    expect(runner, contains('window_maximized_ = true'));
+    expect(runner, contains('window_placement_ready_ = true'));
+    expect(runner, contains('placement.showCmd == SW_SHOWMAXIMIZED'));
+    expect(runner, contains('kWindowPlacementVersion = 3'));
+    expect(runner, contains('L"PlacementVersion"'));
   });
 }

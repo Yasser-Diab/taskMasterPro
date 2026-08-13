@@ -96,6 +96,93 @@ bool executionNotificationIdentityMatches({
       ledger['boundary_at'] == payload.boundaryAtUtc?.toUtc().toIso8601String();
 }
 
+/// Protects the single execution-notification slot from delayed actions while
+/// still allowing the scheduler to replace an interval it just cancelled.
+///
+/// A cancellation without an identity deliberately retains the old identity
+/// in the ledger.  The next canonical schedule therefore has a different ID
+/// and must be allowed to take ownership when that old row is terminal.
+bool executionLedgerTransitionAllowed({
+  required Map<String, Object?>? existing,
+  required String requestedState,
+  required String? notificationId,
+}) {
+  if (existing == null || notificationId == null) return true;
+  if (existing['notification_id'] == notificationId) return true;
+  return requestedState == 'scheduled' &&
+      const {
+        'cancelled',
+        'superseded',
+        'expired',
+        'handled',
+      }.contains(existing['state']);
+}
+
+/// Android must route every execution-changing action through the foreground
+/// application isolate. The background notification isolate has no account
+/// database or canonical runtime repository; letting it own Pause/Resume/etc.
+/// would only dismiss a card while leaving the task unchanged.
+///
+/// Keep the card until the canonical transition succeeds. HomeShell's runtime
+/// observer then cancels or replaces it with the card for the accepted
+/// revision. Only an explicit non-mutating dismiss is allowed to remove the
+/// notification directly.
+class AndroidNotificationActionDelivery {
+  const AndroidNotificationActionDelivery({
+    required this.showsUserInterface,
+    required this.cancelNotification,
+  });
+
+  final bool showsUserInterface;
+  final bool cancelNotification;
+}
+
+@visibleForTesting
+AndroidNotificationActionDelivery executionNotificationActionDelivery(
+  String actionId,
+) {
+  final dismissesOnly = actionId == 'dismiss';
+  return AndroidNotificationActionDelivery(
+    showsUserInterface: !dismissesOnly,
+    cancelNotification: dismissesOnly,
+  );
+}
+
+@visibleForTesting
+bool isExecutionNotificationTag(String? tag) {
+  if (tag == null || !tag.startsWith('execution:')) return false;
+  final category = tag.split(':').last;
+  return const {
+    'focus_completed',
+    'short_break_completed',
+    'long_break_completed',
+    'task_reminders',
+  }.contains(category);
+}
+
+/// Selects only TaskMaster task notifications which cannot belong to the
+/// current canonical account/session after startup.
+///
+/// Every task alarm is rebuilt from canonical local records/runtime
+/// immediately after this repair. Legacy plain `task/...` payloads cannot
+/// prove an owner or revision, so they are retired rather than allowed to
+/// mutate current work.
+@visibleForTesting
+Set<int> obsoleteOwnedTaskNotificationIds({
+  required String ownerId,
+  required Iterable<PendingNotificationRequest> pending,
+}) {
+  final obsolete = <int>{};
+  for (final request in pending) {
+    final payload = LocalNotificationService.decodeOwnedPayload(
+      request.payload,
+    );
+    if (payload.taskId == null) continue;
+    obsolete.add(request.id);
+  }
+  return obsolete;
+}
+
 class NotificationSoundChoice {
   const NotificationSoundChoice({
     required this.key,
@@ -492,6 +579,12 @@ class LocalNotificationService {
     String? body,
     String? notificationTag,
     List<AndroidNotificationAction>? actions,
+    bool ongoing = false,
+    bool autoCancel = true,
+    bool onlyAlertOnce = false,
+    int? when,
+    bool usesChronometer = false,
+    bool chronometerCountDown = false,
   }) {
     final canonicalCategory = NotificationSounds.canonicalCategory(category);
     final silent = sound.key == 'silent';
@@ -528,11 +621,143 @@ class LocalNotificationService {
       category: _androidNotificationCategory(canonicalCategory),
       groupKey: 'taskmaster_$canonicalCategory',
       groupAlertBehavior: GroupAlertBehavior.all,
+      ongoing: ongoing,
+      autoCancel: autoCancel,
+      onlyAlertOnce: onlyAlertOnce,
+      when: when,
+      usesChronometer: usesChronometer,
+      chronometerCountDown: chronometerCountDown,
       ticker: title,
       subText: _channelName(l10n, canonicalCategory),
       tag: notificationTag,
       actions: actions,
     );
+  }
+
+  Future<void> showExecutionStatus({
+    required int id,
+    required String taskId,
+    required String taskTitle,
+    required String state,
+    required DateTime boundaryAtUtc,
+    required NotificationSoundChoice sound,
+    required String sessionId,
+    required int runtimeRevision,
+    required String intervalId,
+    required String eventType,
+    bool vibration = true,
+    String localeCode = 'en',
+  }) async {
+    await initialize();
+    final l10n = AppLocalizations(Locale(localeCode));
+    final paused = state == 'paused';
+    final onBreak = state == 'break';
+    final notificationCategory = eventType == 'focus_completed'
+        ? 'focus_completed'
+        : eventType == 'long_break_completed'
+        ? 'long_break_completed'
+        : eventType == 'short_break_completed' || eventType == 'break_completed'
+        ? 'short_break_completed'
+        : 'task_reminders';
+    final stateLabel = onBreak
+        ? l10n.text('break_in_progress')
+        : paused
+        ? l10n.text('status_paused')
+        : l10n.text('status_running');
+    final body = onBreak
+        ? '$stateLabel · ${l10n.text('notification_start_focus')}'
+        : stateLabel;
+    final actions = onBreak
+        ? const <(String, String)>[
+            ('start_focus', 'notification_start_focus'),
+            ('extend_break', 'notification_extend_break'),
+            ('finish_task', 'finish_task'),
+            ('open', 'open'),
+          ]
+        : paused
+        ? const <(String, String)>[
+            ('resume', 'resume'),
+            ('finish_task', 'finish_task'),
+            ('open', 'open'),
+          ]
+        : const <(String, String)>[
+            ('pause', 'pause'),
+            ('finish_task', 'finish_task'),
+            ('open', 'open'),
+          ];
+    final notificationIdentity = executionNotificationIdentity(
+      taskId: taskId,
+      sessionId: sessionId,
+      runtimeRevision: runtimeRevision,
+      intervalId: intervalId,
+      boundaryAtUtc: boundaryAtUtc,
+    );
+    final payload = ownedPayload(
+      'task/$taskId',
+      eventType: eventType,
+      boundaryAtUtc: boundaryAtUtc,
+      notificationId: notificationIdentity,
+      sessionId: sessionId,
+      runtimeRevision: runtimeRevision,
+      intervalId: intervalId,
+    );
+    await _serializeNotificationMutation(() async {
+      await _plugin.show(
+        id: id,
+        title: taskTitle,
+        body: body,
+        notificationDetails: NotificationDetails(
+          android: _androidDetails(
+            l10n: l10n,
+            category: 'task_reminders',
+            sound: const NotificationSoundChoice(key: 'silent'),
+            vibration: false,
+            title: taskTitle,
+            body: body,
+            notificationTag: 'execution:$taskId:$notificationCategory',
+            ongoing: !paused,
+            autoCancel: false,
+            onlyAlertOnce: true,
+            when: boundaryAtUtc.millisecondsSinceEpoch,
+            usesChronometer: !paused,
+            chronometerCountDown: !paused,
+            actions: [
+              for (final action in actions)
+                AndroidNotificationAction(
+                  action.$1,
+                  l10n.text(action.$2),
+                  showsUserInterface: executionNotificationActionDelivery(
+                    action.$1,
+                  ).showsUserInterface,
+                  cancelNotification: executionNotificationActionDelivery(
+                    action.$1,
+                  ).cancelNotification,
+                ),
+            ],
+          ),
+          windows: WindowsNotificationDetails(
+            audio: WindowsNotificationAudio.silent(),
+            actions: [
+              for (final action in actions)
+                WindowsAction(
+                  content: l10n.text(action.$2),
+                  arguments: action.$1,
+                ),
+            ],
+          ),
+        ),
+        payload: payload,
+      );
+      await _setExecutionLedgerState(
+        taskId: taskId,
+        state: 'scheduled',
+        notificationId: notificationIdentity,
+        sessionId: sessionId,
+        runtimeRevision: runtimeRevision,
+        intervalId: intervalId,
+        boundaryAtUtc: boundaryAtUtc,
+      );
+    });
   }
 
   Importance _notificationImportance(String category) {
@@ -813,6 +1038,25 @@ class LocalNotificationService {
     );
   }
 
+  Future<void> _mirrorAndroidExecutionLedger({
+    required String ownerId,
+    required Map<String, Map<String, Object?>> entries,
+  }) async {
+    if (defaultTargetPlatform != TargetPlatform.android) return;
+    try {
+      await _nativeChannel.invokeMethod<void>('writeExecutionAlarmLedger', {
+        'ownerId': ownerId,
+        'ledgerJson': jsonEncode(entries),
+      });
+    } on MissingPluginException {
+      // Unit tests and non-registered background engines do not expose the
+      // Android bridge. The Dart ledger remains the action-time authority.
+    } on PlatformException {
+      // Failing closed at delivery time is handled by the native receiver: an
+      // execution alarm without a readable mirror is never displayed.
+    }
+  }
+
   Future<void> _setExecutionLedgerState({
     required String taskId,
     required String state,
@@ -828,9 +1072,11 @@ class LocalNotificationService {
     if (effectiveOwner == null || effectiveOwner.isEmpty) return;
     final entries = await _readExecutionLedger(effectiveOwner);
     final existing = entries[taskId];
-    if (existing != null &&
-        notificationId != null &&
-        existing['notification_id'] != notificationId) {
+    if (!executionLedgerTransitionAllowed(
+      existing: existing,
+      requestedState: state,
+      notificationId: notificationId,
+    )) {
       // A newer interval owns this task's single execution-notification slot.
       // Never let an old cancellation/action replace the newer ledger row.
       return;
@@ -848,6 +1094,10 @@ class LocalNotificationService {
       'updated_at': DateTime.now().toUtc().toIso8601String(),
     };
     await _writeExecutionLedger(effectiveOwner, entries);
+    await _mirrorAndroidExecutionLedger(
+      ownerId: effectiveOwner,
+      entries: entries,
+    );
   }
 
   /// Validates an action from a scheduled execution notification. This runs
@@ -904,15 +1154,43 @@ class LocalNotificationService {
     String? sessionId,
     int? runtimeRevision,
     String? intervalId,
+  }) => ownedPayloadForOwner(
+    ownerId: Supabase.instance.client.auth.currentUser?.id,
+    route: route,
+    eventType: eventType,
+    boundaryAtUtc: boundaryAtUtc,
+    notificationId: notificationId,
+    sessionId: sessionId,
+    runtimeRevision: runtimeRevision,
+    intervalId: intervalId,
+  );
+
+  @visibleForTesting
+  static String ownedPayloadForOwner({
+    required String? ownerId,
+    required String route,
+    String? eventType,
+    DateTime? boundaryAtUtc,
+    String? notificationId,
+    String? sessionId,
+    int? runtimeRevision,
+    String? intervalId,
+    String? occurrenceId,
+    int? taskRevision,
+    int? reminderRevision,
+    String? reminderId,
   }) {
-    final ownerId = Supabase.instance.client.auth.currentUser?.id;
     if (ownerId == null &&
         eventType == null &&
         boundaryAtUtc == null &&
         notificationId == null &&
         sessionId == null &&
         runtimeRevision == null &&
-        intervalId == null) {
+        intervalId == null &&
+        occurrenceId == null &&
+        taskRevision == null &&
+        reminderRevision == null &&
+        reminderId == null) {
       return route;
     }
     final payload = <String, Object?>{'version': 3, 'route': route};
@@ -927,6 +1205,12 @@ class LocalNotificationService {
       payload['runtime_revision'] = runtimeRevision;
     }
     if (intervalId != null) payload['interval_id'] = intervalId;
+    if (occurrenceId != null) payload['occurrence_id'] = occurrenceId;
+    if (taskRevision != null) payload['task_revision'] = taskRevision;
+    if (reminderRevision != null) {
+      payload['reminder_revision'] = reminderRevision;
+    }
+    if (reminderId != null) payload['reminder_id'] = reminderId;
     return jsonEncode(payload);
   }
 
@@ -1127,6 +1411,10 @@ class LocalNotificationService {
     required String reminderType,
     required DateTime scheduledAtUtc,
     required NotificationSoundChoice sound,
+    String? ownerId,
+    String? occurrenceId,
+    int? taskRevision,
+    int? reminderRevision,
     String? category,
     bool enabled = true,
     bool vibration = true,
@@ -1161,7 +1449,7 @@ class LocalNotificationService {
             vibration: vibration,
             title: taskTitle,
             body: body,
-            notificationTag: 'task:$taskId:$effectiveCategory',
+            notificationTag: 'reminder:$taskId:$effectiveCategory',
             actions: [
               AndroidNotificationAction(
                 'start',
@@ -1193,7 +1481,15 @@ class LocalNotificationService {
             ],
           ),
         ),
-        payload: ownedPayload('task/$taskId'),
+        payload: ownedPayloadForOwner(
+          ownerId: ownerId,
+          route: 'task/$taskId',
+          occurrenceId: occurrenceId,
+          taskRevision: taskRevision,
+          reminderRevision: reminderRevision,
+          reminderId: id.toString(),
+          boundaryAtUtc: scheduledAtUtc,
+        ),
       );
     });
   }
@@ -1356,14 +1652,18 @@ class LocalNotificationService {
             vibration: vibration,
             title: title,
             body: body,
-            notificationTag: 'task:$taskId:$effectiveCategory',
+            notificationTag: 'execution:$taskId:$effectiveCategory',
             actions: [
               for (final action in androidActions.take(4))
                 AndroidNotificationAction(
                   action.$1,
                   l10n.text(action.$2),
-                  showsUserInterface: action.$1 != 'dismiss',
-                  cancelNotification: action.$1 != 'extend_break',
+                  showsUserInterface: executionNotificationActionDelivery(
+                    action.$1,
+                  ).showsUserInterface,
+                  cancelNotification: executionNotificationActionDelivery(
+                    action.$1,
+                  ).cancelNotification,
                 ),
             ],
           ),
@@ -1485,6 +1785,61 @@ class LocalNotificationService {
   Future<void> cancelExecutionCompletion(String taskId) async {
     await cancel(executionNotificationId(taskId));
     await _setExecutionLedgerState(taskId: taskId, state: 'cancelled');
+  }
+
+  /// Repairs this installation's task notification queue after auth/runtime
+  /// restoration without touching wellbeing, Activity, security or any other
+  /// unrelated notification owned by the application.
+  ///
+  /// Pending request payloads carry owner and interval identity. Android does
+  /// not expose payloads for already-delivered cards, so only execution tags
+  /// are eligible there. The caller subsequently schedules the one current
+  /// runtime boundary, making the operation reconcile forward.
+  Future<void> reconcileOwnedTaskNotificationsOnStartup({
+    required String ownerId,
+  }) async {
+    await initialize();
+    await _serializeNotificationMutation(() async {
+      final pending = await _plugin.pendingNotificationRequests();
+      final obsoleteIds = obsoleteOwnedTaskNotificationIds(
+        ownerId: ownerId,
+        pending: pending,
+      );
+      for (final id in obsoleteIds) {
+        await _plugin.cancel(id: id);
+      }
+
+      if (defaultTargetPlatform == TargetPlatform.android) {
+        try {
+          final active = await _plugin.getActiveNotifications();
+          for (final notification in active) {
+            final id = notification.id;
+            final tag = notification.tag;
+            if (id == null || !isExecutionNotificationTag(tag)) continue;
+            await _plugin.cancel(id: id, tag: tag);
+          }
+        } on UnimplementedError {
+          // Active-card enumeration is an Android capability. Pending alarms
+          // were still reconciled above on every supported platform.
+        } on PlatformException {
+          // A vendor notification service may briefly deny enumeration during
+          // startup. The identity ledger still suppresses all stale actions.
+        }
+      }
+
+      final entries = await _readExecutionLedger(ownerId);
+      if (entries.isEmpty) return;
+      final repaired = <String, Map<String, Object?>>{
+        for (final entry in entries.entries)
+          entry.key: <String, Object?>{
+            ...entry.value,
+            'state': 'superseded',
+            'updated_at': DateTime.now().toUtc().toIso8601String(),
+          },
+      };
+      await _writeExecutionLedger(ownerId, repaired);
+      await _mirrorAndroidExecutionLedger(ownerId: ownerId, entries: repaired);
+    });
   }
 
   Future<void> cancel(int id) async {

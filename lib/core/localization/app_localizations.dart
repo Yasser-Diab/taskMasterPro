@@ -705,6 +705,13 @@ class AppLocalizations {
     'activity_review': 'Review activity',
     'activity_load_more': 'Load more periods',
     'activity_assign_task': 'Assign to another task',
+    'activity_credit_to_tasks': 'Credit to tasks',
+    'activity_allocation_help':
+        'Select one or more tasks and allocate up to 100% of this activity period.',
+    'activity_allocated_total': 'Allocated: {percentage}%',
+    'activity_apply_allocation': 'Apply allocation',
+    'activity_learned_from_usage': 'Learned from your usage',
+    'activity_suggested_by_taskmaster': 'Suggested by TaskMaster Pro',
     'activity_useful_reading': 'Useful reading',
     'activity_supporting_work': 'Supporting work',
     'activity_mark_distraction': 'Mark as distraction',
@@ -721,6 +728,7 @@ class AppLocalizations {
     'activity_none_review': 'No activity needs your review',
     'activity_none_review_detail': 'Your recent activity is already organized.',
     'classification_related': 'Related to a task',
+    'classification_productive': 'Productive',
     'classification_research': 'Research',
     'classification_communication': 'Communication',
     'classification_learning': 'Learning',
@@ -749,6 +757,7 @@ class AppLocalizations {
         'Synchronize your approved activity history with your other devices.',
     'tracking_local_description': 'New activity remains only on this device.',
     'activity_and_privacy': 'Activity and privacy',
+    'privacy_and_vault': 'Privacy and Password Vault',
     'activity_stays_on_device': 'Your detailed Activity stays on this device',
     'activity_stays_on_device_description':
         'TaskMaster Pro synchronizes only activity you connect to tasks or activity classified through rules you approve.',
@@ -812,12 +821,13 @@ class AppLocalizations {
     'export_account_data': 'Export account data',
     'delete_account': 'Delete account',
     'recovery_30_days': '30-day recovery period',
-    'sync_all_changes': 'All changes synced',
-    'sync_latest': 'Syncing latest changes…',
-    'sync_needs_attention': 'Sync needs attention',
+    'sync_all_changes': 'All changes synchronized',
+    'sync_latest': 'Synchronizing changes…',
+    'sync_needs_attention': 'Some changes need attention',
     'sync_now': 'Sync now',
     'sync_last_now': 'Last synced just now',
-    'sync_you_offline': 'You are offline',
+    'sync_you_offline': 'Offline — changes are safe on this device',
+    'sync_offline_compact': 'Offline',
     'sync_waiting_changes': 'Changes are waiting to sync',
     'notification_sound_description':
         'The system default uses the notification sound selected on your Android device. Custom TaskMaster Pro sounds are also available offline.',
@@ -933,6 +943,13 @@ class AppLocalizations {
     'profile_and_account': 'Profile and account',
     'connected_devices_description':
         'Review signed-in devices and remove access from another device.',
+    'refresh_connected_devices': 'Refresh devices',
+    'connected_devices_empty': 'No signed-in devices were found',
+    'connected_devices_empty_detail':
+        'Refresh after signing in on another phone or computer.',
+    'connected_devices_load_failed': 'Devices could not be loaded',
+    'connected_devices_load_failed_detail':
+        'Check the connection and refresh this page.',
     'this_device': 'This device',
     'last_active': 'Last active',
     'device_platform_android': 'Android',
@@ -1394,6 +1411,9 @@ class AppLocalizations {
         'Add target dates and recorded effort to calculate a forecast',
     'roadmap_forecast_insufficient':
         'Not enough data yet — complete more linked work across several days for a reliable forecast.',
+    'roadmap_forecast_range': 'Likely completion: {start}–{end}',
+    'roadmap_forecast_early_estimate':
+        'Early estimate: {start}–{end}. More activity is needed for a reliable forecast.',
     'roadmap_forecast_unchanged': 'The current forecast remains {date}',
     'roadmap_forecast_later':
         'The expected completion is {days} days later than the original target',
@@ -1413,6 +1433,8 @@ class AppLocalizations {
     'roadmap_evidence_summary':
         '{phases} phases · {milestones} milestones · {checkpoints} checkpoints · {tasks} linked tasks',
     'roadmap_effort_summary': '{recorded} recorded of {planned} planned',
+    'roadmap_effort_summary_unavailable':
+        '{recorded} recorded · planned effort unavailable',
     'roadmap_progress_explanation': 'Why this percentage?',
     'roadmap_milestones': 'Milestones',
     'roadmap_checkpoints': 'Checkpoints',
@@ -1533,6 +1555,7 @@ class AppLocalizations {
     'task_domain_builtin_projects': 'Projects',
     'task_domain_builtin_errands': 'Errands',
     'task_filter_status': 'Task view',
+    'task_filters': 'Filter tasks',
     'task_filter_today': 'Today',
     'task_filter_tomorrow': 'Tomorrow',
     'task_filter_upcoming': 'Upcoming',
@@ -1835,6 +1858,24 @@ class AppLocalizations {
     'execution_history_detail':
         'Planned state, actual changes, notes, interruptions, and approved contributions remain distinct.',
     'task_created': 'Task created',
+    'history_scheduled': 'Scheduled',
+    'history_planned_until': 'Planned until {time}',
+    'history_session_started': 'Session started',
+    'history_focus_started': 'Focus started',
+    'history_paused': 'Paused',
+    'history_resumed': 'Resumed',
+    'history_focus_completed': 'Focus completed',
+    'history_break_started': 'Break started',
+    'history_break_extended': 'Break extended',
+    'history_break_skipped': 'Break skipped',
+    'history_overtime_started': 'Overtime started',
+    'history_pomodoro_cycle': 'Pomodoro cycle',
+    'history_application_connected': 'Application connected',
+    'history_website_credited': 'Website credited',
+    'history_resource_opened': 'Resource opened',
+    'history_duration': 'Duration {duration}',
+    'history_device': 'Device {device}',
+    'history_resource': 'Resource {resource}',
     'first_started': 'First started',
     'interruptions': 'Interruptions',
     'activity_contributions': 'Activity contributions',
@@ -1973,6 +2014,16 @@ class AppLocalizations {
     'report_application_usage': 'Application usage',
     'report_website_usage': 'Website usage',
     'report_task_domain_distribution': 'Task-domain distribution',
+    'report_focus_vs_continuous': 'Focus vs continuous work',
+    'report_focus_vs_break': 'Focus vs break',
+    'report_work_by_area': 'Work by Area',
+    'report_interruption_distribution': 'Interruption distribution',
+    'report_phase_progress': 'Work by phase',
+    'report_phase_unavailable': 'Phase no longer available',
+    'report_occurrences': 'Occurrences',
+    'report_upcoming': 'Upcoming',
+    'report_recorded': 'Recorded',
+    'report_recurring_task': 'Recurring task',
     'report_no_application_usage':
         'No application usage was recorded for this period.',
     'report_no_website_usage': 'No website usage was recorded for this period.',
@@ -2035,6 +2086,7 @@ class AppLocalizations {
     'report_generation_failed':
         'We couldn’t prepare this report. Your data has not been changed.',
     'status': 'Status',
+    'status_missed': 'Missed',
     'notification_channel_execution': 'TaskMaster Pro — Task execution',
     'notification_channel_execution_description':
         'Focus, break and task-duration events',
@@ -2133,6 +2185,33 @@ class AppLocalizations {
     'manage_pomodoro_settings': 'Manage Pomodoro settings',
     'pomodoro_settings_per_task_description':
         'Open a Pomodoro task to set focus, short break, long break, and automatic-start preferences.',
+    'standalone_pomodoro': 'Standalone Pomodoro timer',
+    'standalone_pomodoro_description':
+        'Run a private timer without linking it to a task. It stays on this device and never overlaps task execution.',
+    'standalone_pomodoro_ready': 'Ready to focus',
+    'standalone_pomodoro_load_failed': 'The timer could not be restored.',
+    'standalone_pomodoro_task_active_title': 'A task is already running',
+    'standalone_pomodoro_task_active_detail':
+        '“{task}” owns the execution timer. Open it to pause or finish it before starting this standalone timer.',
+    'standalone_pomodoro_task_active_banner':
+        'A task owns the execution timer. Standalone Pomodoro will wait.',
+    'standalone_pomodoro_open_task': 'Open active task',
+    'standalone_pomodoro_active_title': 'Standalone Pomodoro is active',
+    'standalone_pomodoro_active_detail':
+        'Stop the standalone timer before starting a task. Its current interval will not be recorded as task work.',
+    'standalone_pomodoro_open_timer': 'Open timer',
+    'standalone_pomodoro_stop_and_start_task': 'Stop timer and start task',
+    'standalone_pomodoro_reset_title': 'Stop this timer?',
+    'standalone_pomodoro_reset_detail':
+        'The current standalone interval will end and will not be added to a task.',
+    'standalone_pomodoro_time_remaining': '{time} remaining',
+    'standalone_pomodoro_sessions_completed':
+        '{count} focus sessions completed on this device',
+    'focus_duration': 'Focus duration',
+    'break_duration': 'Break duration',
+    'start_focus': 'Start focus',
+    'standalone_pomodoro_skip_focus': 'End focus and start break',
+    'stop_and_reset': 'Stop and reset',
     'settings_activity_privacy_description':
         'Control what this device observes, what remains private, and which approved contributions synchronize.',
     'settings_reports_description':
@@ -2142,7 +2221,7 @@ class AppLocalizations {
     'settings_sync_description':
         'Review synchronization state and resolve device delivery problems.',
     'settings_connected_devices_description':
-        'Review signed-in devices, last successful sync, and connection state.',
+        'Review signed-in phones and computers and remove account access when needed.',
     'review_connected_devices': 'Review connected devices',
     'settings_help_diagnostics_description':
         'Review synchronization health and open installation help without exposing technical logs in normal settings.',
@@ -2588,6 +2667,13 @@ class AppLocalizations {
     'activity_review': 'مراجعة النشاط',
     'activity_load_more': 'تحميل فترات إضافية',
     'activity_assign_task': 'إسناد إلى مهمة أخرى',
+    'activity_credit_to_tasks': 'احتساب الوقت للمهام',
+    'activity_allocation_help':
+        'حدد مهمة واحدة أو أكثر ووزّع ما يصل إلى 100٪ من فترة النشاط هذه.',
+    'activity_allocated_total': 'الموزع: {percentage}٪',
+    'activity_apply_allocation': 'تطبيق التوزيع',
+    'activity_learned_from_usage': 'تعلّمه من استخدامك',
+    'activity_suggested_by_taskmaster': 'اقتراح من TaskMaster Pro',
     'activity_useful_reading': 'قراءة مفيدة',
     'activity_supporting_work': 'عمل داعم',
     'activity_mark_distraction': 'تصنيفه كمشتت',
@@ -2604,6 +2690,7 @@ class AppLocalizations {
     'activity_none_review': 'لا يوجد نشاط يحتاج إلى مراجعتك',
     'activity_none_review_detail': 'تم تنظيم نشاطك الأخير بالفعل.',
     'classification_related': 'مرتبط بمهمة',
+    'classification_productive': 'منتج',
     'classification_research': 'بحث',
     'classification_communication': 'تواصل',
     'classification_learning': 'تعلّم',
@@ -2631,6 +2718,7 @@ class AppLocalizations {
     'tracking_sync_description': 'زامن سجل نشاطك المعتمد مع أجهزتك الأخرى.',
     'tracking_local_description': 'يبقى النشاط الجديد على هذا الجهاز فقط.',
     'activity_and_privacy': 'النشاط والخصوصية',
+    'privacy_and_vault': 'الخصوصية وخزنة كلمات المرور',
     'activity_stays_on_device': 'تبقى تفاصيل نشاطك على هذا الجهاز',
     'activity_stays_on_device_description':
         'لا يزامن TaskMaster Pro إلا النشاط الذي تربطه بالمهام أو الذي يتم تصنيفه من خلال القواعد التي توافق عليها.',
@@ -2694,11 +2782,12 @@ class AppLocalizations {
     'delete_account': 'حذف الحساب',
     'recovery_30_days': 'فترة استرداد لمدة 30 يومًا',
     'sync_all_changes': 'تمت مزامنة جميع التغييرات',
-    'sync_latest': 'جارٍ مزامنة أحدث التغييرات…',
-    'sync_needs_attention': 'المزامنة تحتاج إلى مراجعة',
+    'sync_latest': 'جارٍ مزامنة التغييرات…',
+    'sync_needs_attention': 'بعض التغييرات تحتاج إلى مراجعة',
     'sync_now': 'مزامنة الآن',
     'sync_last_now': 'تمت آخر مزامنة الآن',
-    'sync_you_offline': 'أنت غير متصل',
+    'sync_you_offline': 'غير متصل — التغييرات آمنة على هذا الجهاز',
+    'sync_offline_compact': 'غير متصل',
     'sync_waiting_changes': 'توجد تغييرات بانتظار المزامنة',
     'notification_sound_description':
         'يستخدم الخيار الافتراضي نغمة الإشعارات المحددة على جهاز Android. وتتوفر أيضًا نغمات TaskMaster Pro المخصصة دون اتصال.',
@@ -2812,6 +2901,13 @@ class AppLocalizations {
     'profile_and_account': 'الملف الشخصي والحساب',
     'connected_devices_description':
         'راجع الأجهزة المسجَّل دخولها وأزل الوصول من جهاز آخر.',
+    'refresh_connected_devices': 'تحديث الأجهزة',
+    'connected_devices_empty': 'لم يتم العثور على أجهزة مسجَّل دخولها',
+    'connected_devices_empty_detail':
+        'حدّث القائمة بعد تسجيل الدخول على هاتف أو كمبيوتر آخر.',
+    'connected_devices_load_failed': 'تعذّر تحميل الأجهزة',
+    'connected_devices_load_failed_detail':
+        'تحقق من الاتصال ثم حدّث هذه الصفحة.',
     'this_device': 'هذا الجهاز',
     'last_active': 'آخر نشاط',
     'device_platform_android': 'أندرويد',
@@ -3265,6 +3361,9 @@ class AppLocalizations {
     'roadmap_forecast_missing': 'أضف مواعيد مستهدفة وجهدًا مسجلًا لحساب التوقع',
     'roadmap_forecast_insufficient':
         'لا توجد بيانات كافية بعد — أكمل مزيدًا من العمل المرتبط عبر عدة أيام للحصول على توقع موثوق.',
+    'roadmap_forecast_range': 'الإكمال المرجح: {start}–{end}',
+    'roadmap_forecast_early_estimate':
+        'تقدير مبكر: {start}–{end}. نحتاج إلى مزيد من النشاط للحصول على توقع موثوق.',
     'roadmap_forecast_unchanged': 'يبقى التوقع الحالي {date}',
     'roadmap_forecast_later':
         'الإكمال المتوقع متأخر {days} أيام عن الموعد الأصلي',
@@ -3284,6 +3383,8 @@ class AppLocalizations {
     'roadmap_evidence_summary':
         '{phases} مراحل · {milestones} محطات · {checkpoints} نقاط تحقق · {tasks} مهام مرتبطة',
     'roadmap_effort_summary': '{recorded} مسجل من {planned} مخطط',
+    'roadmap_effort_summary_unavailable':
+        '{recorded} مسجل · الجهد المخطط غير متاح',
     'roadmap_progress_explanation': 'لماذا هذه النسبة؟',
     'roadmap_milestones': 'المحطات',
     'roadmap_checkpoints': 'نقاط التحقق',
@@ -3403,6 +3504,7 @@ class AppLocalizations {
     'task_domain_builtin_projects': 'المشروعات',
     'task_domain_builtin_errands': 'المشاوير',
     'task_filter_status': 'عرض المهام',
+    'task_filters': 'تصفية المهام',
     'task_filter_today': 'اليوم',
     'task_filter_tomorrow': 'غدًا',
     'task_filter_upcoming': 'القادمة',
@@ -3702,6 +3804,24 @@ class AppLocalizations {
     'execution_history_detail':
         'تبقى الخطة والتغييرات الفعلية والملاحظات والمقاطعات والمساهمات المعتمدة منفصلة.',
     'task_created': 'تم إنشاء المهمة',
+    'history_scheduled': 'تمت الجدولة',
+    'history_planned_until': 'مخطط حتى {time}',
+    'history_session_started': 'بدأت الجلسة',
+    'history_focus_started': 'بدأ التركيز',
+    'history_paused': 'تم الإيقاف المؤقت',
+    'history_resumed': 'تمت المتابعة',
+    'history_focus_completed': 'اكتمل التركيز',
+    'history_break_started': 'بدأت الاستراحة',
+    'history_break_extended': 'تم تمديد الاستراحة',
+    'history_break_skipped': 'تم تخطي الاستراحة',
+    'history_overtime_started': 'بدأ الوقت الإضافي',
+    'history_pomodoro_cycle': 'دورة بومودورو',
+    'history_application_connected': 'تم ربط التطبيق',
+    'history_website_credited': 'تم احتساب الموقع',
+    'history_resource_opened': 'تم فتح المورد',
+    'history_duration': 'المدة {duration}',
+    'history_device': 'الجهاز {device}',
+    'history_resource': 'المورد {resource}',
     'first_started': 'بداية التنفيذ الأولى',
     'interruptions': 'المقاطعات',
     'activity_contributions': 'مساهمات النشاط',
@@ -3838,6 +3958,16 @@ class AppLocalizations {
     'report_application_usage': 'استخدام التطبيقات',
     'report_website_usage': 'استخدام المواقع',
     'report_task_domain_distribution': 'توزيع مجالات المهام',
+    'report_focus_vs_continuous': 'التركيز مقابل العمل المستمر',
+    'report_focus_vs_break': 'التركيز مقابل الاستراحة',
+    'report_work_by_area': 'العمل حسب المجال',
+    'report_interruption_distribution': 'توزيع المقاطعات',
+    'report_phase_progress': 'العمل حسب المرحلة',
+    'report_phase_unavailable': 'المرحلة لم تعد متاحة',
+    'report_occurrences': 'التكرارات',
+    'report_upcoming': 'القادمة',
+    'report_recorded': 'المسجل',
+    'report_recurring_task': 'مهمة متكررة',
     'report_no_application_usage':
         'لم يُسجل استخدام للتطبيقات خلال هذه الفترة.',
     'report_no_website_usage': 'لم يُسجل استخدام للمواقع خلال هذه الفترة.',
@@ -3895,6 +4025,7 @@ class AppLocalizations {
     'report_landscape': 'أفقي',
     'report_generation_failed': 'تعذر إعداد هذا التقرير. لم يتم تغيير بياناتك.',
     'status': 'الحالة',
+    'status_missed': 'فائتة',
     'notification_channel_execution': 'TaskMaster Pro — تنفيذ المهام',
     'notification_channel_execution_description':
         'أحداث التركيز والاستراحة وانتهاء مدة المهمة',
@@ -3991,6 +4122,33 @@ class AppLocalizations {
     'manage_pomodoro_settings': 'إدارة إعدادات بومودورو',
     'pomodoro_settings_per_task_description':
         'افتح مهمة بومودورو لتحديد التركيز والاستراحة القصيرة والطويلة وتفضيلات البدء التلقائي.',
+    'standalone_pomodoro': 'مؤقت بومودورو مستقل',
+    'standalone_pomodoro_description':
+        'شغّل مؤقتًا خاصًا دون ربطه بمهمة. يبقى على هذا الجهاز ولا يتداخل أبدًا مع تنفيذ المهام.',
+    'standalone_pomodoro_ready': 'جاهز للتركيز',
+    'standalone_pomodoro_load_failed': 'تعذّرت استعادة المؤقت.',
+    'standalone_pomodoro_task_active_title': 'توجد مهمة قيد التشغيل',
+    'standalone_pomodoro_task_active_detail':
+        'تملك المهمة «{task}» مؤقت التنفيذ. افتحها لإيقافها مؤقتًا أو إنهائها قبل بدء المؤقت المستقل.',
+    'standalone_pomodoro_task_active_banner':
+        'تملك مهمة مؤقت التنفيذ. سينتظر بومودورو المستقل.',
+    'standalone_pomodoro_open_task': 'فتح المهمة النشطة',
+    'standalone_pomodoro_active_title': 'بومودورو المستقل نشط',
+    'standalone_pomodoro_active_detail':
+        'أوقف المؤقت المستقل قبل بدء مهمة. لن تُسجّل فترته الحالية كعمل للمهمة.',
+    'standalone_pomodoro_open_timer': 'فتح المؤقت',
+    'standalone_pomodoro_stop_and_start_task': 'إيقاف المؤقت وبدء المهمة',
+    'standalone_pomodoro_reset_title': 'هل تريد إيقاف هذا المؤقت؟',
+    'standalone_pomodoro_reset_detail':
+        'ستنتهي الفترة المستقلة الحالية ولن تُضاف إلى أي مهمة.',
+    'standalone_pomodoro_time_remaining': 'متبقٍ {time}',
+    'standalone_pomodoro_sessions_completed':
+        '{count} جلسات تركيز مكتملة على هذا الجهاز',
+    'focus_duration': 'مدة التركيز',
+    'break_duration': 'مدة الاستراحة',
+    'start_focus': 'بدء التركيز',
+    'standalone_pomodoro_skip_focus': 'إنهاء التركيز وبدء الاستراحة',
+    'stop_and_reset': 'إيقاف وإعادة ضبط',
     'settings_activity_privacy_description':
         'تحكّم فيما يرصده هذا الجهاز وما يبقى خاصًا وأي مساهمات معتمدة تتم مزامنتها.',
     'settings_reports_description':
@@ -4000,7 +4158,7 @@ class AppLocalizations {
     'settings_sync_description':
         'راجع حالة المزامنة وعالج مشكلات وصول التغييرات إلى الأجهزة.',
     'settings_connected_devices_description':
-        'راجع الأجهزة المسجل دخولها وآخر مزامنة ناجحة وحالة الاتصال.',
+        'راجع الهواتف وأجهزة الكمبيوتر المسجل دخولها وأزل وصول الحساب عند الحاجة.',
     'review_connected_devices': 'مراجعة الأجهزة المتصلة',
     'settings_help_diagnostics_description':
         'راجع سلامة المزامنة وافتح مساعدة التثبيت دون عرض سجلات تقنية في الإعدادات العادية.',
@@ -4467,6 +4625,13 @@ class AppLocalizations {
     'activity_review': 'Aktivität prüfen',
     'activity_load_more': 'Weitere Zeiträume laden',
     'activity_assign_task': 'Einer anderen Aufgabe zuweisen',
+    'activity_credit_to_tasks': 'Auf Aufgaben anrechnen',
+    'activity_allocation_help':
+        'Wähle eine oder mehrere Aufgaben und verteile bis zu 100 % dieses Aktivitätszeitraums.',
+    'activity_allocated_total': 'Zugeordnet: {percentage} %',
+    'activity_apply_allocation': 'Zuordnung anwenden',
+    'activity_learned_from_usage': 'Aus deiner Nutzung gelernt',
+    'activity_suggested_by_taskmaster': 'Von TaskMaster Pro vorgeschlagen',
     'activity_useful_reading': 'Nützliches Lesen',
     'activity_supporting_work': 'Unterstützende Arbeit',
     'activity_mark_distraction': 'Als Ablenkung markieren',
@@ -4485,6 +4650,7 @@ class AppLocalizations {
     'activity_none_review_detail':
         'Deine letzten Aktivitäten sind bereits organisiert.',
     'classification_related': 'Mit einer Aufgabe verbunden',
+    'classification_productive': 'Produktiv',
     'classification_research': 'Recherche',
     'classification_communication': 'Kommunikation',
     'classification_learning': 'Lernen',
@@ -4513,6 +4679,7 @@ class AppLocalizations {
         'Synchronisiere deinen bestätigten Aktivitätsverlauf mit deinen anderen Geräten.',
     'tracking_local_description': 'Neue Aktivität bleibt nur auf diesem Gerät.',
     'activity_and_privacy': 'Aktivität und Datenschutz',
+    'privacy_and_vault': 'Datenschutz und Passwort-Tresor',
     'activity_stays_on_device':
         'Deine detaillierten Aktivitäten bleiben auf diesem Gerät',
     'activity_stays_on_device_description':
@@ -4583,11 +4750,12 @@ class AppLocalizations {
     'delete_account': 'Konto löschen',
     'recovery_30_days': '30 Tage Wiederherstellungsfrist',
     'sync_all_changes': 'Alle Änderungen synchronisiert',
-    'sync_latest': 'Neueste Änderungen werden synchronisiert…',
-    'sync_needs_attention': 'Synchronisierung prüfen',
+    'sync_latest': 'Änderungen werden synchronisiert…',
+    'sync_needs_attention': 'Einige Änderungen müssen geprüft werden',
     'sync_now': 'Jetzt synchronisieren',
     'sync_last_now': 'Gerade synchronisiert',
-    'sync_you_offline': 'Du bist offline',
+    'sync_you_offline': 'Offline — Änderungen sind auf diesem Gerät sicher',
+    'sync_offline_compact': 'Offline',
     'sync_waiting_changes': 'Änderungen warten auf Synchronisierung',
     'notification_sound_description':
         'Die Systemeinstellung verwendet den auf deinem Android-Gerät ausgewählten Benachrichtigungston. Eigene TaskMaster-Pro-Töne sind auch offline verfügbar.',
@@ -4705,6 +4873,13 @@ class AppLocalizations {
     'profile_and_account': 'Profil und Konto',
     'connected_devices_description':
         'Angemeldete Geräte prüfen und einem anderen Gerät den Zugriff entziehen.',
+    'refresh_connected_devices': 'Geräte aktualisieren',
+    'connected_devices_empty': 'Keine angemeldeten Geräte gefunden',
+    'connected_devices_empty_detail':
+        'Aktualisiere die Liste nach der Anmeldung auf einem anderen Telefon oder Computer.',
+    'connected_devices_load_failed': 'Geräte konnten nicht geladen werden',
+    'connected_devices_load_failed_detail':
+        'Prüfe die Verbindung und aktualisiere diese Seite.',
     'this_device': 'Dieses Gerät',
     'last_active': 'Zuletzt aktiv',
     'device_platform_android': 'Android',
@@ -5183,6 +5358,9 @@ class AppLocalizations {
         'Füge Zieltermine und erfassten Aufwand hinzu, um eine Prognose zu berechnen',
     'roadmap_forecast_insufficient':
         'Noch nicht genug Daten — schließe an mehreren Tagen mehr verknüpfte Arbeit ab, um eine verlässliche Prognose zu erhalten.',
+    'roadmap_forecast_range': 'Wahrscheinlicher Abschluss: {start}–{end}',
+    'roadmap_forecast_early_estimate':
+        'Frühe Schätzung: {start}–{end}. Für eine verlässliche Prognose werden mehr Aktivitäten benötigt.',
     'roadmap_forecast_unchanged': 'Die aktuelle Prognose bleibt {date}',
     'roadmap_forecast_later':
         'Der erwartete Abschluss liegt {days} Tage nach dem ursprünglichen Ziel',
@@ -5202,6 +5380,8 @@ class AppLocalizations {
     'roadmap_evidence_summary':
         '{phases} Phasen · {milestones} Meilensteine · {checkpoints} Prüfpunkte · {tasks} verknüpfte Aufgaben',
     'roadmap_effort_summary': '{recorded} erfasst von {planned} geplant',
+    'roadmap_effort_summary_unavailable':
+        '{recorded} erfasst · geplanter Aufwand nicht verfügbar',
     'roadmap_progress_explanation': 'Wie entsteht dieser Prozentsatz?',
     'roadmap_milestones': 'Meilensteine',
     'roadmap_checkpoints': 'Prüfpunkte',
@@ -5326,6 +5506,7 @@ class AppLocalizations {
     'task_domain_builtin_projects': 'Projekte',
     'task_domain_builtin_errands': 'Besorgungen',
     'task_filter_status': 'Aufgabenansicht',
+    'task_filters': 'Aufgaben filtern',
     'task_filter_today': 'Heute',
     'task_filter_tomorrow': 'Morgen',
     'task_filter_upcoming': 'Demnächst',
@@ -5633,6 +5814,24 @@ class AppLocalizations {
     'execution_history_detail':
         'Plan, tatsächliche Änderungen, Notizen, Unterbrechungen und bestätigte Beiträge bleiben getrennt.',
     'task_created': 'Aufgabe erstellt',
+    'history_scheduled': 'Geplant',
+    'history_planned_until': 'Geplant bis {time}',
+    'history_session_started': 'Sitzung gestartet',
+    'history_focus_started': 'Fokus gestartet',
+    'history_paused': 'Pausiert',
+    'history_resumed': 'Fortgesetzt',
+    'history_focus_completed': 'Fokus abgeschlossen',
+    'history_break_started': 'Pause gestartet',
+    'history_break_extended': 'Pause verlängert',
+    'history_break_skipped': 'Pause übersprungen',
+    'history_overtime_started': 'Mehrzeit gestartet',
+    'history_pomodoro_cycle': 'Pomodoro-Zyklus',
+    'history_application_connected': 'Anwendung verknüpft',
+    'history_website_credited': 'Website angerechnet',
+    'history_resource_opened': 'Ressource geöffnet',
+    'history_duration': 'Dauer {duration}',
+    'history_device': 'Gerät {device}',
+    'history_resource': 'Ressource {resource}',
     'first_started': 'Erstmals gestartet',
     'interruptions': 'Unterbrechungen',
     'activity_contributions': 'Aktivitätsbeiträge',
@@ -5772,6 +5971,16 @@ class AppLocalizations {
     'report_application_usage': 'Anwendungsnutzung',
     'report_website_usage': 'Websitenutzung',
     'report_task_domain_distribution': 'Verteilung nach Aufgabenbereich',
+    'report_focus_vs_continuous': 'Fokus vs. fortlaufende Arbeit',
+    'report_focus_vs_break': 'Fokus vs. Pause',
+    'report_work_by_area': 'Arbeit nach Bereich',
+    'report_interruption_distribution': 'Unterbrechungsverteilung',
+    'report_phase_progress': 'Arbeit nach Phase',
+    'report_phase_unavailable': 'Phase nicht mehr verfügbar',
+    'report_occurrences': 'Termine',
+    'report_upcoming': 'Bevorstehend',
+    'report_recorded': 'Erfasst',
+    'report_recurring_task': 'Wiederkehrende Aufgabe',
     'report_no_application_usage':
         'Für diesen Zeitraum wurde keine Anwendungsnutzung erfasst.',
     'report_no_website_usage':
@@ -5836,6 +6045,7 @@ class AppLocalizations {
     'report_generation_failed':
         'Dieser Bericht konnte nicht erstellt werden. Deine Daten wurden nicht verändert.',
     'status': 'Status',
+    'status_missed': 'Verpasst',
     'notification_channel_execution': 'TaskMaster Pro — Aufgabenausführung',
     'notification_channel_execution_description':
         'Fokus-, Pausen- und Aufgabenzeit-Ereignisse',
@@ -5937,6 +6147,35 @@ class AppLocalizations {
     'manage_pomodoro_settings': 'Pomodoro-Einstellungen verwalten',
     'pomodoro_settings_per_task_description':
         'Öffne eine Pomodoro-Aufgabe, um Fokus, kurze und lange Pause sowie den automatischen Start festzulegen.',
+    'standalone_pomodoro': 'Eigenständiger Pomodoro-Timer',
+    'standalone_pomodoro_description':
+        'Nutze einen privaten Timer ohne Aufgabenverknüpfung. Er bleibt auf diesem Gerät und überschneidet sich nie mit einer Aufgabe.',
+    'standalone_pomodoro_ready': 'Bereit zum Fokussieren',
+    'standalone_pomodoro_load_failed':
+        'Der Timer konnte nicht wiederhergestellt werden.',
+    'standalone_pomodoro_task_active_title': 'Eine Aufgabe läuft bereits',
+    'standalone_pomodoro_task_active_detail':
+        '„{task}“ belegt den Ausführungs-Timer. Öffne die Aufgabe und pausiere oder beende sie, bevor du diesen Timer startest.',
+    'standalone_pomodoro_task_active_banner':
+        'Eine Aufgabe belegt den Ausführungs-Timer. Der eigenständige Pomodoro wartet.',
+    'standalone_pomodoro_open_task': 'Aktive Aufgabe öffnen',
+    'standalone_pomodoro_active_title': 'Eigenständiger Pomodoro ist aktiv',
+    'standalone_pomodoro_active_detail':
+        'Stoppe den eigenständigen Timer, bevor du eine Aufgabe startest. Das aktuelle Intervall wird nicht als Aufgabenzeit erfasst.',
+    'standalone_pomodoro_open_timer': 'Timer öffnen',
+    'standalone_pomodoro_stop_and_start_task':
+        'Timer stoppen und Aufgabe starten',
+    'standalone_pomodoro_reset_title': 'Diesen Timer stoppen?',
+    'standalone_pomodoro_reset_detail':
+        'Das aktuelle eigenständige Intervall endet und wird keiner Aufgabe gutgeschrieben.',
+    'standalone_pomodoro_time_remaining': '{time} verbleibend',
+    'standalone_pomodoro_sessions_completed':
+        '{count} Fokusphasen auf diesem Gerät abgeschlossen',
+    'focus_duration': 'Fokusdauer',
+    'break_duration': 'Pausendauer',
+    'start_focus': 'Fokus starten',
+    'standalone_pomodoro_skip_focus': 'Fokus beenden und Pause starten',
+    'stop_and_reset': 'Stoppen und zurücksetzen',
     'settings_activity_privacy_description':
         'Lege fest, was dieses Gerät erfasst, was privat bleibt und welche bestätigten Beiträge synchronisiert werden.',
     'settings_reports_description':
@@ -5946,7 +6185,7 @@ class AppLocalizations {
     'settings_sync_description':
         'Prüfe den Synchronisierungsstatus und behebe Übertragungsprobleme zwischen Geräten.',
     'settings_connected_devices_description':
-        'Prüfe angemeldete Geräte, die letzte erfolgreiche Synchronisierung und den Verbindungsstatus.',
+        'Prüfe angemeldete Telefone und Computer und entziehe bei Bedarf den Kontozugriff.',
     'review_connected_devices': 'Verbundene Geräte prüfen',
     'settings_help_diagnostics_description':
         'Prüfe die Synchronisierung und öffne die Installationshilfe, ohne technische Protokolle in normalen Einstellungen anzuzeigen.',

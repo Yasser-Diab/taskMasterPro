@@ -8,7 +8,9 @@ import '../../../core/localization/app_localizations.dart';
 import '../../../core/providers.dart';
 import '../data/task_repository.dart';
 import '../data/task_resource_service.dart';
+import '../data/execution_exclusivity_coordinator.dart';
 import '../domain/task_resource_launch.dart';
+import 'standalone_pomodoro_screen.dart';
 
 /// Shared start flow for cards, the workspace, notifications and tray actions.
 /// It keeps the selected task identity intact and requires an explicit choice
@@ -21,7 +23,69 @@ Future<bool> startTaskWithConfirmation(
   bool launchPreferredResource = true,
 }) async {
   final repository = ref.read(taskRepositoryProvider);
-  final result = await repository.start(selectedTask);
+  var gatedStart = await ref
+      .read(executionExclusivityCoordinatorProvider)
+      .startTask<TaskStartResult>(
+        stopStandalone: false,
+        start: () => repository.start(selectedTask),
+      );
+  if (gatedStart.standaloneWasActive) {
+    if (!context.mounted) return false;
+    final choice = await showDialog<_StandaloneTimerConflictChoice>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(
+          dialogContext.l10n.text('standalone_pomodoro_active_title'),
+        ),
+        content: Text(
+          dialogContext.l10n.text('standalone_pomodoro_active_detail'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: Text(dialogContext.l10n.text('cancel')),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(
+              dialogContext,
+              _StandaloneTimerConflictChoice.openTimer,
+            ),
+            child: Text(
+              dialogContext.l10n.text('standalone_pomodoro_open_timer'),
+            ),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(
+              dialogContext,
+              _StandaloneTimerConflictChoice.stopAndStartTask,
+            ),
+            child: Text(
+              dialogContext.l10n.text(
+                'standalone_pomodoro_stop_and_start_task',
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (!context.mounted || choice == null) return false;
+    if (choice == _StandaloneTimerConflictChoice.openTimer) {
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => const StandalonePomodoroScreen(),
+        ),
+      );
+      return false;
+    }
+    gatedStart = await ref
+        .read(executionExclusivityCoordinatorProvider)
+        .startTask<TaskStartResult>(
+          stopStandalone: true,
+          start: () => repository.start(selectedTask),
+        );
+  }
+  final result = gatedStart.value;
+  if (result == null) return false;
   if (!result.requiresSwitch) {
     if (!taskRuntimeOwnsStartedTask(
       await repository.getRuntime(),
@@ -96,6 +160,8 @@ Future<bool> startTaskWithConfirmation(
   );
   return true;
 }
+
+enum _StandaloneTimerConflictChoice { openTimer, stopAndStartTask }
 
 /// A Start action succeeded only when the canonical local runtime owns the
 /// exact selected task. This guard prevents a stale hand-off from opening a

@@ -27,9 +27,11 @@ import '../../health/presentation/windows_health_summary_screen.dart';
 import '../../reports/presentation/performance_report_screen.dart';
 import '../../sync/presentation/synchronization_panel.dart';
 import '../../tasks/presentation/tasks_screen.dart';
+import '../../tasks/presentation/standalone_pomodoro_screen.dart';
 import '../../vault/presentation/password_vault_screen.dart';
 import '../data/profile_media_service.dart';
 import '../data/settings_section_catalog.dart';
+import 'connected_devices_screen.dart';
 import 'notifications_sounds_screen.dart';
 import 'schedule_wellbeing_screen.dart';
 import 'settings_section_directory.dart';
@@ -279,6 +281,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 : const WindowsHealthSummaryScreen(),
           ),
         );
+      case SettingsSectionDestination.vault:
+        await Navigator.of(context).push(
+          MaterialPageRoute<void>(builder: (_) => const PasswordVaultScreen()),
+        );
+      case SettingsSectionDestination.connectedDevices:
+        await Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (_) => const ConnectedDevicesScreen(),
+          ),
+        );
       case SettingsSectionDestination.categoryPage:
         await Navigator.of(context).push(
           MaterialPageRoute<void>(
@@ -366,20 +378,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     icon: Icons.manage_accounts_outlined,
                     child: Column(
                       children: [
-                        ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          leading: const Icon(Icons.devices_outlined),
-                          title: Text(context.l10n.text('connected_devices')),
-                          subtitle: Text(
-                            context.l10n.text('connected_devices_description'),
-                          ),
-                          trailing: const Icon(Icons.chevron_right),
-                          onTap: () =>
-                              SynchronizationPanel.showConnectedDevices(
-                                context,
-                              ),
-                        ),
-                        const Divider(),
                         ListTile(
                           contentPadding: EdgeInsets.zero,
                           leading: Icon(
@@ -1255,9 +1253,11 @@ class _SettingsCategoryPage extends ConsumerWidget {
   final Future<void> Function() onExportAccountData;
 
   void _openTasks(BuildContext context) {
-    Navigator.of(
-      context,
-    ).push(MaterialPageRoute<void>(builder: (_) => const TasksScreen()));
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => const TasksScreen(showRouteAppBar: true),
+      ),
+    );
   }
 
   @override
@@ -1352,15 +1352,37 @@ class _SettingsCategoryPage extends ConsumerWidget {
             _SettingsSection(
               title: context.l10n.text('pomodoro'),
               icon: Icons.timer_outlined,
-              child: ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: const Icon(Icons.edit_note_outlined),
-                title: Text(context.l10n.text('manage_pomodoro_settings')),
-                subtitle: Text(
-                  context.l10n.text('pomodoro_settings_per_task_description'),
-                ),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () => _openTasks(context),
+              child: Column(
+                children: [
+                  ListTile(
+                    key: const ValueKey('open-standalone-pomodoro'),
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.timer_outlined),
+                    title: Text(context.l10n.text('standalone_pomodoro')),
+                    subtitle: Text(
+                      context.l10n.text('standalone_pomodoro_description'),
+                    ),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => const StandalonePomodoroScreen(),
+                      ),
+                    ),
+                  ),
+                  const Divider(),
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.edit_note_outlined),
+                    title: Text(context.l10n.text('manage_pomodoro_settings')),
+                    subtitle: Text(
+                      context.l10n.text(
+                        'pomodoro_settings_per_task_description',
+                      ),
+                    ),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => _openTasks(context),
+                  ),
+                ],
               ),
             ),
           ],
@@ -1442,20 +1464,6 @@ class _SettingsCategoryPage extends ConsumerWidget {
                     onTap: () => Navigator.of(context).push(
                       MaterialPageRoute<void>(
                         builder: (_) => const ActivityReviewScreen(),
-                      ),
-                    ),
-                  ),
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: const Icon(Icons.lock_outline),
-                    title: Text(context.l10n.text('vault_title')),
-                    subtitle: Text(
-                      context.l10n.text('vault_not_configured_body'),
-                    ),
-                    trailing: const Icon(Icons.chevron_right),
-                    onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute<void>(
-                        builder: (_) => const PasswordVaultScreen(),
                       ),
                     ),
                   ),
@@ -1569,36 +1577,13 @@ class _SettingsCategoryPage extends ConsumerWidget {
               ),
             ),
           ],
-          'synchronization' || 'connected_devices' => [
+          'synchronization' => [
             _SettingsCategoryIntro(
-              icon: categoryKey == 'synchronization'
-                  ? Icons.sync_outlined
-                  : Icons.devices_outlined,
-              description: context.l10n.text(
-                categoryKey == 'synchronization'
-                    ? 'settings_sync_description'
-                    : 'settings_connected_devices_description',
-              ),
+              icon: Icons.sync_outlined,
+              description: context.l10n.text('settings_sync_description'),
             ),
             const SizedBox(height: 14),
             const _SyncSettingsSummary(),
-            const SizedBox(height: 14),
-            _SettingsSection(
-              title: context.l10n.text(categoryKey),
-              icon: Icons.devices_outlined,
-              child: ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: const Icon(Icons.manage_accounts_outlined),
-                title: Text(context.l10n.text('review_connected_devices')),
-                subtitle: Text(
-                  context.l10n.text('connected_devices_description'),
-                ),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () => categoryKey == 'connected_devices'
-                    ? SynchronizationPanel.showConnectedDevices(context)
-                    : SynchronizationPanel.show(context),
-              ),
-            ),
           ],
           'help_and_diagnostics' => [
             _SettingsCategoryIntro(
@@ -1607,8 +1592,6 @@ class _SettingsCategoryPage extends ConsumerWidget {
                 'settings_help_diagnostics_description',
               ),
             ),
-            const SizedBox(height: 14),
-            const _SyncSettingsSummary(),
             const SizedBox(height: 14),
             _SettingsSection(
               title: context.l10n.text('help_and_diagnostics'),

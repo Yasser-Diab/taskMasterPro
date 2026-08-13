@@ -33,39 +33,143 @@ void main() {
         .get();
   }
 
+  Future<List<LocalOutboxCommand>> allCommands() {
+    return (database.select(
+      database.localOutboxCommands,
+    )..orderBy([(row) => drift.OrderingTerm.asc(row.deviceSequence)])).get();
+  }
+
+  Future<LocalEntityRecord> sessionFor(LocalRuntime runtime) {
+    return (database.select(database.localEntityRecords)..where(
+          (row) =>
+              row.id.equals(runtime.sessionId!) &
+              row.entityType.equals('execution_sessions'),
+        ))
+        .getSingle();
+  }
+
+  List<LocalOutboxCommand> commandsAfter(
+    List<LocalOutboxCommand> before,
+    List<LocalOutboxCommand> after,
+  ) {
+    final existing = before.map((command) => command.commandId).toSet();
+    return after
+        .where((command) => !existing.contains(command.commandId))
+        .toList();
+  }
+
   test(
     'optimistic runtime state and outbox transition share one command identity',
     () async {
       final taskId = await repository.createTask(
-        const TaskDraft(title: 'Identity test'),
+        const TaskDraft(
+          title: 'Identity test',
+          executionMode: 'pomodoro',
+          configuration: {'pomodoro_focus_ms': 60000},
+        ),
       );
       var task = (await repository.getTask(taskId))!;
 
+      final beforeStart = await allCommands();
       await repository.start(task);
       final started = (await repository.getRuntime())!;
+      final startedTask = (await repository.getTask(taskId))!;
+      final startedSession = await sessionFor(started);
       final commandsAfterStart = await runtimeCommands();
       final start = commandsAfterStart.single;
       final startPayload =
           jsonDecode(start.payloadJson) as Map<String, dynamic>;
+      final startDelta = commandsAfter(beforeStart, await allCommands());
 
+      expect(
+        startDelta.map((command) => command.entityType),
+        orderedEquals(['execution_sessions', 'execution_runtime']),
+      );
       expect(started.lastCommandId, start.commandId);
+      expect(startedTask.lastCommandId, start.commandId);
+      expect(startedSession.lastCommandId, start.commandId);
       expect(start.baseRevision, 1);
       expect(started.revision, start.baseRevision + 1);
       expect(startPayload['expected_runtime_revision'], start.baseRevision);
 
       task = (await repository.getTask(taskId))!;
+      final beforePause = await allCommands();
       await repository.pause(task);
       final paused = (await repository.getRuntime())!;
+      final pausedTask = (await repository.getTask(taskId))!;
+      final pausedSession = await sessionFor(paused);
       final commandsAfterPause = await runtimeCommands();
       final pause = commandsAfterPause.last;
       final pausePayload =
           jsonDecode(pause.payloadJson) as Map<String, dynamic>;
 
+      expect(
+        commandsAfter(
+          beforePause,
+          await allCommands(),
+        ).map((command) => command.entityType),
+        orderedEquals(['execution_runtime']),
+      );
       expect(paused.lastCommandId, pause.commandId);
+      expect(pausedTask.lastCommandId, pause.commandId);
+      expect(pausedSession.lastCommandId, pause.commandId);
       expect(paused.revision, pause.baseRevision + 1);
       expect(pausePayload['expected_runtime_revision'], pause.baseRevision);
       expect(pause.commandId, isNot(start.commandId));
       expect(pause.deviceSequence, greaterThan(start.deviceSequence));
+
+      final beforeResume = await allCommands();
+      await repository.resume(pausedTask);
+      final resumed = (await repository.getRuntime())!;
+      final resume = (await runtimeCommands()).last;
+      expect(
+        commandsAfter(
+          beforeResume,
+          await allCommands(),
+        ).map((command) => command.entityType),
+        orderedEquals(['execution_runtime']),
+      );
+      expect(
+        (await repository.getTask(taskId))!.lastCommandId,
+        resume.commandId,
+      );
+      expect((await sessionFor(resumed)).lastCommandId, resume.commandId);
+      expect(resumed.lastCommandId, resume.commandId);
+
+      final beforeBreak = await allCommands();
+      await repository.startBreak((await repository.getTask(taskId))!);
+      final onBreak = (await repository.getRuntime())!;
+      final startBreak = (await runtimeCommands()).last;
+      expect(
+        commandsAfter(
+          beforeBreak,
+          await allCommands(),
+        ).map((command) => command.entityType),
+        orderedEquals(['execution_runtime']),
+      );
+      expect(
+        (await repository.getTask(taskId))!.lastCommandId,
+        startBreak.commandId,
+      );
+      expect((await sessionFor(onBreak)).lastCommandId, startBreak.commandId);
+      expect(onBreak.lastCommandId, startBreak.commandId);
+
+      final beforeFinishBreak = await allCommands();
+      await repository.finishBreak((await repository.getTask(taskId))!);
+      final afterBreak = (await repository.getRuntime())!;
+      final finishBreak = (await runtimeCommands()).last;
+      expect(
+        commandsAfter(
+          beforeFinishBreak,
+          await allCommands(),
+        ).map((command) => command.entityType),
+        orderedEquals(['execution_runtime']),
+      );
+      expect(
+        (await sessionFor(afterBreak)).lastCommandId,
+        finishBreak.commandId,
+      );
+      expect(afterBreak.lastCommandId, finishBreak.commandId);
     },
   );
 
@@ -108,6 +212,8 @@ void main() {
     );
     await repository.start((await repository.getTask(firstId))!);
     final before = (await repository.getRuntime())!;
+    final oldSessionId = before.sessionId!;
+    final beforeSwitchCommands = await allCommands();
 
     await repository.switchActiveTask(
       (await repository.getTask(secondId))!,
@@ -121,10 +227,94 @@ void main() {
             ))
             .getSingle();
     final payload = jsonDecode(command.payloadJson) as Map<String, dynamic>;
+    final previousTask = (await repository.getTask(firstId))!;
+    final selectedTask = (await repository.getTask(secondId))!;
+    final previousSession =
+        await (database.select(database.localEntityRecords)..where(
+              (row) =>
+                  row.id.equals(oldSessionId) &
+                  row.entityType.equals('execution_sessions'),
+            ))
+            .getSingle();
+    final selectedSession = await sessionFor(runtime);
+    final selectedSessionData =
+        jsonDecode(selectedSession.dataJson) as Map<String, dynamic>;
+    final switchDelta = commandsAfter(
+      beforeSwitchCommands,
+      await allCommands(),
+    );
 
     expect(command.baseRevision, before.revision);
     expect(payload['expected_runtime_revision'], before.revision);
     expect(runtime.revision, before.revision + 1);
+    expect(runtime.lastCommandId, command.commandId);
+    expect(runtime.state, 'running');
+    expect(runtime.activeTaskId, secondId);
+    expect(previousTask.status, 'paused');
+    expect(previousTask.lastCommandId, command.commandId);
+    expect(previousSession.status, 'paused');
+    expect(previousSession.lastCommandId, command.commandId);
+    expect(selectedTask.status, 'in_progress');
+    expect(selectedTask.lastCommandId, command.commandId);
+    expect(selectedSession.status, 'running');
+    expect(selectedSessionData['state'], 'running');
+    expect(selectedSessionData['active_segment_started_at'], isNotNull);
+    expect(selectedSession.lastCommandId, command.commandId);
+    expect(
+      switchDelta.map((row) => row.entityType),
+      containsAll(['execution_sessions', 'execution_runtime_switch']),
+    );
+    expect(
+      switchDelta.where((row) => row.entityType == 'execution_runtime_switch'),
+      hasLength(1),
+    );
+    expect(
+      switchDelta.where(
+        (row) =>
+            row.entityType == 'task_occurrences' ||
+            (row.entityType == 'execution_sessions' &&
+                row.commandType == 'update'),
+      ),
+      isEmpty,
+      reason:
+          'The switch itself is one runtime command; only the new session create is a prerequisite.',
+    );
+  });
+
+  test('finish-current switch stamps completed history atomically', () async {
+    final firstId = await repository.createTask(
+      const TaskDraft(title: 'Finish this task'),
+    );
+    final secondId = await repository.createTask(
+      const TaskDraft(title: 'Run next task'),
+    );
+    await repository.start((await repository.getTask(firstId))!);
+    final before = (await repository.getRuntime())!;
+
+    await repository.switchActiveTask(
+      (await repository.getTask(secondId))!,
+      action: ActiveTaskSwitchAction.finishCurrent,
+    );
+
+    final runtime = (await repository.getRuntime())!;
+    final command =
+        await (database.select(database.localOutboxCommands)..where(
+              (row) => row.entityType.equals('execution_runtime_switch'),
+            ))
+            .getSingle();
+    final oldTask = (await repository.getTask(firstId))!;
+    final oldSession = await (database.select(
+      database.localEntityRecords,
+    )..where((row) => row.id.equals(before.sessionId!))).getSingle();
+
+    expect(oldTask.status, 'completed');
+    expect(oldTask.progress, 1);
+    expect(oldTask.actualFinish, isNotNull);
+    expect(oldTask.lastCommandId, command.commandId);
+    expect(oldSession.status, 'completed');
+    expect(oldSession.lastCommandId, command.commandId);
+    expect(runtime.state, 'running');
+    expect(runtime.activeTaskId, secondId);
     expect(runtime.lastCommandId, command.commandId);
   });
 
@@ -150,9 +340,12 @@ void main() {
     );
 
     task = (await repository.getTask(taskId))!;
+    final beforeSkip = await allCommands();
     expect(await repository.skipOfferedBreak(task), isTrue);
 
     final runtime = (await repository.getRuntime())!;
+    final skippedTask = (await repository.getTask(taskId))!;
+    final skippedSession = await sessionFor(runtime);
     final commands = await runtimeCommands();
     final skip = commands.last;
     final payload = jsonDecode(skip.payloadJson) as Map<String, dynamic>;
@@ -167,7 +360,64 @@ void main() {
     expect(runtime.state, 'running');
     expect(runtime.revision, skip.baseRevision + 1);
     expect(runtime.lastCommandId, skip.commandId);
+    expect(skippedTask.lastCommandId, skip.commandId);
+    expect(skippedSession.lastCommandId, skip.commandId);
+    expect(
+      commandsAfter(
+        beforeSkip,
+        await allCommands(),
+      ).map((command) => command.entityType),
+      orderedEquals(['execution_runtime']),
+    );
   });
+
+  test(
+    'finishing an extended break clears it under the runtime command only',
+    () async {
+      final taskId = await repository.createTask(
+        const TaskDraft(
+          title: 'One-break extension',
+          executionMode: 'pomodoro',
+          configuration: {'pomodoro_focus_ms': 60000},
+        ),
+      );
+      await repository.start((await repository.getTask(taskId))!);
+      await repository.startBreak((await repository.getTask(taskId))!);
+      await repository.extendCurrentBreak((await repository.getTask(taskId))!);
+
+      final extendedTask = (await repository.getTask(taskId))!;
+      expect(
+        (jsonDecode(extendedTask.dataJson) as Map<String, dynamic>).containsKey(
+          'active_break_extension_ms',
+        ),
+        isTrue,
+      );
+      final beforeFinish = await allCommands();
+
+      await repository.finishBreak(extendedTask);
+
+      final runtime = (await repository.getRuntime())!;
+      final finish = (await runtimeCommands()).last;
+      final finishedTask = (await repository.getTask(taskId))!;
+      expect(
+        commandsAfter(
+          beforeFinish,
+          await allCommands(),
+        ).map((command) => command.entityType),
+        orderedEquals(['execution_runtime']),
+      );
+      expect(finish.commandType, 'finish_break');
+      expect(runtime.lastCommandId, finish.commandId);
+      expect(finishedTask.lastCommandId, finish.commandId);
+      expect(finishedTask.revision, extendedTask.revision + 1);
+      expect(
+        (jsonDecode(finishedTask.dataJson) as Map<String, dynamic>).containsKey(
+          'active_break_extension_ms',
+        ),
+        isFalse,
+      );
+    },
+  );
 
   test('v0028 migration contains the guarded atomic execution endpoints', () {
     final migration = File(
@@ -194,6 +444,50 @@ void main() {
       lessThan(guard.indexOf('from public.account_devices device_row')),
       reason:
           'A retry must deduplicate before a later device revocation can turn an accepted runtime command into a failure.',
+    );
+  });
+
+  test('break extension cleanup is a forward-only guarded RPC migration', () {
+    final migration = File(
+      'supabase/migrations/20260813040500_v0028_atomic_break_extension_cleanup.sql',
+    ).readAsStringSync();
+
+    expect(
+      migration,
+      contains('taskmaster_internal.guard_execution_runtime_v0028_command('),
+    );
+    expect(
+      migration,
+      contains('taskmaster_internal.apply_execution_transition_v0028_command('),
+    );
+    expect(
+      migration,
+      contains(
+        "p_action in ('start_break', 'skip_break') and runtime_before.state = 'running'",
+      ),
+    );
+    expect(
+      migration,
+      contains("p_action = 'finish_break' and runtime_before.state = 'break'"),
+    );
+    expect(
+      migration,
+      contains(
+        "data = coalesce(data, '{}'::jsonb) - 'active_break_extension_ms'",
+      ),
+    );
+    expect(
+      migration,
+      contains(
+        "coalesce((result_payload ->> 'canonical_only')::boolean, false) = false",
+      ),
+    );
+    expect(
+      migration,
+      contains(
+        'create or replace function public.apply_execution_transition_v0028_command(',
+      ),
+      reason: 'The client keeps one stable revision-guarded RPC surface.',
     );
   });
 }

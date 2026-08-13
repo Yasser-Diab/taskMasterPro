@@ -90,6 +90,10 @@ void main() {
     expect(manifest, contains('android:scheme="pro.taskmaster.app"'));
     expect(manifest, contains('android:host="auth-callback"'));
     expect(manifest, contains('android:launchMode="singleTop"'));
+    expect(
+      manifest,
+      contains('android.support.customtabs.action.CustomTabsService'),
+    );
     expect(installer, contains('Software\\Classes\\pro.taskmaster.app'));
     expect(installer, contains('"%1"'));
 
