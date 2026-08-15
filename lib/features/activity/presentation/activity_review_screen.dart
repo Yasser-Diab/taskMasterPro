@@ -689,34 +689,11 @@ class _ActivityPage extends StatelessWidget {
                   _SummaryPanel(summary: summary!, copy: copy),
                 ],
                 const SizedBox(height: 16),
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: SegmentedButton<String>(
-                    segments: [
-                      ButtonSegment(value: 'all', label: Text(copy.all)),
-                      ButtonSegment(
-                        value: 'related',
-                        label: Text(copy.related),
-                      ),
-                      ButtonSegment(value: 'breaks', label: Text(copy.breaks)),
-                      ButtonSegment(
-                        value: 'cross_task',
-                        label: Text(copy.crossTask),
-                      ),
-                      ButtonSegment(value: 'idle', label: Text(copy.idle)),
-                      ButtonSegment(
-                        value: 'needs_review',
-                        label: Text(copy.needsReview),
-                      ),
-                      ButtonSegment(
-                        value: 'hidden_system',
-                        label: Text(copy.hiddenSystemActivity),
-                      ),
-                    ],
-                    selected: {filter},
-                    onSelectionChanged: (values) =>
-                        onFilterChanged(values.first),
-                  ),
+                _ActivityFilterStrip(
+                  compact: compact,
+                  copy: copy,
+                  filter: filter,
+                  onFilterChanged: onFilterChanged,
                 ),
               ],
             ),
@@ -732,6 +709,116 @@ class _ActivityPage extends StatelessWidget {
           sliver: SliverToBoxAdapter(child: child),
         ),
       ],
+    );
+  }
+}
+
+class _ActivityFilterStrip extends StatefulWidget {
+  const _ActivityFilterStrip({
+    required this.compact,
+    required this.copy,
+    required this.filter,
+    required this.onFilterChanged,
+  });
+
+  final bool compact;
+  final _ActivityCopy copy;
+  final String filter;
+  final ValueChanged<String> onFilterChanged;
+
+  @override
+  State<_ActivityFilterStrip> createState() => _ActivityFilterStripState();
+}
+
+class _ActivityFilterStripState extends State<_ActivityFilterStrip> {
+  final _scrollController = ScrollController();
+  final _optionKeys = <String, GlobalKey>{};
+
+  List<(String, String)> get _options => [
+    ('all', widget.copy.all),
+    ('related', widget.copy.related),
+    ('breaks', widget.copy.breaks),
+    ('cross_task', widget.copy.crossTask),
+    ('idle', widget.copy.idle),
+    ('needs_review', widget.copy.needsReview),
+    ('hidden_system', widget.copy.hiddenSystemActivity),
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _scheduleSelectedIntoView(animate: false);
+  }
+
+  @override
+  void didUpdateWidget(covariant _ActivityFilterStrip oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.compact &&
+        (oldWidget.filter != widget.filter || !oldWidget.compact)) {
+      _scheduleSelectedIntoView(animate: true);
+    }
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _scheduleSelectedIntoView({required bool animate}) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !widget.compact || !_scrollController.hasClients) return;
+      final renderObject = _optionKeys[widget.filter]?.currentContext
+          ?.findRenderObject();
+      if (renderObject == null) return;
+      _scrollController.position.ensureVisible(
+        renderObject,
+        alignment: 0.5,
+        duration: animate ? const Duration(milliseconds: 220) : Duration.zero,
+        curve: Curves.easeOutCubic,
+      );
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final options = _options;
+    if (!widget.compact) {
+      return SingleChildScrollView(
+        key: const ValueKey('desktop-activity-filter-strip'),
+        scrollDirection: Axis.horizontal,
+        child: SegmentedButton<String>(
+          segments: [
+            for (final option in options)
+              ButtonSegment(value: option.$1, label: Text(option.$2)),
+          ],
+          selected: {widget.filter},
+          onSelectionChanged: (values) => widget.onFilterChanged(values.first),
+        ),
+      );
+    }
+
+    final colors = Theme.of(context).colorScheme;
+    return SingleChildScrollView(
+      key: const ValueKey('mobile-activity-filter-strip'),
+      controller: _scrollController,
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsetsDirectional.only(end: 12),
+      child: Row(
+        children: [
+          for (final option in options) ...[
+            ChoiceChip(
+              key: _optionKeys.putIfAbsent(option.$1, GlobalKey.new),
+              label: Text(option.$2),
+              selected: widget.filter == option.$1,
+              onSelected: (_) => widget.onFilterChanged(option.$1),
+              selectedColor: colors.primaryContainer,
+              tooltip: option.$2,
+            ),
+            const SizedBox(width: 8),
+          ],
+        ],
+      ),
     );
   }
 }
