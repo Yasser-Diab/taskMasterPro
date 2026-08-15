@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
+import 'package:intl/intl.dart' hide TextDirection;
 
 import '../../../core/database/app_database.dart';
 import '../../../core/localization/app_localizations.dart';
@@ -23,17 +23,31 @@ class RoadmapsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final roadmaps = ref.watch(roadmapsProvider);
+    final compact = MediaQuery.sizeOf(context).width < 600;
     return Scaffold(
       backgroundColor: Colors.transparent,
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _showRoadmapEditor(context, ref),
-        icon: const Icon(Icons.add_road),
-        label: Text(context.l10n.text('roadmap_new')),
-      ),
+      floatingActionButton: compact
+          ? FloatingActionButton(
+              key: const ValueKey('mobile-roadmap-add'),
+              tooltip: context.l10n.text('roadmap_new'),
+              onPressed: () => _showRoadmapEditor(context, ref),
+              child: const Icon(Icons.add_road),
+            )
+          : FloatingActionButton.extended(
+              key: const ValueKey('desktop-roadmap-add'),
+              onPressed: () => _showRoadmapEditor(context, ref),
+              icon: const Icon(Icons.add_road),
+              label: Text(context.l10n.text('roadmap_new')),
+            ),
       body: CustomScrollView(
         slivers: [
           SliverPadding(
-            padding: const EdgeInsets.fromLTRB(24, 24, 24, 10),
+            padding: EdgeInsets.fromLTRB(
+              compact ? 16 : 24,
+              compact ? 16 : 24,
+              compact ? 16 : 24,
+              10,
+            ),
             sliver: SliverToBoxAdapter(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -73,28 +87,41 @@ class RoadmapsScreen extends ConsumerWidget {
                   ),
                 );
               }
-              return SliverPadding(
-                padding: const EdgeInsets.fromLTRB(24, 10, 24, 100),
-                sliver: SliverGrid.builder(
-                  gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
-                    maxCrossAxisExtent: 520,
-                    mainAxisExtent: 250,
-                    crossAxisSpacing: 14,
-                    mainAxisSpacing: 14,
-                  ),
-                  itemCount: items.length,
-                  itemBuilder: (context, index) => _RoadmapCard(
-                    roadmap: items[index],
-                    onOpen: () => Navigator.of(context).push(
-                      MaterialPageRoute<void>(
-                        builder: (_) =>
-                            RoadmapDetailScreen(roadmapId: items[index].id),
-                      ),
-                    ),
-                    onEdit: () =>
-                        _showRoadmapEditor(context, ref, roadmap: items[index]),
+              Widget cardAt(int index) => _RoadmapCard(
+                roadmap: items[index],
+                onOpen: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) =>
+                        RoadmapDetailScreen(roadmapId: items[index].id),
                   ),
                 ),
+                onEdit: () =>
+                    _showRoadmapEditor(context, ref, roadmap: items[index]),
+              );
+              return SliverPadding(
+                padding: EdgeInsets.fromLTRB(
+                  compact ? 16 : 24,
+                  10,
+                  compact ? 16 : 24,
+                  100,
+                ),
+                sliver: compact
+                    ? SliverList.separated(
+                        itemCount: items.length,
+                        separatorBuilder: (_, _) => const SizedBox(height: 12),
+                        itemBuilder: (context, index) => cardAt(index),
+                      )
+                    : SliverGrid.builder(
+                        gridDelegate:
+                            const SliverGridDelegateWithMaxCrossAxisExtent(
+                              maxCrossAxisExtent: 520,
+                              mainAxisExtent: 292,
+                              crossAxisSpacing: 14,
+                              mainAxisSpacing: 14,
+                            ),
+                        itemCount: items.length,
+                        itemBuilder: (context, index) => cardAt(index),
+                      ),
               );
             },
           ),
@@ -119,12 +146,13 @@ class _RoadmapCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final color = _riskColor(context, roadmap.riskLevel);
     final target = roadmap.forecastTargetDate ?? roadmap.originalTargetDate;
+    final compact = MediaQuery.sizeOf(context).width < 600;
     return Card(
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onOpen,
         child: Padding(
-          padding: const EdgeInsets.all(20),
+          padding: EdgeInsets.all(compact ? 16 : 20),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -203,7 +231,7 @@ class _RoadmapCard extends ConsumerWidget {
                   color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
               ),
-              const Spacer(),
+              const SizedBox(height: 16),
               Row(
                 children: [
                   Text(
@@ -224,27 +252,39 @@ class _RoadmapCard extends ConsumerWidget {
               ),
               const SizedBox(height: 14),
               Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  _Pill(
-                    icon: Icons.flag_outlined,
-                    label: target == null
-                        ? context.l10n.text('roadmap_no_target')
-                        : DateFormat.yMMMd(
-                            context.l10n.locale.toLanguageTag(),
-                          ).format(target),
+                  Expanded(
+                    child: Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        _Pill(
+                          icon: Icons.flag_outlined,
+                          label: target == null
+                              ? context.l10n.text('roadmap_no_target')
+                              : DateFormat.yMMMd(
+                                  context.l10n.locale.toLanguageTag(),
+                                ).format(target),
+                        ),
+                        _Pill(
+                          icon: Icons.warning_amber_rounded,
+                          label: context.l10n.format('roadmap_risk_value', {
+                            'risk': context.l10n.text(
+                              'roadmap_risk_${roadmap.riskLevel}',
+                            ),
+                          }),
+                          color: color,
+                        ),
+                      ],
+                    ),
                   ),
                   const SizedBox(width: 8),
-                  _Pill(
-                    icon: Icons.warning_amber_rounded,
-                    label: context.l10n.format('roadmap_risk_value', {
-                      'risk': context.l10n.text(
-                        'roadmap_risk_${roadmap.riskLevel}',
-                      ),
-                    }),
-                    color: color,
+                  Icon(
+                    Directionality.of(context) == TextDirection.rtl
+                        ? Icons.chevron_left
+                        : Icons.chevron_right,
                   ),
-                  const Spacer(),
-                  const Icon(Icons.chevron_right),
                 ],
               ),
             ],
@@ -306,29 +346,46 @@ class _RoadmapDetailScreenState extends ConsumerState<RoadmapDetailScreen> {
                       stream: repository.watchLinkedTasks(widget.roadmapId),
                       builder: (context, taskSnapshot) {
                         final tasks = taskSnapshot.data ?? const [];
+                        final compact = MediaQuery.sizeOf(context).width < 600;
                         return DefaultTabController(
                           length: 5,
                           child: Scaffold(
                             appBar: AppBar(
-                              title: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(roadmap.title),
-                                  Text(
-                                    context.l10n
-                                        .format('roadmap_progress_risk', {
-                                          'progress': (roadmap.progress * 100)
-                                              .round(),
-                                          'risk': context.l10n.text(
-                                            'roadmap_risk_${roadmap.riskLevel}',
+                              title: compact
+                                  ? Text(
+                                      roadmap.title,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    )
+                                  : Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          roadmap.title,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                        Text(
+                                          context.l10n.format(
+                                            'roadmap_progress_risk',
+                                            {
+                                              'progress':
+                                                  (roadmap.progress * 100)
+                                                      .round(),
+                                              'risk': context.l10n.text(
+                                                'roadmap_risk_${roadmap.riskLevel}',
+                                              ),
+                                            },
                                           ),
-                                        }),
-                                    style: Theme.of(
-                                      context,
-                                    ).textTheme.bodySmall,
-                                  ),
-                                ],
-                              ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: Theme.of(
+                                            context,
+                                          ).textTheme.bodySmall,
+                                        ),
+                                      ],
+                                    ),
                               actions: [
                                 PopupMenuButton<String>(
                                   tooltip: context.l10n.text(
@@ -769,30 +826,48 @@ class _RoadmapHierarchySection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final compact = MediaQuery.sizeOf(context).width < 600;
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(18),
+        padding: EdgeInsets.all(compact ? 16 : 18),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Row(
-              children: [
-                Icon(icon, color: Theme.of(context).colorScheme.primary),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    title,
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.w800,
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final heading = Row(
+                  children: [
+                    Icon(icon, color: Theme.of(context).colorScheme.primary),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        title,
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
                     ),
-                  ),
-                ),
-                FilledButton.tonalIcon(
+                  ],
+                );
+                final add = FilledButton.tonalIcon(
                   onPressed: onAdd,
                   icon: const Icon(Icons.add),
                   label: Text(context.l10n.text('add')),
-                ),
-              ],
+                );
+                if (constraints.maxWidth < 380) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [heading, const SizedBox(height: 12), add],
+                  );
+                }
+                return Row(
+                  children: [
+                    Expanded(child: heading),
+                    const SizedBox(width: 12),
+                    add,
+                  ],
+                );
+              },
             ),
             if (items.isEmpty)
               Padding(
@@ -978,11 +1053,10 @@ class _RoadmapPhases extends ConsumerWidget {
       children: [
         Padding(
           padding: const EdgeInsets.all(16),
-          child: Row(
-            children: [
-              Expanded(child: Text(context.l10n.text('roadmap_reorder_help'))),
-              const SizedBox(width: 12),
-              FilledButton.icon(
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final help = Text(context.l10n.text('roadmap_reorder_help'));
+              final add = FilledButton.icon(
                 onPressed: () => _showPhaseEditor(
                   context,
                   ref,
@@ -991,8 +1065,21 @@ class _RoadmapPhases extends ConsumerWidget {
                 ),
                 icon: const Icon(Icons.add),
                 label: Text(context.l10n.text('roadmap_add_phase')),
-              ),
-            ],
+              );
+              if (constraints.maxWidth < 420) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [help, const SizedBox(height: 12), add],
+                );
+              }
+              return Row(
+                children: [
+                  Expanded(child: help),
+                  const SizedBox(width: 12),
+                  add,
+                ],
+              );
+            },
           ),
         ),
         Expanded(
@@ -1562,23 +1649,45 @@ class _CountProgress extends StatelessWidget {
     final value = total == 0 ? 0.0 : completed / total;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Row(
-        children: [
-          SizedBox(width: 110, child: Text(label)),
-          Expanded(
-            child: LinearProgressIndicator(
-              value: value,
-              borderRadius: BorderRadius.circular(99),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Text(
-            context.l10n.format('roadmap_count_of', {
-              'completed': completed,
-              'total': total,
-            }),
-          ),
-        ],
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final count = context.l10n.format('roadmap_count_of', {
+            'completed': completed,
+            'total': total,
+          });
+          if (constraints.maxWidth < 360) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    Expanded(child: Text(label)),
+                    const SizedBox(width: 12),
+                    Text(count),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                LinearProgressIndicator(
+                  value: value,
+                  borderRadius: BorderRadius.circular(99),
+                ),
+              ],
+            );
+          }
+          return Row(
+            children: [
+              SizedBox(width: 110, child: Text(label)),
+              Expanded(
+                child: LinearProgressIndicator(
+                  value: value,
+                  borderRadius: BorderRadius.circular(99),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Text(count),
+            ],
+          );
+        },
       ),
     );
   }
@@ -1606,7 +1715,13 @@ class _Pill extends StatelessWidget {
           children: [
             Icon(icon, size: 15, color: effective),
             const SizedBox(width: 5),
-            Text(label, style: TextStyle(color: effective)),
+            Flexible(
+              child: Text(
+                label,
+                softWrap: true,
+                style: TextStyle(color: effective),
+              ),
+            ),
           ],
         ),
       ),

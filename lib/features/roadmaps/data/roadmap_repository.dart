@@ -9,6 +9,7 @@ import '../../../core/data/entity_record_repository.dart';
 import '../../../core/account/owner_bootstrap.dart';
 import '../../../core/database/app_database.dart';
 import '../../../core/platform/device_identity.dart';
+import '../../activity/domain/activity_reporting_policy.dart';
 import '../../tasks/data/task_repository.dart';
 import '../../tasks/domain/task_schedule_policy.dart';
 
@@ -1355,7 +1356,7 @@ class RoadmapRepository {
             ))
             .get();
     final taskIds = tasks.map((task) => task.id).toSet();
-    final contributions = taskIds.isEmpty
+    final candidateContributions = taskIds.isEmpty
         ? const <LocalContribution>[]
         : await (database.select(database.localContributions)..where(
                 (row) =>
@@ -1364,6 +1365,35 @@ class RoadmapRepository {
                     row.targetId.isIn(taskIds),
               ))
               .get();
+    final contributionActivityIds = candidateContributions
+        .map((item) => item.activitySegmentId)
+        .toSet();
+    final contributionSegments = contributionActivityIds.isEmpty
+        ? const <LocalActivitySegment>[]
+        : await (database.select(database.localActivitySegments)..where(
+                (row) =>
+                    row.deletedAt.isNull() &
+                    row.id.isIn(contributionActivityIds),
+              ))
+              .get();
+    final contributionAttributions = contributionActivityIds.isEmpty
+        ? const <LocalAttribution>[]
+        : await (database.select(database.localAttributions)..where(
+                (row) =>
+                    row.deletedAt.isNull() &
+                    row.activitySegmentId.isIn(contributionActivityIds),
+              ))
+              .get();
+    final excludedContributionSegments = excludedActivitySegmentIds(
+      segments: contributionSegments,
+      attributions: contributionAttributions,
+    );
+    final contributions = candidateContributions
+        .where(
+          (item) =>
+              !excludedContributionSegments.contains(item.activitySegmentId),
+        )
+        .toList(growable: false);
 
     final weightedValues = <(double, double)>[];
     for (final phase in phases) {

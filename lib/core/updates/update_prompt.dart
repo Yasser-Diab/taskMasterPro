@@ -211,7 +211,7 @@ class _WhatsNewLoadingDialogState extends State<_WhatsNewLoadingDialog> {
                       children: [
                         Expanded(
                           child: Text(
-                            context.l10n.text('update_loading_notes'),
+                            context.l10n.text('loading'),
                             style: Theme.of(context).textTheme.titleLarge
                                 ?.copyWith(fontWeight: FontWeight.w800),
                           ),

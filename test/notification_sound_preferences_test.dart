@@ -162,6 +162,158 @@ void main() {
     );
   });
 
+  test('Windows action envelope preserves command and owned task payload', () {
+    final payload = LocalNotificationService.ownedPayloadForOwner(
+      ownerId: 'owner-1',
+      route: 'task/task-1',
+      eventType: 'focus_completed',
+      boundaryAtUtc: DateTime.utc(2026, 8, 15, 12, 25),
+      notificationId: 'notification-1',
+      sessionId: 'session-1',
+      runtimeRevision: 8,
+      intervalId: 'session-1:running:focus',
+    );
+    final activation = windowsNotificationActionArguments(
+      actionId: 'start_break',
+      payload: payload,
+    );
+
+    final normalized = normalizeNotificationResponse(
+      NotificationResponse(
+        actionId: activation,
+        payload: activation,
+        notificationResponseType:
+            NotificationResponseType.selectedNotificationAction,
+      ),
+    );
+
+    expect(normalized.actionId, 'start_break');
+    expect(normalized.payload, payload);
+    final decoded = LocalNotificationService.decodeOwnedPayload(
+      normalized.payload,
+    );
+    expect(decoded.taskId, 'task-1');
+    expect(decoded.sessionId, 'session-1');
+    expect(decoded.runtimeRevision, 8);
+  });
+
+  test(
+    'Windows body taps open their owned route without inventing a command',
+    () {
+      final payload = LocalNotificationService.ownedPayloadForOwner(
+        ownerId: 'owner-1',
+        route: 'task/task-1',
+      );
+
+      final normalized = normalizeNotificationResponse(
+        NotificationResponse(
+          actionId: payload,
+          payload: payload,
+          notificationResponseType:
+              NotificationResponseType.selectedNotificationAction,
+        ),
+      );
+
+      expect(normalized.actionId, 'open');
+      expect(normalized.payload, payload);
+    },
+  );
+
+  test('Android response shape remains unchanged by Windows normalization', () {
+    const payload = '{"route":"task/task-1"}';
+    final normalized = normalizeNotificationResponse(
+      const NotificationResponse(
+        actionId: 'continue_working',
+        payload: payload,
+        notificationResponseType:
+            NotificationResponseType.selectedNotificationAction,
+      ),
+    );
+
+    expect(normalized.actionId, 'continue_working');
+    expect(normalized.payload, payload);
+  });
+
+  test('Windows execution actions are compact and wait for acceptance', () {
+    expect(
+      windowsExecutionActionLabelKey('start_break', 'notification_start_break'),
+      'notification_action_break_compact',
+    );
+    expect(
+      windowsExecutionActionLabelKey(
+        'continue_working',
+        'notification_continue_working',
+      ),
+      'notification_action_continue_compact',
+    );
+    expect(
+      windowsExecutionActionLabelKey('finish_task', 'finish_task'),
+      'notification_action_finish_compact',
+    );
+    for (final action in const <String>[
+      'start_break',
+      'start_focus',
+      'continue_working',
+      'finish_task',
+      'pause',
+      'resume',
+    ]) {
+      expect(
+        windowsExecutionActionBehavior(action),
+        WindowsNotificationBehavior.pendingUpdate,
+        reason: '$action must not dismiss before canonical acceptance',
+      );
+    }
+    expect(
+      windowsExecutionActionBehavior('dismiss'),
+      WindowsNotificationBehavior.dismiss,
+    );
+    expect(
+      windowsExecutionActionBehavior('open'),
+      WindowsNotificationBehavior.dismiss,
+    );
+
+    for (final action in const ['start', 'complete', 'snooze']) {
+      expect(
+        windowsReminderActionBehavior(action),
+        WindowsNotificationBehavior.pendingUpdate,
+        reason: '$action must wait for reminder-command acceptance',
+      );
+    }
+    expect(
+      windowsReminderActionBehavior('dismiss'),
+      WindowsNotificationBehavior.dismiss,
+    );
+  });
+
+  test('ordinary reminder identity survives the Windows action envelope', () {
+    final payload = LocalNotificationService.ownedPayloadForOwner(
+      ownerId: 'owner-1',
+      route: 'task/task-1',
+      reminderId: '8242',
+    );
+    final activation = windowsNotificationActionArguments(
+      actionId: 'complete',
+      payload: payload,
+    );
+    final normalized = normalizeNotificationResponse(
+      NotificationResponse(
+        actionId: activation,
+        payload: activation,
+        notificationResponseType:
+            NotificationResponseType.selectedNotificationAction,
+      ),
+    );
+
+    expect(normalized.actionId, 'complete');
+    expect(
+      LocalNotificationService.decodeOwnedPayload(
+        normalized.payload,
+      ).reminderId,
+      8242,
+    );
+  });
+
   test('a cancelled interval can be replaced by its next schedule', () {
     final cancelled = <String, Object?>{
       'task_id': 'task-1',
@@ -231,16 +383,67 @@ void main() {
         ),
       ),
     );
-    expect(
-      shellSource,
-      contains('if (requiresExecutionValidation && transitionAccepted)'),
-    );
+    expect(shellSource, contains('if (requiresExecutionValidation) {'));
+    expect(shellSource, contains('if (transitionAccepted) {'));
     expect(
       shellSource,
       contains(
         'transitionAccepted = await TaskExecutionCommands.skipOfferedBreak',
       ),
     );
+    expect(shellSource, contains("completedTask?.status == 'completed'"));
+    expect(shellSource, contains('after.activeTaskId != task.id'));
+    expect(
+      shellSource,
+      contains('transitionAccepted = await startTaskWithConfirmation('),
+    );
+    expect(
+      shellSource,
+      contains("(await repository.getTask(task.id))?.status == 'completed'"),
+    );
+    expect(shellSource, contains('cancelTaskReminder(ownedPayload)'));
+    expect(
+      shellSource,
+      contains('} else if (retiresReminderPendingAction) {'),
+      reason:
+          'A declined or raced Windows pendingUpdate action must still retire its reminder toast.',
+    );
+  });
+
+  test('reminder dismiss cannot cancel a running execution alarm', () {
+    final shellSource = File(
+      'lib/features/shell/presentation/home_shell.dart',
+    ).readAsStringSync();
+    final dismissCase = shellSource.substring(
+      shellSource.indexOf("case 'dismiss':"),
+      shellSource.indexOf('default:', shellSource.indexOf("case 'dismiss':")),
+    );
+
+    expect(dismissCase, contains('ownedPayload.hasExecutionIdentity'));
+    expect(
+      shellSource,
+      contains('ownedPayload.reminderId != null'),
+      reason: 'Ordinary dismiss is scoped to its reminder id.',
+    );
+  });
+
+  test('rejected pending Windows actions retire then restore authority', () {
+    final shellSource = File(
+      'lib/features/shell/presentation/home_shell.dart',
+    ).readAsStringSync();
+    final retirement = shellSource.substring(
+      shellSource.indexOf('Future<void> _retireRejectedExecutionNotification('),
+      shellSource.indexOf(
+        'void _selectDestination(',
+        shellSource.indexOf(
+          'Future<void> _retireRejectedExecutionNotification(',
+        ),
+      ),
+    );
+
+    expect(retirement, contains("state: 'superseded'"));
+    expect(retirement, contains("ledgerState: 'superseded'"));
+    expect(retirement, contains('_queueExecutionAlarmSynchronization('));
   });
 
   test(
@@ -275,6 +478,17 @@ void main() {
       expect(dismiss.cancelNotification, isTrue);
     },
   );
+
+  test('Android reminder mutations also remain until local acceptance', () {
+    for (final action in const ['start', 'complete', 'snooze']) {
+      final delivery = reminderNotificationActionDelivery(action);
+      expect(delivery.showsUserInterface, isTrue);
+      expect(delivery.cancelNotification, isFalse);
+    }
+    final dismiss = reminderNotificationActionDelivery('dismiss');
+    expect(dismiss.showsUserInterface, isFalse);
+    expect(dismiss.cancelNotification, isTrue);
+  });
 
   test('cold-start notification actions run before ledger reconciliation', () {
     final shellSource = File(

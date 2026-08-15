@@ -44,6 +44,7 @@ void main() {
       final sourceTaskId = await tasks.createTask(
         TaskDraft(
           title: 'Duolingo — 10 minutes',
+          description: 'Complete one focused German lesson',
           executionMode: 'habit',
           scheduledDate: today,
           plannedStart: today.add(const Duration(hours: 7, minutes: 15)),
@@ -61,6 +62,7 @@ void main() {
           data: {
             'source_task_occurrence_id': sourceTaskId,
             'title': 'Duolingo — 10 minutes',
+            'description': 'Complete one focused German lesson',
             'execution_mode': 'habit',
             'default_duration_ms': 600000,
             'roadmap_id': roadmapId,
@@ -119,6 +121,12 @@ void main() {
       final resources = await entities.list(entityType: 'task_resources');
 
       expect(generated, hasLength(2));
+      expect(
+        generated.every(
+          (task) => task.description == 'Complete one focused German lesson',
+        ),
+        isTrue,
+      );
       expect(generated.every((task) => task.roadmapId == roadmapId), isTrue);
       expect(generated.every((task) => task.roadmapPhaseId == phaseId), isTrue);
       expect(links, hasLength(2));

@@ -228,7 +228,11 @@ abstract final class TaskExecutionCommands {
     final intervalFromSegmentStart = pomodoro.isBreak
         ? pomodoro.intervalDurationMs
         : pomodoro.focusDurationMs -
-              (runtime.accumulatedActiveMs % pomodoro.focusDurationMs);
+              (runtime.accumulatedActiveMs -
+                  pomodoroFocusIntervalBaseMs(
+                    runtime,
+                    pomodoro.focusDurationMs,
+                  ));
     final actualBoundary = startedAt.toUtc().add(
       Duration(milliseconds: intervalFromSegmentStart),
     );

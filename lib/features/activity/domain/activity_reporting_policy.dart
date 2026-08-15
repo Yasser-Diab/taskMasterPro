@@ -55,11 +55,13 @@ Map<String, LocalAttribution> latestActivityAttributionBySegment(
 }
 
 bool _isNewerAttribution(LocalAttribution candidate, LocalAttribution current) {
-  final updatedComparison = candidate.updatedAt.compareTo(current.updatedAt);
-  if (updatedComparison != 0) return updatedComparison > 0;
+  // Revision is the canonical cross-device order. A wall clock can be ahead
+  // or behind, so updatedAt may only break a tie at the same revision.
   if (candidate.revision != current.revision) {
     return candidate.revision > current.revision;
   }
+  final updatedComparison = candidate.updatedAt.compareTo(current.updatedAt);
+  if (updatedComparison != 0) return updatedComparison > 0;
   if (candidate.confirmedByUser != current.confirmedByUser) {
     return candidate.confirmedByUser;
   }

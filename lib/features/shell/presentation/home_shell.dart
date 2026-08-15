@@ -32,6 +32,7 @@ import '../../sync/presentation/synchronization_panel.dart';
 import '../../tasks/data/task_execution_commands.dart';
 import '../../tasks/data/execution_exclusivity_coordinator.dart';
 import '../../tasks/data/task_execution_providers.dart';
+import '../../tasks/data/task_repository.dart';
 import '../domain/home_shell_back_navigation.dart';
 import '../../tasks/domain/pomodoro_execution_state.dart';
 import '../../tasks/domain/task_list_projection.dart';
@@ -509,7 +510,7 @@ class _HomeShellState extends ConsumerState<HomeShell> with RouteAware {
     }
   }
 
-  void _queueExecutionAlarmSynchronization(LocalRuntime? runtime) {
+  Future<void> _queueExecutionAlarmSynchronization(LocalRuntime? runtime) {
     final previous = _executionAlarmQueue;
     _executionAlarmQueue = previous
         .then((_) async {
@@ -519,6 +520,7 @@ class _HomeShellState extends ConsumerState<HomeShell> with RouteAware {
         .catchError((Object _, StackTrace _) {
           // Preserve the queue after a transient platform scheduling failure.
         });
+    return _executionAlarmQueue;
   }
 
   Future<void> _configureSleepReminder(LocalAppSetting settings) {
@@ -925,9 +927,10 @@ class _HomeShellState extends ConsumerState<HomeShell> with RouteAware {
   Future<void> _handleNotificationResponse(
     NotificationResponse response,
   ) async {
+    final normalized = normalizeNotificationResponse(response);
     await _handleNotificationAction(
-      payload: response.payload,
-      actionId: response.actionId,
+      payload: normalized.payload,
+      actionId: normalized.actionId,
     );
   }
 
@@ -937,8 +940,14 @@ class _HomeShellState extends ConsumerState<HomeShell> with RouteAware {
   }) async {
     if (payload == null) return;
     final ownedPayload = LocalNotificationService.decodeOwnedPayload(payload);
+    final retiresReminderPendingAction =
+        ownedPayload.reminderId != null &&
+        const {'start', 'complete', 'snooze', 'dismiss'}.contains(actionId);
     if (ownedPayload.ownerId != null &&
         ownedPayload.ownerId != widget.user.id) {
+      if (retiresReminderPendingAction) {
+        await localNotificationService.cancelTaskReminder(ownedPayload);
+      }
       return;
     }
     final route = ownedPayload.route;
@@ -968,7 +977,12 @@ class _HomeShellState extends ConsumerState<HomeShell> with RouteAware {
     final taskId = route.substring('task/'.length);
     final repository = ref.read(taskRepositoryProvider);
     final task = await repository.getTask(taskId);
-    if (task == null) return;
+    if (task == null) {
+      if (retiresReminderPendingAction) {
+        await localNotificationService.cancelTaskReminder(ownedPayload);
+      }
+      return;
+    }
     final hasExecutionEvent = ownedPayload.eventType != null;
     final requiresExecutionValidation =
         ownedPayload.hasExecutionIdentity &&
@@ -986,7 +1000,14 @@ class _HomeShellState extends ConsumerState<HomeShell> with RouteAware {
     if (requiresExecutionValidation) {
       final ledgerValid = await localNotificationService
           .validateExecutionNotificationPayload(ownedPayload);
-      if (!ledgerValid) return;
+      if (!ledgerValid) {
+        await _retireRejectedExecutionNotification(
+          payload: ownedPayload,
+          taskId: task.id,
+          repository: repository,
+        );
+        return;
+      }
       final runtime = await repository.getRuntime();
       final matchesCurrentInterval =
           runtime != null &&
@@ -995,9 +1016,10 @@ class _HomeShellState extends ConsumerState<HomeShell> with RouteAware {
           runtime.revision == ownedPayload.runtimeRevision &&
           runtime.state != 'idle';
       if (!matchesCurrentInterval) {
-        await localNotificationService.markExecutionNotificationHandled(
-          ownedPayload,
-          state: 'superseded',
+        await _retireRejectedExecutionNotification(
+          payload: ownedPayload,
+          taskId: task.id,
+          repository: repository,
         );
         return;
       }
@@ -1014,8 +1036,10 @@ class _HomeShellState extends ConsumerState<HomeShell> with RouteAware {
     var transitionAccepted = true;
     switch (actionId) {
       case 'start':
-        if (mounted) {
-          await startTaskWithConfirmation(
+        if (!mounted) {
+          transitionAccepted = false;
+        } else {
+          transitionAccepted = await startTaskWithConfirmation(
             context,
             ref,
             task,
@@ -1032,7 +1056,13 @@ class _HomeShellState extends ConsumerState<HomeShell> with RouteAware {
           );
         }
       case 'complete':
-        if (mounted) await completeTaskWithUndo(context, ref, task);
+        if (!mounted) {
+          transitionAccepted = false;
+        } else {
+          await completeTaskWithUndo(context, ref, task);
+          transitionAccepted =
+              (await repository.getTask(task.id))?.status == 'completed';
+        }
       case 'pause':
         final before = await repository.getRuntime();
         await repository.pause(task);
@@ -1075,7 +1105,24 @@ class _HomeShellState extends ConsumerState<HomeShell> with RouteAware {
           transitionAccepted = false;
         }
       case 'finish_task':
-        if (mounted) await completeTaskWithUndo(context, ref, task);
+        if (!mounted) {
+          transitionAccepted = false;
+        } else {
+          final before = await repository.getRuntime();
+          if (!mounted) {
+            transitionAccepted = false;
+            break;
+          }
+          await completeTaskWithUndo(context, ref, task);
+          final completedTask = await repository.getTask(task.id);
+          final after = await repository.getRuntime();
+          transitionAccepted =
+              completedTask?.status == 'completed' &&
+              (before?.activeTaskId != task.id ||
+                  after == null ||
+                  after.activeTaskId != task.id ||
+                  after.state == 'idle');
+        }
       case 'continue_working':
         // A completed focus interval cannot merely dismiss its alert: the
         // timer would remain frozen at 00:00. Skipping the offered break is
@@ -1116,6 +1163,7 @@ class _HomeShellState extends ConsumerState<HomeShell> with RouteAware {
           taskId: task.id,
           taskTitle: task.title,
           reminderType: 'snooze',
+          ownerId: widget.user.id,
           scheduledAtUtc: DateTime.now().toUtc().add(
             const Duration(minutes: 10),
           ),
@@ -1136,16 +1184,53 @@ class _HomeShellState extends ConsumerState<HomeShell> with RouteAware {
           localeCode: snoozeSettings?.localeCode ?? 'en',
         );
       case 'dismiss':
-        await localNotificationService.cancelExecutionCompletion(task.id);
+        if (ownedPayload.hasExecutionIdentity) {
+          await localNotificationService.cancelExecutionCompletion(task.id);
+        }
       default:
         if (mounted) await TaskWorkspaceScreen.open(context, task);
     }
-    if (requiresExecutionValidation && transitionAccepted) {
-      await localNotificationService.markExecutionNotificationHandled(
-        ownedPayload,
-      );
+    if (requiresExecutionValidation) {
+      if (transitionAccepted) {
+        await localNotificationService.markExecutionNotificationHandled(
+          ownedPayload,
+        );
+      } else {
+        await _retireRejectedExecutionNotification(
+          payload: ownedPayload,
+          taskId: task.id,
+          repository: repository,
+        );
+      }
+    } else if (retiresReminderPendingAction) {
+      // Windows mutation actions use pendingUpdate. Resolve that toast even
+      // when the user declines a task switch or the local transition loses a
+      // race; leaving it pending makes a handled action look unresponsive.
+      // The reminder ID is isolated from the execution-alarm slot.
+      await localNotificationService.cancelTaskReminder(ownedPayload);
     }
     unawaited(ref.read(syncServiceProvider).drainOutbox());
+  }
+
+  Future<void> _retireRejectedExecutionNotification({
+    required OwnedNotificationPayload payload,
+    required String taskId,
+    required TaskRepository repository,
+  }) async {
+    // Windows pending-update keeps the old toast on screen until the app
+    // acknowledges it. A rejected/superseded command must explicitly retire
+    // that stale slot, then immediately recreate the notification for the
+    // current canonical interval (if one still exists).
+    await localNotificationService.markExecutionNotificationHandled(
+      payload,
+      state: 'superseded',
+    );
+    await localNotificationService.cancelExecutionCompletionWithState(
+      taskId,
+      ledgerState: 'superseded',
+    );
+    _lastExecutionRevision = null;
+    await _queueExecutionAlarmSynchronization(await repository.getRuntime());
   }
 
   void _selectDestination(int index) {

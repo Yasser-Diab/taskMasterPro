@@ -266,10 +266,14 @@ class ActivityAggregationService {
           attribution?['classification'] as String? ?? 'unclassified';
       final targetId = attribution?['target_id'] as String?;
       final kinds = periodKinds[segment['id']] ?? const [0, 0, 0];
+      // One application can contain both genuine work and OS-owned periods.
+      // Keep those decisions in separate audit groups so a longer useful
+      // period can never cause a System period to leak back into totals.
+      final classifiedIdentityKey = '${identity.$1}::$classification';
       final group = groupMaps.putIfAbsent(
-        identity.$1,
+        classifiedIdentityKey,
         () => {
-          'key': identity.$1,
+          'key': classifiedIdentityKey,
           'name': identity.$2,
           'source_type': identity.$3,
           'total_ms': 0,

@@ -287,14 +287,7 @@ class _ActivityReviewScreenState extends ConsumerState<ActivityReviewScreen> {
     final choice = await _showClassificationSheet(group.name);
     if (choice == null || !mounted) return;
     final applyFuture = await _chooseApplicationScope(
-      allowRemember:
-          choice.targetId != null ||
-          const {
-            'system_activity',
-            'user_application',
-            'generally_unrelated',
-            'unrelated',
-          }.contains(choice.classification),
+      allowRemember: activityResolutionCanRememberForFuture(choice),
     );
     if (applyFuture == null || !mounted) return;
     final ids = group.periods.map((period) => period.segmentId).toSet();
@@ -305,14 +298,7 @@ class _ActivityReviewScreenState extends ConsumerState<ActivityReviewScreen> {
     final choice = await _showClassificationSheet(period.detail);
     if (choice == null || !mounted) return;
     final applyFuture = await _chooseApplicationScope(
-      allowRemember:
-          choice.targetId != null ||
-          const {
-            'system_activity',
-            'user_application',
-            'generally_unrelated',
-            'unrelated',
-          }.contains(choice.classification),
+      allowRemember: activityResolutionCanRememberForFuture(choice),
     );
     if (applyFuture == null || !mounted) return;
     await _applyResolution({
@@ -452,21 +438,39 @@ class _ActivityReviewScreenState extends ConsumerState<ActivityReviewScreen> {
     return showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text(copy.applyQuestion),
+        title: Text(allowRemember ? copy.applyQuestion : copy.applyAllocation),
+        content: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 420),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              OutlinedButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: Text(copy.selectedOnly, textAlign: TextAlign.center),
+              ),
+              if (allowRemember) ...[
+                const SizedBox(height: 8),
+                FilledButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  child: Text(copy.rememberFuture, textAlign: TextAlign.center),
+                ),
+              ] else ...[
+                const SizedBox(height: 12),
+                Text(
+                  copy.multiTaskSelectedOnly,
+                  textAlign: TextAlign.start,
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+              ],
+            ],
+          ),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
             child: Text(copy.cancel),
           ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: Text(copy.selectedOnly),
-          ),
-          if (allowRemember)
-            FilledButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: Text(copy.rememberFuture),
-            ),
         ],
       ),
     );
@@ -567,6 +571,7 @@ class _ActivityPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final compact = MediaQuery.sizeOf(context).width < 600;
     final locale = Localizations.localeOf(context).toLanguageTag();
     final direction = Directionality.of(context);
     final dateLabel = isToday
@@ -579,7 +584,12 @@ class _ActivityPage extends StatelessWidget {
     return CustomScrollView(
       slivers: [
         SliverPadding(
-          padding: const EdgeInsets.fromLTRB(24, 24, 24, 12),
+          padding: EdgeInsets.fromLTRB(
+            compact ? 12 : 24,
+            compact ? 16 : 24,
+            compact ? 12 : 24,
+            12,
+          ),
           sliver: SliverToBoxAdapter(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -617,35 +627,55 @@ class _ActivityPage extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 18),
-                Row(
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    IconButton(
-                      tooltip: copy.previousDay,
-                      onPressed: onPrevious,
-                      icon: Icon(
-                        direction == TextDirection.rtl
-                            ? Icons.chevron_right
-                            : Icons.chevron_left,
-                      ),
+                    Row(
+                      children: [
+                        IconButton(
+                          tooltip: copy.previousDay,
+                          onPressed: onPrevious,
+                          icon: Icon(
+                            direction == TextDirection.rtl
+                                ? Icons.chevron_right
+                                : Icons.chevron_left,
+                          ),
+                        ),
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: onPickDate,
+                            icon: const Icon(Icons.calendar_today_outlined),
+                            label: Text(
+                              dateLabel,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ),
+                        IconButton(
+                          tooltip: copy.nextDay,
+                          onPressed: onNext,
+                          icon: Icon(
+                            direction == TextDirection.rtl
+                                ? Icons.chevron_left
+                                : Icons.chevron_right,
+                          ),
+                        ),
+                        if (!compact && !isToday)
+                          TextButton(
+                            onPressed: onToday,
+                            child: Text(copy.today),
+                          ),
+                      ],
                     ),
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: onPickDate,
-                        icon: const Icon(Icons.calendar_today_outlined),
-                        label: Text(dateLabel),
+                    if (compact && !isToday)
+                      Align(
+                        alignment: AlignmentDirectional.centerEnd,
+                        child: TextButton(
+                          onPressed: onToday,
+                          child: Text(copy.today),
+                        ),
                       ),
-                    ),
-                    IconButton(
-                      tooltip: copy.nextDay,
-                      onPressed: onNext,
-                      icon: Icon(
-                        direction == TextDirection.rtl
-                            ? Icons.chevron_left
-                            : Icons.chevron_right,
-                      ),
-                    ),
-                    if (!isToday)
-                      TextButton(onPressed: onToday, child: Text(copy.today)),
                   ],
                 ),
                 const SizedBox(height: 8),
@@ -693,7 +723,12 @@ class _ActivityPage extends StatelessWidget {
           ),
         ),
         SliverPadding(
-          padding: const EdgeInsets.fromLTRB(24, 8, 24, 32),
+          padding: EdgeInsets.fromLTRB(
+            compact ? 12 : 24,
+            8,
+            compact ? 12 : 24,
+            32,
+          ),
           sliver: SliverToBoxAdapter(child: child),
         ),
       ],
@@ -796,6 +831,7 @@ class _GroupedActivityCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final compact = MediaQuery.sizeOf(context).width < 600;
     final locale = Localizations.localeOf(context).toLanguageTag();
     final first = tz.TZDateTime.from(group.firstDetected, location);
     final last = tz.TZDateTime.from(group.lastDetected, location);
@@ -808,20 +844,38 @@ class _GroupedActivityCard extends StatelessWidget {
           backgroundColor: Theme.of(context).colorScheme.primaryContainer,
           child: Icon(_iconFor(group.sourceType)),
         ),
-        title: Row(
-          children: [
-            Expanded(
-              child: Text(
-                group.name,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontWeight: FontWeight.w800),
+        title: compact
+            ? Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    group.name,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontWeight: FontWeight.w800),
+                  ),
+                  const SizedBox(height: 6),
+                  ActivityClassificationBadge(
+                    classification: group.classification,
+                  ),
+                ],
+              )
+            : Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      group.name,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.w800),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  ActivityClassificationBadge(
+                    classification: group.classification,
+                  ),
+                ],
               ),
-            ),
-            const SizedBox(width: 8),
-            ActivityClassificationBadge(classification: group.classification),
-          ],
-        ),
         subtitle: Padding(
           padding: const EdgeInsets.only(top: 6),
           child: Column(
@@ -951,8 +1005,8 @@ class _TaskPickerDialogState extends State<_TaskPickerDialog> {
   Widget build(BuildContext context) {
     return AlertDialog(
       title: Text(widget.copy.creditToTasks),
-      content: SizedBox(
-        width: 480,
+      content: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 480),
         child: widget.tasks.isEmpty
             ? Text(widget.copy.noTaskTargets)
             : ListView(
@@ -964,8 +1018,12 @@ class _TaskPickerDialogState extends State<_TaskPickerDialog> {
                     CheckboxListTile(
                       contentPadding: EdgeInsets.zero,
                       value: _percentages.containsKey(task.id),
-                      title: Text(task.title),
-                      subtitle: Text(task.status),
+                      title: Text(
+                        task.title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      subtitle: Text(context.l10n.taskStatus(task.status)),
                       onChanged: (value) => _toggle(task, value ?? false),
                     ),
                     if (_percentages.containsKey(task.id))
@@ -1164,6 +1222,8 @@ class _ActivityCopy {
   String get applyQuestion => l10n.text('activity_apply_scope');
   String get selectedOnly => l10n.text('activity_selected_only');
   String get rememberFuture => l10n.text('activity_remember_future');
+  String get multiTaskSelectedOnly =>
+      l10n.text('activity_multi_task_selected_only');
   String get cancel => l10n.text('cancel');
   String get reviewSaved => l10n.text('activity_review_saved');
   String get couldNotSave => l10n.text('activity_save_failed');

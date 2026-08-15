@@ -31,6 +31,7 @@ void main() {
       required String state,
       required DateTime? segmentStartedAt,
       int accumulatedActiveMs = 0,
+      String dataJson = '{}',
     }) {
       return LocalRuntime(
         id: 'active',
@@ -41,6 +42,7 @@ void main() {
         segmentStartedAt: segmentStartedAt,
         accumulatedActiveMs: accumulatedActiveMs,
         accumulatedPausedMs: 0,
+        dataJson: dataJson,
         revision: 1,
         updatedAt: now,
       );
@@ -143,6 +145,32 @@ void main() {
       expect(formatPomodoroCountdown(1), '00:01');
       expect(formatPomodoroCountdown(0), '00:00');
       expect(formatPomodoroCountdown(65 * 60 * 1000), '01:05:00');
+    });
+
+    test('lifetime work never shortens a newly started focus interval', () {
+      const lifetime = 14 * 60 * 1000;
+      final active = runtime(
+        state: 'running',
+        segmentStartedAt: now,
+        accumulatedActiveMs: lifetime,
+        dataJson: jsonEncode({
+          pomodoroFocusIntervalBaseKey: lifetime,
+          pomodoroCompletedFocusesKey: 1,
+        }),
+      );
+
+      final pomodoro = PomodoroExecutionSnapshot.fromConfiguration(
+        runtime: active,
+        now: now,
+        configuration: const {'pomodoro_focus_ms': 25 * 60 * 1000},
+        plannedMs: 60 * 60 * 1000,
+      );
+
+      expect(pomodoro.remainingMs, 25 * 60 * 1000);
+      expect(formatPomodoroCountdown(pomodoro.remainingMs), '25:00');
+      expect(pomodoro.focusedMs, lifetime);
+      expect(pomodoro.completedFocuses, 1);
+      expect(pomodoro.currentSession, 2);
     });
 
     test('planned task effort changes to an explicit overtime value', () {
@@ -592,6 +620,89 @@ void main() {
           updated.accumulatedActiveMs,
           const Duration(minutes: 2).inMilliseconds,
         );
+      },
+    );
+
+    test(
+      'early break and skipped break each reset focus without erasing lifetime work',
+      () async {
+        const focusMs = 25 * 60 * 1000;
+        final taskId = await repository.createTask(
+          TaskDraft(
+            title: 'Independent Pomodoro intervals',
+            executionMode: 'pomodoro',
+            estimatedDuration: const Duration(hours: 2),
+            configuration: const {'pomodoro_focus_ms': focusMs},
+          ),
+        );
+        var task = (await repository.getTask(taskId))!;
+        await repository.start(task);
+        var runtime = (await repository.getRuntime())!;
+        await (database.update(
+          database.localRuntimeStates,
+        )..where((row) => row.id.equals(runtime.id))).write(
+          LocalRuntimeStatesCompanion(
+            segmentStartedAt: drift.Value(
+              DateTime.now().toUtc().subtract(const Duration(minutes: 14)),
+            ),
+          ),
+        );
+
+        task = (await repository.getTask(taskId))!;
+        await repository.startBreak(task);
+        runtime = (await repository.getRuntime())!;
+        final firstLifetime = runtime.accumulatedActiveMs;
+        expect(runtime.state, 'break');
+        expect(
+          firstLifetime,
+          inInclusiveRange(
+            const Duration(minutes: 14).inMilliseconds,
+            const Duration(minutes: 14, seconds: 1).inMilliseconds,
+          ),
+        );
+        expect(pomodoroFocusIntervalBaseMs(runtime, focusMs), firstLifetime);
+        expect(pomodoroCompletedFocuses(runtime, focusMs), 1);
+
+        await repository.finishBreak(task);
+        runtime = (await repository.getRuntime())!;
+        var snapshot = PomodoroExecutionSnapshot.fromConfiguration(
+          runtime: runtime,
+          now: runtime.segmentStartedAt!,
+          configuration: const {'pomodoro_focus_ms': focusMs},
+          plannedMs: const Duration(hours: 2).inMilliseconds,
+        );
+        expect(snapshot.remainingMs, focusMs);
+        expect(formatPomodoroCountdown(snapshot.remainingMs), '25:00');
+        expect(runtime.accumulatedActiveMs, firstLifetime);
+
+        await (database.update(
+          database.localRuntimeStates,
+        )..where((row) => row.id.equals(runtime.id))).write(
+          LocalRuntimeStatesCompanion(
+            segmentStartedAt: drift.Value(
+              DateTime.now().toUtc().subtract(const Duration(minutes: 26)),
+            ),
+          ),
+        );
+        task = (await repository.getTask(taskId))!;
+        expect(await repository.skipOfferedBreak(task), isTrue);
+
+        runtime = (await repository.getRuntime())!;
+        expect(runtime.state, 'running');
+        expect(runtime.accumulatedActiveMs, firstLifetime + focusMs);
+        expect(
+          pomodoroFocusIntervalBaseMs(runtime, focusMs),
+          runtime.accumulatedActiveMs,
+        );
+        expect(pomodoroCompletedFocuses(runtime, focusMs), 2);
+        snapshot = PomodoroExecutionSnapshot.fromConfiguration(
+          runtime: runtime,
+          now: runtime.segmentStartedAt!,
+          configuration: const {'pomodoro_focus_ms': focusMs},
+          plannedMs: const Duration(hours: 2).inMilliseconds,
+        );
+        expect(snapshot.remainingMs, focusMs);
+        expect(formatPomodoroCountdown(snapshot.remainingMs), '25:00');
       },
     );
 

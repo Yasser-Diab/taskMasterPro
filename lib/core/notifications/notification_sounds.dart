@@ -38,6 +38,108 @@ class StoredNotificationResponse {
   final String? actionId;
 }
 
+const _windowsActionEnvelopeVersion = 1;
+
+/// Windows toast activation returns the action `arguments` as both the
+/// response payload and action id.  Keep the canonical notification payload in
+/// those arguments so a button can identify both the command and the exact
+/// task/runtime interval it was rendered for.
+@visibleForTesting
+String windowsNotificationActionArguments({
+  required String actionId,
+  required String payload,
+}) => jsonEncode(<String, Object?>{
+  'taskmaster_action_version': _windowsActionEnvelopeVersion,
+  'action_id': actionId,
+  'payload': payload,
+});
+
+/// Normalizes the platform-specific response shape before any route or
+/// execution-ledger validation runs.
+///
+/// Android already supplies `payload` and `actionId` separately. The vendored
+/// Windows plugin receives only the toast activation arguments, so TaskMaster
+/// actions use [windowsNotificationActionArguments] to carry both values.
+StoredNotificationResponse normalizeNotificationResponse(
+  NotificationResponse response,
+) {
+  final activation = response.actionId;
+  if (activation != null && activation.isNotEmpty) {
+    try {
+      final decoded = jsonDecode(activation);
+      if (decoded is Map &&
+          decoded['taskmaster_action_version'] ==
+              _windowsActionEnvelopeVersion &&
+          decoded['action_id'] is String &&
+          decoded['payload'] is String) {
+        return StoredNotificationResponse(
+          payload: decoded['payload'] as String,
+          actionId: decoded['action_id'] as String,
+        );
+      }
+
+      // The Windows implementation reports a click on the toast body as an
+      // action whose arguments are the original JSON payload. Treat that as
+      // Open, never as an unknown mutating action.
+      if (decoded is Map && decoded['route'] is String) {
+        return StoredNotificationResponse(
+          payload: activation,
+          actionId: 'open',
+        );
+      }
+    } catch (_) {
+      // Android action ids and legacy plain routes are intentionally not JSON.
+    }
+  }
+  return StoredNotificationResponse(
+    payload: response.payload,
+    actionId: response.actionId,
+  );
+}
+
+/// Windows allocates very little horizontal space to toast actions. Keep the
+/// command ids unchanged while using labels which remain readable at normal
+/// and large text scales.
+@visibleForTesting
+String windowsExecutionActionLabelKey(String actionId, String fallbackKey) {
+  return switch (actionId) {
+    'start_break' => 'notification_action_break_compact',
+    'start_focus' ||
+    'continue_working' => 'notification_action_continue_compact',
+    'finish_task' => 'notification_action_finish_compact',
+    _ => fallbackKey,
+  };
+}
+
+/// A mutating Windows toast must remain pending until TaskMaster has applied
+/// the revision-guarded runtime command. Open/Dismiss actions may close
+/// immediately because they do not change canonical task state.
+@visibleForTesting
+WindowsNotificationBehavior windowsExecutionActionBehavior(String actionId) {
+  return const {
+        'pause',
+        'resume',
+        'start_break',
+        'start_focus',
+        'continue_working',
+        'extend_break',
+        'finish_task',
+      }.contains(actionId)
+      ? WindowsNotificationBehavior.pendingUpdate
+      : WindowsNotificationBehavior.dismiss;
+}
+
+/// Task-reminder mutations need the same acknowledgement contract as timer
+/// actions on Windows. A toast remains visible (with Windows' pending state)
+/// until HomeShell confirms that Start/Complete/Snooze reached local canonical
+/// state. Open and Dismiss are navigation-only/explicit-retirement actions.
+@visibleForTesting
+WindowsNotificationBehavior windowsReminderActionBehavior(String actionId) {
+  return const {'start', 'complete', 'snooze'}.contains(actionId)
+      ? WindowsNotificationBehavior.pendingUpdate
+      : WindowsNotificationBehavior.dismiss;
+}
+
 class OwnedNotificationPayload {
   const OwnedNotificationPayload({
     required this.route,
@@ -48,6 +150,7 @@ class OwnedNotificationPayload {
     this.sessionId,
     this.runtimeRevision,
     this.intervalId,
+    this.reminderId,
   });
 
   final String route;
@@ -58,6 +161,7 @@ class OwnedNotificationPayload {
   final String? sessionId;
   final int? runtimeRevision;
   final String? intervalId;
+  final int? reminderId;
 
   String? get taskId =>
       route.startsWith('task/') ? route.substring('task/'.length).trim() : null;
@@ -135,6 +239,21 @@ class AndroidNotificationActionDelivery {
 
   final bool showsUserInterface;
   final bool cancelNotification;
+}
+
+@visibleForTesting
+AndroidNotificationActionDelivery reminderNotificationActionDelivery(
+  String actionId,
+) {
+  final mutatesReminder = const {
+    'start',
+    'complete',
+    'snooze',
+  }.contains(actionId);
+  return AndroidNotificationActionDelivery(
+    showsUserInterface: mutatesReminder,
+    cancelNotification: !mutatesReminder,
+  );
 }
 
 @visibleForTesting
@@ -740,8 +859,14 @@ class LocalNotificationService {
             actions: [
               for (final action in actions)
                 WindowsAction(
-                  content: l10n.text(action.$2),
-                  arguments: action.$1,
+                  content: l10n.text(
+                    windowsExecutionActionLabelKey(action.$1, action.$2),
+                  ),
+                  arguments: windowsNotificationActionArguments(
+                    actionId: action.$1,
+                    payload: payload,
+                  ),
+                  activationBehavior: windowsExecutionActionBehavior(action.$1),
                 ),
             ],
           ),
@@ -957,16 +1082,20 @@ class LocalNotificationService {
   static Future<void> storeBackgroundResponse(
     NotificationResponse response,
   ) async {
-    if (response.payload == null) return;
+    final normalized = normalizeNotificationResponse(response);
+    if (normalized.payload == null) return;
     final preferences = await SharedPreferences.getInstance();
-    final owner = decodeOwnedPayload(response.payload).ownerId;
+    final owner = decodeOwnedPayload(normalized.payload).ownerId;
     final storeKey = owner == null
         ? _backgroundResponseStore
         : '$_backgroundResponseStore:$owner';
     final existing = preferences.getStringList(storeKey) ?? const <String>[];
     final queued = <String>[
       ...existing.reversed.take(20).toList().reversed,
-      jsonEncode({'payload': response.payload, 'action_id': response.actionId}),
+      jsonEncode({
+        'payload': normalized.payload,
+        'action_id': normalized.actionId,
+      }),
     ];
     await preferences.setStringList(storeKey, queued);
   }
@@ -1232,6 +1361,7 @@ class LocalNotificationService {
           sessionId: value['session_id'] as String?,
           runtimeRevision: (value['runtime_revision'] as num?)?.toInt(),
           intervalId: value['interval_id'] as String?,
+          reminderId: int.tryParse('${value['reminder_id'] ?? ''}'),
         );
       }
     } catch (_) {
@@ -1429,6 +1559,15 @@ class LocalNotificationService {
     final effectiveCategory =
         category ?? NotificationSounds.categoryForReminderType(reminderType);
     final body = _bodyFor(reminderType, l10n);
+    final payload = ownedPayloadForOwner(
+      ownerId: ownerId,
+      route: 'task/$taskId',
+      occurrenceId: occurrenceId,
+      taskRevision: taskRevision,
+      reminderRevision: reminderRevision,
+      reminderId: id.toString(),
+      boundaryAtUtc: scheduledAtUtc,
+    );
     await _serializeNotificationMutation(() async {
       // Windows appends scheduled toasts even when the tag is unchanged. Make
       // every refresh an atomic replace and drop reminders that became due
@@ -1454,42 +1593,80 @@ class LocalNotificationService {
               AndroidNotificationAction(
                 'start',
                 l10n.text('start'),
-                showsUserInterface: true,
+                showsUserInterface: reminderNotificationActionDelivery(
+                  'start',
+                ).showsUserInterface,
+                cancelNotification: reminderNotificationActionDelivery(
+                  'start',
+                ).cancelNotification,
               ),
               AndroidNotificationAction(
                 'complete',
                 l10n.text('complete'),
-                showsUserInterface: true,
+                showsUserInterface: reminderNotificationActionDelivery(
+                  'complete',
+                ).showsUserInterface,
+                cancelNotification: reminderNotificationActionDelivery(
+                  'complete',
+                ).cancelNotification,
               ),
               AndroidNotificationAction(
                 'snooze',
                 l10n.text('snooze'),
-                showsUserInterface: true,
+                showsUserInterface: reminderNotificationActionDelivery(
+                  'snooze',
+                ).showsUserInterface,
+                cancelNotification: reminderNotificationActionDelivery(
+                  'snooze',
+                ).cancelNotification,
               ),
             ],
           ),
           windows: WindowsNotificationDetails(
             audio: _windowsAudio(sound),
             actions: [
-              WindowsAction(content: l10n.text('start'), arguments: 'start'),
-              WindowsAction(content: l10n.text('snooze'), arguments: 'snooze'),
-              WindowsAction(content: l10n.text('open'), arguments: 'open'),
+              WindowsAction(
+                content: l10n.text('start'),
+                arguments: windowsNotificationActionArguments(
+                  actionId: 'start',
+                  payload: payload,
+                ),
+                activationBehavior: windowsReminderActionBehavior('start'),
+              ),
+              WindowsAction(
+                content: l10n.text('complete'),
+                arguments: windowsNotificationActionArguments(
+                  actionId: 'complete',
+                  payload: payload,
+                ),
+                activationBehavior: windowsReminderActionBehavior('complete'),
+              ),
+              WindowsAction(
+                content: l10n.text('snooze'),
+                arguments: windowsNotificationActionArguments(
+                  actionId: 'snooze',
+                  payload: payload,
+                ),
+                activationBehavior: windowsReminderActionBehavior('snooze'),
+              ),
+              WindowsAction(
+                content: l10n.text('open'),
+                arguments: windowsNotificationActionArguments(
+                  actionId: 'open',
+                  payload: payload,
+                ),
+              ),
               WindowsAction(
                 content: l10n.text('dismiss'),
-                arguments: 'dismiss',
+                arguments: windowsNotificationActionArguments(
+                  actionId: 'dismiss',
+                  payload: payload,
+                ),
               ),
             ],
           ),
         ),
-        payload: ownedPayloadForOwner(
-          ownerId: ownerId,
-          route: 'task/$taskId',
-          occurrenceId: occurrenceId,
-          taskRevision: taskRevision,
-          reminderRevision: reminderRevision,
-          reminderId: id.toString(),
-          boundaryAtUtc: scheduledAtUtc,
-        ),
+        payload: payload,
       );
     });
   }
@@ -1624,6 +1801,15 @@ class LocalNotificationService {
             ('finish_task', 'finish_task'),
             ('open', 'open'),
           ];
+    final payload = ownedPayload(
+      'task/$taskId',
+      eventType: eventType,
+      boundaryAtUtc: scheduledAtUtc,
+      notificationId: notificationIdentity,
+      sessionId: sessionId,
+      runtimeRevision: runtimeRevision,
+      intervalId: intervalId,
+    );
     await _serializeNotificationMutation(() async {
       await _plugin.cancel(id: id);
       if (!NotificationSchedulePolicy.canSchedule(scheduledAtUtc)) {
@@ -1675,21 +1861,19 @@ class LocalNotificationService {
             actions: [
               for (final action in actions.take(5))
                 WindowsAction(
-                  content: l10n.text(action.$2),
-                  arguments: action.$1,
+                  content: l10n.text(
+                    windowsExecutionActionLabelKey(action.$1, action.$2),
+                  ),
+                  arguments: windowsNotificationActionArguments(
+                    actionId: action.$1,
+                    payload: payload,
+                  ),
+                  activationBehavior: windowsExecutionActionBehavior(action.$1),
                 ),
             ],
           ),
         ),
-        payload: ownedPayload(
-          'task/$taskId',
-          eventType: eventType,
-          boundaryAtUtc: scheduledAtUtc,
-          notificationId: notificationIdentity,
-          sessionId: sessionId,
-          runtimeRevision: runtimeRevision,
-          intervalId: intervalId,
-        ),
+        payload: payload,
       );
       await _setExecutionLedgerState(
         taskId: taskId,
@@ -1736,6 +1920,7 @@ class LocalNotificationService {
     }
     final title = l10n.text('sleep_reminder_title');
     final body = l10n.text('sleep_reminder_body');
+    final payload = ownedPayload('settings/wellbeing');
     await _serializeNotificationMutation(() async {
       await _plugin.cancel(id: id);
       await _plugin.zonedSchedule(
@@ -1768,23 +1953,47 @@ class LocalNotificationService {
             actions: [
               WindowsAction(
                 content: l10n.text('notification_view_schedule'),
-                arguments: 'open_wellbeing',
+                arguments: windowsNotificationActionArguments(
+                  actionId: 'open_wellbeing',
+                  payload: payload,
+                ),
               ),
               WindowsAction(
                 content: l10n.text('dismiss'),
-                arguments: 'dismiss',
+                arguments: windowsNotificationActionArguments(
+                  actionId: 'dismiss',
+                  payload: payload,
+                ),
               ),
             ],
           ),
         ),
-        payload: ownedPayload('settings/wellbeing'),
+        payload: payload,
       );
     });
   }
 
   Future<void> cancelExecutionCompletion(String taskId) async {
+    await cancelExecutionCompletionWithState(taskId);
+  }
+
+  /// Retires the single execution-toast slot while preserving the reason in
+  /// the identity ledger. Rejected/superseded Windows pending-update actions
+  /// use `superseded`; ordinary runtime reconciliation uses `cancelled`.
+  Future<void> cancelExecutionCompletionWithState(
+    String taskId, {
+    String ledgerState = 'cancelled',
+  }) async {
     await cancel(executionNotificationId(taskId));
-    await _setExecutionLedgerState(taskId: taskId, state: 'cancelled');
+    await _setExecutionLedgerState(taskId: taskId, state: ledgerState);
+  }
+
+  /// Cancels only the ordinary persisted reminder represented by [payload].
+  /// It deliberately cannot touch the execution alarm slot for the same task.
+  Future<void> cancelTaskReminder(OwnedNotificationPayload payload) async {
+    final reminderId = payload.reminderId;
+    if (reminderId == null) return;
+    await cancel(reminderId);
   }
 
   /// Repairs this installation's task notification queue after auth/runtime
@@ -1867,6 +2076,7 @@ class LocalNotificationService {
     final l10n = AppLocalizations(Locale(localeCode));
     final title = l10n.text('activity_review_notification_title');
     final body = l10n.text('activity_review_over_half');
+    final payload = ownedPayload('activity/$taskId');
     await _plugin.show(
       id: 'activity-review:$taskId'.hashCode & 0x7fffffff,
       title: title,
@@ -1894,13 +2104,22 @@ class LocalNotificationService {
           actions: [
             WindowsAction(
               content: l10n.text('activity_review'),
-              arguments: 'review_activity',
+              arguments: windowsNotificationActionArguments(
+                actionId: 'review_activity',
+                payload: payload,
+              ),
             ),
-            WindowsAction(content: l10n.text('dismiss'), arguments: 'dismiss'),
+            WindowsAction(
+              content: l10n.text('dismiss'),
+              arguments: windowsNotificationActionArguments(
+                actionId: 'dismiss',
+                payload: payload,
+              ),
+            ),
           ],
         ),
       ),
-      payload: ownedPayload('activity/$taskId'),
+      payload: payload,
     );
   }
 

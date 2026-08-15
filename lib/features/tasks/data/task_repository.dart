@@ -8,6 +8,7 @@ import 'package:uuid/uuid.dart';
 import '../../../core/database/app_database.dart';
 import '../../../core/data/entity_record_repository.dart';
 import '../../../core/platform/device_identity.dart';
+import '../domain/pomodoro_execution_state.dart';
 import '../domain/task_domain_catalog.dart';
 import '../domain/task_schedule_policy.dart';
 
@@ -1141,6 +1142,15 @@ class TaskRepository {
               sessionId: Value(sessionId),
               state: const Value('running'),
               segmentStartedAt: Value(now),
+              dataJson: Value(
+                currentTask.executionMode == 'pomodoro'
+                    ? updatedPomodoroRuntimeData(
+                        null,
+                        focusIntervalActiveBaseMs: 0,
+                        completedFocuses: 0,
+                      )
+                    : '{}',
+              ),
               revision: Value(runtimeRevision + 1),
               updatedAt: now,
               lastCommandId: Value(command.commandId),
@@ -1263,6 +1273,15 @@ class TaskRepository {
                   segmentStartedAt: Value(now),
                   accumulatedActiveMs: const Value(0),
                   accumulatedPausedMs: const Value(0),
+                  dataJson: Value(
+                    selectedTask.executionMode == 'pomodoro'
+                        ? updatedPomodoroRuntimeData(
+                            null,
+                            focusIntervalActiveBaseMs: 0,
+                            completedFocuses: 0,
+                          )
+                        : '{}',
+                  ),
                   revision: Value(runtime.revision + 1),
                   updatedAt: Value(now),
                   lastCommandId: Value(command.commandId),
@@ -1435,6 +1454,13 @@ class TaskRepository {
       // remaining configured focus interval before the boundary is saved.
       final elapsed = _recordableSegmentMs(currentTask, runtime, now);
       final recorded = runtime.accumulatedActiveMs + elapsed;
+      final focusMs = _pomodoroFocusDurationMs(currentTask);
+      final completedFocuses = pomodoroCompletedFocuses(runtime, focusMs) + 1;
+      final runtimeData = updatedPomodoroRuntimeData(
+        runtime,
+        focusIntervalActiveBaseMs: recorded,
+        completedFocuses: completedFocuses,
+      );
       final command = await _newRuntimeCommandIdentity();
       final hasStaleBreakExtension = _configuration(
         currentTask,
@@ -1453,6 +1479,7 @@ class TaskRepository {
                   state: const Value('break'),
                   segmentStartedAt: Value(now),
                   accumulatedActiveMs: Value(recorded),
+                  dataJson: Value(runtimeData),
                   revision: Value(runtime.revision + 1),
                   updatedAt: Value(now),
                   lastCommandId: Value(command.commandId),
@@ -1477,6 +1504,7 @@ class TaskRepository {
         state: 'break',
         now: now,
         accumulatedActiveMs: recorded,
+        pomodoroCompletedFocuses: completedFocuses,
       );
       await _queueRuntimeTransition(
         command: command,
@@ -1503,6 +1531,13 @@ class TaskRepository {
         return;
       }
       final now = DateTime.now().toUtc();
+      final focusMs = _pomodoroFocusDurationMs(currentTask);
+      final completedFocuses = pomodoroCompletedFocuses(runtime, focusMs);
+      final runtimeData = updatedPomodoroRuntimeData(
+        runtime,
+        focusIntervalActiveBaseMs: runtime.accumulatedActiveMs,
+        completedFocuses: completedFocuses,
+      );
       final command = await _newRuntimeCommandIdentity();
       final changed =
           await (database.update(database.localRuntimeStates)..where(
@@ -1517,6 +1552,7 @@ class TaskRepository {
                 LocalRuntimeStatesCompanion(
                   state: const Value('running'),
                   segmentStartedAt: Value(now),
+                  dataJson: Value(runtimeData),
                   revision: Value(runtime.revision + 1),
                   updatedAt: Value(now),
                   lastCommandId: Value(command.commandId),
@@ -1540,6 +1576,7 @@ class TaskRepository {
         previousRuntime: runtime,
         state: 'running',
         now: now,
+        pomodoroCompletedFocuses: completedFocuses,
       );
       await _queueRuntimeTransition(
         command: command,
@@ -1577,12 +1614,26 @@ class TaskRepository {
       final rawElapsed = now
           .difference(runtime.segmentStartedAt!.toUtc())
           .inMilliseconds;
-      final recordable = _recordableSegmentMs(currentTask, runtime, now);
       // Skip break is valid only after the current configured focus interval
-      // has reached its boundary. Do not use it as an early focus restart.
-      if (rawElapsed < recordable) return false;
+      // has reached its boundary. `_recordableSegmentMs` is clamped to the
+      // remaining interval, so comparing elapsed with that clamped value would
+      // incorrectly accept every early request where the two values are equal.
+      final focusMs = _pomodoroFocusDurationMs(currentTask);
+      final focusBaseMs = pomodoroFocusIntervalBaseMs(runtime, focusMs);
+      final alreadyInFocus = (runtime.accumulatedActiveMs - focusBaseMs)
+          .clamp(0, focusMs)
+          .toInt();
+      final remainingFocusMs = focusMs - alreadyInFocus;
+      if (rawElapsed < remainingFocusMs) return false;
 
+      final recordable = _recordableSegmentMs(currentTask, runtime, now);
       final recorded = runtime.accumulatedActiveMs + recordable;
+      final completedFocuses = pomodoroCompletedFocuses(runtime, focusMs) + 1;
+      final runtimeData = updatedPomodoroRuntimeData(
+        runtime,
+        focusIntervalActiveBaseMs: recorded,
+        completedFocuses: completedFocuses,
+      );
       final command = await _newRuntimeCommandIdentity();
       final hasStaleBreakExtension = _configuration(
         currentTask,
@@ -1601,6 +1652,7 @@ class TaskRepository {
                   state: const Value('running'),
                   segmentStartedAt: Value(now),
                   accumulatedActiveMs: Value(recorded),
+                  dataJson: Value(runtimeData),
                   revision: Value(runtime.revision + 1),
                   updatedAt: Value(now),
                   lastCommandId: Value(command.commandId),
@@ -1623,6 +1675,7 @@ class TaskRepository {
         state: 'running',
         now: now,
         accumulatedActiveMs: recorded,
+        pomodoroCompletedFocuses: completedFocuses,
       );
       await _queueRuntimeTransition(
         command: command,
@@ -2464,6 +2517,7 @@ class TaskRepository {
     required DateTime now,
     DateTime? finishedAt,
     int? accumulatedActiveMs,
+    int? pomodoroCompletedFocuses,
   }) async {
     final session = await entities.get(sessionId);
     if (session == null) {
@@ -2495,6 +2549,9 @@ class TaskRepository {
           : data['current_pomodoro_segment']
       ..['finished_at'] = finishedAt?.toIso8601String()
       ..['accumulated_active_ms'] = active;
+    if (pomodoroCompletedFocuses != null) {
+      data['current_cycle'] = pomodoroCompletedFocuses;
+    }
     final changed =
         await (database.update(database.localEntityRecords)..where(
               (row) =>
@@ -2900,7 +2957,9 @@ class TaskRepository {
     if (task.executionMode != 'pomodoro') return elapsed;
     final focusMs = _pomodoroFocusDurationMs(task);
     if (focusMs <= 0) return elapsed;
-    final alreadyInFocus = runtime.accumulatedActiveMs % focusMs;
+    final alreadyInFocus =
+        runtime.accumulatedActiveMs -
+        pomodoroFocusIntervalBaseMs(runtime, focusMs);
     final remaining = focusMs - alreadyInFocus;
     return elapsed.clamp(0, remaining).toInt();
   }

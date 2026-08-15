@@ -50,6 +50,18 @@ void main() {
       expect(source, contains('getSnapshot(checkRemoteDevices: false)'));
       expect(source, isNot(contains('showConnectedDevices')));
       expect(source, isNot(contains("text('connected_devices')")));
+      expect(source, contains('final compact = viewport.width < 600'));
+      expect(
+        source,
+        contains(
+          'height: (viewport.height - (compact ? 32 : 48)).clamp(320.0, 760.0)',
+        ),
+      );
+      expect(
+        source,
+        contains('context.l10n.locale.toLanguageTag()'),
+        reason: 'Sync dates must follow the selected language.',
+      );
     });
 
     test('connected devices has a dedicated responsive route', () {
@@ -134,5 +146,51 @@ void main() {
         );
       },
     );
+
+    test('roadmaps use a content-sized phone list instead of a fixed grid', () {
+      final source = File(
+        'lib/features/roadmaps/presentation/roadmaps_screen.dart',
+      ).readAsStringSync();
+
+      expect(source, contains("ValueKey('mobile-roadmap-add')"));
+      expect(source, contains('SliverList.separated('));
+      expect(source, contains('if (constraints.maxWidth < 380)'));
+      expect(source, contains('if (constraints.maxWidth < 420)'));
+      expect(source, contains('Directionality.of(context)'));
+    });
+
+    test('report controls replace desktop segments with phone dropdowns', () {
+      final source = File(
+        'lib/features/reports/presentation/performance_report_screen.dart',
+      ).readAsStringSync();
+
+      expect(source, contains("ValueKey('mobile-report-controls')"));
+      expect(source, contains('if (constraints.maxWidth < 600)'));
+      expect(source, contains('DropdownButtonFormField<String>'));
+      expect(
+        RegExp('DropdownButtonFormField<bool>').allMatches(source).length,
+        greaterThanOrEqualTo(2),
+      );
+    });
+
+    test('settings reduce phone padding and let long headings wrap', () {
+      final source = File(
+        'lib/features/settings/presentation/settings_screen.dart',
+      ).readAsStringSync();
+
+      expect(
+        source,
+        contains('final compact = MediaQuery.sizeOf(context).width < 600'),
+      );
+      expect(source, contains('padding: EdgeInsets.all(compact ? 16 : 20)'));
+      expect(source, contains('if (constraints.maxWidth < 420)'));
+      expect(source, contains('constraints.maxWidth >= 360'));
+      expect(
+        source,
+        contains(
+          'Expanded(\n                  child: Text(\n                    title,',
+        ),
+      );
+    });
   });
 }

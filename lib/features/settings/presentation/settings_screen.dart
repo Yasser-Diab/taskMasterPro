@@ -314,12 +314,18 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       return const Center(child: CircularProgressIndicator());
     }
     final themeKey = TaskMasterThemeKey.fromKey(settings.themeKey);
+    final compact = MediaQuery.sizeOf(context).width < 600;
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: CustomScrollView(
         slivers: [
           SliverPadding(
-            padding: const EdgeInsets.fromLTRB(24, 24, 24, 12),
+            padding: EdgeInsets.fromLTRB(
+              compact ? 16 : 24,
+              compact ? 16 : 24,
+              compact ? 16 : 24,
+              12,
+            ),
             sliver: SliverToBoxAdapter(
               child: Text(
                 context.l10n.text('settings'),
@@ -330,7 +336,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ),
           ),
           SliverPadding(
-            padding: const EdgeInsets.fromLTRB(24, 8, 24, 32),
+            padding: EdgeInsets.fromLTRB(
+              compact ? 16 : 24,
+              8,
+              compact ? 16 : 24,
+              32,
+            ),
             sliver: SliverList(
               delegate: SliverChildListDelegate([
                 KeyedSubtree(
@@ -403,15 +414,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       children: [
                         _ThemeSelector(selected: settings.themeKey),
                         const SizedBox(height: 18),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                context.l10n.text('language'),
-                                style: Theme.of(context).textTheme.titleSmall,
-                              ),
-                            ),
-                            SegmentedButton<String>(
+                        LayoutBuilder(
+                          builder: (context, constraints) {
+                            final label = Text(
+                              context.l10n.text('language'),
+                              style: Theme.of(context).textTheme.titleSmall,
+                            );
+                            final selector = SegmentedButton<String>(
                               segments: const [
                                 ButtonSegment(
                                   value: 'en',
@@ -434,8 +443,25 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                               onSelectionChanged: (values) => ref
                                   .read(settingsRepositoryProvider)
                                   .updateLocale(values.first),
-                            ),
-                          ],
+                            );
+                            if (constraints.maxWidth < 420) {
+                              return Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  label,
+                                  const SizedBox(height: 8),
+                                  selector,
+                                ],
+                              );
+                            }
+                            return Row(
+                              children: [
+                                Expanded(child: label),
+                                const SizedBox(width: 12),
+                                selector,
+                              ],
+                            );
+                          },
                         ),
                         const SizedBox(height: 18),
                         _TimeZoneSettings(settings: settings),
@@ -2526,7 +2552,9 @@ class _ThemeSelector extends ConsumerWidget {
               SizedBox(
                 width: constraints.maxWidth >= 600
                     ? (constraints.maxWidth - 30) / 4
-                    : (constraints.maxWidth - 10) / 2,
+                    : constraints.maxWidth >= 360
+                    ? (constraints.maxWidth - 10) / 2
+                    : constraints.maxWidth,
                 child: ChoiceChip(
                   selected: selected == theme.name,
                   onSelected: (_) => ref
@@ -2568,9 +2596,10 @@ class _SettingsSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final compact = MediaQuery.sizeOf(context).width < 600;
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(20),
+        padding: EdgeInsets.all(compact ? 16 : 20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -2578,10 +2607,12 @@ class _SettingsSection extends StatelessWidget {
               children: [
                 Icon(icon, color: Theme.of(context).colorScheme.primary),
                 const SizedBox(width: 10),
-                Text(
-                  title,
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w800,
+                Expanded(
+                  child: Text(
+                    title,
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
                 ),
               ],

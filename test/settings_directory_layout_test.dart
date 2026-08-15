@@ -54,6 +54,42 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('settings directory reflows long German and Arabic copy', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(320, 800);
+    tester.platformDispatcher.textScaleFactorTestValue = 1.3;
+    addTearDown(tester.view.reset);
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+
+    for (final locale in const [Locale('de'), Locale('ar')]) {
+      await tester.pumpWidget(
+        MaterialApp(
+          locale: locale,
+          supportedLocales: AppLocalizations.supportedLocales,
+          localizationsDelegates: const [
+            AppLocalizations.delegate,
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+          home: Scaffold(
+            body: SingleChildScrollView(
+              child: SettingsSectionDirectory(onSelected: (_) {}),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      expect(
+        tester.takeException(),
+        isNull,
+        reason: '${locale.languageCode} settings copy overflowed at 320 px',
+      );
+    }
+  });
+
   test('operational screens are not used as generic settings destinations', () {
     for (final key in const [
       'profile_and_account',

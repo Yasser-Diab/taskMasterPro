@@ -303,73 +303,174 @@ class _PerformanceReportScreenState
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
               child: Column(
                 children: [
-                  Wrap(
-                    spacing: 10,
-                    runSpacing: 10,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: [
-                      OutlinedButton.icon(
-                        onPressed: _pickRange,
-                        icon: const Icon(Icons.date_range_outlined),
-                        label: Text(
+                  LayoutBuilder(
+                    builder: (context, constraints) {
+                      final dateRange =
                           '${DateFormat.yMMMd(l10n.locale.toLanguageTag()).format(_from)} - '
-                          '${DateFormat.yMMMd(l10n.locale.toLanguageTag()).format(_to)}',
-                        ),
-                      ),
-                      DropdownMenu<String>(
-                        initialSelection: _localeCode,
-                        label: Text(l10n.text('report_language')),
-                        dropdownMenuEntries: const [
-                          DropdownMenuEntry(value: 'en', label: 'English'),
-                          DropdownMenuEntry(value: 'ar', label: 'العربية'),
-                          DropdownMenuEntry(value: 'de', label: 'Deutsch'),
-                        ],
-                        onSelected: (value) {
-                          if (value == null) return;
-                          setState(() => _localeCode = value);
-                          _regenerate();
-                        },
-                      ),
-                      SegmentedButton<bool>(
-                        segments: [
-                          ButtonSegment(
-                            value: false,
-                            icon: const Icon(Icons.stay_current_portrait),
-                            label: Text(l10n.text('report_portrait')),
-                          ),
-                          ButtonSegment(
-                            value: true,
-                            icon: const Icon(Icons.stay_current_landscape),
-                            label: Text(l10n.text('report_landscape')),
-                          ),
-                        ],
-                        selected: {_landscape},
-                        onSelectionChanged: (value) {
-                          setState(() => _landscape = value.first);
-                          _regenerate();
-                        },
-                      ),
-                      SegmentedButton<bool>(
-                        segments: [
-                          ButtonSegment(
-                            value: false,
-                            icon: const Icon(Icons.insights_outlined),
-                            label: Text(
-                              l10n.text('report_interactive_preview'),
+                          '${DateFormat.yMMMd(l10n.locale.toLanguageTag()).format(_to)}';
+                      void selectLanguage(String? value) {
+                        if (value == null) return;
+                        setState(() => _localeCode = value);
+                        _regenerate();
+                      }
+
+                      void selectOrientation(bool? value) {
+                        if (value == null) return;
+                        setState(() => _landscape = value);
+                        _regenerate();
+                      }
+
+                      void selectPreview(bool? value) {
+                        if (value == null) return;
+                        setState(() => _showPdf = value);
+                      }
+
+                      if (constraints.maxWidth < 600) {
+                        return Column(
+                          key: const ValueKey('mobile-report-controls'),
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            OutlinedButton.icon(
+                              onPressed: _pickRange,
+                              icon: const Icon(Icons.date_range_outlined),
+                              label: Text(
+                                dateRange,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                textAlign: TextAlign.center,
+                              ),
                             ),
+                            const SizedBox(height: 10),
+                            DropdownButtonFormField<String>(
+                              initialValue: _localeCode,
+                              isExpanded: true,
+                              decoration: InputDecoration(
+                                labelText: l10n.text('report_language'),
+                                prefixIcon: const Icon(Icons.language_outlined),
+                              ),
+                              items: const [
+                                DropdownMenuItem(
+                                  value: 'en',
+                                  child: Text('English'),
+                                ),
+                                DropdownMenuItem(
+                                  value: 'ar',
+                                  child: Text('العربية'),
+                                ),
+                                DropdownMenuItem(
+                                  value: 'de',
+                                  child: Text('Deutsch'),
+                                ),
+                              ],
+                              onChanged: selectLanguage,
+                            ),
+                            const SizedBox(height: 10),
+                            DropdownButtonFormField<bool>(
+                              initialValue: _landscape,
+                              isExpanded: true,
+                              decoration: InputDecoration(
+                                labelText: l10n.text('report_orientation'),
+                                prefixIcon: const Icon(
+                                  Icons.screen_rotation_outlined,
+                                ),
+                              ),
+                              items: [
+                                DropdownMenuItem(
+                                  value: false,
+                                  child: Text(l10n.text('report_portrait')),
+                                ),
+                                DropdownMenuItem(
+                                  value: true,
+                                  child: Text(l10n.text('report_landscape')),
+                                ),
+                              ],
+                              onChanged: selectOrientation,
+                            ),
+                            const SizedBox(height: 10),
+                            DropdownButtonFormField<bool>(
+                              initialValue: _showPdf,
+                              isExpanded: true,
+                              decoration: InputDecoration(
+                                labelText: l10n.text('report_preview_type'),
+                                prefixIcon: const Icon(Icons.preview_outlined),
+                              ),
+                              items: [
+                                DropdownMenuItem(
+                                  value: false,
+                                  child: Text(
+                                    l10n.text('report_interactive_preview'),
+                                  ),
+                                ),
+                                DropdownMenuItem(
+                                  value: true,
+                                  child: Text(l10n.text('report_pdf_preview')),
+                                ),
+                              ],
+                              onChanged: selectPreview,
+                            ),
+                          ],
+                        );
+                      }
+
+                      return Wrap(
+                        spacing: 10,
+                        runSpacing: 10,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          OutlinedButton.icon(
+                            onPressed: _pickRange,
+                            icon: const Icon(Icons.date_range_outlined),
+                            label: Text(dateRange),
                           ),
-                          ButtonSegment(
-                            value: true,
-                            icon: const Icon(Icons.picture_as_pdf_outlined),
-                            label: Text(l10n.text('report_pdf_preview')),
+                          DropdownMenu<String>(
+                            initialSelection: _localeCode,
+                            label: Text(l10n.text('report_language')),
+                            dropdownMenuEntries: const [
+                              DropdownMenuEntry(value: 'en', label: 'English'),
+                              DropdownMenuEntry(value: 'ar', label: 'العربية'),
+                              DropdownMenuEntry(value: 'de', label: 'Deutsch'),
+                            ],
+                            onSelected: selectLanguage,
+                          ),
+                          SegmentedButton<bool>(
+                            segments: [
+                              ButtonSegment(
+                                value: false,
+                                icon: const Icon(Icons.stay_current_portrait),
+                                label: Text(l10n.text('report_portrait')),
+                              ),
+                              ButtonSegment(
+                                value: true,
+                                icon: const Icon(Icons.stay_current_landscape),
+                                label: Text(l10n.text('report_landscape')),
+                              ),
+                            ],
+                            selected: {_landscape},
+                            onSelectionChanged: (value) =>
+                                selectOrientation(value.first),
+                          ),
+                          SegmentedButton<bool>(
+                            segments: [
+                              ButtonSegment(
+                                value: false,
+                                icon: const Icon(Icons.insights_outlined),
+                                label: Text(
+                                  l10n.text('report_interactive_preview'),
+                                ),
+                              ),
+                              ButtonSegment(
+                                value: true,
+                                icon: const Icon(Icons.picture_as_pdf_outlined),
+                                label: Text(l10n.text('report_pdf_preview')),
+                              ),
+                            ],
+                            selected: {_showPdf},
+                            onSelectionChanged: (value) =>
+                                selectPreview(value.first),
                           ),
                         ],
-                        selected: {_showPdf},
-                        onSelectionChanged: (value) {
-                          setState(() => _showPdf = value.first);
-                        },
-                      ),
-                    ],
+                      );
+                    },
                   ),
                   const SizedBox(height: 10),
                   Align(

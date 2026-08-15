@@ -248,6 +248,11 @@ class LocalRuntimeStates extends Table {
       integer().withDefault(const Constant(0))();
   IntColumn get accumulatedPausedMs =>
       integer().withDefault(const Constant(0))();
+
+  /// Canonical interval metadata which is not part of the lifetime task total.
+  /// Pomodoro uses this to keep each focus interval independent while the
+  /// accumulated active duration continues to grow for reports.
+  TextColumn get dataJson => text().withDefault(const Constant('{}'))();
   IntColumn get revision => integer().withDefault(const Constant(1))();
   DateTimeColumn get updatedAt => dateTime()();
   TextColumn get lastCommandId => text().nullable()();
@@ -472,7 +477,158 @@ class AppDatabase extends _$AppDatabase {
     : super(driftDatabase(name: localDatabaseNameForAccount(userId)));
 
   @override
-  int get schemaVersion => 17;
+  int get schemaVersion => 18;
+
+  /// Reconstructs the current Pomodoro interval from durable local events.
+  ///
+  /// Historical v0.0.26 commands could write accepted canonical-only
+  /// `start_break`/`skip_break` events without changing timer state. Counting
+  /// event names therefore inflated cycle numbers. The recursive walk below
+  /// recognizes a boundary only while focus is running *and* lifetime active
+  /// work advances beyond the preceding accepted boundary.
+  ///
+  /// This remains public for an executable migration regression. It is safe
+  /// to rerun: unrelated JSON keys are retained and unchanged rows are not
+  /// rewritten.
+  Future<void> backfillPomodoroRuntimeIntervalMetadata() async {
+    await customStatement(r'''
+      WITH RECURSIVE
+      runtime_candidates AS (
+        SELECT
+          runtime.id AS runtime_id,
+          runtime.session_id,
+          runtime.state AS runtime_state,
+          runtime.accumulated_active_ms
+        FROM local_runtime_states AS runtime
+        JOIN local_tasks AS task
+          ON task.id = runtime.active_task_id
+         AND task.user_id = runtime.user_id
+         AND task.deleted_at IS NULL
+         AND task.execution_mode = 'pomodoro'
+        WHERE runtime.active_task_id IS NOT NULL
+          AND runtime.session_id IS NOT NULL
+      ),
+      ordered_events AS (
+        SELECT
+          candidate.runtime_id,
+          ROW_NUMBER() OVER (
+            PARTITION BY candidate.runtime_id
+            ORDER BY event.created_at, event.id
+          ) AS event_number,
+          json_extract(event.data_json, '$.event_type') AS event_type,
+          CASE
+            WHEN json_type(event.data_json, '$.duration_ms')
+                IN ('integer', 'real')
+              THEN CAST(
+                json_extract(event.data_json, '$.duration_ms') AS INTEGER
+              )
+          END AS duration_ms
+        FROM runtime_candidates AS candidate
+        JOIN local_entity_records AS event
+          ON event.parent_id = candidate.session_id
+         AND event.entity_type = 'session_events'
+         AND event.deleted_at IS NULL
+      ),
+      event_walk(
+        runtime_id,
+        event_number,
+        canonical_state,
+        completed_focuses,
+        last_focus_boundary_ms
+      ) AS (
+        SELECT runtime_id, 0, 'running', 0, 0
+        FROM runtime_candidates
+        UNION ALL
+        SELECT
+          walk.runtime_id,
+          event.event_number,
+          CASE
+            WHEN event.event_type = 'complete' THEN 'completed'
+            WHEN event.event_type = 'start_break'
+              AND walk.canonical_state = 'running'
+              AND event.duration_ms IS NOT NULL
+              AND event.duration_ms > walk.last_focus_boundary_ms
+              THEN 'break'
+            WHEN event.event_type = 'finish_break'
+              AND walk.canonical_state = 'break'
+              THEN 'running'
+            WHEN event.event_type = 'pause'
+              AND walk.canonical_state = 'running'
+              THEN 'paused'
+            WHEN event.event_type = 'resume'
+              AND walk.canonical_state = 'paused'
+              THEN 'running'
+            ELSE walk.canonical_state
+          END,
+          walk.completed_focuses + CASE
+            WHEN event.event_type IN ('start_break', 'skip_break')
+              AND walk.canonical_state = 'running'
+              AND event.duration_ms IS NOT NULL
+              AND event.duration_ms > walk.last_focus_boundary_ms
+              THEN 1
+            ELSE 0
+          END,
+          CASE
+            WHEN event.event_type IN ('start_break', 'skip_break')
+              AND walk.canonical_state = 'running'
+              AND event.duration_ms IS NOT NULL
+              AND event.duration_ms > walk.last_focus_boundary_ms
+              THEN event.duration_ms
+            ELSE walk.last_focus_boundary_ms
+          END
+        FROM event_walk AS walk
+        JOIN ordered_events AS event
+          ON event.runtime_id = walk.runtime_id
+         AND event.event_number = walk.event_number + 1
+      ),
+      final_walk AS (
+        SELECT walk.*
+        FROM event_walk AS walk
+        WHERE walk.event_number = (
+          SELECT MAX(candidate.event_number)
+          FROM event_walk AS candidate
+          WHERE candidate.runtime_id = walk.runtime_id
+        )
+      ),
+      repaired_values AS (
+        SELECT
+          runtime.id AS runtime_id,
+          json_set(
+            json_set(
+              CASE
+                WHEN json_valid(runtime.data_json) THEN runtime.data_json
+                ELSE '{}'
+              END,
+              '$.focus_interval_active_base_ms',
+              CASE
+                WHEN runtime.state = 'break'
+                  THEN MAX(0, runtime.accumulated_active_ms)
+                ELSE MIN(
+                  MAX(0, runtime.accumulated_active_ms),
+                  MAX(0, walk.last_focus_boundary_ms)
+                )
+              END
+            ),
+            '$.pomodoro_completed_focuses',
+            MAX(0, walk.completed_focuses)
+          ) AS repaired_data_json
+        FROM local_runtime_states AS runtime
+        JOIN final_walk AS walk ON walk.runtime_id = runtime.id
+      )
+      UPDATE local_runtime_states AS runtime
+      SET data_json = (
+        SELECT repaired.repaired_data_json
+        FROM repaired_values AS repaired
+        WHERE repaired.runtime_id = runtime.id
+      )
+      WHERE EXISTS (
+        SELECT 1
+        FROM repaired_values AS repaired
+        WHERE repaired.runtime_id = runtime.id
+          AND runtime.data_json IS NOT repaired.repaired_data_json
+      )
+    ''');
+  }
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -709,6 +865,13 @@ class AppDatabase extends _$AppDatabase {
       }
       if (from < 17) {
         await addColumnIfMissing(localProfiles, localProfiles.heightCm);
+      }
+      if (from < 18) {
+        await addColumnIfMissing(
+          localRuntimeStates,
+          localRuntimeStates.dataJson,
+        );
+        await backfillPomodoroRuntimeIntervalMetadata();
       }
     },
     beforeOpen: (details) async {

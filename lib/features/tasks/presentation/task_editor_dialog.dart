@@ -55,7 +55,7 @@ class _TaskEditorDialogState extends ConsumerState<TaskEditorDialog> {
   final _formKey = GlobalKey<FormState>();
   final _stepScrollController = ScrollController();
   late final TextEditingController _title;
-  late final TextEditingController _description;
+  late final TextEditingController _note;
   late final _DurationParts _duration;
   late final _DurationParts _minimumDuration;
   late final _DurationParts _maximumDuration;
@@ -191,7 +191,10 @@ class _TaskEditorDialogState extends ConsumerState<TaskEditorDialog> {
     final task = widget.task;
     final config = _decodeConfiguration(task?.dataJson);
     _title = TextEditingController(text: task?.title ?? '');
-    _description = TextEditingController(text: task?.description ?? '');
+    // `description` is the established synchronized task column. It is
+    // presented as a short Note/subheading so it stays distinct from the
+    // versioned entries in the task workspace Notes section.
+    _note = TextEditingController(text: task?.description ?? '');
     _duration = _DurationParts.fromMilliseconds(
       task?.estimatedDurationMs ?? 1800000,
     );
@@ -297,7 +300,7 @@ class _TaskEditorDialogState extends ConsumerState<TaskEditorDialog> {
   void dispose() {
     _stepScrollController.dispose();
     _title.dispose();
-    _description.dispose();
+    _note.dispose();
     _duration.dispose();
     _minimumDuration.dispose();
     _maximumDuration.dispose();
@@ -352,7 +355,7 @@ class _TaskEditorDialogState extends ConsumerState<TaskEditorDialog> {
       };
       final draft = TaskDraft(
         title: _title.text,
-        description: _description.text,
+        description: _note.text,
         domainId: _domainId,
         priority: _priority,
         executionMode: _executionMode,
@@ -744,13 +747,16 @@ class _TaskEditorDialogState extends ConsumerState<TaskEditorDialog> {
         ),
         const SizedBox(height: 12),
         TextFormField(
-          controller: _description,
-          minLines: 3,
-          maxLines: 6,
+          controller: _note,
+          minLines: 2,
+          maxLines: 4,
+          textCapitalization: TextCapitalization.sentences,
           decoration: InputDecoration(
-            labelText: context.l10n.text('description'),
+            labelText: context.l10n.text('task_subheading_note'),
+            hintText: context.l10n.text('task_subheading_note_hint'),
+            helperText: context.l10n.text('task_subheading_note_detail'),
             alignLabelWithHint: true,
-            prefixIcon: const Icon(Icons.notes),
+            prefixIcon: const Icon(Icons.short_text_rounded),
           ),
         ),
         const SizedBox(height: 12),

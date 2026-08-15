@@ -50,6 +50,7 @@ class TaskCard extends ConsumerWidget {
         ? 'in_progress'
         : activeSessionState ?? task.status;
     final completed = effectiveStatus == 'completed';
+    final note = task.description.trim();
     final estimatedDuration = Duration(
       milliseconds: task.estimatedDurationMs.clamp(0, 1 << 62),
     );
@@ -86,7 +87,20 @@ class TaskCard extends ConsumerWidget {
                             : null,
                       ),
                     ),
-                    const SizedBox(height: 6),
+                    if (note.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        note,
+                        key: ValueKey('task-subheading-${task.id}'),
+                        maxLines: compact ? 1 : 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: colorScheme.onSurfaceVariant,
+                          height: 1.25,
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 7),
                     Wrap(
                       spacing: 10,
                       runSpacing: 5,

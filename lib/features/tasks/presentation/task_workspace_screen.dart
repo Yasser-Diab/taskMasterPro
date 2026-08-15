@@ -147,17 +147,27 @@ class _TaskWorkspaceScreenState extends ConsumerState<TaskWorkspaceScreen> {
                 : 'break_in_progress',
           )
         : context.l10n.taskStatus(runtime?.state ?? task.status);
+    final note = task.description.trim();
+    final executionSummary =
+        '${context.l10n.executionMode(task.executionMode)} · $stateLabel';
+    final taskSubheading = note.isEmpty
+        ? executionSummary
+        : '$note · $executionSummary';
     return Scaffold(
       appBar: AppBar(
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(task.title, maxLines: 1, overflow: TextOverflow.ellipsis),
-            Text(
-              '${context.l10n.executionMode(task.executionMode)} · '
-              '$stateLabel',
-              style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
+            Tooltip(
+              message: taskSubheading,
+              child: Text(
+                taskSubheading,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
               ),
             ),
           ],
@@ -382,8 +392,21 @@ class _TaskOverview extends ConsumerWidget {
                   ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
                 ),
                 const SizedBox(height: 12),
-                if (task.description.isNotEmpty) ...[
-                  Text(task.description),
+                if (task.description.trim().isNotEmpty) ...[
+                  Text(
+                    context.l10n.text('task_subheading_note'),
+                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                      color: Theme.of(context).colorScheme.primary,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    task.description.trim(),
+                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
                   const SizedBox(height: 16),
                 ],
                 _InfoRow(

@@ -13,6 +13,7 @@ import 'package:timezone/timezone.dart' as tz;
 
 import '../../../core/database/app_database.dart';
 import '../../../core/localization/app_localizations.dart';
+import '../../activity/domain/activity_reporting_policy.dart';
 import '../../tasks/data/installed_application_service.dart';
 import '../../../core/time/time_zone_service.dart';
 import '../../tasks/domain/daily_planned_time.dart';
@@ -101,6 +102,7 @@ class PerformanceReportSnapshot {
     required this.checkpoints,
     required this.activity,
     required this.contributions,
+    this.attributions = const [],
     required this.insights,
     required this.health,
     this.roadmaps = const [],
@@ -120,6 +122,7 @@ class PerformanceReportSnapshot {
   final List<LocalEntityRecord> checkpoints;
   final List<LocalActivitySegment> activity;
   final List<LocalContribution> contributions;
+  final List<LocalAttribution> attributions;
   final List<LocalEntityRecord> insights;
   final List<LocalEntityRecord> health;
   final List<LocalRoadmap> roadmaps;
@@ -475,8 +478,12 @@ class PerformanceReportService {
       options,
     );
 
+    final reportableActivity = reportableActivitySegments(
+      segments: snapshot.activity,
+      attributions: snapshot.attributions,
+    );
     final activityAllocation = _allocateActivityByDay(
-      _activityIntervals(snapshot.activity, l10n),
+      _activityIntervals(reportableActivity, l10n),
       options,
     );
     var activeActivityMs = 0;
@@ -1923,12 +1930,29 @@ class PerformanceReportService {
             .get();
     final taskIds = tasks.map((task) => task.id).toSet();
     final activityIds = allActivity.map((item) => item.id).toSet();
+    final attributions = activityIds.isEmpty
+        ? const <LocalAttribution>[]
+        : await (database.select(database.localAttributions)..where(
+                (row) =>
+                    row.deletedAt.isNull() &
+                    row.activitySegmentId.isIn(activityIds),
+              ))
+              .get();
+    final reportableActivity = reportableActivitySegments(
+      segments: allActivity,
+      attributions: attributions,
+    );
+    final reportableActivityIds = reportableActivity
+        .map((item) => item.id)
+        .toSet();
     final allContributions = await (database.select(
       database.localContributions,
     )..where((row) => row.deletedAt.isNull())).get();
     final contributions = allContributions
         .where((item) {
-          if (!activityIds.contains(item.activitySegmentId)) return false;
+          if (!reportableActivityIds.contains(item.activitySegmentId)) {
+            return false;
+          }
           return switch (options.type) {
             PerformanceReportType.account => true,
             PerformanceReportType.task ||
@@ -1943,8 +1967,8 @@ class PerformanceReportService {
         .map((item) => item.activitySegmentId)
         .toSet();
     final activity = options.type == PerformanceReportType.account
-        ? allActivity
-        : allActivity
+        ? reportableActivity
+        : reportableActivity
               .where((item) => scopedActivityIds.contains(item.id))
               .toList(growable: false);
     final entityTypes = <String>{
@@ -2103,6 +2127,7 @@ class PerformanceReportService {
       checkpoints: checkpoints,
       activity: activity,
       contributions: contributions,
+      attributions: attributions,
       insights: insights,
       health: health,
       roadmaps: allRoadmaps,
@@ -3137,8 +3162,16 @@ class PerformanceReportService {
     if (facts.activeActivityMs == 0 && facts.idleActivityMs == 0) {
       return pw.Text(l10n.text('report_no_activity'));
     }
+    final excludedSegmentIds = excludedActivitySegmentIds(
+      segments: snapshot.activity,
+      attributions: snapshot.attributions,
+    );
     final crossTask = snapshot.contributions
-        .where((item) => item.isCrossTask)
+        .where(
+          (item) =>
+              item.isCrossTask &&
+              !excludedSegmentIds.contains(item.activitySegmentId),
+        )
         .fold<int>(0, (sum, item) => sum + item.creditedDurationMs);
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.stretch,

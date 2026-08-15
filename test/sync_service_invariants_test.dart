@@ -194,6 +194,7 @@ void main() {
     final command = activityClassificationCommandIdFor(
       userId: '4bd3e32d-1dcd-48ed-9f64-9099675047f1',
       reviewItemId: '018fcbf3-9f27-7b19-88bf-21962e132499',
+      expectedReviewRevision: 1,
       classification: 'research_or_learning',
       targetTaskId: '9f51108d-0725-4a74-8ead-3017beef5854',
       contributionType: 'active_work_seconds',
@@ -211,6 +212,18 @@ void main() {
     expect(attribution, isNot(contribution));
     expect(contribution, isNot(command));
     expect(
+      activityClassificationCommandIdFor(
+        userId: '4bd3e32d-1dcd-48ed-9f64-9099675047f1',
+        reviewItemId: '018fcbf3-9f27-7b19-88bf-21962e132499',
+        expectedReviewRevision: 2,
+        classification: 'research_or_learning',
+        targetTaskId: '9f51108d-0725-4a74-8ead-3017beef5854',
+        contributionType: 'active_work_seconds',
+      ),
+      isNot(command),
+      reason: 'a real reclassification must not collide with the prior command',
+    );
+    expect(
       activityContributionIdFor(
         userId: '75f78e6c-0ba8-48a7-a06e-45a6fb256b9d',
         activitySegmentId: '1d310e80-61a0-48c2-96f9-cc1c21466913',
@@ -218,6 +231,40 @@ void main() {
         contributionType: 'active_work_seconds',
       ),
       isNot(contribution),
+    );
+  });
+
+  test('canonical Activity aggregate responses retire stale commands', () {
+    const canonical = <String, dynamic>{
+      'status': 'conflict',
+      'reason': 'revision_mismatch',
+      'canonical_review': <String, dynamic>{'id': 'review-1'},
+      'canonical_attributions': <Object?>[],
+      'canonical_contributions': <Object?>[],
+    };
+    expect(
+      isCanonicalActivityClassificationResponse(
+        entityType: 'activity_review_classifications',
+        result: canonical,
+      ),
+      isTrue,
+    );
+    expect(
+      isCanonicalActivityClassificationResponse(
+        entityType: 'activity_review_classifications',
+        result: const <String, dynamic>{
+          'status': 'conflict',
+          'reason': 'revision_mismatch',
+        },
+      ),
+      isFalse,
+    );
+    expect(
+      isCanonicalActivityClassificationResponse(
+        entityType: 'task_occurrences',
+        result: canonical,
+      ),
+      isFalse,
     );
   });
 
@@ -242,6 +289,98 @@ void main() {
       contains('grant execute on function public.classify_activity_review('),
     );
   });
+
+  test(
+    'Activity reclassification is revision guarded and returns full canonical state',
+    () {
+      final migration = File(
+        'supabase/migrations/'
+        '20260815155607_v0029_activity_reclassification_convergence.sql',
+      ).readAsStringSync().replaceAll('\r\n', '\n');
+      final processedReplayIndex = migration.indexOf('into processed_row');
+      final deviceValidationIndex = migration.indexOf(
+        "raise exception 'device_not_registered'",
+      );
+      final reclassificationBranch = migration.substring(
+        migration.indexOf('  if is_reclassification then'),
+        migration.indexOf(
+          '  raw_result := taskmaster_internal.classify_activity_review_v0027(',
+        ),
+      );
+
+      expect(migration, contains('classify_activity_review_v0029'));
+      expect(migration, contains('security definer'));
+      expect(
+        migration,
+        contains(
+          'if p_expected_revision is null or p_expected_revision < 0 then',
+        ),
+      );
+      expect(processedReplayIndex, greaterThan(0));
+      expect(
+        deviceValidationIndex,
+        greaterThan(processedReplayIndex),
+        reason: 'an already-processed command must replay after revocation',
+      );
+      expect(migration, contains('review_row.revision <> p_expected_revision'));
+      expect(migration, contains("'revision_mismatch'"));
+      expect(
+        migration,
+        contains("is_reclassification := review_row.status <> 'pending'"),
+      );
+      expect(migration, contains("'already_applied'"));
+      expect(
+        migration,
+        contains('and id <> existing_attribution.id'),
+        reason: 'A+B is not already applied when the requested set is only A',
+      );
+      expect(
+        migration,
+        contains('and id <> existing_contribution.id'),
+        reason: 'extra live task credit must force canonical reclassification',
+      );
+      expect(migration, contains("'canonical_review'"));
+      expect(migration, contains("'canonical_attributions'"));
+      expect(migration, contains("'canonical_contributions'"));
+      expect(migration, contains("':activity-rule:'"));
+      expect(migration, contains('private.normalize_application_key('));
+      expect(migration, isNot(contains('pg_catalog.regexp_replace(')));
+      expect(
+        migration,
+        contains(
+          'processed_row.base_revision is distinct from p_expected_revision',
+        ),
+      );
+      expect(
+        migration,
+        contains(
+          "processed_row.entity_type is distinct from\n"
+          "         'activity_review_classifications'",
+        ),
+      );
+      expect(reclassificationBranch, isNot(contains("set status = 'pending'")));
+      expect(
+        reclassificationBranch,
+        contains(
+          'and id = p_review_item_id\n'
+          '      and revision = p_expected_revision',
+        ),
+      );
+      expect(reclassificationBranch, contains('canonical revision N + 1'));
+      expect(
+        RegExp(
+          'update public\\.activity_review_queue',
+        ).allMatches(reclassificationBranch).length,
+        2,
+        reason: 'one current review update plus one sibling-review cleanup',
+      );
+      expect(reclassificationBranch, contains('and id <> p_review_item_id'));
+      expect(
+        migration,
+        contains('select taskmaster_internal.classify_activity_review_v0029('),
+      );
+    },
+  );
 
   test(
     'historical Activity classifier repairs no-op on the clean definition',
@@ -1190,6 +1329,70 @@ void main() {
         incomingCommandId: 'different-command',
       ),
       CanonicalRuntimeApplyDecision.staleOrInconsistent,
+    );
+  });
+
+  test('an execution acknowledgement corrects only its own equal revision', () {
+    expect(
+      shouldApplyAcknowledgedCanonicalRuntime(
+        localRevision: 8,
+        localCommandId: 'command-8',
+        incomingRevision: 8,
+        incomingCommandId: 'command-8',
+        acknowledgedCommandId: 'command-8',
+      ),
+      isTrue,
+      reason:
+          'The canonical RPC row must replace its matching optimistic snapshot.',
+    );
+    expect(
+      shouldApplyAcknowledgedCanonicalRuntime(
+        localRevision: 8,
+        localCommandId: 'newer-local-command',
+        incomingRevision: 8,
+        incomingCommandId: 'acknowledged-command',
+        acknowledgedCommandId: 'acknowledged-command',
+      ),
+      isFalse,
+      reason:
+          'A different equal-revision command is not ordered after local state.',
+    );
+    expect(
+      shouldApplyAcknowledgedCanonicalRuntime(
+        localRevision: 9,
+        localCommandId: 'newer-command',
+        incomingRevision: 8,
+        incomingCommandId: 'acknowledged-command',
+        acknowledgedCommandId: 'acknowledged-command',
+      ),
+      isFalse,
+      reason: 'An acknowledged response must never roll back a newer revision.',
+    );
+    expect(
+      shouldApplyAcknowledgedCanonicalRuntime(
+        localRevision: 9,
+        localCommandId: 'superseded-command',
+        incomingRevision: 8,
+        incomingCommandId: 'previous-server-command',
+        acknowledgedCommandId: 'superseded-command',
+        superseded: true,
+      ),
+      isTrue,
+      reason:
+          'A canonical-only result must remove its own rejected optimistic transition.',
+    );
+    expect(
+      shouldApplyAcknowledgedCanonicalRuntime(
+        localRevision: 9,
+        localCommandId: 'later-local-command',
+        incomingRevision: 8,
+        incomingCommandId: 'previous-server-command',
+        acknowledgedCommandId: 'superseded-command',
+        superseded: true,
+      ),
+      isFalse,
+      reason:
+          'A superseded response cannot roll back a different local command.',
     );
   });
 

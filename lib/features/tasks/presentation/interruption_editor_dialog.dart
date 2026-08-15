@@ -389,7 +389,7 @@ class _InterruptionEditorDialogState
                           controller: _hours,
                           keyboardType: TextInputType.number,
                           decoration: InputDecoration(
-                            labelText: l10n.text('hours'),
+                            labelText: l10n.text('unit_hours'),
                           ),
                         ),
                       ),
@@ -399,7 +399,7 @@ class _InterruptionEditorDialogState
                           controller: _minutes,
                           keyboardType: TextInputType.number,
                           decoration: InputDecoration(
-                            labelText: l10n.text('minutes'),
+                            labelText: l10n.text('unit_minutes_short'),
                           ),
                         ),
                       ),

@@ -372,6 +372,68 @@ void main() {
   });
 
   test(
+    'direct skip rejects an early focus and accepts the exact boundary',
+    () async {
+      const focusMs = 60000;
+      final taskId = await repository.createTask(
+        const TaskDraft(
+          title: 'Direct skip boundary',
+          executionMode: 'pomodoro',
+          configuration: {'pomodoro_focus_ms': focusMs},
+        ),
+      );
+      var task = (await repository.getTask(taskId))!;
+      await repository.start(task);
+      var runtime = (await repository.getRuntime())!;
+      final revisionBeforeEarlySkip = runtime.revision;
+      final commandsBeforeEarlySkip = await runtimeCommands();
+      await (database.update(
+        database.localRuntimeStates,
+      )..where((row) => row.id.equals(runtime.id))).write(
+        LocalRuntimeStatesCompanion(
+          segmentStartedAt: drift.Value(
+            DateTime.now().toUtc().subtract(const Duration(seconds: 30)),
+          ),
+        ),
+      );
+
+      task = (await repository.getTask(taskId))!;
+      expect(await repository.skipOfferedBreak(task), isFalse);
+      runtime = (await repository.getRuntime())!;
+      expect(runtime.revision, revisionBeforeEarlySkip);
+      expect(runtime.accumulatedActiveMs, 0);
+      expect(
+        (await runtimeCommands()).where(
+          (command) => command.commandType == 'skip_break',
+        ),
+        isEmpty,
+      );
+      expect((await runtimeCommands()).length, commandsBeforeEarlySkip.length);
+
+      await (database.update(
+        database.localRuntimeStates,
+      )..where((row) => row.id.equals(runtime.id))).write(
+        LocalRuntimeStatesCompanion(
+          segmentStartedAt: drift.Value(
+            DateTime.now().toUtc().subtract(const Duration(minutes: 1)),
+          ),
+        ),
+      );
+
+      expect(await repository.skipOfferedBreak(task), isTrue);
+      runtime = (await repository.getRuntime())!;
+      expect(runtime.state, 'running');
+      expect(runtime.accumulatedActiveMs, focusMs);
+      expect(
+        (await runtimeCommands()).where(
+          (command) => command.commandType == 'skip_break',
+        ),
+        hasLength(1),
+      );
+    },
+  );
+
+  test(
     'finishing an extended break clears it under the runtime command only',
     () async {
       final taskId = await repository.createTask(
@@ -490,4 +552,182 @@ void main() {
       reason: 'The client keeps one stable revision-guarded RPC surface.',
     );
   });
+
+  test('Pomodoro interval identity replaces lifetime modulo arithmetic', () {
+    final migration = File(
+      'supabase/migrations/'
+      '20260815103000_v0028_pomodoro_interval_identity.sql',
+    ).readAsStringSync();
+
+    expect(migration, contains('focus_interval_active_base_ms'));
+    expect(migration, contains('pomodoro_completed_focuses'));
+    expect(migration, contains('aab_prepare_pomodoro_runtime_interval'));
+    expect(migration, contains('aab_prepare_pomodoro_session_cycle'));
+    expect(migration, contains('with recursive ordered_events as'));
+    expect(migration, contains("walk.canonical_state = 'running'"));
+    expect(
+      migration,
+      contains('event_row.duration_ms > walk.last_focus_boundary_ms'),
+    );
+    expect(
+      migration,
+      contains('runtime_row.data is distinct from repair.repaired_data'),
+      reason: 'A manual operational rerun must not rewrite runtime rows.',
+    );
+    expect(
+      migration,
+      contains(
+        'session_row.current_cycle is distinct from repair.repaired_cycle',
+      ),
+      reason: 'A manual operational rerun must not bump session revisions.',
+    );
+    expect(
+      migration,
+      contains('runtime.accumulated_active_ms - focus_base_ms'),
+    );
+    expect(migration, isNot(contains('mod(')));
+    expect(
+      migration,
+      contains("event_row.event_type in ('start_break', 'skip_break')"),
+      reason: 'Existing live intervals must be repaired from durable events.',
+    );
+    final cappedFocusTransitions = migration.substring(
+      migration.indexOf("if p_action in ('start_break', 'skip_break') then"),
+      migration.indexOf(
+        'taskmaster_internal.apply_execution_transition_v0026_command(',
+      ),
+    );
+    expect(
+      cappedFocusTransitions,
+      contains(
+        "if p_action = 'skip_break' and elapsed_ms < focus_remaining_ms",
+      ),
+      reason: 'Only skipping an offered break requires a completed focus.',
+    );
+    expect(
+      cappedFocusTransitions,
+      contains('+ least(elapsed_ms, focus_remaining_ms)'),
+      reason:
+          'A delayed server command must not record work beyond one focus interval.',
+    );
+    expect(
+      cappedFocusTransitions,
+      contains(
+        "when p_action = 'start_break' then 'break'::public.session_state",
+      ),
+      reason: 'An explicit early break must enter the canonical break state.',
+    );
+    expect(
+      cappedFocusTransitions,
+      contains("'break_skipped', p_action = 'skip_break'"),
+      reason: 'The durable event must distinguish an early break from a skip.',
+    );
+    expect(
+      migration.indexOf('update public.user_runtime_state runtime_row'),
+      lessThan(
+        migration.lastIndexOf(
+          'create trigger aab_prepare_pomodoro_runtime_interval',
+        ),
+      ),
+      reason: 'The backfill must run before the transition trigger is active.',
+    );
+
+    final syncSource = File(
+      'lib/core/sync/sync_service.dart',
+    ).readAsStringSync();
+    final runtimeApply = syncSource.substring(
+      syncSource.indexOf('Future<void> _applyRemoteRuntime('),
+      syncSource.indexOf('Future<void> _restoreCanonicalRuntime('),
+    );
+    expect(runtimeApply, contains('dataJson: Value('));
+    expect(runtimeApply, contains("row['data'] is Map"));
+  });
+
+  test(
+    'local Pomodoro backfill ignores canonical-only boundaries and is idempotent',
+    () async {
+      const sessionId = 'historical-pomodoro-session';
+      final taskId = await repository.createTask(
+        const TaskDraft(
+          title: 'Historical Pomodoro',
+          executionMode: 'pomodoro',
+        ),
+      );
+      final now = DateTime.utc(2026, 8, 15, 12);
+      await database
+          .into(database.localRuntimeStates)
+          .insert(
+            LocalRuntimeStatesCompanion.insert(
+              id: localRuntimeStateId('local'),
+              userId: 'local',
+              activeTaskId: drift.Value(taskId),
+              sessionId: const drift.Value(sessionId),
+              state: const drift.Value('running'),
+              accumulatedActiveMs: const drift.Value(1800000),
+              dataJson: const drift.Value('{"preserve":"yes"}'),
+              revision: const drift.Value(41),
+              updatedAt: now,
+            ),
+          );
+
+      Future<void> addEvent(int sequence, String eventType, int durationMs) {
+        final occurredAt = now.add(Duration(seconds: sequence));
+        return database
+            .into(database.localEntityRecords)
+            .insert(
+              LocalEntityRecordsCompanion.insert(
+                id: 'historical-event-$sequence',
+                userId: 'local',
+                entityType: 'session_events',
+                parentId: const drift.Value(sessionId),
+                dataJson: drift.Value(
+                  jsonEncode({
+                    'event_type': eventType,
+                    'duration_ms': durationMs,
+                    'occurred_at': occurredAt.toIso8601String(),
+                  }),
+                ),
+                createdAt: occurredAt,
+                updatedAt: occurredAt,
+              ),
+            );
+      }
+
+      // Three real focus boundaries are mixed with v0.0.26-style accepted
+      // no-ops: duplicate boundary names, a skip while already on break, and
+      // a skip while paused. Only the duration-advancing running transitions
+      // are canonical focus completions.
+      await addEvent(1, 'start_break', 600000);
+      await addEvent(2, 'start_break', 600000);
+      await addEvent(3, 'skip_break', 900000);
+      await addEvent(4, 'finish_break', 600000);
+      await addEvent(5, 'skip_break', 1500000);
+      await addEvent(6, 'skip_break', 1500000);
+      await addEvent(7, 'pause', 1500000);
+      await addEvent(8, 'skip_break', 1700000);
+      await addEvent(9, 'resume', 1500000);
+      await addEvent(10, 'start_break', 1800000);
+      await addEvent(11, 'finish_break', 1800000);
+
+      await database.backfillPomodoroRuntimeIntervalMetadata();
+      final repaired = await database
+          .select(database.localRuntimeStates)
+          .getSingle();
+      final repairedData =
+          jsonDecode(repaired.dataJson) as Map<String, dynamic>;
+
+      expect(repairedData['focus_interval_active_base_ms'], 1800000);
+      expect(repairedData['pomodoro_completed_focuses'], 3);
+      expect(repairedData['preserve'], 'yes');
+      expect(repaired.revision, 41);
+
+      final firstJson = repaired.dataJson;
+      await database.backfillPomodoroRuntimeIntervalMetadata();
+      final rerun = await database
+          .select(database.localRuntimeStates)
+          .getSingle();
+      expect(rerun.dataJson, firstJson);
+      expect(rerun.revision, 41);
+    },
+  );
 }

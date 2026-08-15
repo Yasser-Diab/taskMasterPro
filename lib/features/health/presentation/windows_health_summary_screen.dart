@@ -34,7 +34,7 @@ class WindowsHealthSummaryScreen extends ConsumerWidget {
             ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
           final source =
               entities.decode(latest.first)['source'] as String? ??
-              'Android phone';
+              context.l10n.text('health_android_phone');
           return ListView(
             padding: const EdgeInsets.all(20),
             children: [
@@ -51,7 +51,11 @@ class WindowsHealthSummaryScreen extends ConsumerWidget {
               GridView.count(
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
-                crossAxisCount: MediaQuery.sizeOf(context).width >= 760 ? 3 : 2,
+                crossAxisCount: MediaQuery.sizeOf(context).width >= 760
+                    ? 3
+                    : MediaQuery.sizeOf(context).width >= 520
+                    ? 2
+                    : 1,
                 childAspectRatio: 1.55,
                 mainAxisSpacing: 10,
                 crossAxisSpacing: 10,

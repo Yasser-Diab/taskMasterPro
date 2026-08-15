@@ -9,6 +9,40 @@ import '../../../core/notifications/notification_sounds.dart';
 import '../../../core/providers.dart';
 import 'schedule_wellbeing_screen.dart';
 
+@immutable
+class NotificationPlatformCapabilities {
+  const NotificationPlatformCapabilities({
+    required this.supportsVibration,
+    required this.supportsDeviceSoundPicker,
+    required this.supportsNotificationSettings,
+  });
+
+  final bool supportsVibration;
+  final bool supportsDeviceSoundPicker;
+  final bool supportsNotificationSettings;
+}
+
+@visibleForTesting
+NotificationPlatformCapabilities notificationPlatformCapabilities(
+  TargetPlatform platform,
+) => switch (platform) {
+  TargetPlatform.android => const NotificationPlatformCapabilities(
+    supportsVibration: true,
+    supportsDeviceSoundPicker: true,
+    supportsNotificationSettings: true,
+  ),
+  TargetPlatform.windows => const NotificationPlatformCapabilities(
+    supportsVibration: false,
+    supportsDeviceSoundPicker: false,
+    supportsNotificationSettings: true,
+  ),
+  _ => const NotificationPlatformCapabilities(
+    supportsVibration: false,
+    supportsDeviceSoundPicker: false,
+    supportsNotificationSettings: false,
+  ),
+};
+
 class NotificationsSoundsScreen extends ConsumerStatefulWidget {
   const NotificationsSoundsScreen({super.key});
 
@@ -116,6 +150,9 @@ class _NotificationsSoundsScreenState
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
     final preferences = _preferences(settings.notificationPreferencesJson);
+    final capabilities = notificationPlatformCapabilities(
+      Theme.of(context).platform,
+    );
     return Scaffold(
       appBar: AppBar(
         title: Text(context.l10n.text('notifications_and_sounds')),
@@ -178,13 +215,14 @@ class _NotificationsSoundsScreenState
                       ),
                     ],
                   ),
-                  SwitchListTile(
-                    contentPadding: EdgeInsets.zero,
-                    value: preferences['vibration'] as bool? ?? true,
-                    title: Text(context.l10n.text('vibration')),
-                    onChanged: (value) =>
-                        _update(preferences, 'vibration', value),
-                  ),
+                  if (capabilities.supportsVibration)
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      value: preferences['vibration'] as bool? ?? true,
+                      title: Text(context.l10n.text('vibration')),
+                      onChanged: (value) =>
+                          _update(preferences, 'vibration', value),
+                    ),
                 ],
               ),
             ),
@@ -208,6 +246,7 @@ class _NotificationsSoundsScreenState
                 fallbackKey: settings.notificationSoundKey,
               ),
               ready: _ready,
+              showVibration: capabilities.supportsVibration,
               soundLabel: (choice) => _soundLabel(context, choice),
               onEnabledChanged: (value) =>
                   _update(preferences, category.$1, value),
@@ -217,7 +256,7 @@ class _NotificationsSoundsScreenState
                 await _update(preferences, '${category.$1}_sound', choice.key);
                 await _preview.play(choice);
               },
-              onPickDeviceSound: Platform.isAndroid
+              onPickDeviceSound: capabilities.supportsDeviceSoundPicker
                   ? (type) => _pickDeviceSound(
                       preferences: preferences,
                       category: category.$1,
@@ -302,17 +341,20 @@ class _NotificationsSoundsScreenState
             ),
           ),
           const SizedBox(height: 8),
-          OutlinedButton.icon(
-            onPressed: () => _openSystemSettings(
-              settings.localeCode,
-              sound: NotificationSounds.byKey(settings.notificationSoundKey),
-              vibration: preferences['vibration'] as bool? ?? true,
+          if (capabilities.supportsNotificationSettings)
+            OutlinedButton.icon(
+              onPressed: () => _openSystemSettings(
+                settings.localeCode,
+                sound: NotificationSounds.byKey(settings.notificationSoundKey),
+                vibration: preferences['vibration'] as bool? ?? true,
+              ),
+              icon: Icon(
+                capabilities.supportsDeviceSoundPicker
+                    ? Icons.android
+                    : Icons.desktop_windows,
+              ),
+              label: Text(context.l10n.text('open_system_settings')),
             ),
-            icon: Icon(
-              Platform.isAndroid ? Icons.android : Icons.desktop_windows,
-            ),
-            label: Text(context.l10n.text('open_system_settings')),
-          ),
         ],
       ),
     );
@@ -333,6 +375,7 @@ class _CategoryCard extends StatelessWidget {
     required this.vibration,
     required this.selectedSound,
     required this.ready,
+    required this.showVibration,
     required this.soundLabel,
     required this.onEnabledChanged,
     required this.onVibrationChanged,
@@ -350,6 +393,7 @@ class _CategoryCard extends StatelessWidget {
   final bool vibration;
   final NotificationSoundChoice selectedSound;
   final bool ready;
+  final bool showVibration;
   final String Function(NotificationSoundChoice) soundLabel;
   final ValueChanged<bool> onEnabledChanged;
   final ValueChanged<bool> onVibrationChanged;
@@ -383,12 +427,13 @@ class _CategoryCard extends StatelessWidget {
             title: Text(context.l10n.text('notifications')),
             onChanged: onEnabledChanged,
           ),
-          SwitchListTile(
-            contentPadding: EdgeInsets.zero,
-            value: vibration,
-            title: Text(context.l10n.text('vibration')),
-            onChanged: onVibrationChanged,
-          ),
+          if (showVibration)
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              value: vibration,
+              title: Text(context.l10n.text('vibration')),
+              onChanged: onVibrationChanged,
+            ),
           const SizedBox(height: 8),
           DropdownButtonFormField<NotificationSoundChoice>(
             isExpanded: true,

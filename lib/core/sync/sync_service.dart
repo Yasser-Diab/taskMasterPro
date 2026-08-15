@@ -801,6 +801,32 @@ CanonicalRuntimeApplyDecision canonicalRuntimeApplyDecision({
   return CanonicalRuntimeApplyDecision.staleOrInconsistent;
 }
 
+/// An RPC acknowledgement may legitimately correct optimistic fields while
+/// keeping the same revision and command identity (for example, server time
+/// can cap a Pomodoro boundary a few milliseconds differently). Realtime
+/// duplicates remain no-ops; only the command being acknowledged may replace
+/// its equal-revision optimistic snapshot.
+@visibleForTesting
+bool shouldApplyAcknowledgedCanonicalRuntime({
+  required int? localRevision,
+  required String? localCommandId,
+  required int incomingRevision,
+  required String? incomingCommandId,
+  required String acknowledgedCommandId,
+  bool superseded = false,
+}) {
+  final decision = canonicalRuntimeApplyDecision(
+    localRevision: localRevision,
+    localCommandId: localCommandId,
+    incomingRevision: incomingRevision,
+    incomingCommandId: incomingCommandId,
+  );
+  return decision == CanonicalRuntimeApplyDecision.apply ||
+      (superseded && localCommandId == acknowledgedCommandId) ||
+      (decision == CanonicalRuntimeApplyDecision.duplicate &&
+          incomingCommandId == acknowledgedCommandId);
+}
+
 /// A revision-guarded runtime command can be accepted as a durable duplicate
 /// while its requested transition is superseded.  That is not a user-facing
 /// conflict: the response already includes the state which won the race.
@@ -822,6 +848,21 @@ bool isCanonicalOnlyRuntimeResponse({
   return result['status'] == 'accepted' &&
       (result['canonical_only'] == true || result['superseded'] == true) &&
       result['canonical_runtime'] is Map;
+}
+
+/// Activity classification is an atomic aggregate command, not a single-row
+/// generic mutation. A revision conflict is already converged when the server
+/// returns the complete canonical aggregate which won the race.
+@visibleForTesting
+bool isCanonicalActivityClassificationResponse({
+  required String entityType,
+  required Map<String, dynamic> result,
+}) {
+  if (entityType != 'activity_review_classifications') return false;
+  return const {'accepted', 'conflict'}.contains(result['status']) &&
+      result['canonical_review'] is Map &&
+      result['canonical_attributions'] is List &&
+      result['canonical_contributions'] is List;
 }
 
 @visibleForTesting
@@ -2700,6 +2741,17 @@ class SyncService {
           entityType: command.entityType,
           result: result,
         );
+        final canonicalActivityCandidate =
+            isCanonicalActivityClassificationResponse(
+              entityType: command.entityType,
+              result: result,
+            );
+        final canonicalActivity = canonicalActivityCandidate
+            ? await _applyCanonicalActivityClassificationResponse(
+                command,
+                result,
+              )
+            : false;
         await (database.update(
           database.localOutboxCommands,
         )..where((row) => row.commandId.equals(command.commandId))).write(
@@ -2711,22 +2763,26 @@ class SyncService {
             status: Value(
               remoteStatus == 'accepted'
                   ? (canonicalOnlyRuntime ? 'superseded' : 'accepted')
+                  : canonicalActivity
+                  ? 'superseded'
                   : 'conflict',
             ),
             lastError: remoteStatus == 'accepted'
                 ? const Value.absent()
+                : canonicalActivity
+                ? const Value(null)
                 : Value(jsonEncode(result)),
           ),
         );
-        if (canonicalOnlyRuntime) {
-          final canonicalRuntime = Map<String, dynamic>.from(
-            result['canonical_runtime'] as Map,
-          );
-          // The optimistic command has just been retired, so the returned
-          // canonical runtime is the only permitted backwards correction.
-          // Applying the RPC response directly avoids an extra sync pull and
-          // avoids waiting for an out-of-order Realtime event.
-          await _applyRemoteRuntime(canonicalRuntime, force: true);
+        if (canonicalActivity) {
+          // The aggregate was applied above, before retiring the command. A
+          // stale revision with a full canonical response is convergence, not
+          // a user-facing synchronization problem.
+        } else if (canonicalOnlyRuntime) {
+          // The optimistic command has just been retired. Apply its returned
+          // canonical runtime with the same revision/order guards used by an
+          // ordinary accepted execution acknowledgement.
+          await _applyAcceptedCommandRevision(command, result);
         } else if (remoteStatus == 'accepted') {
           await _applyAcceptedCommandRevision(command, result);
         } else if (command.entityType == 'sync_conflict_decisions') {
@@ -4406,6 +4462,19 @@ class SyncService {
     LocalOutboxCommand command,
     Map<String, dynamic> result,
   ) async {
+    if (const {
+          'execution_runtime',
+          'execution_runtime_switch',
+        }.contains(command.entityType) &&
+        result['canonical_runtime'] is Map) {
+      await _applyRemoteRuntime(
+        Map<String, dynamic>.from(result['canonical_runtime'] as Map),
+        acknowledgedCommandId: command.commandId,
+        allowAcknowledgedRollback:
+            result['canonical_only'] == true || result['superseded'] == true,
+      );
+      return;
+    }
     if (command.entityType == 'sync_conflict_decisions') {
       await _applyAcceptedConflictDecision(command, result);
       return;
@@ -4441,6 +4510,180 @@ class SyncService {
           ))
           .write(LocalOutboxCommandsCompanion(baseRevision: Value(revision)));
     });
+  }
+
+  Future<bool> _applyCanonicalActivityClassificationResponse(
+    LocalOutboxCommand command,
+    Map<String, dynamic> result,
+  ) async {
+    final reviewValue = result['canonical_review'];
+    final attributionValue = result['canonical_attributions'];
+    final contributionValue = result['canonical_contributions'];
+    if (reviewValue is! Map ||
+        attributionValue is! List ||
+        contributionValue is! List) {
+      return false;
+    }
+    final review = Map<String, dynamic>.from(reviewValue);
+    final ownerId = review['user_id'] as String?;
+    final reviewId = review['id'] as String?;
+    final segmentId = review['activity_segment_id'] as String?;
+    final revision = (review['revision'] as num?)?.toInt();
+    if (ownerId == null ||
+        ownerId != command.userId ||
+        ownerId != client.auth.currentUser?.id ||
+        reviewId != command.entityId ||
+        segmentId == null ||
+        revision == null ||
+        revision < command.baseRevision) {
+      return false;
+    }
+
+    List<Map<String, dynamic>> ownedRows(
+      List<dynamic> values, {
+      required bool requireSegment,
+    }) {
+      final rows = <Map<String, dynamic>>[];
+      for (final value in values) {
+        if (value is! Map) return const [];
+        final row = Map<String, dynamic>.from(value);
+        if (row['user_id'] != ownerId ||
+            (requireSegment && row['activity_segment_id'] != segmentId)) {
+          return const [];
+        }
+        rows.add(row);
+      }
+      return rows;
+    }
+
+    final attributions = ownedRows(attributionValue, requireSegment: true);
+    final contributions = ownedRows(contributionValue, requireSegment: true);
+    if ((attributionValue.isNotEmpty && attributions.isEmpty) ||
+        (contributionValue.isNotEmpty && contributions.isEmpty)) {
+      return false;
+    }
+
+    Map<String, dynamic>? optionalOwnedRow(String key) {
+      final value = result[key];
+      if (value == null) return null;
+      if (value is! Map) return const <String, dynamic>{};
+      final row = Map<String, dynamic>.from(value);
+      return row['user_id'] == ownerId ? row : const <String, dynamic>{};
+    }
+
+    final application = optionalOwnedRow('canonical_application');
+    final rule = optionalOwnedRow('canonical_rule');
+    final feedback = optionalOwnedRow('canonical_feedback');
+    if (application?.isEmpty == true ||
+        rule?.isEmpty == true ||
+        feedback?.isEmpty == true) {
+      return false;
+    }
+
+    final canonicalAttributionIds = attributions
+        .map((row) => row['id'])
+        .whereType<String>()
+        .toSet();
+    final canonicalContributionIds = contributions
+        .map((row) => row['id'])
+        .whereType<String>()
+        .toSet();
+    if (canonicalAttributionIds.length != attributions.length ||
+        canonicalContributionIds.length != contributions.length) {
+      return false;
+    }
+
+    await database.transaction(() async {
+      await _applyEntity('activity_review_queue', review);
+      for (final row in attributions) {
+        await _applyEntity('activity_attributions', row);
+      }
+      for (final row in contributions) {
+        await _applyEntity('activity_contributions', row);
+      }
+      if (application != null) {
+        await _applyEntity('application_catalog', application);
+      }
+      if (rule != null) {
+        await _applyEntity('application_rules', rule);
+      }
+      if (feedback != null) {
+        await _applyEntity('classification_feedback', feedback);
+      }
+
+      final now = DateTime.now().toUtc();
+      final optimisticAttributions =
+          await (database.select(database.localAttributions)..where(
+                (row) =>
+                    row.userId.equals(ownerId) &
+                    row.activitySegmentId.equals(segmentId) &
+                    row.deletedAt.isNull(),
+              ))
+              .get();
+      for (final local in optimisticAttributions) {
+        if (canonicalAttributionIds.contains(local.id)) continue;
+        await (database.update(
+          database.localAttributions,
+        )..where((row) => row.id.equals(local.id))).write(
+          LocalAttributionsCompanion(
+            deletedAt: Value(now),
+            updatedAt: Value(now),
+          ),
+        );
+      }
+
+      final optimisticContributions =
+          await (database.select(database.localContributions)..where(
+                (row) =>
+                    row.userId.equals(ownerId) &
+                    row.activitySegmentId.equals(segmentId) &
+                    row.deletedAt.isNull(),
+              ))
+              .get();
+      for (final local in optimisticContributions) {
+        if (canonicalContributionIds.contains(local.id)) continue;
+        await (database.update(
+          database.localContributions,
+        )..where((row) => row.id.equals(local.id))).write(
+          LocalContributionsCompanion(
+            deletedAt: Value(now),
+            updatedAt: Value(now),
+          ),
+        );
+        await (database.update(database.localEntityRecords)..where(
+              (row) =>
+                  row.userId.equals(ownerId) &
+                  row.id.equals(local.id) &
+                  row.entityType.equals('activity_contributions'),
+            ))
+            .write(
+              LocalEntityRecordsCompanion(
+                deletedAt: Value(now),
+                updatedAt: Value(now),
+              ),
+            );
+      }
+
+      final payload = _payloadMap(command.payloadJson);
+      final optimisticRuleId = payload['rule_id'] as String?;
+      final canonicalRuleId = rule?['id'] as String?;
+      if (optimisticRuleId != null && optimisticRuleId != canonicalRuleId) {
+        await (database.update(database.localEntityRecords)..where(
+              (row) =>
+                  row.userId.equals(ownerId) &
+                  row.id.equals(optimisticRuleId) &
+                  row.entityType.equals('application_rules') &
+                  row.deletedAt.isNull(),
+            ))
+            .write(
+              LocalEntityRecordsCompanion(
+                deletedAt: Value(now),
+                updatedAt: Value(now),
+              ),
+            );
+      }
+    });
+    return true;
   }
 
   Future<void> _applyAcceptedConflictDecision(
@@ -7345,6 +7588,8 @@ class SyncService {
   Future<void> _applyRemoteRuntime(
     Map<String, dynamic> row, {
     bool force = false,
+    String? acknowledgedCommandId,
+    bool allowAcknowledgedRollback = false,
   }) async {
     final userId = row['user_id'] as String?;
     if (userId == null || userId != client.auth.currentUser?.id) return;
@@ -7384,7 +7629,17 @@ class SyncService {
       incomingRevision: incomingRevision,
       incomingCommandId: row['last_command_id'] as String?,
     );
-    if (!force && decision != CanonicalRuntimeApplyDecision.apply) {
+    final shouldApply = acknowledgedCommandId == null
+        ? decision == CanonicalRuntimeApplyDecision.apply
+        : shouldApplyAcknowledgedCanonicalRuntime(
+            localRevision: local?.revision,
+            localCommandId: local?.lastCommandId,
+            incomingRevision: incomingRevision,
+            incomingCommandId: row['last_command_id'] as String?,
+            acknowledgedCommandId: acknowledgedCommandId,
+            superseded: allowAcknowledgedRollback,
+          );
+    if (!force && !shouldApply) {
       // A duplicate needs no write.  For stale/inconsistent rows, retain the
       // newer local runtime and let the already-bounded canonical recovery
       // path observe a future server revision instead of reintroducing an old
@@ -7414,6 +7669,13 @@ class SyncService {
             ),
             accumulatedPausedMs: Value(
               (row['accumulated_paused_ms'] as num?)?.toInt() ?? 0,
+            ),
+            dataJson: Value(
+              jsonEncode(
+                row['data'] is Map
+                    ? Map<String, Object?>.from(row['data'] as Map)
+                    : const <String, Object?>{},
+              ),
             ),
             revision: Value(incomingRevision),
             updatedAt: updatedAt,

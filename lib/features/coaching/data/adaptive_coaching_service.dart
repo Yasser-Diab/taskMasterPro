@@ -5,6 +5,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../../core/data/entity_record_repository.dart';
 import '../../../core/database/app_database.dart';
+import '../../activity/domain/activity_reporting_policy.dart';
 import '../../tasks/domain/task_occurrence_policy.dart';
 
 /// The visual and conversational posture of a coaching insight.
@@ -540,7 +541,7 @@ class AdaptiveCoachingService {
                   row.status.isNotIn(const ['completed', 'cancelled']),
             ))
             .get();
-    final activity = settings?.phoneUsageAnalysisEnabled == true
+    final capturedActivity = settings?.phoneUsageAnalysisEnabled == true
         ? await (database.select(database.localActivitySegments)..where(
                 (row) =>
                     row.userId.equals(userId) &
@@ -551,6 +552,19 @@ class AdaptiveCoachingService {
               ))
               .get()
         : const <LocalActivitySegment>[];
+    final capturedActivityIds = capturedActivity.map((item) => item.id).toSet();
+    final activityAttributions = capturedActivityIds.isEmpty
+        ? const <LocalAttribution>[]
+        : await (database.select(database.localAttributions)..where(
+                (row) =>
+                    row.deletedAt.isNull() &
+                    row.activitySegmentId.isIn(capturedActivityIds),
+              ))
+              .get();
+    final activity = reportableActivitySegments(
+      segments: capturedActivity,
+      attributions: activityAttributions,
+    );
     final health = await entities.list(entityType: 'health_summaries');
     final cycles = await entities.list(entityType: 'pomodoro_cycles');
     final sessionEvents = await entities.list(entityType: 'session_events');

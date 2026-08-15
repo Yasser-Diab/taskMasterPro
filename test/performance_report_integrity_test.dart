@@ -111,6 +111,7 @@ void main() {
     List<LocalEntityRecord> sessions = const [],
     List<LocalEntityRecord> events = const [],
     List<LocalActivitySegment> activity = const [],
+    List<LocalAttribution> attributions = const [],
   }) => PerformanceReportSnapshot(
     profile: null,
     roadmap: null,
@@ -120,6 +121,7 @@ void main() {
     checkpoints: const [],
     activity: activity,
     contributions: const [],
+    attributions: attributions,
     insights: const [],
     health: const [],
     sessions: sessions,
@@ -152,6 +154,25 @@ void main() {
     revision: 1,
     createdAt: start,
     updatedAt: end,
+  );
+
+  LocalAttribution attribution({
+    required String segmentId,
+    required String classification,
+    required DateTime at,
+    int revision = 1,
+  }) => LocalAttribution(
+    id: 'attribution-$segmentId-$revision',
+    userId: 'user-1',
+    activitySegmentId: segmentId,
+    targetType: 'unassigned_activity',
+    classification: classification,
+    confidence: 1,
+    attributionStatus: 'confirmed',
+    confirmedByUser: true,
+    revision: revision,
+    createdAt: at,
+    updatedAt: at,
   );
 
   test(
@@ -415,6 +436,58 @@ void main() {
       expect(labels.join(' '), isNot(contains('freecodecamp.org/learn')));
     },
   );
+
+  test('excludes TaskMaster and latest System decisions from reports', () {
+    final ten = DateTime.utc(2026, 7, 13, 10);
+    final systemStart = ten.add(const Duration(minutes: 10));
+    final data = snapshot(
+      tasks: const [],
+      activity: [
+        activity(
+          id: 'useful',
+          start: ten,
+          end: ten.add(const Duration(minutes: 10)),
+          processName: 'Code.exe',
+        ),
+        activity(
+          id: 'system',
+          start: systemStart,
+          end: systemStart.add(const Duration(minutes: 10)),
+          processName: 'SearchHost.exe',
+        ),
+        activity(
+          id: 'self',
+          start: ten.add(const Duration(minutes: 20)),
+          end: ten.add(const Duration(minutes: 30)),
+          processName: 'taskmaster_pro.exe',
+        ),
+      ],
+      attributions: [
+        attribution(
+          segmentId: 'system',
+          classification: 'supporting_work',
+          at: systemStart,
+        ),
+        attribution(
+          segmentId: 'system',
+          classification: 'system_activity',
+          revision: 2,
+          at: systemStart.add(const Duration(seconds: 1)),
+        ),
+      ],
+    );
+
+    final facts = PerformanceReportService.factsForSnapshot(
+      data,
+      options(),
+      l10n,
+    );
+
+    expect(facts.activeActivityMs, const Duration(minutes: 10).inMilliseconds);
+    expect(facts.applications.map((entry) => entry.label), [
+      'Visual Studio Code',
+    ]);
+  });
 
   test('groups recurring occurrences and preserves union-allocated work', () {
     final ten = DateTime.utc(2026, 7, 14, 10);

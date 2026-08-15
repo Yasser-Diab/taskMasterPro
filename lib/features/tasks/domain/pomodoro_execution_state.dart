@@ -3,6 +3,58 @@ import 'dart:math' as math;
 
 import '../../../core/database/app_database.dart';
 
+const pomodoroFocusIntervalBaseKey = 'focus_interval_active_base_ms';
+const pomodoroCompletedFocusesKey = 'pomodoro_completed_focuses';
+
+Map<String, Object?> pomodoroRuntimeMetadata(LocalRuntime? runtime) {
+  if (runtime == null) return const <String, Object?>{};
+  try {
+    final decoded = jsonDecode(runtime.dataJson);
+    return decoded is Map
+        ? Map<String, Object?>.from(decoded)
+        : const <String, Object?>{};
+  } catch (_) {
+    return const <String, Object?>{};
+  }
+}
+
+int pomodoroFocusIntervalBaseMs(LocalRuntime? runtime, int focusDurationMs) {
+  if (runtime == null) return 0;
+  final accumulated = math.max(0, runtime.accumulatedActiveMs);
+  final metadata = pomodoroRuntimeMetadata(runtime);
+  final stored = (metadata[pomodoroFocusIntervalBaseKey] as num?)?.toInt();
+  if (stored != null) return stored.clamp(0, accumulated).toInt();
+
+  // A pre-v0.0.29 runtime did not persist interval identity. Preserve its
+  // historical behavior until the local/remote event backfill supplies the
+  // exact last boundary.
+  if (focusDurationMs <= 0) return 0;
+  return (accumulated ~/ focusDurationMs) * focusDurationMs;
+}
+
+int pomodoroCompletedFocuses(LocalRuntime? runtime, int focusDurationMs) {
+  if (runtime == null) return 0;
+  final metadata = pomodoroRuntimeMetadata(runtime);
+  final stored = (metadata[pomodoroCompletedFocusesKey] as num?)?.toInt();
+  if (stored != null) return math.max(0, stored);
+  if (focusDurationMs <= 0) return 0;
+  return math.max(0, runtime.accumulatedActiveMs) ~/ focusDurationMs;
+}
+
+String updatedPomodoroRuntimeData(
+  LocalRuntime? runtime, {
+  required int focusIntervalActiveBaseMs,
+  required int completedFocuses,
+}) {
+  final metadata = <String, Object?>{...pomodoroRuntimeMetadata(runtime)};
+  metadata[pomodoroFocusIntervalBaseKey] = math.max(
+    0,
+    focusIntervalActiveBaseMs,
+  );
+  metadata[pomodoroCompletedFocusesKey] = math.max(0, completedFocuses);
+  return jsonEncode(metadata);
+}
+
 /// Canonical, timestamp-derived Pomodoro state shared by every app surface.
 ///
 /// Keeping this calculation outside individual widgets prevents Dashboard,
@@ -96,14 +148,15 @@ class PomodoroExecutionSnapshot {
                 .inMilliseconds,
           )
         : 0;
-    final focusBase = (accumulated ~/ focusMs) * focusMs;
+    final focusBase = pomodoroFocusIntervalBaseMs(runtime, focusMs);
     final focusElapsed = (accumulated + (running ? rawSegment : 0) - focusBase)
         .clamp(0, focusMs)
         .toInt();
     final focusComplete =
         running && accumulated + rawSegment >= focusBase + focusMs;
+    final completedBeforeInterval = pomodoroCompletedFocuses(runtime, focusMs);
     final completedFocuses =
-        (focusBase + (focusComplete ? focusMs : focusElapsed)) ~/ focusMs;
+        completedBeforeInterval + (focusComplete && !isBreak ? 1 : 0);
     final isLongBreak =
         completedFocuses > 0 && completedFocuses % longAfter == 0;
     final nextBreakMs = isLongBreak ? longBreakMs : shortBreakMs;

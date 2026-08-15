@@ -764,6 +764,65 @@ void main() {
   );
 
   test(
+    'supporting-work decisions can be remembered for future activity',
+    () async {
+      final now = DateTime.now().toUtc();
+      await database
+          .into(database.localAppSettings)
+          .insert(
+            LocalAppSettingsCompanion.insert(
+              id: 'app',
+              createdAt: now,
+              updatedAt: now,
+            ),
+          );
+      await activity.captureRawSegment(
+        startedAt: now,
+        endedAt: now.add(const Duration(seconds: 20)),
+        sourceType: 'windows_foreground',
+        processName: 'ChatGPT.exe',
+      );
+      final first = (await activity.watchReviewQueue().first).single;
+      await activity.resolve(
+        first,
+        const ActivityResolution(
+          status: 'confirmed',
+          classification: 'supporting_work',
+          rememberRule: true,
+        ),
+      );
+
+      final nextStart = now.add(const Duration(minutes: 1));
+      await activity.captureRawSegment(
+        startedAt: nextStart,
+        endedAt: nextStart.add(const Duration(seconds: 15)),
+        sourceType: 'windows_foreground',
+        processName: 'ChatGPT.exe',
+      );
+
+      expect(await activity.watchReviewQueue().first, isEmpty);
+      final rules =
+          await (database.select(database.localEntityRecords)..where(
+                (row) =>
+                    row.entityType.equals('application_rules') &
+                    row.deletedAt.isNull(),
+              ))
+              .get();
+      expect(
+        rules.where((rule) {
+          final decoded = jsonDecode(rule.dataJson);
+          final data = decoded is Map
+              ? Map<String, Object?>.from(decoded)
+              : const <String, Object?>{};
+          return data['classification'] == 'supporting_work' &&
+              data['scope_type'] == 'user';
+        }),
+        hasLength(1),
+      );
+    },
+  );
+
+  test(
     'interactive terminal names are not auto-classified as system',
     () async {
       final now = DateTime.now().toUtc();
@@ -787,4 +846,78 @@ void main() {
       expect(await activity.watchReviewQueue().first, hasLength(1));
     },
   );
+
+  test('System-labelled contributions do not inflate roadmap effort', () async {
+    final now = DateTime.now().toUtc();
+    final roadmapId = await roadmaps.createRoadmap(
+      const RoadmapDraft(
+        title: 'System exclusion',
+        requiredEffort: Duration(hours: 1),
+      ),
+    );
+    final taskId = await tasks.createTask(
+      TaskDraft(title: 'Real work', roadmapId: roadmapId),
+    );
+    final task = await (database.select(
+      database.localTasks,
+    )..where((row) => row.id.equals(taskId))).getSingle();
+    final segment = LocalActivitySegment(
+      id: 'legacy-system-segment',
+      userId: task.userId,
+      deviceId: 'windows',
+      deviceEventId: 'legacy-system-segment',
+      startedAt: now,
+      endedAt: now.add(const Duration(minutes: 10)),
+      sourceType: 'windows_foreground',
+      processName: 'SearchHost.exe',
+      rawMetadataJson: '{}',
+      revision: 1,
+      createdAt: now,
+      updatedAt: now,
+    );
+    final attribution = LocalAttribution(
+      id: 'legacy-system-attribution',
+      userId: task.userId,
+      activitySegmentId: segment.id,
+      targetType: 'unassigned_activity',
+      classification: 'system_activity',
+      confidence: 1,
+      attributionStatus: 'confirmed',
+      confirmedByUser: true,
+      revision: 2,
+      createdAt: now,
+      updatedAt: now,
+    );
+    await database.into(database.localActivitySegments).insert(segment);
+    await database.into(database.localAttributions).insert(attribution);
+    await database
+        .into(database.localContributions)
+        .insert(
+          LocalContribution(
+            id: 'legacy-system-contribution',
+            userId: task.userId,
+            activitySegmentId: segment.id,
+            attributionId: attribution.id,
+            targetType: 'task_occurrence',
+            targetId: taskId,
+            contributionType: 'active_work_seconds',
+            physicalDurationMs: const Duration(minutes: 10).inMilliseconds,
+            creditedDurationMs: const Duration(minutes: 10).inMilliseconds,
+            isUnscheduled: true,
+            isCrossTask: true,
+            isIdleDerived: false,
+            isAutomatic: false,
+            revision: 1,
+            createdAt: now,
+            updatedAt: now,
+          ),
+        );
+
+    await roadmaps.recalculateProgress(roadmapId, synchronize: false);
+
+    final roadmap = await (database.select(
+      database.localRoadmaps,
+    )..where((row) => row.id.equals(roadmapId))).getSingle();
+    expect(roadmap.completedEffortMs, 0);
+  });
 }

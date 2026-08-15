@@ -51,7 +51,7 @@ String activityClassificationLabel(
     'system_activity' => l10n.text('system_activity'),
     'possible_system_activity' => l10n.text('possible_system_activity'),
     'user_application' => l10n.text('user_application'),
-    'idle' || 'technical_idle' => l10n.text('activity_idle'),
+    'idle' || 'technical_idle' => l10n.text('activity_inactive'),
     _ => l10n.text('activity_needs_review'),
   };
 }

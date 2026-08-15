@@ -6593,6 +6593,18 @@ class $LocalRuntimeStatesTable extends LocalRuntimeStates
     requiredDuringInsert: false,
     defaultValue: const Constant(0),
   );
+  static const VerificationMeta _dataJsonMeta = const VerificationMeta(
+    'dataJson',
+  );
+  @override
+  late final GeneratedColumn<String> dataJson = GeneratedColumn<String>(
+    'data_json',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('{}'),
+  );
   static const VerificationMeta _revisionMeta = const VerificationMeta(
     'revision',
   );
@@ -6637,6 +6649,7 @@ class $LocalRuntimeStatesTable extends LocalRuntimeStates
     segmentStartedAt,
     accumulatedActiveMs,
     accumulatedPausedMs,
+    dataJson,
     revision,
     updatedAt,
     lastCommandId,
@@ -6714,6 +6727,12 @@ class $LocalRuntimeStatesTable extends LocalRuntimeStates
         ),
       );
     }
+    if (data.containsKey('data_json')) {
+      context.handle(
+        _dataJsonMeta,
+        dataJson.isAcceptableOrUnknown(data['data_json']!, _dataJsonMeta),
+      );
+    }
     if (data.containsKey('revision')) {
       context.handle(
         _revisionMeta,
@@ -6778,6 +6797,10 @@ class $LocalRuntimeStatesTable extends LocalRuntimeStates
         DriftSqlType.int,
         data['${effectivePrefix}accumulated_paused_ms'],
       )!,
+      dataJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}data_json'],
+      )!,
       revision: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}revision'],
@@ -6808,6 +6831,11 @@ class LocalRuntime extends DataClass implements Insertable<LocalRuntime> {
   final DateTime? segmentStartedAt;
   final int accumulatedActiveMs;
   final int accumulatedPausedMs;
+
+  /// Canonical interval metadata which is not part of the lifetime task total.
+  /// Pomodoro uses this to keep each focus interval independent while the
+  /// accumulated active duration continues to grow for reports.
+  final String dataJson;
   final int revision;
   final DateTime updatedAt;
   final String? lastCommandId;
@@ -6820,6 +6848,7 @@ class LocalRuntime extends DataClass implements Insertable<LocalRuntime> {
     this.segmentStartedAt,
     required this.accumulatedActiveMs,
     required this.accumulatedPausedMs,
+    required this.dataJson,
     required this.revision,
     required this.updatedAt,
     this.lastCommandId,
@@ -6841,6 +6870,7 @@ class LocalRuntime extends DataClass implements Insertable<LocalRuntime> {
     }
     map['accumulated_active_ms'] = Variable<int>(accumulatedActiveMs);
     map['accumulated_paused_ms'] = Variable<int>(accumulatedPausedMs);
+    map['data_json'] = Variable<String>(dataJson);
     map['revision'] = Variable<int>(revision);
     map['updated_at'] = Variable<DateTime>(updatedAt);
     if (!nullToAbsent || lastCommandId != null) {
@@ -6865,6 +6895,7 @@ class LocalRuntime extends DataClass implements Insertable<LocalRuntime> {
           : Value(segmentStartedAt),
       accumulatedActiveMs: Value(accumulatedActiveMs),
       accumulatedPausedMs: Value(accumulatedPausedMs),
+      dataJson: Value(dataJson),
       revision: Value(revision),
       updatedAt: Value(updatedAt),
       lastCommandId: lastCommandId == null && nullToAbsent
@@ -6893,6 +6924,7 @@ class LocalRuntime extends DataClass implements Insertable<LocalRuntime> {
       accumulatedPausedMs: serializer.fromJson<int>(
         json['accumulatedPausedMs'],
       ),
+      dataJson: serializer.fromJson<String>(json['dataJson']),
       revision: serializer.fromJson<int>(json['revision']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
       lastCommandId: serializer.fromJson<String?>(json['lastCommandId']),
@@ -6910,6 +6942,7 @@ class LocalRuntime extends DataClass implements Insertable<LocalRuntime> {
       'segmentStartedAt': serializer.toJson<DateTime?>(segmentStartedAt),
       'accumulatedActiveMs': serializer.toJson<int>(accumulatedActiveMs),
       'accumulatedPausedMs': serializer.toJson<int>(accumulatedPausedMs),
+      'dataJson': serializer.toJson<String>(dataJson),
       'revision': serializer.toJson<int>(revision),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
       'lastCommandId': serializer.toJson<String?>(lastCommandId),
@@ -6925,6 +6958,7 @@ class LocalRuntime extends DataClass implements Insertable<LocalRuntime> {
     Value<DateTime?> segmentStartedAt = const Value.absent(),
     int? accumulatedActiveMs,
     int? accumulatedPausedMs,
+    String? dataJson,
     int? revision,
     DateTime? updatedAt,
     Value<String?> lastCommandId = const Value.absent(),
@@ -6939,6 +6973,7 @@ class LocalRuntime extends DataClass implements Insertable<LocalRuntime> {
         : this.segmentStartedAt,
     accumulatedActiveMs: accumulatedActiveMs ?? this.accumulatedActiveMs,
     accumulatedPausedMs: accumulatedPausedMs ?? this.accumulatedPausedMs,
+    dataJson: dataJson ?? this.dataJson,
     revision: revision ?? this.revision,
     updatedAt: updatedAt ?? this.updatedAt,
     lastCommandId: lastCommandId.present
@@ -6963,6 +6998,7 @@ class LocalRuntime extends DataClass implements Insertable<LocalRuntime> {
       accumulatedPausedMs: data.accumulatedPausedMs.present
           ? data.accumulatedPausedMs.value
           : this.accumulatedPausedMs,
+      dataJson: data.dataJson.present ? data.dataJson.value : this.dataJson,
       revision: data.revision.present ? data.revision.value : this.revision,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
       lastCommandId: data.lastCommandId.present
@@ -6982,6 +7018,7 @@ class LocalRuntime extends DataClass implements Insertable<LocalRuntime> {
           ..write('segmentStartedAt: $segmentStartedAt, ')
           ..write('accumulatedActiveMs: $accumulatedActiveMs, ')
           ..write('accumulatedPausedMs: $accumulatedPausedMs, ')
+          ..write('dataJson: $dataJson, ')
           ..write('revision: $revision, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('lastCommandId: $lastCommandId')
@@ -6999,6 +7036,7 @@ class LocalRuntime extends DataClass implements Insertable<LocalRuntime> {
     segmentStartedAt,
     accumulatedActiveMs,
     accumulatedPausedMs,
+    dataJson,
     revision,
     updatedAt,
     lastCommandId,
@@ -7015,6 +7053,7 @@ class LocalRuntime extends DataClass implements Insertable<LocalRuntime> {
           other.segmentStartedAt == this.segmentStartedAt &&
           other.accumulatedActiveMs == this.accumulatedActiveMs &&
           other.accumulatedPausedMs == this.accumulatedPausedMs &&
+          other.dataJson == this.dataJson &&
           other.revision == this.revision &&
           other.updatedAt == this.updatedAt &&
           other.lastCommandId == this.lastCommandId);
@@ -7029,6 +7068,7 @@ class LocalRuntimeStatesCompanion extends UpdateCompanion<LocalRuntime> {
   final Value<DateTime?> segmentStartedAt;
   final Value<int> accumulatedActiveMs;
   final Value<int> accumulatedPausedMs;
+  final Value<String> dataJson;
   final Value<int> revision;
   final Value<DateTime> updatedAt;
   final Value<String?> lastCommandId;
@@ -7042,6 +7082,7 @@ class LocalRuntimeStatesCompanion extends UpdateCompanion<LocalRuntime> {
     this.segmentStartedAt = const Value.absent(),
     this.accumulatedActiveMs = const Value.absent(),
     this.accumulatedPausedMs = const Value.absent(),
+    this.dataJson = const Value.absent(),
     this.revision = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.lastCommandId = const Value.absent(),
@@ -7056,6 +7097,7 @@ class LocalRuntimeStatesCompanion extends UpdateCompanion<LocalRuntime> {
     this.segmentStartedAt = const Value.absent(),
     this.accumulatedActiveMs = const Value.absent(),
     this.accumulatedPausedMs = const Value.absent(),
+    this.dataJson = const Value.absent(),
     this.revision = const Value.absent(),
     required DateTime updatedAt,
     this.lastCommandId = const Value.absent(),
@@ -7072,6 +7114,7 @@ class LocalRuntimeStatesCompanion extends UpdateCompanion<LocalRuntime> {
     Expression<DateTime>? segmentStartedAt,
     Expression<int>? accumulatedActiveMs,
     Expression<int>? accumulatedPausedMs,
+    Expression<String>? dataJson,
     Expression<int>? revision,
     Expression<DateTime>? updatedAt,
     Expression<String>? lastCommandId,
@@ -7088,6 +7131,7 @@ class LocalRuntimeStatesCompanion extends UpdateCompanion<LocalRuntime> {
         'accumulated_active_ms': accumulatedActiveMs,
       if (accumulatedPausedMs != null)
         'accumulated_paused_ms': accumulatedPausedMs,
+      if (dataJson != null) 'data_json': dataJson,
       if (revision != null) 'revision': revision,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (lastCommandId != null) 'last_command_id': lastCommandId,
@@ -7104,6 +7148,7 @@ class LocalRuntimeStatesCompanion extends UpdateCompanion<LocalRuntime> {
     Value<DateTime?>? segmentStartedAt,
     Value<int>? accumulatedActiveMs,
     Value<int>? accumulatedPausedMs,
+    Value<String>? dataJson,
     Value<int>? revision,
     Value<DateTime>? updatedAt,
     Value<String?>? lastCommandId,
@@ -7118,6 +7163,7 @@ class LocalRuntimeStatesCompanion extends UpdateCompanion<LocalRuntime> {
       segmentStartedAt: segmentStartedAt ?? this.segmentStartedAt,
       accumulatedActiveMs: accumulatedActiveMs ?? this.accumulatedActiveMs,
       accumulatedPausedMs: accumulatedPausedMs ?? this.accumulatedPausedMs,
+      dataJson: dataJson ?? this.dataJson,
       revision: revision ?? this.revision,
       updatedAt: updatedAt ?? this.updatedAt,
       lastCommandId: lastCommandId ?? this.lastCommandId,
@@ -7152,6 +7198,9 @@ class LocalRuntimeStatesCompanion extends UpdateCompanion<LocalRuntime> {
     if (accumulatedPausedMs.present) {
       map['accumulated_paused_ms'] = Variable<int>(accumulatedPausedMs.value);
     }
+    if (dataJson.present) {
+      map['data_json'] = Variable<String>(dataJson.value);
+    }
     if (revision.present) {
       map['revision'] = Variable<int>(revision.value);
     }
@@ -7178,6 +7227,7 @@ class LocalRuntimeStatesCompanion extends UpdateCompanion<LocalRuntime> {
           ..write('segmentStartedAt: $segmentStartedAt, ')
           ..write('accumulatedActiveMs: $accumulatedActiveMs, ')
           ..write('accumulatedPausedMs: $accumulatedPausedMs, ')
+          ..write('dataJson: $dataJson, ')
           ..write('revision: $revision, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('lastCommandId: $lastCommandId, ')
@@ -17108,6 +17158,7 @@ typedef $$LocalRuntimeStatesTableCreateCompanionBuilder =
       Value<DateTime?> segmentStartedAt,
       Value<int> accumulatedActiveMs,
       Value<int> accumulatedPausedMs,
+      Value<String> dataJson,
       Value<int> revision,
       required DateTime updatedAt,
       Value<String?> lastCommandId,
@@ -17123,6 +17174,7 @@ typedef $$LocalRuntimeStatesTableUpdateCompanionBuilder =
       Value<DateTime?> segmentStartedAt,
       Value<int> accumulatedActiveMs,
       Value<int> accumulatedPausedMs,
+      Value<String> dataJson,
       Value<int> revision,
       Value<DateTime> updatedAt,
       Value<String?> lastCommandId,
@@ -17175,6 +17227,11 @@ class $$LocalRuntimeStatesTableFilterComposer
 
   ColumnFilters<int> get accumulatedPausedMs => $composableBuilder(
     column: $table.accumulatedPausedMs,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get dataJson => $composableBuilder(
+    column: $table.dataJson,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -17243,6 +17300,11 @@ class $$LocalRuntimeStatesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get dataJson => $composableBuilder(
+    column: $table.dataJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<int> get revision => $composableBuilder(
     column: $table.revision,
     builder: (column) => ColumnOrderings(column),
@@ -17299,6 +17361,9 @@ class $$LocalRuntimeStatesTableAnnotationComposer
     column: $table.accumulatedPausedMs,
     builder: (column) => column,
   );
+
+  GeneratedColumn<String> get dataJson =>
+      $composableBuilder(column: $table.dataJson, builder: (column) => column);
 
   GeneratedColumn<int> get revision =>
       $composableBuilder(column: $table.revision, builder: (column) => column);
@@ -17360,6 +17425,7 @@ class $$LocalRuntimeStatesTableTableManager
                 Value<DateTime?> segmentStartedAt = const Value.absent(),
                 Value<int> accumulatedActiveMs = const Value.absent(),
                 Value<int> accumulatedPausedMs = const Value.absent(),
+                Value<String> dataJson = const Value.absent(),
                 Value<int> revision = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
                 Value<String?> lastCommandId = const Value.absent(),
@@ -17373,6 +17439,7 @@ class $$LocalRuntimeStatesTableTableManager
                 segmentStartedAt: segmentStartedAt,
                 accumulatedActiveMs: accumulatedActiveMs,
                 accumulatedPausedMs: accumulatedPausedMs,
+                dataJson: dataJson,
                 revision: revision,
                 updatedAt: updatedAt,
                 lastCommandId: lastCommandId,
@@ -17388,6 +17455,7 @@ class $$LocalRuntimeStatesTableTableManager
                 Value<DateTime?> segmentStartedAt = const Value.absent(),
                 Value<int> accumulatedActiveMs = const Value.absent(),
                 Value<int> accumulatedPausedMs = const Value.absent(),
+                Value<String> dataJson = const Value.absent(),
                 Value<int> revision = const Value.absent(),
                 required DateTime updatedAt,
                 Value<String?> lastCommandId = const Value.absent(),
@@ -17401,6 +17469,7 @@ class $$LocalRuntimeStatesTableTableManager
                 segmentStartedAt: segmentStartedAt,
                 accumulatedActiveMs: accumulatedActiveMs,
                 accumulatedPausedMs: accumulatedPausedMs,
+                dataJson: dataJson,
                 revision: revision,
                 updatedAt: updatedAt,
                 lastCommandId: lastCommandId,

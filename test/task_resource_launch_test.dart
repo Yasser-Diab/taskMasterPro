@@ -131,6 +131,7 @@ void main() {
         state: state,
         accumulatedActiveMs: 0,
         accumulatedPausedMs: 0,
+        dataJson: '{}',
         revision: 1,
         updatedAt: now,
       );

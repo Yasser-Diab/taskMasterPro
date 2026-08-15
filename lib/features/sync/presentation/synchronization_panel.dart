@@ -156,8 +156,10 @@ class _SynchronizationPanelState extends ConsumerState<SynchronizationPanel> {
                                   ? context.l10n.text(
                                       'sync_not_completed_device',
                                     )
-                                  : DateFormat.yMMMd().add_jm().format(
-                                      data.lastSuccessfulSync!,
+                                  : DateFormat.yMMMd(
+                                      context.l10n.locale.toLanguageTag(),
+                                    ).add_jm().format(
+                                      data.lastSuccessfulSync!.toLocal(),
                                     ),
                             ),
                             _DetailRow(
@@ -432,16 +434,23 @@ class _SynchronizationDiagnosticsPanelState
 
   @override
   Widget build(BuildContext context) {
+    final viewport = MediaQuery.sizeOf(context);
+    final compact = viewport.width < 600;
     return Dialog(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 720, maxHeight: 760),
+      insetPadding: EdgeInsets.symmetric(
+        horizontal: compact ? 12 : 24,
+        vertical: compact ? 16 : 24,
+      ),
+      child: SizedBox(
+        width: 720,
+        height: (viewport.height - (compact ? 32 : 48)).clamp(320.0, 760.0),
         child: FutureBuilder<SyncSnapshot>(
           future: _snapshot,
           builder: (context, asyncSnapshot) {
             final snapshot = asyncSnapshot.data;
             if (snapshot == null) {
-              return const Padding(
-                padding: EdgeInsets.all(48),
+              return Padding(
+                padding: EdgeInsets.all(compact ? 24 : 48),
                 child: Center(child: CircularProgressIndicator()),
               );
             }
@@ -455,7 +464,12 @@ class _SynchronizationDiagnosticsPanelState
             return Column(
               children: [
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(24, 20, 12, 12),
+                  padding: EdgeInsetsDirectional.fromSTEB(
+                    compact ? 16 : 24,
+                    compact ? 12 : 20,
+                    compact ? 6 : 12,
+                    compact ? 8 : 12,
+                  ),
                   child: Row(
                     children: [
                       const Icon(Icons.monitor_heart_outlined),
@@ -477,15 +491,17 @@ class _SynchronizationDiagnosticsPanelState
                 const Divider(height: 1),
                 Expanded(
                   child: ListView(
-                    padding: const EdgeInsets.all(24),
+                    padding: EdgeInsets.all(compact ? 16 : 24),
                     children: [
                       _DetailRow(
                         icon: Icons.schedule_outlined,
                         label: context.l10n.text('last_successful_sync'),
                         value: snapshot.lastSuccessfulSync == null
                             ? context.l10n.text('sync_not_completed_device')
-                            : DateFormat.yMMMd().add_jm().format(
-                                snapshot.lastSuccessfulSync!,
+                            : DateFormat.yMMMd(
+                                context.l10n.locale.toLanguageTag(),
+                              ).add_jm().format(
+                                snapshot.lastSuccessfulSync!.toLocal(),
                               ),
                       ),
                       _DetailRow(
@@ -697,7 +713,7 @@ class _SynchronizationDiagnosticsPanelState
                 ),
                 const Divider(height: 1),
                 Padding(
-                  padding: const EdgeInsets.all(16),
+                  padding: EdgeInsets.all(compact ? 12 : 16),
                   child: Wrap(
                     alignment: WrapAlignment.end,
                     spacing: 8,

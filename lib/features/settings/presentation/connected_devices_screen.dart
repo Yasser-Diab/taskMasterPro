@@ -225,7 +225,7 @@ class _ConnectedDeviceCard extends StatelessWidget {
     });
     final lastActive = lastSeen == null
         ? null
-        : '${l10n.text('last_active')}: ${DateFormat.yMMMd().add_jm().format(lastSeen)}';
+        : '${l10n.text('last_active')}: ${DateFormat.yMMMd(l10n.locale.toLanguageTag()).add_jm().format(lastSeen)}';
     return Card(
       key: ValueKey('connected-device-${device['id']}'),
       child: Padding(

@@ -62,12 +62,14 @@ String activityContributionIdFor({
 String activityClassificationCommandIdFor({
   required String userId,
   required String reviewItemId,
+  required int expectedReviewRevision,
   required String classification,
   required String? targetTaskId,
   required String? contributionType,
 }) => const Uuid().v5(
   Namespace.url.value,
   'https://taskmasterpro.app/account/$userId/activity-review/$reviewItemId/'
+  'revision/$expectedReviewRevision/'
   'classify/$classification/${targetTaskId ?? 'none'}/'
   '${contributionType ?? 'none'}',
 );
@@ -133,6 +135,37 @@ class ActivityTaskAllocation {
 
   final String targetTaskId;
   final int percentage;
+}
+
+/// A percentage split across several tasks is a one-off attribution decision.
+///
+/// Remembering it as an application rule would silently collapse the rule to
+/// the first task in the list, because an application rule has one target.
+/// Keep the choice available for a single task, and enforce the same invariant
+/// in [ActivityRepository.resolve] for callers which bypass the UI.
+bool activityResolutionCanRememberForFuture(ActivityResolution resolution) =>
+    resolution.taskAllocations.length < 2;
+
+/// Selects the canonical live Activity rule deterministically.
+///
+/// Canonical revision is authoritative across devices. Timestamps are only a
+/// tie-break for equal revisions because device clocks can be skewed. The
+/// stable ID tie-break makes the result independent from database row order.
+LocalEntityRecord? selectCanonicalActivityRule(
+  Iterable<LocalEntityRecord> rules, {
+  required bool Function(LocalEntityRecord rule) matches,
+}) {
+  final candidates = rules.where(matches).toList(growable: false)
+    ..sort((left, right) {
+      final revision = right.revision.compareTo(left.revision);
+      if (revision != 0) return revision;
+      final updated = right.updatedAt.compareTo(left.updatedAt);
+      if (updated != 0) return updated;
+      final created = right.createdAt.compareTo(left.createdAt);
+      if (created != 0) return created;
+      return left.id.compareTo(right.id);
+    });
+  return candidates.isEmpty ? null : candidates.first;
 }
 
 /// Validates one physical Activity interval's explicit task allocation.
@@ -720,6 +753,8 @@ class ActivityRepository {
       final allocations = validateActivityTaskAllocations(requestedAllocations);
       final primary = allocations.first;
       final physicalDurationMs = entry.duration.inMilliseconds;
+      final rememberSingleTaskRule =
+          resolution.rememberRule && allocations.length == 1;
       await _resolveSingle(
         entry,
         ActivityResolution(
@@ -735,7 +770,7 @@ class ActivityRepository {
               percentage: primary.percentage,
             ),
           ),
-          rememberRule: resolution.rememberRule,
+          rememberRule: rememberSingleTaskRule,
           isAutomatic: resolution.isAutomatic,
         ),
       );
@@ -757,6 +792,16 @@ class ActivityRepository {
     ActivityReviewEntry entry,
     ActivityResolution resolution,
   ) async {
+    final currentReview =
+        await (database.select(database.localActivityReviews)..where(
+              (row) =>
+                  row.userId.equals(_userId) &
+                  row.id.equals(entry.review.id) &
+                  row.deletedAt.isNull(),
+            ))
+            .getSingleOrNull();
+    if (currentReview == null) return;
+    entry = ActivityReviewEntry(review: currentReview, segment: entry.segment);
     final settings = await (database.select(
       database.localAppSettings,
     )..where((row) => row.id.equals(settingsId))).getSingleOrNull();
@@ -777,6 +822,13 @@ class ActivityRepository {
     final synchronizeActivity =
         synchronizeDetailedActivity ||
         (synchronizeContributions && shouldCredit);
+    if (await _resolutionAlreadyApplied(
+      entry: entry,
+      resolution: resolution,
+      shouldCredit: shouldCredit,
+    )) {
+      return;
+    }
     final now = DateTime.now().toUtc();
     final deviceId = await DeviceIdentity.accountId(_userId);
     final segmentCommandId = synchronizeActivity ? _uuid.v4() : null;
@@ -800,6 +852,7 @@ class ActivityRepository {
     final classificationCommandId = activityClassificationCommandIdFor(
       userId: _userId,
       reviewItemId: entry.review.id,
+      expectedReviewRevision: entry.review.revision,
       classification: resolution.classification,
       targetTaskId: resolution.targetId,
       contributionType: resolution.contributionType,
@@ -1069,11 +1122,8 @@ class ActivityRepository {
           resolution: resolution,
           synchronize: synchronizeRules,
         );
-      } else if (resolution.classification == 'system_activity' ||
-          resolution.classification == 'user_application' ||
-          resolution.classification == 'generally_unrelated' ||
-          resolution.classification == 'unrelated') {
-        await _rememberNegativeOrSystemRule(
+      } else {
+        await _rememberApplicationClassificationRule(
           entry: entry,
           resolution: resolution,
           synchronize: synchronizeRules,
@@ -1089,6 +1139,136 @@ class ActivityRepository {
         synchronize: synchronizeContributions,
       );
     }
+  }
+
+  Future<bool> _resolutionAlreadyApplied({
+    required ActivityReviewEntry entry,
+    required ActivityResolution resolution,
+    required bool shouldCredit,
+  }) async {
+    if (entry.review.status == 'pending' ||
+        entry.review.status != resolution.status) {
+      return false;
+    }
+    final attributions =
+        await (database.select(database.localAttributions)..where(
+              (row) =>
+                  row.userId.equals(_userId) &
+                  row.activitySegmentId.equals(entry.segment.id) &
+                  row.deletedAt.isNull(),
+            ))
+            .get();
+    // A single-target intent is exact, not a subset match. In particular,
+    // A+B must not be treated as already-applied when the new intent is A.
+    if (attributions.length != 1) return false;
+    final attribution = attributions.single;
+    if (attribution.classification != resolution.classification ||
+        attribution.targetType != resolution.targetType ||
+        attribution.targetId != resolution.targetId) {
+      return false;
+    }
+
+    final liveContributions =
+        await (database.select(database.localContributions)..where(
+              (row) =>
+                  row.userId.equals(_userId) &
+                  row.activitySegmentId.equals(entry.segment.id) &
+                  row.deletedAt.isNull(),
+            ))
+            .get();
+    if (shouldCredit) {
+      if (liveContributions.length != 1) return false;
+      final expectedDurationMs = (resolution.creditedDuration ?? entry.duration)
+          .inMilliseconds
+          .clamp(0, entry.duration.inMilliseconds);
+      final matching = liveContributions.where(
+        (item) =>
+            item.attributionId == attribution.id &&
+            item.targetType == resolution.targetType &&
+            item.targetId == resolution.targetId &&
+            item.contributionType == resolution.contributionType &&
+            item.creditedDurationMs == expectedDurationMs,
+      );
+      if (matching.length != 1) return false;
+    } else if (liveContributions.isNotEmpty) {
+      return false;
+    }
+
+    if (!resolution.rememberRule) return true;
+    return _hasRememberedApplicationRuleIntent(
+      entry: entry,
+      resolution: resolution,
+    );
+  }
+
+  Future<bool> _hasRememberedApplicationRuleIntent({
+    required ActivityReviewEntry entry,
+    required ActivityResolution resolution,
+  }) async {
+    final identifier = _activityRuleIdentifier(entry.segment);
+    if (identifier == null) return false;
+    final platform = entry.segment.sourceType.startsWith('android')
+        ? 'android'
+        : 'windows';
+    final metadataValue = jsonDecode(entry.segment.rawMetadataJson);
+    final metadata = metadataValue is Map
+        ? Map<String, Object?>.from(metadataValue)
+        : const <String, Object?>{};
+    final sourceTaskId = metadata['source_task_id'] as String?;
+    final scopeType =
+        resolution.targetId != null ||
+            (resolution.classification == 'unrelated' && sourceTaskId != null)
+        ? 'task'
+        : 'user';
+    final scopeId =
+        resolution.targetId ?? (scopeType == 'task' ? sourceTaskId : _userId);
+    if (scopeId == null) return false;
+
+    final entities = EntityRecordRepository(database, client);
+    final catalogs = await entities.list(entityType: 'application_catalog');
+    bool matchesApplication(LocalEntityRecord candidate) {
+      final data = _entityData(entities, candidate);
+      return candidate.status == 'known' &&
+          (data['application_identifier'] as String?)?.toLowerCase() ==
+              identifier.toLowerCase() &&
+          (data['platform'] as String?)?.toLowerCase() == platform;
+    }
+
+    final matchingCatalogs = catalogs.where(matchesApplication).toList();
+    final catalog = selectCanonicalActivityRule(
+      matchingCatalogs,
+      matches: (_) => true,
+    );
+    if (catalog == null) return false;
+    final applicationIds = matchingCatalogs
+        .map((candidate) => candidate.id)
+        .toSet();
+    final rules = await entities.list(entityType: 'application_rules');
+    final matchingRules = rules.where((candidate) {
+      final data = _entityData(entities, candidate);
+      return candidate.status == 'active' &&
+          applicationIds.contains(data['application_id']) &&
+          data['scope_type'] == scopeType &&
+          data['scope_id'] == scopeId;
+    }).toList();
+    if (matchingRules.length != 1) return false;
+    final rule = selectCanonicalActivityRule(
+      matchingRules,
+      matches: (_) => true,
+    );
+    if (rule == null) return false;
+    final data = _entityData(entities, rule);
+    final shouldCredit =
+        resolution.status == 'confirmed' &&
+        resolution.targetId != null &&
+        resolution.contributionType != null &&
+        activityClassificationAllowsCredit(resolution.classification);
+    return data['classification'] == resolution.classification &&
+        data['target_type'] == (shouldCredit ? resolution.targetType : null) &&
+        data['target_id'] == (shouldCredit ? resolution.targetId : null) &&
+        data['contribution_type'] ==
+            (shouldCredit ? resolution.contributionType : null) &&
+        data['automatic_credit'] == shouldCredit;
   }
 
   Future<void> _addAllocatedTaskContribution({
@@ -1133,18 +1313,81 @@ class ActivityRepository {
       physicalDurationMs: physicalDurationMs,
       percentage: allocation.percentage,
     );
-    final attributionId = activityAttributionIdFor(
+    final deterministicAttributionId = activityAttributionIdFor(
       userId: _userId,
       reviewItemId: entry.review.id,
       classification: classification,
       targetTaskId: allocation.targetTaskId,
     );
-    final contributionId = activityContributionIdFor(
+    final deterministicContributionId = activityContributionIdFor(
       userId: _userId,
       activitySegmentId: entry.segment.id,
       targetTaskId: allocation.targetTaskId,
       contributionType: contributionType,
     );
+    final liveAttribution =
+        await (database.select(database.localAttributions)
+              ..where(
+                (row) =>
+                    row.userId.equals(_userId) &
+                    row.activitySegmentId.equals(entry.segment.id) &
+                    row.classification.equals(classification) &
+                    row.targetType.equals('task_occurrence') &
+                    row.targetId.equals(allocation.targetTaskId) &
+                    row.deletedAt.isNull(),
+              )
+              ..orderBy([(row) => OrderingTerm.desc(row.updatedAt)])
+              ..limit(1))
+            .getSingleOrNull();
+    final deterministicAttribution = liveAttribution == null
+        ? await (database.select(database.localAttributions)..where(
+                (row) =>
+                    row.userId.equals(_userId) &
+                    row.id.equals(deterministicAttributionId),
+              ))
+              .getSingleOrNull()
+        : null;
+    final attributionId =
+        liveAttribution?.id ??
+        (deterministicAttribution == null
+            ? deterministicAttributionId
+            : _uuid.v4());
+
+    final liveContribution =
+        await (database.select(database.localContributions)
+              ..where(
+                (row) =>
+                    row.userId.equals(_userId) &
+                    row.activitySegmentId.equals(entry.segment.id) &
+                    row.targetType.equals('task_occurrence') &
+                    row.targetId.equals(allocation.targetTaskId) &
+                    row.contributionType.equals(contributionType) &
+                    row.deletedAt.isNull(),
+              )
+              ..orderBy([(row) => OrderingTerm.desc(row.updatedAt)])
+              ..limit(1))
+            .getSingleOrNull();
+    final deterministicContribution = liveContribution == null
+        ? await (database.select(database.localContributions)..where(
+                (row) =>
+                    row.userId.equals(_userId) &
+                    row.id.equals(deterministicContributionId),
+              ))
+              .getSingleOrNull()
+        : null;
+    final contributionId =
+        liveContribution?.id ??
+        (deterministicContribution == null
+            ? deterministicContributionId
+            : _uuid.v4());
+    final attributionCommandType = liveAttribution == null
+        ? 'create'
+        : 'update';
+    final contributionCommandType = liveContribution == null
+        ? 'create'
+        : 'update';
+    final attributionBaseRevision = liveAttribution?.revision ?? 0;
+    final contributionBaseRevision = liveContribution?.revision ?? 0;
     final attributionCommandId = _uuid.v4();
     final contributionCommandId = _uuid.v4();
 
@@ -1164,6 +1407,7 @@ class ActivityRepository {
               confirmedByUser: const Value(true),
               createdAt: now,
               updatedAt: now,
+              deletedAt: const Value(null),
             ),
           );
       await database
@@ -1186,6 +1430,7 @@ class ActivityRepository {
               isIdleDerived: Value(entry.segment.idleState == 'technical_idle'),
               createdAt: now,
               updatedAt: now,
+              deletedAt: const Value(null),
             ),
           );
       if (synchronize) {
@@ -1195,6 +1440,8 @@ class ActivityRepository {
           sequence: await DeviceIdentity.nextSequence(_userId),
           entityType: 'activity_attributions',
           entityId: attributionId,
+          commandType: attributionCommandType,
+          baseRevision: attributionBaseRevision,
           payload: {
             'activity_segment_id': entry.segment.id,
             'target_type': 'task_occurrence',
@@ -1217,6 +1464,8 @@ class ActivityRepository {
           sequence: await DeviceIdentity.nextSequence(_userId),
           entityType: 'activity_contributions',
           entityId: contributionId,
+          commandType: contributionCommandType,
+          baseRevision: contributionBaseRevision,
           payload: {
             'activity_segment_id': entry.segment.id,
             'activity_attribution_id': attributionId,
@@ -1465,23 +1714,29 @@ class ActivityRepository {
         : 'windows';
     final entities = EntityRecordRepository(database, client);
     final catalogs = await entities.list(entityType: 'application_catalog');
-    LocalEntityRecord? catalog;
-    for (final candidate in catalogs) {
+    bool matchesApplication(LocalEntityRecord candidate) {
       final data = _entityData(entities, candidate);
-      if ((data['application_identifier'] as String?)?.toLowerCase() ==
+      return (data['application_identifier'] as String?)?.toLowerCase() ==
               identifier.toLowerCase() &&
-          (data['platform'] as String?)?.toLowerCase() == platform) {
-        catalog = candidate;
-        break;
-      }
+          (data['platform'] as String?)?.toLowerCase() == platform;
     }
+
+    final matchingCatalogs = catalogs.where(matchesApplication).toList();
+    final catalog = selectCanonicalActivityRule(
+      matchingCatalogs,
+      matches: (_) => true,
+    );
+    final stableApplicationId = applicationCatalogIdFor(
+      userId: _userId,
+      platform: platform,
+      applicationIdentifier: identifier,
+    );
+    final deletedStableCatalog = catalog == null
+        ? await entities.getIncludingDeleted(stableApplicationId)
+        : null;
     final applicationId =
         catalog?.id ??
-        applicationCatalogIdFor(
-          userId: _userId,
-          platform: platform,
-          applicationIdentifier: identifier,
-        );
+        (deletedStableCatalog == null ? stableApplicationId : _uuid.v4());
     final metadataValue = jsonDecode(entry.segment.rawMetadataJson);
     final metadata = metadataValue is Map
         ? Map<String, Object?>.from(metadataValue)
@@ -1496,24 +1751,37 @@ class ActivityRepository {
         resolution.targetId ?? (scopeType == 'task' ? sourceTaskId : _userId);
     if (scopeId == null) return null;
     final rules = await entities.list(entityType: 'application_rules');
-    LocalEntityRecord? existingRule;
-    for (final candidate in rules) {
+    final matchingApplicationIds = <String>{
+      applicationId,
+      ...matchingCatalogs.map((candidate) => candidate.id),
+    };
+    bool matchesScope(LocalEntityRecord candidate) {
       final data = _entityData(entities, candidate);
-      if (data['application_id'] == applicationId &&
+      return matchingApplicationIds.contains(data['application_id']) &&
           data['scope_type'] == scopeType &&
-          data['scope_id'] == scopeId) {
-        existingRule = candidate;
-        break;
-      }
+          data['scope_id'] == scopeId;
     }
+
+    final existingRule = selectCanonicalActivityRule(
+      rules,
+      matches: matchesScope,
+    );
+    for (final duplicate in rules.where(matchesScope)) {
+      if (duplicate.id == existingRule?.id) continue;
+      await entities.softDelete(duplicate, synchronize: true);
+    }
+    final stableRuleId = activityRuleIdFor(
+      userId: _userId,
+      applicationId: applicationId,
+      scopeType: scopeType,
+      scopeId: scopeId,
+    );
+    final deletedStableRule = existingRule == null
+        ? await entities.getIncludingDeleted(stableRuleId)
+        : null;
     final ruleId =
         existingRule?.id ??
-        activityRuleIdFor(
-          userId: _userId,
-          applicationId: applicationId,
-          scopeType: scopeType,
-          scopeId: scopeId,
-        );
+        (deletedStableRule == null ? stableRuleId : _uuid.v4());
     final deviceId = await DeviceIdentity.accountId(_userId);
     final displayName = _privacySafeLabel(entry.segment);
     final normalizedKey = normalizedApplicationKey(identifier);
@@ -1540,45 +1808,100 @@ class ActivityRepository {
       'priority': resolution.targetId == null ? 300 : 200,
       'rule_origin': 'user_confirmed',
     };
+    const catalogSemanticKeys = <String>{
+      'platform',
+      'application_identifier',
+      'normalized_application_key',
+      'display_name',
+      'default_display_name',
+      'classification',
+    };
+    const ruleSemanticKeys = <String>{
+      'application_id',
+      'platform',
+      'application_identifier',
+      'scope_type',
+      'scope_id',
+      'classification',
+      'target_type',
+      'target_id',
+      'contribution_type',
+      'automatic_credit',
+      'priority',
+      'rule_origin',
+    };
+    bool semanticMatch(
+      LocalEntityRecord record,
+      Map<String, Object?> desired,
+      Set<String> keys,
+    ) {
+      final current = _entityData(entities, record);
+      return keys.every((key) => current[key] == desired[key]);
+    }
+
+    final catalogMatches =
+        catalog != null &&
+        catalog.status == 'known' &&
+        catalog.title == displayName &&
+        semanticMatch(catalog, catalogData, catalogSemanticKeys);
+    final ruleMatches =
+        existingRule != null &&
+        existingRule.status == 'active' &&
+        existingRule.parentId == scopeId &&
+        existingRule.secondaryParentId == applicationId &&
+        existingRule.title == displayName &&
+        semanticMatch(existingRule, ruleData, ruleSemanticKeys);
     await database.transaction(() async {
-      await database
-          .into(database.localEntityRecords)
-          .insertOnConflictUpdate(
-            LocalEntityRecordsCompanion.insert(
-              id: applicationId,
-              userId: _userId,
-              entityType: 'application_catalog',
-              title: Value(displayName),
-              status: const Value('known'),
-              dataJson: Value(jsonEncode(catalogData)),
-              createdAt: catalog?.createdAt ?? now,
-              updatedAt: now,
-              createdByDeviceId: Value(catalog?.createdByDeviceId ?? deviceId),
-              updatedByDeviceId: Value(deviceId),
-              lastCommandId: Value(commandId),
-            ),
-          );
-      await database
-          .into(database.localEntityRecords)
-          .insertOnConflictUpdate(
-            LocalEntityRecordsCompanion.insert(
-              id: ruleId,
-              userId: _userId,
-              entityType: 'application_rules',
-              parentId: Value(scopeId),
-              secondaryParentId: Value(applicationId),
-              title: Value(displayName),
-              status: const Value('active'),
-              dataJson: Value(jsonEncode(ruleData)),
-              createdAt: existingRule?.createdAt ?? now,
-              updatedAt: now,
-              createdByDeviceId: Value(
-                existingRule?.createdByDeviceId ?? deviceId,
+      if (!catalogMatches) {
+        await database
+            .into(database.localEntityRecords)
+            .insertOnConflictUpdate(
+              LocalEntityRecordsCompanion.insert(
+                id: applicationId,
+                userId: _userId,
+                entityType: 'application_catalog',
+                title: Value(displayName),
+                status: const Value('known'),
+                dataJson: Value(jsonEncode(catalogData)),
+                revision: Value(catalog == null ? 1 : catalog.revision + 1),
+                createdAt: catalog?.createdAt ?? now,
+                updatedAt: now,
+                createdByDeviceId: Value(
+                  catalog?.createdByDeviceId ?? deviceId,
+                ),
+                updatedByDeviceId: Value(deviceId),
+                lastCommandId: Value(commandId),
+                deletedAt: const Value(null),
               ),
-              updatedByDeviceId: Value(deviceId),
-              lastCommandId: Value(commandId),
-            ),
-          );
+            );
+      }
+      if (!ruleMatches) {
+        await database
+            .into(database.localEntityRecords)
+            .insertOnConflictUpdate(
+              LocalEntityRecordsCompanion.insert(
+                id: ruleId,
+                userId: _userId,
+                entityType: 'application_rules',
+                parentId: Value(scopeId),
+                secondaryParentId: Value(applicationId),
+                title: Value(displayName),
+                status: const Value('active'),
+                dataJson: Value(jsonEncode(ruleData)),
+                revision: Value(
+                  existingRule == null ? 1 : existingRule.revision + 1,
+                ),
+                createdAt: existingRule?.createdAt ?? now,
+                updatedAt: now,
+                createdByDeviceId: Value(
+                  existingRule?.createdByDeviceId ?? deviceId,
+                ),
+                updatedByDeviceId: Value(deviceId),
+                lastCommandId: Value(commandId),
+                deletedAt: const Value(null),
+              ),
+            );
+      }
     });
     return _AtomicActivityRule(
       id: ruleId,
@@ -1596,11 +1919,12 @@ class ActivityRepository {
     required ActivityResolution resolution,
     required bool synchronize,
   }) async {
-    final identifier = _activityIdentifier(entry.segment);
+    final identifier = _activityRuleIdentifier(entry.segment);
     if (identifier == null || resolution.targetId == null) return;
     final platform = entry.segment.sourceType.startsWith('android')
         ? 'android'
         : 'windows';
+    final displayName = _privacySafeLabel(entry.segment);
     final entities = EntityRecordRepository(database, client);
     final catalogs = await entities.list(entityType: 'application_catalog');
     LocalEntityRecord? catalog;
@@ -1623,27 +1947,27 @@ class ActivityRepository {
               applicationIdentifier: identifier,
             ),
             entityType: 'application_catalog',
-            title: identifier,
+            title: displayName,
             status: 'known',
             synchronize: synchronize,
             data: {
               'platform': platform,
-              'application_identifier': identifier,
+              'application_identifier': identifier.toLowerCase(),
               'normalized_application_key': normalizedApplicationKey(
                 identifier,
               ),
-              'display_name': entry.segment.processName ?? identifier,
-              'default_display_name': entry.segment.processName ?? identifier,
+              'display_name': displayName,
+              'default_display_name': displayName,
               'classification': resolution.classification,
             },
             syncPayload: {
               'platform': platform,
-              'application_identifier': identifier,
+              'application_identifier': identifier.toLowerCase(),
               'normalized_application_key': normalizedApplicationKey(
                 identifier,
               ),
-              'display_name': entry.segment.processName ?? identifier,
-              'default_display_name': entry.segment.processName ?? identifier,
+              'display_name': displayName,
+              'default_display_name': displayName,
               'publisher': null,
               'icon_path': null,
               'classification': resolution.classification,
@@ -1652,53 +1976,48 @@ class ActivityRepository {
             },
           ),
         );
-    final existingRules = await entities.list(
-      entityType: 'application_rules',
-      parentId: resolution.targetId,
-    );
-    final duplicate = existingRules.any((rule) {
-      final data = _entityData(entities, rule);
-      return data['application_id'] == applicationId &&
-          data['target_id'] == resolution.targetId &&
-          data['contribution_type'] == resolution.contributionType &&
-          data['automatic_credit'] == true;
-    });
-    if (duplicate) return;
-    await entities.create(
-      EntityRecordDraft(
-        entityType: 'application_rules',
-        parentId: resolution.targetId,
-        secondaryParentId: applicationId,
-        title: entry.segment.processName ?? identifier,
-        status: 'active',
-        synchronize: synchronize,
-        data: {
-          'application_id': applicationId,
-          'scope_type': 'task',
-          'scope_id': resolution.targetId,
-          'classification': resolution.classification,
-          'target_type': 'task_occurrence',
-          'target_id': resolution.targetId,
-          'contribution_type': resolution.contributionType,
-          'automatic_credit': true,
-          'priority': 200,
+    final ruleData = <String, Object?>{
+      'application_id': applicationId,
+      'platform': platform,
+      'application_identifier': identifier.toLowerCase(),
+      'scope_type': 'task',
+      'scope_id': resolution.targetId,
+      'classification': resolution.classification,
+      'target_type': 'task_occurrence',
+      'target_id': resolution.targetId,
+      'contribution_type': resolution.contributionType,
+      'automatic_credit': true,
+      'priority': 200,
+      'rule_origin': 'user_confirmed',
+    };
+    await _upsertRememberedApplicationRule(
+      entities: entities,
+      applicationId: applicationId,
+      scopeType: 'task',
+      scopeId: resolution.targetId!,
+      title: displayName,
+      ruleData: ruleData,
+      syncPayload: {
+        'application_id': applicationId,
+        'scope_type': 'task',
+        'scope_id': resolution.targetId,
+        'classification': resolution.classification,
+        'target_type': 'task_occurrence',
+        'target_id': resolution.targetId,
+        'contribution_type': resolution.contributionType,
+        'automatic_credit': true,
+        'priority': 200,
+        'data': {
+          'platform': platform,
+          'application_identifier': identifier.toLowerCase(),
+          'rule_origin': 'user_confirmed',
         },
-        syncPayload: {
-          'application_id': applicationId,
-          'scope_type': 'task',
-          'scope_id': resolution.targetId,
-          'classification': resolution.classification,
-          'target_type': 'task_occurrence',
-          'target_id': resolution.targetId,
-          'contribution_type': resolution.contributionType,
-          'automatic_credit': true,
-          'priority': 200,
-        },
-      ),
+      },
+      synchronize: synchronize,
     );
   }
 
-  Future<void> _rememberNegativeOrSystemRule({
+  Future<void> _rememberApplicationClassificationRule({
     required ActivityReviewEntry entry,
     required ActivityResolution resolution,
     required bool synchronize,
@@ -1769,55 +2088,141 @@ class ActivityRepository {
             },
           ),
         );
-    final rules = await entities.list(entityType: 'application_rules');
-    for (final rule in rules) {
-      final data = _entityData(entities, rule);
-      if (rule.status == 'active' &&
-          data['application_id'] == applicationId &&
-          data['scope_type'] == scopeType &&
-          data['scope_id'] == scopeId &&
-          data['classification'] == resolution.classification) {
-        return;
-      }
-    }
-    await entities.create(
-      EntityRecordDraft(
-        entityType: 'application_rules',
-        parentId: scopeId,
-        title: _privacySafeLabel(entry.segment),
-        status: 'active',
-        synchronize: synchronize,
-        data: {
-          'application_id': applicationId,
-          'platform': entry.segment.sourceType.startsWith('android')
-              ? 'android'
-              : 'windows',
+    final ruleData = <String, Object?>{
+      'application_id': applicationId,
+      'platform': platform,
+      'application_identifier': identifier.toLowerCase(),
+      'scope_type': scopeType,
+      'scope_id': scopeId,
+      'classification': resolution.classification,
+      'target_type': null,
+      'target_id': null,
+      'contribution_type': null,
+      'automatic_credit': false,
+      'priority': 300,
+      'rule_origin': 'user_confirmed',
+    };
+    await _upsertRememberedApplicationRule(
+      entities: entities,
+      applicationId: applicationId,
+      scopeType: scopeType,
+      scopeId: scopeId!,
+      title: _privacySafeLabel(entry.segment),
+      ruleData: ruleData,
+      syncPayload: {
+        'application_id': applicationId,
+        'scope_type': scopeType,
+        'scope_id': scopeId,
+        'classification': resolution.classification,
+        'target_type': null,
+        'target_id': null,
+        'contribution_type': null,
+        'automatic_credit': false,
+        'priority': 300,
+        'data': {
+          'platform': platform,
           'application_identifier': identifier.toLowerCase(),
-          'scope_type': scopeType,
-          'scope_id': scopeId,
-          'classification': resolution.classification,
-          'automatic_credit': false,
           'rule_origin': 'user_confirmed',
         },
-        syncPayload: {
-          'application_id': applicationId,
-          'scope_type': scopeType,
-          'scope_id': scopeId,
-          'classification': resolution.classification,
-          'target_type': null,
-          'target_id': null,
-          'contribution_type': null,
-          'automatic_credit': false,
-          'priority': 300,
-          'data': {
-            'platform': entry.segment.sourceType.startsWith('android')
-                ? 'android'
-                : 'windows',
-            'application_identifier': identifier.toLowerCase(),
-            'rule_origin': 'user_confirmed',
-          },
-        },
-      ),
+      },
+      synchronize: synchronize,
+    );
+  }
+
+  Future<void> _upsertRememberedApplicationRule({
+    required EntityRecordRepository entities,
+    required String applicationId,
+    required String scopeType,
+    required String scopeId,
+    required String title,
+    required Map<String, Object?> ruleData,
+    required Map<String, Object?> syncPayload,
+    required bool synchronize,
+  }) async {
+    final rules = await entities.list(entityType: 'application_rules');
+    bool matchesScope(LocalEntityRecord rule) {
+      final data = _entityData(entities, rule);
+      return data['application_id'] == applicationId &&
+          data['scope_type'] == scopeType &&
+          data['scope_id'] == scopeId;
+    }
+
+    final canonical = selectCanonicalActivityRule(rules, matches: matchesScope);
+    for (final duplicate in rules.where(matchesScope)) {
+      if (duplicate.id == canonical?.id) continue;
+      await entities.softDelete(duplicate, synchronize: synchronize);
+    }
+
+    if (canonical == null) {
+      final stableId = activityRuleIdFor(
+        userId: _userId,
+        applicationId: applicationId,
+        scopeType: scopeType,
+        scopeId: scopeId,
+      );
+      final existingStable = await entities.getIncludingDeleted(stableId);
+      await entities.create(
+        EntityRecordDraft(
+          id: existingStable == null ? stableId : _uuid.v4(),
+          entityType: 'application_rules',
+          parentId: scopeId,
+          secondaryParentId: applicationId,
+          title: title,
+          status: 'active',
+          synchronize: synchronize,
+          data: ruleData,
+          syncPayload: syncPayload,
+        ),
+      );
+      return;
+    }
+
+    final existingData = _entityData(entities, canonical);
+    const semanticKeys = <String>{
+      'application_id',
+      'platform',
+      'application_identifier',
+      'scope_type',
+      'scope_id',
+      'classification',
+      'target_type',
+      'target_id',
+      'contribution_type',
+      'automatic_credit',
+      'priority',
+      'rule_origin',
+    };
+    final semanticMatch = semanticKeys.every(
+      (key) => existingData[key] == ruleData[key],
+    );
+    if (canonical.status == 'active' &&
+        canonical.parentId == scopeId &&
+        canonical.secondaryParentId == applicationId &&
+        canonical.title == title &&
+        semanticMatch) {
+      return;
+    }
+
+    final nextData = <String, Object?>{
+      ...entities.decode(canonical),
+      ...ruleData,
+    };
+    final nested = nextData['data'];
+    if (nested is Map) {
+      nextData['data'] = <String, Object?>{
+        ...Map<String, Object?>.from(nested),
+        ...ruleData,
+      };
+    }
+    await entities.update(
+      canonical,
+      title: title,
+      status: 'active',
+      parentId: scopeId,
+      secondaryParentId: applicationId,
+      data: nextData,
+      syncPayload: syncPayload,
+      synchronize: synchronize,
     );
   }
 
@@ -1830,22 +2235,18 @@ class ActivityRepository {
     if (identifier == null) return false;
     final entities = EntityRecordRepository(database, client);
     final rules = await entities.list(entityType: 'application_rules');
-    LocalEntityRecord? matchedRule;
-    for (final candidate in rules) {
-      final data = _entityData(entities, candidate);
-      if (candidate.status == 'active' &&
-          data['application_identifier'] == identifier &&
-          data['scope_type'] == 'user' &&
-          data['scope_id'] == _userId &&
-          const {
-            'system_activity',
-            'user_application',
-            'generally_unrelated',
-          }.contains(data['classification'])) {
-        matchedRule = candidate;
-        break;
-      }
-    }
+    final matchedRule = selectCanonicalActivityRule(
+      rules,
+      matches: (candidate) {
+        final data = _entityData(entities, candidate);
+        return candidate.status == 'active' &&
+            data['application_identifier'] == identifier &&
+            data['scope_type'] == 'user' &&
+            data['scope_id'] == _userId &&
+            data['automatic_credit'] == false &&
+            data['classification'] is String;
+      },
+    );
     final review =
         await (database.select(database.localActivityReviews)..where(
               (row) =>
@@ -1870,7 +2271,11 @@ class ActivityRepository {
       await resolve(
         ActivityReviewEntry(review: review, segment: segment),
         ActivityResolution(
-          status: classification == 'system_activity' ? 'ignored' : 'rejected',
+          status: switch (classification) {
+            'system_activity' || 'unrelated' => 'ignored',
+            'generally_unrelated' || 'distraction' => 'rejected',
+            _ => 'confirmed',
+          },
           classification: classification,
           isAutomatic: true,
         ),
@@ -2009,17 +2414,40 @@ class ActivityRepository {
     final identifier = _activityRuleIdentifier(segment);
     if (identifier == null) return;
     final allRules = await entities.list(entityType: 'application_rules');
-    final blocked = allRules.any((candidate) {
-      final data = _entityData(entities, candidate);
-      return candidate.status == 'active' &&
-          data['application_identifier'] == identifier.toLowerCase() &&
-          ((data['classification'] == 'unrelated' &&
+    final taskScopeRule = sourceTaskId == null
+        ? null
+        : selectCanonicalActivityRule(
+            allRules,
+            matches: (candidate) {
+              final data = _entityData(entities, candidate);
+              return candidate.status == 'active' &&
+                  data['application_identifier'] == identifier.toLowerCase() &&
                   data['scope_type'] == 'task' &&
-                  data['scope_id'] == sourceTaskId) ||
-              data['classification'] == 'system_activity' ||
-              data['classification'] == 'generally_unrelated');
-    });
-    if (blocked) return;
+                  data['scope_id'] == sourceTaskId;
+            },
+          );
+    final userScopeRule = selectCanonicalActivityRule(
+      allRules,
+      matches: (candidate) {
+        final data = _entityData(entities, candidate);
+        return candidate.status == 'active' &&
+            data['application_identifier'] == identifier.toLowerCase() &&
+            data['scope_type'] == 'user' &&
+            data['scope_id'] == _userId &&
+            data['automatic_credit'] == false;
+      },
+    );
+    final taskClassification = taskScopeRule == null
+        ? null
+        : _entityData(entities, taskScopeRule)['classification'];
+    final userClassification = userScopeRule == null
+        ? null
+        : _entityData(entities, userScopeRule)['classification'];
+    if (taskClassification == 'unrelated' ||
+        userClassification == 'system_activity' ||
+        userClassification == 'generally_unrelated') {
+      return;
+    }
     final catalogs = await entities.list(entityType: 'application_catalog');
     final platform = segment.sourceType.startsWith('android')
         ? 'android'
@@ -2035,19 +2463,32 @@ class ActivityRepository {
       }
     }
     if (applicationId == null) return;
-    final rules = allRules;
-    LocalEntityRecord? matchedRule;
-    for (final candidate in rules) {
-      final data = _entityData(entities, candidate);
-      if (candidate.status == 'active' &&
-          data['application_id'] == applicationId &&
-          data['automatic_credit'] == true &&
-          data['target_id'] is String &&
-          data['contribution_type'] is String) {
-        matchedRule = candidate;
-        break;
-      }
+    final eligibleRules = allRules
+        .where((candidate) {
+          final data = _entityData(entities, candidate);
+          return candidate.status == 'active' &&
+              data['application_id'] == applicationId &&
+              data['scope_type'] == 'task' &&
+              data['automatic_credit'] == true &&
+              data['target_id'] is String &&
+              data['contribution_type'] is String &&
+              (sourceTaskId == null || data['scope_id'] == sourceTaskId);
+        })
+        .toList(growable: false);
+    if (sourceTaskId == null) {
+      final targets = eligibleRules
+          .map((rule) => _entityData(entities, rule)['target_id'])
+          .whereType<String>()
+          .toSet();
+      // Without an active task, several task-specific application rules are
+      // ambiguous. Leave the period for review instead of crediting whichever
+      // row happened to be returned first.
+      if (targets.length != 1) return;
     }
+    final matchedRule = selectCanonicalActivityRule(
+      eligibleRules,
+      matches: (_) => true,
+    );
     if (matchedRule == null) return;
     final review =
         await (database.select(database.localActivityReviews)..where(
