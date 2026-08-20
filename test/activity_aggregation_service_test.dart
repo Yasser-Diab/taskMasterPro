@@ -100,4 +100,33 @@ void main() {
       expect(result.activeMs, const Duration(minutes: 5).inMilliseconds);
     },
   );
+
+  test('TaskMaster legacy display-name periods are hidden entirely', () async {
+    final start = DateTime.utc(2026, 8, 15, 9);
+    final segment = LocalActivitySegment(
+      id: 'legacy-taskmaster',
+      userId: 'user',
+      deviceId: 'device',
+      deviceEventId: 'legacy-taskmaster',
+      startedAt: start,
+      endedAt: start.add(const Duration(minutes: 5)),
+      sourceType: 'windows_foreground',
+      processName: 'TaskMaster Pro',
+      rawMetadataJson: '{}',
+      revision: 1,
+      createdAt: start,
+      updatedAt: start,
+    );
+
+    final result = await ActivityAggregationService().aggregate(
+      segments: [segment],
+      attributions: const [],
+      rangeStartUtc: start,
+      rangeEndUtc: start.add(const Duration(minutes: 10)),
+    );
+
+    expect(result.groups, isEmpty);
+    expect(result.totalMs, 0);
+    expect(result.needsReviewMs, 0);
+  });
 }

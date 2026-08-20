@@ -14,7 +14,7 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   test(
-    'profile height persists locally and is queued for synchronization',
+    'profile fields persist locally and are queued for synchronization',
     () async {
       SharedPreferences.setMockInitialValues({});
       final database = AppDatabase(NativeDatabase.memory());
@@ -42,7 +42,9 @@ void main() {
           .getSingle();
       final payload = jsonDecode(command.payloadJson) as Map<String, dynamic>;
 
+      expect(profile.displayName, 'Height owner');
       expect(profile.heightCm, 178.5);
+      expect(payload['display_name'], 'Height owner');
       expect(payload['height_cm'], 178.5);
       expect(command.entityType, 'profiles');
     },
@@ -52,6 +54,7 @@ void main() {
     expect(settingsSectionOrderKeys, const [
       'profile_and_account',
       'schedule_wellbeing',
+      'routine_and_vacations',
       'tasks_and_execution',
       'pomodoro',
       'activity_and_privacy',

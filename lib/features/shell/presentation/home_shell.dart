@@ -31,6 +31,7 @@ import '../../settings/presentation/schedule_wellbeing_screen.dart';
 import '../../sync/presentation/synchronization_panel.dart';
 import '../../tasks/data/task_execution_commands.dart';
 import '../../tasks/data/execution_exclusivity_coordinator.dart';
+import '../../tasks/data/standalone_pomodoro_store.dart';
 import '../../tasks/data/task_execution_providers.dart';
 import '../../tasks/data/task_repository.dart';
 import '../domain/home_shell_back_navigation.dart';
@@ -85,9 +86,11 @@ class _HomeShellState extends ConsumerState<HomeShell> with RouteAware {
   final List<StreamSubscription<NotificationResponse>> _notificationResponses =
       [];
   StreamSubscription<LocalRuntime?>? _runtimeSubscription;
+  StreamSubscription<StandalonePomodoroState>? _standaloneSubscription;
   StreamSubscription<String>? _trayCommands;
   Timer? _trayRefresh;
   Timer? _automaticBoundaryRefresh;
+  Timer? _standaloneBoundaryTimer;
   bool _automaticBoundaryInFlight = false;
   bool _updateAvailable = false;
   bool _accountDeletionScheduled = false;
@@ -107,6 +110,7 @@ class _HomeShellState extends ConsumerState<HomeShell> with RouteAware {
   int? _lastExecutionRevision;
   DateTime? _lastExecutionSegmentStartedAt;
   Future<void> _executionAlarmQueue = Future<void>.value();
+  Future<void> _standaloneAlarmQueue = Future<void>.value();
   StreamSubscription<List<LocalEntityRecord>>? _taskReminderSubscription;
   ModalRoute<dynamic>? _route;
 
@@ -207,6 +211,10 @@ class _HomeShellState extends ConsumerState<HomeShell> with RouteAware {
       _queueExecutionAlarmSynchronization,
     );
     _queueExecutionAlarmSynchronization(await repository.getRuntime());
+    _standaloneSubscription = ref
+        .read(standalonePomodoroStoreProvider)
+        .watch()
+        .listen(_queueStandaloneAlarmSynchronization);
     final database = ref.read(databaseProvider);
     _taskReminderSubscription =
         (database.select(database.localEntityRecords)..where(
@@ -228,9 +236,11 @@ class _HomeShellState extends ConsumerState<HomeShell> with RouteAware {
     }
     unawaited(_trayCommands?.cancel());
     unawaited(_runtimeSubscription?.cancel());
+    unawaited(_standaloneSubscription?.cancel());
     unawaited(_taskReminderSubscription?.cancel());
     _trayRefresh?.cancel();
     _automaticBoundaryRefresh?.cancel();
+    _standaloneBoundaryTimer?.cancel();
     super.dispose();
   }
 
@@ -494,7 +504,10 @@ class _HomeShellState extends ConsumerState<HomeShell> with RouteAware {
     }
     if (runtime.sessionId case final sessionId?) {
       await localNotificationService.showExecutionStatus(
-        id: LocalNotificationService.executionNotificationId(task.id),
+        // A foreground status card and a future audible boundary are two
+        // different OS notifications. Reusing the boundary ID here causes
+        // show() to replace the scheduled alarm while the user is browsing.
+        id: LocalNotificationService.executionStatusNotificationId(task.id),
         taskId: task.id,
         taskTitle: task.title,
         state: runtime.state,
@@ -521,6 +534,66 @@ class _HomeShellState extends ConsumerState<HomeShell> with RouteAware {
           // Preserve the queue after a transient platform scheduling failure.
         });
     return _executionAlarmQueue;
+  }
+
+  Future<void> _synchronizeStandalonePomodoroAlarm(
+    StandalonePomodoroState state,
+  ) async {
+    _standaloneBoundaryTimer?.cancel();
+    _standaloneBoundaryTimer = null;
+    final boundaryAtUtc = state.boundaryAtUtc;
+    if (boundaryAtUtc == null) {
+      // A naturally completed interval keeps its just-delivered alert. Pause,
+      // reset and mutual-exclusion shutdown retire the pending alarm.
+      if (!state.isFinished) {
+        await localNotificationService.cancelStandalonePomodoroCompletion();
+      }
+      return;
+    }
+    final settings = ref.read(appSettingsProvider).value;
+    final category = state.isBreak
+        ? 'short_break_completed'
+        : 'focus_completed';
+    final preferencesJson = settings?.notificationPreferencesJson ?? '{}';
+    await localNotificationService.scheduleStandalonePomodoroCompletion(
+      isBreak: state.isBreak,
+      scheduledAtUtc: boundaryAtUtc,
+      sound: NotificationSounds.forCategory(
+        preferencesJson: preferencesJson,
+        category: category,
+        fallbackKey: settings?.notificationSoundKey ?? 'system',
+      ),
+      enabled: NotificationSounds.categoryEnabled(
+        preferencesJson: preferencesJson,
+        category: category,
+      ),
+      vibration: NotificationSounds.vibrationForCategory(
+        preferencesJson: preferencesJson,
+        category: category,
+      ),
+      localeCode: settings?.localeCode ?? 'en',
+    );
+    final delay = boundaryAtUtc.difference(DateTime.now().toUtc());
+    _standaloneBoundaryTimer = Timer(
+      delay.isNegative ? Duration.zero : delay,
+      () => unawaited(
+        ref
+            .read(standalonePomodoroStoreProvider)
+            .advanceIfDue(now: DateTime.now().toUtc()),
+      ),
+    );
+  }
+
+  void _queueStandaloneAlarmSynchronization(StandalonePomodoroState state) {
+    final previous = _standaloneAlarmQueue;
+    _standaloneAlarmQueue = previous
+        .then((_) async {
+          if (!mounted) return;
+          await _synchronizeStandalonePomodoroAlarm(state);
+        })
+        .catchError((Object _, StackTrace _) {
+          // The next durable standalone state transition retries scheduling.
+        });
   }
 
   Future<void> _configureSleepReminder(LocalAppSetting settings) {
@@ -969,6 +1042,16 @@ class _HomeShellState extends ConsumerState<HomeShell> with RouteAware {
       );
       return;
     }
+    if (route == 'standalone-pomodoro') {
+      await localNotificationService.cancelStandalonePomodoroCompletion();
+      if (!mounted || actionId == 'dismiss') return;
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => const StandalonePomodoroScreen(),
+        ),
+      );
+      return;
+    }
     if (route.startsWith('activity/')) {
       if (mounted) _selectDestination(4);
       return;
@@ -1290,6 +1373,10 @@ class _HomeShellState extends ConsumerState<HomeShell> with RouteAware {
     // shell. A canonical runtime activation from another device then stops a
     // restored standalone timer even when its screen is not open.
     ref.watch(executionExclusivityCoordinatorProvider);
+    // Keep vacation-aware recurrence materialization live for the account.
+    // Canonical vacation rows projected by another device then adjust future
+    // occurrences without requiring an app restart or a manual sync action.
+    ref.watch(vacationScheduleCoordinatorProvider);
     ref.listen(appSettingsProvider, (previous, next) {
       final settings = next.value;
       if (settings != null &&
@@ -1301,9 +1388,17 @@ class _HomeShellState extends ConsumerState<HomeShell> with RouteAware {
               previous?.value?.timeZone != settings.timeZone ||
               previous?.value?.localeCode != settings.localeCode ||
               previous?.value?.notificationSoundKey !=
-                  settings.notificationSoundKey)) {
+                  settings.notificationSoundKey ||
+              previous?.value?.notificationPreferencesJson !=
+                  settings.notificationPreferencesJson)) {
         unawaited(_configureSleepReminder(settings));
         unawaited(_synchronizePersistedTaskReminders(force: true));
+        unawaited(
+          ref
+              .read(standalonePomodoroStoreProvider)
+              .load()
+              .then(_queueStandaloneAlarmSynchronization),
+        );
       }
     });
     ref.listen(syncHealthProvider, (previous, next) {
@@ -2010,6 +2105,43 @@ class _CompactExecutionControlState
     }
   }
 
+  Future<void> _runSecondary(_CompactTimerAction action) async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    var extended = false;
+    try {
+      await TaskExecutionCommands.commitLocallyAndSynchronize(
+        localCommand: () async {
+          final repository = ref.read(taskRepositoryProvider);
+          switch (action) {
+            case _CompactTimerAction.startBreakEarly:
+              await repository.startBreak(widget.task);
+            case _CompactTimerAction.skipOfferedBreak:
+              await TaskExecutionCommands.skipOfferedBreak(
+                repository,
+                widget.task,
+              );
+            case _CompactTimerAction.extendBreak:
+              extended = await TaskExecutionCommands.extendBreak(
+                repository: repository,
+                task: widget.task,
+              );
+            case _CompactTimerAction.finishTask:
+              await completeTaskWithUndo(context, ref, widget.task);
+          }
+        },
+        synchronize: () => ref.read(syncServiceProvider).drainOutbox(),
+      );
+      if (extended && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(context.l10n.text('break_extended_five'))),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     if (widget.runtime.state == 'running' || widget.runtime.state == 'break') {
@@ -2028,28 +2160,91 @@ class _CompactExecutionControlState
       runtime: widget.runtime,
       pomodoro: pomodoro,
     );
-    final tooltipKey = switch (controls.primary) {
-      TaskExecutionPrimaryAction.start => 'start',
-      TaskExecutionPrimaryAction.pause => 'pause',
-      TaskExecutionPrimaryAction.resume => 'resume',
-      TaskExecutionPrimaryAction.startBreak => 'notification_start_break',
-      TaskExecutionPrimaryAction.startFocus => 'notification_start_focus',
-    };
-    final icon = switch (controls.primary) {
-      TaskExecutionPrimaryAction.pause => Icons.pause,
-      TaskExecutionPrimaryAction.startBreak => Icons.coffee_outlined,
-      TaskExecutionPrimaryAction.startFocus => Icons.center_focus_strong,
-      _ => Icons.play_arrow,
-    };
-    return IconButton(
-      tooltip: context.l10n.text(tooltipKey),
-      onPressed: _busy ? null : () => _run(controls.primary),
-      icon: _busy
-          ? const SizedBox.square(
-              dimension: 18,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            )
-          : Icon(icon),
+    final onBreak = widget.runtime.state == 'break';
+    final tooltipKey = onBreak
+        ? 'pomodoro_skip_break'
+        : switch (controls.primary) {
+            TaskExecutionPrimaryAction.start => 'start',
+            TaskExecutionPrimaryAction.pause => 'pause',
+            TaskExecutionPrimaryAction.resume => 'resume',
+            TaskExecutionPrimaryAction.startBreak => 'notification_start_break',
+            TaskExecutionPrimaryAction.startFocus => 'notification_start_focus',
+          };
+    final icon = onBreak
+        ? Icons.skip_next_rounded
+        : switch (controls.primary) {
+            TaskExecutionPrimaryAction.pause => Icons.pause,
+            TaskExecutionPrimaryAction.startBreak => Icons.coffee_outlined,
+            TaskExecutionPrimaryAction.startFocus => Icons.center_focus_strong,
+            _ => Icons.play_arrow,
+          };
+    final secondaryActions = <_CompactTimerAction>[
+      if (controls.canStartBreakEarly) _CompactTimerAction.startBreakEarly,
+      if (controls.canSkipBreak) _CompactTimerAction.skipOfferedBreak,
+      if (controls.canExtendBreak) _CompactTimerAction.extendBreak,
+      if (controls.ownsTask) _CompactTimerAction.finishTask,
+    ];
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        IconButton(
+          key: const ValueKey('compact-active-task-primary-control'),
+          tooltip: context.l10n.text(tooltipKey),
+          visualDensity: VisualDensity.compact,
+          onPressed: _busy ? null : () => _run(controls.primary),
+          icon: _busy
+              ? const SizedBox.square(
+                  dimension: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : Icon(icon),
+        ),
+        if (secondaryActions.isNotEmpty)
+          PopupMenuButton<_CompactTimerAction>(
+            key: const ValueKey('compact-active-task-more-controls'),
+            enabled: !_busy,
+            tooltip: context.l10n.text('more'),
+            padding: EdgeInsets.zero,
+            icon: const Icon(Icons.more_horiz_rounded),
+            onSelected: _runSecondary,
+            itemBuilder: (context) => [
+              for (final action in secondaryActions)
+                PopupMenuItem<_CompactTimerAction>(
+                  value: action,
+                  child: ListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(_compactTimerActionIcon(action)),
+                    title: Text(
+                      context.l10n.text(_compactTimerActionLabel(action)),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+      ],
     );
   }
 }
+
+enum _CompactTimerAction {
+  startBreakEarly,
+  skipOfferedBreak,
+  extendBreak,
+  finishTask,
+}
+
+String _compactTimerActionLabel(_CompactTimerAction action) => switch (action) {
+  _CompactTimerAction.startBreakEarly => 'notification_start_break',
+  _CompactTimerAction.skipOfferedBreak => 'pomodoro_skip_break',
+  _CompactTimerAction.extendBreak => 'notification_extend_break',
+  _CompactTimerAction.finishTask => 'finish_task',
+};
+
+IconData _compactTimerActionIcon(_CompactTimerAction action) =>
+    switch (action) {
+      _CompactTimerAction.startBreakEarly => Icons.coffee_outlined,
+      _CompactTimerAction.skipOfferedBreak => Icons.skip_next_rounded,
+      _CompactTimerAction.extendBreak => Icons.more_time,
+      _CompactTimerAction.finishTask => Icons.check_rounded,
+    };

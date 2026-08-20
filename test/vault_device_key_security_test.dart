@@ -27,7 +27,7 @@ void main() {
     );
   });
 
-  test('vault key persistence is Keystore-wrapped rather than raw storage', () {
+  test('vault key persistence is platform protected rather than raw', () {
     final repository = File(
       'lib/features/vault/data/vault_repository.dart',
     ).readAsStringSync();
@@ -44,6 +44,11 @@ void main() {
     expect(bridge, contains('storeWrappedVaultKey'));
     expect(bridge, isNot(contains('_legacyStorage.write')));
     expect(bridge, isNot(contains('_legacyStorage.read')));
+    expect(bridge, contains('Platform.isWindows'));
+    expect(bridge, contains('_windowsProtectedStorage.write'));
+    expect(bridge, contains('_localAuthentication.authenticate'));
+    expect(bridge, contains('sensitiveTransaction: true'));
+    expect(bridge, contains('Windows Credential Manager'));
     expect(android, contains('AndroidKeyStore'));
     expect(android, contains('AES/GCM/NoPadding'));
     expect(android, contains('KeyProperties.AUTH_BIOMETRIC_STRONG'));

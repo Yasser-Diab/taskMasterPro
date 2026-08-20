@@ -159,12 +159,17 @@ void main() {
       expect(source, contains('Directionality.of(context)'));
     });
 
-    test('report controls replace desktop segments with phone dropdowns', () {
+    test('reports keep phone content visible behind a compact setup path', () {
       final source = File(
         'lib/features/reports/presentation/performance_report_screen.dart',
       ).readAsStringSync();
 
       expect(source, contains("ValueKey('mobile-report-controls')"));
+      expect(source, contains("ValueKey('mobile-report-date')"));
+      expect(source, contains("ValueKey('mobile-report-settings')"));
+      expect(source, contains("ValueKey('mobile-report-settings-sheet')"));
+      expect(source, contains("ValueKey('mobile-report-actions')"));
+      expect(source, contains("ValueKey('report-metric-grid')"));
       expect(source, contains('if (constraints.maxWidth < 600)'));
       expect(source, contains('DropdownButtonFormField<String>'));
       expect(

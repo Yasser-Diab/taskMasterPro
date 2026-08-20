@@ -71,6 +71,38 @@ void main() {
     },
   );
 
+  test(
+    'closed-screen restoration advances one persisted boundary once',
+    () async {
+      final startedAt = DateTime.utc(2026, 8, 13, 9);
+      final foregroundStore = StandalonePomodoroStore(accountId: 'owner');
+      await foregroundStore.configure(
+        focus: const Duration(minutes: 25),
+        rest: const Duration(minutes: 5),
+      );
+      await foregroundStore.startFocus(now: startedAt);
+      final running = await foregroundStore.load(now: startedAt);
+      expect(running.boundaryAtUtc, startedAt.add(const Duration(minutes: 25)));
+      expect(running.completionEventType, 'standalone_focus_completed');
+      foregroundStore.dispose();
+
+      // A new shell/store instance represents returning after the timer screen
+      // was closed (or the application process was restored).
+      final restoredStore = StandalonePomodoroStore(accountId: 'owner');
+      final firstRestore = await restoredStore.load(
+        now: startedAt.add(const Duration(minutes: 26)),
+      );
+      final secondRestore = await restoredStore.load(
+        now: startedAt.add(const Duration(hours: 2)),
+      );
+      expect(firstRestore.phase, StandalonePomodoroPhase.focusFinished);
+      expect(firstRestore.completedFocusCount, 1);
+      expect(secondRestore.completedFocusCount, 1);
+      expect(secondRestore.boundaryAtUtc, isNull);
+      restoredStore.dispose();
+    },
+  );
+
   test('reset removes active mutual-exclusion state', () async {
     final store = StandalonePomodoroStore(accountId: 'owner');
     await store.configure(

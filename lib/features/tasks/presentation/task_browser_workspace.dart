@@ -18,6 +18,7 @@ import '../domain/browser_handoff.dart';
 import '../domain/browser_workspace_checkpoint.dart';
 import '../domain/pomodoro_execution_state.dart';
 import 'cross_platform_webview.dart';
+import 'task_completion_flow.dart';
 import 'task_start_flow.dart';
 
 Map<String, Object?> _tabVisitPayload({
@@ -882,11 +883,33 @@ class _TaskBrowserWorkspaceState extends ConsumerState<TaskBrowserWorkspace>
       );
       return;
     }
+    final captured = await _browserForSelectedTab().captureCredentials();
+    if (captured == null ||
+        !websiteMatchesForCredential(
+          savedWebsite: captured.website,
+          pageUrl: url,
+        )) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            context.l10n.text('browser_vault_capture_fields_not_found'),
+          ),
+        ),
+      );
+      return;
+    }
     if (!mounted) return;
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) =>
-            PasswordVaultScreen(initialWebsite: url, openAddWhenUnlocked: true),
+        builder: (_) => PasswordVaultScreen(
+          initialWebsite: captured.website,
+          initialAccountName: captured.suggestedName,
+          initialUsername: captured.username,
+          initialPassword: captured.password,
+          openAddWhenUnlocked: true,
+          closeAfterInitialSave: true,
+        ),
       ),
     );
   }
@@ -1642,6 +1665,12 @@ class _BrowserTaskControlPillState
       now: now,
     );
     final actionLabel = _browserControlLabel(context, controls.primary);
+    final secondaryActions = <_BrowserTimerAction>[
+      if (controls.canStartBreakEarly) _BrowserTimerAction.startBreakEarly,
+      if (controls.canSkipBreak) _BrowserTimerAction.skipOfferedBreak,
+      if (controls.canExtendBreak) _BrowserTimerAction.extendBreak,
+      if (controls.ownsTask) _BrowserTimerAction.finishTask,
+    ];
     final status = ownsTask ? runtime!.state : task.status;
     final pillWidth = widget.fillAvailableWidth
         ? double.infinity
@@ -1656,94 +1685,130 @@ class _BrowserTaskControlPillState
       enabled: !_busy,
       child: Tooltip(
         message: '${context.l10n.text('browser_task_tracking')} · $actionLabel',
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
-            borderRadius: BorderRadius.circular(999),
-            onTap: _busy ? null : () => _runPrimary(task, controls.primary),
-            child: SizedBox(
+        child: SizedBox(
+          width: pillWidth,
+          height: 44,
+          child: Center(
+            child: AnimatedContainer(
+              duration: reducedMotion
+                  ? Duration.zero
+                  : const Duration(milliseconds: 280),
               width: pillWidth,
-              height: 44,
-              child: Center(
-                child: AnimatedContainer(
-                  duration: reducedMotion
-                      ? Duration.zero
-                      : const Duration(milliseconds: 280),
-                  width: pillWidth,
-                  height: 34,
-                  padding: const EdgeInsetsDirectional.only(start: 10, end: 7),
-                  decoration: BoxDecoration(
-                    color: accent.withValues(alpha: 0.13),
-                    borderRadius: BorderRadius.circular(999),
-                    border: Border.all(color: accent.withValues(alpha: 0.62)),
-                    boxShadow: [
-                      BoxShadow(
-                        color: accent.withValues(alpha: 0.16),
-                        blurRadius: 12,
-                        spreadRadius: -2,
-                      ),
-                    ],
+              height: 34,
+              padding: const EdgeInsetsDirectional.only(start: 10, end: 7),
+              decoration: BoxDecoration(
+                color: accent.withValues(alpha: 0.13),
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(color: accent.withValues(alpha: 0.62)),
+                boxShadow: [
+                  BoxShadow(
+                    color: accent.withValues(alpha: 0.16),
+                    blurRadius: 12,
+                    spreadRadius: -2,
                   ),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 7,
-                        height: 7,
-                        decoration: BoxDecoration(
-                          color: accent,
-                          shape: BoxShape.circle,
-                          boxShadow: [
-                            BoxShadow(
-                              color: accent.withValues(alpha: 0.7),
-                              blurRadius: 6,
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 7),
-                      if (!compact) ...[
-                        Expanded(
-                          child: Text(
-                            task.title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context).textTheme.labelSmall,
-                          ),
-                        ),
-                        const SizedBox(width: 7),
-                      ],
-                      Flexible(
-                        child: FittedBox(
-                          fit: BoxFit.scaleDown,
-                          child: Text(
-                            time,
-                            maxLines: 1,
-                            style: Theme.of(context).textTheme.labelMedium
-                                ?.copyWith(
-                                  color: accent,
-                                  fontFeatures: const [
-                                    FontFeature.tabularFigures(),
-                                  ],
-                                  fontWeight: FontWeight.w800,
+                ],
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: InkWell(
+                      key: const ValueKey('browser-task-primary-control'),
+                      borderRadius: BorderRadius.circular(999),
+                      onTap: _busy
+                          ? null
+                          : () => _runPrimary(task, controls.primary),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 7,
+                            height: 7,
+                            decoration: BoxDecoration(
+                              color: accent,
+                              shape: BoxShape.circle,
+                              boxShadow: [
+                                BoxShadow(
+                                  color: accent.withValues(alpha: 0.7),
+                                  blurRadius: 6,
                                 ),
+                              ],
+                            ),
                           ),
-                        ),
+                          const SizedBox(width: 7),
+                          if (!compact) ...[
+                            Expanded(
+                              child: Text(
+                                task.title,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: Theme.of(context).textTheme.labelSmall,
+                              ),
+                            ),
+                            const SizedBox(width: 7),
+                          ],
+                          Flexible(
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Text(
+                                time,
+                                maxLines: 1,
+                                style: Theme.of(context).textTheme.labelMedium
+                                    ?.copyWith(
+                                      color: accent,
+                                      fontFeatures: const [
+                                        FontFeature.tabularFigures(),
+                                      ],
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          if (_busy)
+                            const SizedBox.square(
+                              dimension: 14,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          else
+                            Icon(
+                              _browserControlIcon(controls.primary),
+                              size: 18,
+                              color: accent,
+                            ),
+                        ],
                       ),
-                      const SizedBox(width: 6),
-                      if (_busy)
-                        const SizedBox.square(
-                          dimension: 14,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      else
-                        Icon(
-                          _browserControlIcon(controls.primary),
-                          size: 18,
-                          color: accent,
-                        ),
-                    ],
+                    ),
                   ),
-                ),
+                  if (secondaryActions.isNotEmpty)
+                    PopupMenuButton<_BrowserTimerAction>(
+                      key: const ValueKey('browser-task-more-controls'),
+                      enabled: !_busy,
+                      tooltip: context.l10n.text('more'),
+                      padding: EdgeInsets.zero,
+                      icon: Icon(
+                        Icons.more_horiz_rounded,
+                        size: 18,
+                        color: accent,
+                      ),
+                      onSelected: (action) => _runSecondary(task, action),
+                      itemBuilder: (context) => [
+                        for (final action in secondaryActions)
+                          PopupMenuItem<_BrowserTimerAction>(
+                            value: action,
+                            child: ListTile(
+                              dense: true,
+                              contentPadding: EdgeInsets.zero,
+                              leading: Icon(_browserTimerActionIcon(action)),
+                              title: Text(
+                                context.l10n.text(
+                                  _browserTimerActionLabel(action),
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  const SizedBox(width: 2),
+                ],
               ),
             ),
           ),
@@ -1786,7 +1851,63 @@ class _BrowserTaskControlPillState
       if (mounted) setState(() => _busy = false);
     }
   }
+
+  Future<void> _runSecondary(LocalTask task, _BrowserTimerAction action) async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    var extended = false;
+    try {
+      await TaskExecutionCommands.commitLocallyAndSynchronize(
+        localCommand: () async {
+          final repository = ref.read(taskRepositoryProvider);
+          switch (action) {
+            case _BrowserTimerAction.startBreakEarly:
+              await repository.startBreak(task);
+            case _BrowserTimerAction.skipOfferedBreak:
+              await TaskExecutionCommands.skipOfferedBreak(repository, task);
+            case _BrowserTimerAction.extendBreak:
+              extended = await TaskExecutionCommands.extendBreak(
+                repository: repository,
+                task: task,
+              );
+            case _BrowserTimerAction.finishTask:
+              await completeTaskWithUndo(context, ref, task);
+          }
+        },
+        synchronize: () => ref.read(syncServiceProvider).drainOutbox(),
+      );
+      if (extended && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(context.l10n.text('break_extended_five'))),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
 }
+
+enum _BrowserTimerAction {
+  startBreakEarly,
+  skipOfferedBreak,
+  extendBreak,
+  finishTask,
+}
+
+String _browserTimerActionLabel(_BrowserTimerAction action) => switch (action) {
+  _BrowserTimerAction.startBreakEarly => 'notification_start_break',
+  _BrowserTimerAction.skipOfferedBreak => 'pomodoro_skip_break',
+  _BrowserTimerAction.extendBreak => 'notification_extend_break',
+  _BrowserTimerAction.finishTask => 'finish_task',
+};
+
+IconData _browserTimerActionIcon(_BrowserTimerAction action) =>
+    switch (action) {
+      _BrowserTimerAction.startBreakEarly => Icons.coffee_outlined,
+      _BrowserTimerAction.skipOfferedBreak => Icons.skip_next_rounded,
+      _BrowserTimerAction.extendBreak => Icons.more_time,
+      _BrowserTimerAction.finishTask => Icons.check_rounded,
+    };
 
 String _browserTaskTime({
   required LocalTask task,

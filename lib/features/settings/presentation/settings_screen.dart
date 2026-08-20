@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -11,6 +12,7 @@ import '../../../core/data/account_export_service.dart';
 import '../../../core/config/supabase_config.dart';
 import '../../../core/localization/app_localizations.dart';
 import '../../../core/database/app_database.dart';
+import '../../../core/learning/application_system_learning.dart';
 import '../../../core/notifications/notification_sounds.dart';
 import '../../../core/profile/profile_avatar.dart';
 import '../../../core/providers.dart';
@@ -28,6 +30,7 @@ import '../../reports/presentation/performance_report_screen.dart';
 import '../../sync/presentation/synchronization_panel.dart';
 import '../../tasks/presentation/tasks_screen.dart';
 import '../../tasks/presentation/standalone_pomodoro_screen.dart';
+import '../../tasks/presentation/vacation_settings_screen.dart';
 import '../../vault/presentation/password_vault_screen.dart';
 import '../data/profile_media_service.dart';
 import '../data/settings_section_catalog.dart';
@@ -259,6 +262,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         await Navigator.of(context).push(
           MaterialPageRoute<void>(
             builder: (_) => const ScheduleWellbeingScreen(),
+          ),
+        );
+      case SettingsSectionDestination.routineAndVacations:
+        await Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (_) => const VacationSettingsScreen(),
           ),
         );
       case SettingsSectionDestination.coachingPreferences:
@@ -880,6 +889,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                           ),
                           onChanged: _toggleDetailedActivitySync,
                         ),
+                        const _CommunityLearningSwitch(),
                         const Divider(),
                         LayoutBuilder(
                           builder: (context, constraints) {
@@ -1481,6 +1491,7 @@ class _SettingsCategoryPage extends ConsumerWidget {
                       activitySyncEnabled: value,
                     ),
                   ),
+                  const _CommunityLearningSwitch(),
                   const Divider(),
                   ListTile(
                     contentPadding: EdgeInsets.zero,
@@ -2902,4 +2913,74 @@ class _TimeZoneOffsetGroup extends StatelessWidget {
       ],
     );
   }
+}
+
+class _CommunityLearningSwitch extends StatefulWidget {
+  const _CommunityLearningSwitch();
+
+  @override
+  State<_CommunityLearningSwitch> createState() =>
+      _CommunityLearningSwitchState();
+}
+
+class _CommunityLearningSwitchState extends State<_CommunityLearningSwitch> {
+  SharedPreferencesApplicationSystemLearningPreferences? _preferences;
+  bool _enabled = false;
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final shared = await SharedPreferences.getInstance();
+    final preferences = SharedPreferencesApplicationSystemLearningPreferences(
+      shared,
+    );
+    final enabled = await preferences.isOptedIn();
+    if (!mounted) return;
+    setState(() {
+      _preferences = preferences;
+      _enabled = enabled;
+      _loading = false;
+    });
+  }
+
+  Future<void> _change(bool value) async {
+    if (value) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text(context.l10n.text('community_system_learning')),
+          content: Text(context.l10n.text('community_system_learning_consent')),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: Text(context.l10n.text('cancel')),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: Text(context.l10n.text('share_anonymous_votes')),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true) return;
+    }
+    await _preferences?.setOptedIn(value);
+    if (!mounted) return;
+    setState(() => _enabled = value);
+  }
+
+  @override
+  Widget build(BuildContext context) => SwitchListTile(
+    key: const ValueKey('community-system-learning-switch'),
+    contentPadding: EdgeInsets.zero,
+    value: _enabled,
+    title: Text(context.l10n.text('community_system_learning')),
+    subtitle: Text(context.l10n.text('community_system_learning_description')),
+    onChanged: _loading ? null : _change,
+  );
 }

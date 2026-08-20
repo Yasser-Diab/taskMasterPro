@@ -44,7 +44,10 @@ void main() {
   test('TaskMaster identities are never reportable', () {
     final rows = [
       segment('windows', r'C:\Program Files\TaskMaster\taskmaster_pro.exe'),
+      segment('windows-display-name', 'TaskMaster Pro'),
+      segment('windows-compact-name', 'TaskMasterPro'),
       segment('android', 'pro.taskmaster.app'),
+      segment('android-namespace', 'pro.taskmaster.taskmaster_pro'),
       segment('useful', 'Code.exe'),
     ];
 
@@ -58,6 +61,42 @@ void main() {
         attributions: const [],
       ).single.id,
       'useful',
+    );
+  });
+
+  test('TaskMaster identity in legacy metadata is never reportable', () {
+    final row = LocalActivitySegment(
+      id: 'legacy-metadata',
+      userId: 'user',
+      deviceId: 'device',
+      deviceEventId: 'legacy-metadata',
+      startedAt: start,
+      endedAt: start.add(const Duration(minutes: 5)),
+      sourceType: 'android_usage_history',
+      processName: 'Task manager',
+      rawMetadataJson: '{"data":{"applicationName":"TaskMaster Pro"}}',
+      revision: 1,
+      createdAt: start,
+      updatedAt: start,
+    );
+
+    expect(isTaskMasterSelfActivity(row), isTrue);
+    expect(
+      reportableActivitySegments(segments: [row], attributions: const []),
+      isEmpty,
+    );
+  });
+
+  test('a title which only mentions TaskMaster Pro is not an app identity', () {
+    expect(
+      isTaskMasterActivityIdentity('TaskMaster Pro release notes - Chrome'),
+      isFalse,
+    );
+    expect(
+      isTaskMasterActivityIdentity(
+        r'C:\Users\person\TaskMaster Pro\helper-tool.exe',
+      ),
+      isFalse,
     );
   });
 

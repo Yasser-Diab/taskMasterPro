@@ -64,6 +64,27 @@ class StandalonePomodoroState {
   bool get canStartBreak => !isBreak && phase != StandalonePomodoroPhase.idle;
   bool get canExtendBreak => isBreak;
 
+  /// Absolute boundary for the current running interval. The UI may tick as
+  /// often as it likes, but persistence and notification scheduling need only
+  /// this one timestamp.
+  DateTime? get boundaryAtUtc {
+    final startedAt = segmentStartedAt;
+    if (!isRunning || startedAt == null) return null;
+    final remainingFromSegmentMs = (intervalDurationMs - accumulatedMs).clamp(
+      0,
+      intervalDurationMs,
+    );
+    return startedAt.toUtc().add(
+      Duration(milliseconds: remainingFromSegmentMs),
+    );
+  }
+
+  String? get completionEventType => !isRunning
+      ? null
+      : isBreak
+      ? 'standalone_break_completed'
+      : 'standalone_focus_completed';
+
   int elapsedAt(DateTime now) {
     final liveMs = isRunning && segmentStartedAt != null
         ? now.toUtc().difference(segmentStartedAt!.toUtc()).inMilliseconds

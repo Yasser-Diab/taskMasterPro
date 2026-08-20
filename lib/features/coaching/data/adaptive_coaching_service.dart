@@ -1,12 +1,16 @@
 import 'dart:convert';
 
 import 'package:drift/drift.dart';
+import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../core/data/entity_record_repository.dart';
 import '../../../core/database/app_database.dart';
 import '../../activity/domain/activity_reporting_policy.dart';
 import '../../tasks/domain/task_occurrence_policy.dart';
+
+@visibleForTesting
+bool runtimeRepresentsActiveFocus(String? state) => state == 'running';
 
 /// The visual and conversational posture of a coaching insight.
 ///
@@ -130,6 +134,8 @@ class AdaptiveCoachingEvidence {
     required this.completedSessionsLastWeek,
     required this.pausesLastWeek,
     this.overdueTaskIds = const [],
+    this.pausedTaskId,
+    this.pausedTaskTitle,
     this.age,
   });
 
@@ -157,6 +163,8 @@ class AdaptiveCoachingEvidence {
   final int completedSessionsLastWeek;
   final int pausesLastWeek;
   final List<String> overdueTaskIds;
+  final String? pausedTaskId;
+  final String? pausedTaskTitle;
 }
 
 class AdaptiveCoachingDecision {
@@ -226,7 +234,19 @@ class AdaptiveCoachingEngine {
     AdaptiveCoachingEvidence evidence,
     List<CoachingFeedbackSignal> feedback,
   ) {
-    if (evidence.accountAgeDays < 1) {
+    // Real plan/runtime evidence is stronger than account age. A missing or
+    // delayed profile timestamp previously caused a generic first-day message
+    // to replace useful guidance even after tasks had synchronized.
+    final hasActionableEvidence =
+        evidence.hasActiveTask ||
+        evidence.overdueCount > 0 ||
+        evidence.pausedCount > 0 ||
+        evidence.readyTodayCount > 0 ||
+        evidence.roadmapAtRisk ||
+        evidence.focusCyclesLastWeek > 0 ||
+        evidence.completedSessionsLastWeek > 0 ||
+        evidence.lateNightMinutes >= 15;
+    if (evidence.accountAgeDays < 1 && !hasActionableEvidence) {
       return AdaptiveCoachingDecision(
         cardKey: 'first_day_learning',
         category: 'learning',
@@ -276,7 +296,9 @@ class AdaptiveCoachingEngine {
           assumptionTags: const {'late_activity_may_disrupt_planned_rest'},
           score: 130,
         ),
-      if (evidence.roadmapAtRisk)
+      if (evidence.roadmapAtRisk &&
+          evidence.roadmapTaskId != null &&
+          evidence.roadmapTaskTitle?.trim().isNotEmpty == true)
         AdaptiveCoachingDecision(
           cardKey: 'roadmap_recovery',
           category: 'roadmap',
@@ -307,7 +329,6 @@ class AdaptiveCoachingEngine {
             }),
           ],
           assumptionTags: const {'overdue_tasks_need_attention'},
-          relatedTaskId: evidence.nextTaskId,
           relatedTaskIds: evidence.overdueTaskIds,
           score: (110 + evidence.overdueCount.clamp(0, 10)).toDouble(),
         ),
@@ -323,7 +344,9 @@ class AdaptiveCoachingEngine {
             CoachingEvidenceLabel('coaching_evidence_active_task'),
           ],
           assumptionTags: const {'active_task_benefits_from_protected_focus'},
-          score: 100,
+          // Do not interrupt current work with a lower-value backlog or
+          // late-usage prompt. Feedback can still suppress this card.
+          score: 200,
         ),
       if (evidence.pausedCount > 0)
         AdaptiveCoachingDecision(
@@ -331,14 +354,21 @@ class AdaptiveCoachingEngine {
           category: 'paused',
           mood: CoachingMood.supportive,
           titleKey: 'coaching_adaptive_paused_title',
-          bodyKey: 'coaching_adaptive_paused_body',
-          bodyValues: {'count': evidence.pausedCount},
+          bodyKey: evidence.pausedTaskTitle?.trim().isNotEmpty == true
+              ? 'coaching_adaptive_paused_task_body'
+              : 'coaching_adaptive_paused_body',
+          bodyValues: {
+            'count': evidence.pausedCount,
+            if (evidence.pausedTaskTitle != null)
+              'task': evidence.pausedTaskTitle!,
+          },
           evidence: [
             CoachingEvidenceLabel('coaching_evidence_paused', {
               'count': evidence.pausedCount,
             }),
           ],
           assumptionTags: const {'paused_task_is_ready_to_resume'},
+          relatedTaskId: evidence.pausedTaskId,
           score: 90,
         ),
       if (evidence.openRoadmapTaskCount > 0)
@@ -365,12 +395,25 @@ class AdaptiveCoachingEngine {
           category: 'focus_pattern',
           mood: CoachingMood.celebrating,
           titleKey: 'coaching_adaptive_focus_title',
-          bodyKey: 'coaching_adaptive_focus_body',
-          bodyValues: {'count': evidence.focusCyclesLastWeek},
+          bodyKey: evidence.focusCyclesLastWeek > 0
+              ? 'coaching_adaptive_focus_body'
+              : 'coaching_adaptive_session_body',
+          bodyValues: {
+            'count': evidence.focusCyclesLastWeek > 0
+                ? evidence.focusCyclesLastWeek
+                : evidence.completedSessionsLastWeek,
+          },
           evidence: [
-            CoachingEvidenceLabel('coaching_evidence_focus_cycles', {
-              'count': evidence.focusCyclesLastWeek,
-            }),
+            CoachingEvidenceLabel(
+              evidence.focusCyclesLastWeek > 0
+                  ? 'coaching_evidence_focus_cycles'
+                  : 'coaching_evidence_completed_sessions',
+              {
+                'count': evidence.focusCyclesLastWeek > 0
+                    ? evidence.focusCyclesLastWeek
+                    : evidence.completedSessionsLastWeek,
+              },
+            ),
           ],
           assumptionTags: const {'recent_focus_pattern_can_be_repeated'},
           score: 65,
@@ -665,13 +708,27 @@ class AdaptiveCoachingService {
       now: now,
       timeZone: timeZone,
     );
+    final pausedTasks = openTasks
+        .where((task) => task.status == 'paused')
+        .toList(growable: false);
     final roadmapTasks = openTasks
         .where((task) => task.roadmapId != null)
         .toList(growable: false);
-    final roadmapTask = roadmapTasks.firstOrNull;
-    final roadmapAtRisk = roadmaps.any(
-      (roadmap) => roadmap.riskLevel == 'high' || roadmap.riskLevel == 'medium',
-    );
+    final atRiskRoadmapIds = roadmaps
+        .where(
+          (roadmap) =>
+              roadmap.riskLevel == 'high' || roadmap.riskLevel == 'medium',
+        )
+        .map((roadmap) => roadmap.id)
+        .toSet();
+    final roadmapRiskTasks = roadmapTasks
+        .where((task) => atRiskRoadmapIds.contains(task.roadmapId))
+        .toList(growable: false);
+    final roadmapTask =
+        roadmapRiskTasks.firstOrNull ?? roadmapTasks.firstOrNull;
+    // A risk label without an open action is not enough for a command. This
+    // also prevents selecting a task from an unrelated healthy roadmap.
+    final roadmapAtRisk = roadmapRiskTasks.isNotEmpty;
     final roadmapProgress = roadmaps.isEmpty
         ? null
         : roadmaps
@@ -691,18 +748,35 @@ class AdaptiveCoachingService {
           record.updatedAt.toLocal().isAfter(recentHealthCutoff);
     });
     final eventCutoff = now.subtract(const Duration(days: 7));
-    final recentCycles = cycles.where(
-      (record) =>
+    final recentCycles = cycles.where((record) {
+      final data = _decode(record.dataJson);
+      return record.status == 'completed' &&
+          record.deletedAt == null &&
           record.updatedAt.toLocal().isAfter(eventCutoff) &&
-          ((_decode(record.dataJson)['focus_duration_ms'] as num?)?.toInt() ??
-                  0) >
-              0,
-    );
-    final recentEvents = sessionEvents
+          ((data['focus_duration_ms'] as num?)?.toInt() ?? 0) > 0;
+    });
+    final recentEventRecords = sessionEvents
         .where((record) => record.updatedAt.toLocal().isAfter(eventCutoff))
-        .map((record) => _decode(record.dataJson))
         .toList(growable: false);
-    final accountStart = accountCreatedAt?.toLocal();
+    final completedSessionIds = <String>{};
+    var recentPauseCount = 0;
+    for (final record in recentEventRecords) {
+      final data = _decode(record.dataJson);
+      final type = data['event_type']?.toString();
+      if (type == 'complete') {
+        completedSessionIds.add(
+          record.parentId ?? data['session_id']?.toString() ?? record.id,
+        );
+      } else if (type == 'pause') {
+        recentPauseCount++;
+      }
+    }
+    final observedStarts = <DateTime>[
+      if (accountCreatedAt != null) accountCreatedAt.toLocal(),
+      ...tasks.map((task) => task.createdAt.toLocal()),
+      ...roadmaps.map((roadmap) => roadmap.createdAt.toLocal()),
+    ]..sort();
+    final accountStart = observedStarts.firstOrNull;
     final accountAgeDays = accountStart == null
         ? 0
         : DateTime(now.year, now.month, now.day)
@@ -713,7 +787,8 @@ class AdaptiveCoachingService {
                   accountStart.day,
                 ),
               )
-              .inDays;
+              .inDays
+              .clamp(0, 365000);
     return AdaptiveCoachingEvidence(
       now: now,
       accountAgeDays: accountAgeDays,
@@ -721,10 +796,11 @@ class AdaptiveCoachingService {
       tone: settings?.coachingTone ?? 'balanced',
       sensitivity: settings?.coachingSensitivity ?? 'standard',
       hasActiveTask:
-          activeTask != null &&
-          const {'running', 'break'}.contains(runtime?.state),
+          activeTask != null && runtimeRepresentsActiveFocus(runtime?.state),
       activeTaskTitle: activeTask?.title,
-      pausedCount: openTasks.where((task) => task.status == 'paused').length,
+      pausedCount: pausedTasks.length,
+      pausedTaskId: pausedTasks.firstOrNull?.id,
+      pausedTaskTitle: pausedTasks.firstOrNull?.title,
       overdueCount: overdue.length,
       overdueTaskIds: List.unmodifiable(overdue.map((task) => task.id)),
       readyTodayCount: readyToday.length,
@@ -744,17 +820,11 @@ class AdaptiveCoachingService {
       approvedHealthSummary: approvedHealth.isNotEmpty,
       recentSleepSummary: recentSleep,
       focusCyclesLastWeek: recentCycles.length,
-      completedSessionsLastWeek: recentEvents
-          .where(
-            (event) => const {
-              'complete',
-              'focus_completed',
-            }.contains(event['event_type']),
-          )
-          .length,
-      pausesLastWeek: recentEvents
-          .where((event) => event['event_type'] == 'pause')
-          .length,
+      // Cross-device snapshots can contain more than one terminal event for
+      // the same canonical session. Coaching describes finished sessions, not
+      // transport rows, so count each session once.
+      completedSessionsLastWeek: completedSessionIds.length,
+      pausesLastWeek: recentPauseCount,
     );
   }
 

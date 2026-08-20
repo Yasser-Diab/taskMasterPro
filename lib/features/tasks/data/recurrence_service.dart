@@ -3,19 +3,24 @@ import 'dart:convert';
 import '../../../core/data/entity_record_repository.dart';
 import '../../../core/database/app_database.dart';
 import '../domain/recurring_occurrence_identity.dart';
+import '../domain/vacation_period.dart';
 import 'task_repository.dart';
+import 'vacation_repository.dart';
+import 'vacation_scheduling_service.dart';
 
 class RecurrenceService {
   RecurrenceService({
     required this.database,
     required this.entities,
     required this.tasks,
+    this.vacations,
     this.now,
   });
 
   final AppDatabase database;
   final EntityRecordRepository entities;
   final TaskRepository tasks;
+  final VacationRepository? vacations;
   final DateTime Function()? now;
   Future<void> _generationTail = Future<void>.value();
 
@@ -36,6 +41,9 @@ class RecurrenceService {
   Future<int> _generateUpcoming({required int horizonDays}) async {
     final rules = await entities.list(entityType: 'recurrence_rules');
     if (rules.isEmpty) return 0;
+    final vacationPlanner = vacations == null
+        ? VacationPlanner(const [])
+        : VacationPlanner(await vacations!.list());
     final existing = await (database.select(
       database.localTasks,
     )..where((row) => row.userId.equals(entities.userId))).get();
@@ -104,18 +112,61 @@ class RecurrenceService {
           final occurrenceKey = _dateOnly(cursor);
           final dedupeKey = '$templateId:$occurrenceKey';
           if (!knownKeys.contains(dedupeKey)) {
+            final vacation = vacationPlanner.dispositionFor(
+              occurrenceDate: cursor,
+              templateId: templateId,
+            );
+            if (vacation.isSkipped) {
+              cursor = cursor.add(const Duration(days: 1));
+              continue;
+            }
             final durationMs =
                 (templateRow['default_duration_ms'] as num?)?.toInt() ??
                 source?.estimatedDurationMs ??
                 1800000;
-            final plannedStart = _combine(cursor, localTime);
-            final executionSettings = templateRow['execution_settings'] is Map
+            final originalPlannedStart = _combine(cursor, localTime);
+            final plannedDate = vacation.scheduledDate;
+            final plannedStart = _combine(plannedDate, localTime);
+            final inheritedExecutionSettings =
+                templateRow['execution_settings'] is Map
                 ? Map<String, Object?>.from(
                     templateRow['execution_settings'] as Map,
                   )
                 : source == null
                 ? <String, Object?>{}
                 : _configuration(source.dataJson);
+            // A source occurrence may itself have been postponed by a
+            // vacation. That marker describes only that occurrence; carrying
+            // it into a newly materialized recurrence would make later
+            // reconciliation restore or move the wrong dates.
+            final baseExecutionSettings = <String, Object?>{
+              ...inheritedExecutionSettings,
+            }..remove(vacationAdjustmentKey);
+            final executionSettings = vacation.isAdjusted
+                ? <String, Object?>{
+                    ...baseExecutionSettings,
+                    vacationAdjustmentKey: {
+                      'schema_version': 1,
+                      'vacation_id': vacation.vacationId,
+                      'policy': vacation.policy!.name,
+                      'original_status': 'ready',
+                      'original_scheduled_date': dateOnlyText(cursor),
+                      'original_planned_start': originalPlannedStart
+                          ?.toIso8601String(),
+                      'original_planned_end': originalPlannedStart
+                          ?.add(Duration(milliseconds: durationMs))
+                          .toIso8601String(),
+                      'original_due_at': null,
+                      'applied_status': 'ready',
+                      'applied_scheduled_date': dateOnlyText(plannedDate),
+                      'applied_planned_start': plannedStart?.toIso8601String(),
+                      'applied_planned_end': plannedStart
+                          ?.add(Duration(milliseconds: durationMs))
+                          .toIso8601String(),
+                      'applied_due_at': null,
+                    },
+                  }
+                : baseExecutionSettings;
             final taskId = await tasks.createTask(
               TaskDraft(
                 id: recurringOccurrenceId(
@@ -141,7 +192,7 @@ class RecurrenceService {
                     templateRow['execution_mode'] as String? ??
                     source?.executionMode ??
                     'manual',
-                scheduledDate: cursor,
+                scheduledDate: plannedDate,
                 plannedStart: plannedStart,
                 plannedEnd: plannedStart?.add(
                   Duration(milliseconds: durationMs),

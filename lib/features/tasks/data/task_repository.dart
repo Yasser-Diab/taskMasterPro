@@ -968,6 +968,75 @@ class TaskRepository {
     );
   }
 
+  /// Applies or removes an automatic vacation adjustment as one canonical
+  /// task mutation. Keeping status, dates and the provenance marker in the
+  /// same revision prevents another device from observing a cancelled task
+  /// with an unshifted schedule (or the inverse).
+  Future<void> applyVacationAdjustment(
+    LocalTask task, {
+    required String status,
+    required DateTime scheduledDate,
+    required DateTime? plannedStart,
+    required DateTime? plannedEnd,
+    required DateTime? dueAt,
+    required Map<String, Object?> configuration,
+  }) async {
+    final latest = await getTask(task.id);
+    if (latest == null ||
+        latest.status == 'completed' ||
+        latest.actualStart != null) {
+      return;
+    }
+    final now = _clock();
+    final deviceId = await DeviceIdentity.accountId(_userId);
+    final sequence = await DeviceIdentity.nextSequence(_userId);
+    final commandId = _uuid.v4();
+    final payload = <String, Object?>{
+      'status': status,
+      'scheduled_date': _dateOnly(scheduledDate),
+      'planned_start': plannedStart?.toUtc().toIso8601String(),
+      'planned_end': plannedEnd?.toUtc().toIso8601String(),
+      'due_at': dueAt?.toUtc().toIso8601String(),
+      'data': configuration,
+    };
+    await database.transaction(() async {
+      final changed =
+          await (database.update(database.localTasks)..where(
+                (row) =>
+                    row.id.equals(latest.id) &
+                    row.userId.equals(_userId) &
+                    row.revision.equals(latest.revision) &
+                    row.actualStart.isNull() &
+                    row.status.equals('completed').not(),
+              ))
+              .write(
+                LocalTasksCompanion(
+                  status: Value(status),
+                  scheduledDate: Value(scheduledDate),
+                  plannedStart: Value(plannedStart),
+                  plannedEnd: Value(plannedEnd),
+                  dueAt: Value(dueAt),
+                  dataJson: Value(jsonEncode(configuration)),
+                  revision: Value(latest.revision + 1),
+                  updatedAt: Value(now),
+                  updatedByDeviceId: Value(deviceId),
+                  lastCommandId: Value(commandId),
+                ),
+              );
+      if (changed != 1) return;
+      await _enqueue(
+        commandId: commandId,
+        deviceId: deviceId,
+        sequence: sequence,
+        entityId: latest.id,
+        commandType: 'update',
+        baseRevision: latest.revision,
+        payload: payload,
+        now: now,
+      );
+    });
+  }
+
   Future<void> changeStatus(
     LocalTask task,
     String status, {
@@ -1037,7 +1106,7 @@ class TaskRepository {
       if (currentTask == null) {
         return const TaskStartResult.started();
       }
-      final now = DateTime.now().toUtc();
+      final now = _clock();
       var previousRuntime = await getRuntime();
       if (previousRuntime?.activeTaskId != null &&
           previousRuntime!.activeTaskId != currentTask.id) {
@@ -1161,6 +1230,7 @@ class TaskRepository {
         sessionId: sessionId,
         task: currentTask,
         action: 'start',
+        projectedActiveMs: 0,
         runtimeRevision: runtimeRevision,
         now: now,
       );
@@ -1206,7 +1276,7 @@ class TaskRepository {
         return;
       }
 
-      final now = DateTime.now().toUtc();
+      final now = _clock();
       // This paused history row and the runtime hand-off commit together, so
       // observers can never render it as a second active task.
       final newSessionId = await _createExecutionSession(
@@ -1214,10 +1284,12 @@ class TaskRepository {
         now,
         initialState: 'paused',
       );
-      final elapsed =
-          runtime.state == 'running' && runtime.segmentStartedAt != null
-          ? now.difference(runtime.segmentStartedAt!).inMilliseconds
-          : 0;
+      // Switching away is a real execution boundary, just like Pause or
+      // Complete.  A Pomodoro interval may have been left running while the
+      // app was closed, so raw wall-clock time must never be projected as
+      // focused work.  Reuse the same per-focus cap as every other local
+      // transition; paused and break states contribute exactly zero.
+      final elapsed = _recordableSegmentMs(previousTask, runtime, now);
       final previousActiveMs = runtime.accumulatedActiveMs + elapsed;
       final command = await _newRuntimeCommandIdentity();
 
@@ -1302,6 +1374,7 @@ class TaskRepository {
         task: selectedTask,
         expectedRuntime: runtime,
         action: action,
+        projectedActiveMs: previousActiveMs,
         now: now,
       );
     });
@@ -1321,7 +1394,7 @@ class TaskRepository {
           runtime.state != 'running') {
         return;
       }
-      final now = DateTime.now().toUtc();
+      final now = _clock();
       final elapsed = _recordableSegmentMs(currentTask, runtime, now);
       final recorded = runtime.accumulatedActiveMs + elapsed;
       final command = await _newRuntimeCommandIdentity();
@@ -1365,6 +1438,7 @@ class TaskRepository {
         sessionId: runtime.sessionId!,
         task: currentTask,
         action: 'pause',
+        projectedActiveMs: recorded,
         runtimeRevision: runtime.revision,
         now: now,
       );
@@ -1378,7 +1452,7 @@ class TaskRepository {
     await database.transaction(() async {
       final currentTask = await getTask(task.id);
       if (currentTask == null) return;
-      final now = DateTime.now().toUtc();
+      final now = _clock();
       final runtime = await getRuntime();
       // Resume always addresses the exact canonical paused session.  It must
       // never turn a stale task card into a request to start another task.
@@ -1427,6 +1501,7 @@ class TaskRepository {
         sessionId: sessionId,
         task: currentTask,
         action: 'resume',
+        projectedActiveMs: runtime.accumulatedActiveMs,
         runtimeRevision: runtime.revision,
         now: now,
       );
@@ -1448,7 +1523,7 @@ class TaskRepository {
           runtime.state != 'running') {
         return;
       }
-      final now = DateTime.now().toUtc();
+      final now = _clock();
       // A delayed notification action must never turn one 25-minute focus
       // interval into an hour of focused work. Raw wall time is capped at the
       // remaining configured focus interval before the boundary is saved.
@@ -1511,6 +1586,7 @@ class TaskRepository {
         sessionId: runtime.sessionId!,
         task: currentTask,
         action: 'start_break',
+        projectedActiveMs: recorded,
         runtimeRevision: runtime.revision,
         now: now,
       );
@@ -1530,7 +1606,7 @@ class TaskRepository {
           runtime.state != 'break') {
         return;
       }
-      final now = DateTime.now().toUtc();
+      final now = _clock();
       final focusMs = _pomodoroFocusDurationMs(currentTask);
       final completedFocuses = pomodoroCompletedFocuses(runtime, focusMs);
       final runtimeData = updatedPomodoroRuntimeData(
@@ -1583,6 +1659,7 @@ class TaskRepository {
         sessionId: runtime.sessionId!,
         task: currentTask,
         action: 'finish_break',
+        projectedActiveMs: runtime.accumulatedActiveMs,
         runtimeRevision: runtime.revision,
         now: now,
       );
@@ -1610,7 +1687,7 @@ class TaskRepository {
           runtime.segmentStartedAt == null) {
         return false;
       }
-      final now = DateTime.now().toUtc();
+      final now = _clock();
       final rawElapsed = now
           .difference(runtime.segmentStartedAt!.toUtc())
           .inMilliseconds;
@@ -1682,6 +1759,7 @@ class TaskRepository {
         sessionId: runtime.sessionId!,
         task: currentTask,
         action: 'skip_break',
+        projectedActiveMs: recorded,
         runtimeRevision: runtime.revision,
         now: now,
       );
@@ -1798,6 +1876,11 @@ class TaskRepository {
         activeRuntime?.segmentStartedAt != null &&
         latest.executionMode == 'pomodoro' &&
         runningElapsed > 0;
+    final closedFocusEnd = shouldClosePartialFocus
+        ? activeRuntime!.segmentStartedAt!.toUtc().add(
+            Duration(milliseconds: runningElapsed),
+          )
+        : null;
     final pomodoroBoundaryId = shouldClosePartialFocus ? _uuid.v4() : null;
     final pomodoroCommand = shouldClosePartialFocus
         ? await _prepareCommand()
@@ -1886,6 +1969,7 @@ class TaskRepository {
           sessionId: activeRuntime.sessionId!,
           task: latest,
           action: 'complete',
+          projectedActiveMs: totalActive,
           runtimeRevision: activeRuntime.revision,
           now: now,
         );
@@ -1913,7 +1997,7 @@ class TaskRepository {
             'focus_started_at': activeRuntime.segmentStartedAt!
                 .toUtc()
                 .toIso8601String(),
-            'focus_ended_at': now.toIso8601String(),
+            'focus_ended_at': closedFocusEnd!.toIso8601String(),
             'focus_duration_ms': runningElapsed,
             'break_started_at': null,
             'break_ended_at': null,
@@ -1927,7 +2011,7 @@ class TaskRepository {
             'focus_started_at': activeRuntime.segmentStartedAt!
                 .toUtc()
                 .toIso8601String(),
-            'focus_ended_at': now.toIso8601String(),
+            'focus_ended_at': closedFocusEnd.toIso8601String(),
             'focus_duration_ms': runningElapsed,
             'break_started_at': null,
             'break_ended_at': null,
@@ -2139,6 +2223,7 @@ class TaskRepository {
         sessionId: restoreSessionId ?? task.id,
         task: task,
         action: eventType == 'completion_undone' ? 'undo_complete' : 'reopen',
+        projectedActiveMs: task.activeDurationMs,
         runtimeRevision:
             (snapshotData['previous_runtime_revision'] as num?)?.toInt() ?? 0,
         now: now,
@@ -2315,6 +2400,7 @@ class TaskRepository {
     required String sessionId,
     required LocalTask task,
     required String action,
+    required int projectedActiveMs,
     required int runtimeRevision,
     required DateTime now,
   }) async {
@@ -2334,6 +2420,8 @@ class TaskRepository {
               'action': action,
               'task_occurrence_id': task.id,
               'mode': task.executionMode,
+              'projected_active_ms': projectedActiveMs,
+              'projected_boundary_at': now.toUtc().toIso8601String(),
             }),
             clientTimestamp: now,
             createdAt: now,
@@ -2647,6 +2735,7 @@ class TaskRepository {
     required String sessionId,
     required LocalTask task,
     required String action,
+    required int projectedActiveMs,
     required int runtimeRevision,
     required DateTime now,
   }) async {
@@ -2666,6 +2755,11 @@ class TaskRepository {
               'action': action,
               'task_occurrence_id': task.id,
               'mode': task.executionMode,
+              // Freeze the exact locally-recorded total at the user action.
+              // The command may reach the server much later; transport delay
+              // is never focused work.
+              'projected_active_ms': projectedActiveMs,
+              'projected_boundary_at': now.toUtc().toIso8601String(),
               'expected_runtime_revision': runtimeRevision,
             }),
             clientTimestamp: now,
@@ -2680,6 +2774,7 @@ class TaskRepository {
     required LocalTask task,
     required LocalRuntime expectedRuntime,
     required ActiveTaskSwitchAction action,
+    required int projectedActiveMs,
     required DateTime now,
   }) async {
     await database
@@ -2702,6 +2797,8 @@ class TaskRepository {
               'expected_active_session_id': expectedRuntime.sessionId,
               'expected_active_task_id': expectedRuntime.activeTaskId,
               'expected_runtime_revision': expectedRuntime.revision,
+              'projected_active_ms': projectedActiveMs,
+              'projected_boundary_at': now.toUtc().toIso8601String(),
               'current_task_action':
                   action == ActiveTaskSwitchAction.finishCurrent
                   ? 'finish'

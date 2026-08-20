@@ -362,6 +362,69 @@ void main() {
     },
   );
 
+  test('quiet execution status cannot replace the audible boundary alarm', () {
+    final boundary = LocalNotificationService.executionNotificationId('task-1');
+    final status = LocalNotificationService.executionStatusNotificationId(
+      'task-1',
+    );
+    final shellSource = File(
+      'lib/features/shell/presentation/home_shell.dart',
+    ).readAsStringSync();
+
+    expect(status, isNot(boundary));
+    expect(shellSource, contains('executionStatusNotificationId(task.id)'));
+  });
+
+  test(
+    'standalone Pomodoro boundary is shell-owned and audible off-screen',
+    () {
+      final notifications = File(
+        'lib/core/notifications/notification_sounds.dart',
+      ).readAsStringSync();
+      final shell = File(
+        'lib/features/shell/presentation/home_shell.dart',
+      ).readAsStringSync();
+      final screen = File(
+        'lib/features/tasks/presentation/standalone_pomodoro_screen.dart',
+      ).readAsStringSync();
+
+      expect(notifications, contains('scheduleStandalonePomodoroCompletion'));
+      expect(notifications, contains("'standalone-pomodoro'"));
+      expect(
+        notifications,
+        contains('AndroidScheduleMode.exactAllowWhileIdle'),
+      );
+      expect(shell, contains('_standaloneSubscription'));
+      expect(shell, contains('_standaloneBoundaryTimer'));
+      expect(shell, contains('.advanceIfDue(now: DateTime.now().toUtc())'));
+      expect(
+        screen,
+        isNot(contains('.advanceIfDue(now: DateTime.now().toUtc())')),
+        reason: 'closing the timer route must not stop phase advancement',
+      );
+    },
+  );
+
+  test(
+    'global active-task pill exposes compact canonical interval actions',
+    () {
+      final shell = File(
+        'lib/features/shell/presentation/home_shell.dart',
+      ).readAsStringSync();
+
+      expect(
+        shell,
+        contains("ValueKey('compact-active-task-primary-control')"),
+      );
+      expect(shell, contains("ValueKey('compact-active-task-more-controls')"));
+      expect(shell, contains('_CompactTimerAction.startBreakEarly'));
+      expect(shell, contains('_CompactTimerAction.skipOfferedBreak'));
+      expect(shell, contains('_CompactTimerAction.extendBreak'));
+      expect(shell, contains('TaskExecutionCommands.skipOfferedBreak('));
+      expect(shell, contains('TaskExecutionCommands.extendBreak('));
+    },
+  );
+
   test('notification mutations are acknowledged only after local acceptance', () {
     final shellSource = File(
       'lib/features/shell/presentation/home_shell.dart',

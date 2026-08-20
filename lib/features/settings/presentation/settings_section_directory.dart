@@ -11,6 +11,7 @@ class SettingsSectionDirectory extends StatelessWidget {
   static IconData iconFor(String key) => switch (key) {
     'profile_and_account' => Icons.manage_accounts_outlined,
     'schedule_wellbeing' => Icons.bedtime_outlined,
+    'routine_and_vacations' => Icons.beach_access_outlined,
     'tasks_and_execution' => Icons.task_alt_outlined,
     'pomodoro' => Icons.timer_outlined,
     'activity_and_privacy' => Icons.shield_outlined,

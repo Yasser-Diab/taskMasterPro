@@ -45,6 +45,8 @@ void main() {
     expect(screen, contains('state.isFinished'));
     expect(screen, contains('state.isPaused'));
     expect(screen, contains('state.isRunning'));
+    expect(screen, contains('ExecutionTimerSurface('));
+    expect(screen, contains('ExecutionTimerDial('));
   });
 
   test('new standalone transition labels are complete in all locales', () {

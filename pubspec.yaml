@@ -1,7 +1,7 @@
 name: taskmaster_pro
 description: Local-first execution, roadmap, and evidence-based coaching for Windows and Android.
 publish_to: none
-version: 0.0.28+34
+version: 0.0.28+39
 
 environment:
   sdk: ^3.12.2
@@ -71,6 +71,13 @@ dependency_overrides:
   # audited patch in-repo until the upstream package handles those failures.
   flutter_local_notifications_windows:
     path: third_party/flutter_local_notifications_windows
+  # The upstream Windows plugin keeps a Geolocator and PositionChanged
+  # subscription alive for the entire process even when the app never asks
+  # for location. That leaves Windows showing a permanent location-in-use
+  # indicator. This audited fork creates a Geolocator only for an explicit
+  # service-status check and releases it immediately afterwards.
+  permission_handler_windows:
+    path: third_party/permission_handler_windows
 
 flutter:
   uses-material-design: true

@@ -19,6 +19,108 @@ void main() {
     expect(authoritativeSnapshotCanAdvanceCursor(const {'roadmaps'}), isFalse);
   });
 
+  test('atomic runtime commands defer every canonical row they project', () {
+    const switchPayload = <String, dynamic>{
+      'task_occurrence_id': 'task-new',
+      'expected_active_task_id': 'task-old',
+      'expected_active_session_id': 'session-old',
+    };
+
+    expect(
+      pendingCommandProjectsCanonicalRow(
+        canonicalEntityType: 'execution_sessions',
+        canonicalEntityId: 'session-new',
+        commandEntityType: 'execution_runtime_switch',
+        commandEntityId: 'session-new',
+        payload: switchPayload,
+      ),
+      isTrue,
+    );
+    expect(
+      pendingCommandProjectsCanonicalRow(
+        canonicalEntityType: 'execution_sessions',
+        canonicalEntityId: 'session-old',
+        commandEntityType: 'execution_runtime_switch',
+        commandEntityId: 'session-new',
+        payload: switchPayload,
+      ),
+      isTrue,
+    );
+    expect(
+      pendingCommandProjectsCanonicalRow(
+        canonicalEntityType: 'task_occurrences',
+        canonicalEntityId: 'task-new',
+        commandEntityType: 'execution_runtime_switch',
+        commandEntityId: 'session-new',
+        payload: switchPayload,
+      ),
+      isTrue,
+    );
+    expect(
+      pendingCommandProjectsCanonicalRow(
+        canonicalEntityType: 'task_occurrences',
+        canonicalEntityId: 'task-old',
+        commandEntityType: 'execution_runtime_switch',
+        commandEntityId: 'session-new',
+        payload: switchPayload,
+      ),
+      isTrue,
+    );
+    expect(
+      pendingCommandProjectsCanonicalRow(
+        canonicalEntityType: 'user_runtime_state',
+        canonicalEntityId: 'runtime-owner',
+        commandEntityType: 'execution_runtime_switch',
+        commandEntityId: 'session-new',
+        payload: switchPayload,
+      ),
+      isTrue,
+    );
+    expect(
+      pendingCommandProjectsCanonicalRow(
+        canonicalEntityType: 'execution_sessions',
+        canonicalEntityId: 'unrelated-session',
+        commandEntityType: 'execution_runtime_switch',
+        commandEntityId: 'session-new',
+        payload: switchPayload,
+      ),
+      isFalse,
+    );
+    expect(
+      pendingCommandProjectsCanonicalRow(
+        canonicalEntityType: 'roadmaps',
+        canonicalEntityId: 'roadmap-1',
+        commandEntityType: 'roadmaps',
+        commandEntityId: 'roadmap-1',
+        payload: const {},
+      ),
+      isTrue,
+    );
+    expect(
+      pendingCommandProjectsCanonicalRow(
+        canonicalEntityType: 'health_summaries',
+        canonicalEntityId: 'health-1',
+        commandEntityType: 'task_health_summaries',
+        commandEntityId: 'health-1',
+        payload: const {},
+      ),
+      isTrue,
+    );
+  });
+
+  test('incremental sync retains its cursor before a deferred row', () {
+    expect(incrementalCursorAfterPage(pageLastSequence: 250), 250);
+    expect(
+      incrementalCursorAfterPage(
+        pageLastSequence: 250,
+        firstDeferredSequence: 117,
+      ),
+      116,
+      reason:
+          'the bounded change page must replay after its owner command settles',
+    );
+  });
+
   test('a durable cursor always uses incremental synchronization', () {
     expect(
       shouldRunAuthoritativeSnapshot(
@@ -46,16 +148,71 @@ void main() {
     expect(hasUsableDurableSyncCursor(42), isTrue);
   });
 
+  test('local pending work wakes synchronization without polling', () {
+    final now = DateTime.utc(2026, 8, 16, 1);
+
+    expect(
+      shouldAutoDrainPendingOutbox(
+        startedForUserId: 'owner-1',
+        observedUserId: 'owner-1',
+        nextAttemptAt: const [null],
+        now: now,
+      ),
+      isTrue,
+    );
+    expect(
+      shouldAutoDrainPendingOutbox(
+        startedForUserId: 'owner-1',
+        observedUserId: 'owner-1',
+        nextAttemptAt: [now.subtract(const Duration(seconds: 1))],
+        now: now,
+      ),
+      isTrue,
+    );
+    expect(
+      shouldAutoDrainPendingOutbox(
+        startedForUserId: 'owner-1',
+        observedUserId: 'owner-1',
+        nextAttemptAt: [now.add(const Duration(minutes: 5))],
+        now: now,
+      ),
+      isFalse,
+    );
+    expect(
+      shouldAutoDrainPendingOutbox(
+        startedForUserId: 'owner-2',
+        observedUserId: 'owner-1',
+        nextAttemptAt: const [null],
+        now: now,
+      ),
+      isFalse,
+    );
+    expect(
+      shouldAutoDrainPendingOutbox(
+        startedForUserId: 'owner-1',
+        observedUserId: 'owner-1',
+        nextAttemptAt: const [],
+        now: now,
+      ),
+      isFalse,
+    );
+  });
+
   test(
     'first-device snapshot includes task URL resources and website links',
     () {
       expect(authoritativeSnapshotEntityTypes, contains('task_resources'));
       expect(authoritativeSnapshotEntityTypes, contains('website_rules'));
       expect(authoritativeSnapshotEntityTypes, contains('recurrence_rules'));
+      expect(authoritativeSnapshotEntityTypes, contains('vacation_periods'));
       expect(authoritativeSnapshotEntityTypes, contains('task_templates'));
       expect(authoritativeSnapshotEntityTypes, contains('task_reminders'));
       expect(
         authoritativeSnapshotEntityTypes.indexOf('recurrence_rules'),
+        lessThan(authoritativeSnapshotEntityTypes.indexOf('vacation_periods')),
+      );
+      expect(
+        authoritativeSnapshotEntityTypes.indexOf('vacation_periods'),
         lessThan(authoritativeSnapshotEntityTypes.indexOf('task_templates')),
       );
       expect(
@@ -74,7 +231,101 @@ void main() {
         authoritativeSnapshotEntityTypes.indexOf('task_occurrences'),
         lessThan(authoritativeSnapshotEntityTypes.indexOf('task_reminders')),
       );
-      expect(authoritativeSnapshotStateId('user-1'), 'sync:v4:user-1');
+      expect(authoritativeSnapshotEntityTypes, contains('execution_sessions'));
+      expect(authoritativeSnapshotEntityTypes, contains('session_events'));
+      expect(
+        authoritativeSnapshotEntityTypes.indexOf('execution_sessions'),
+        lessThan(authoritativeSnapshotEntityTypes.indexOf('session_events')),
+      );
+      expect(authoritativeSnapshotStateId('user-1'), 'sync:v7:user-1');
+    },
+  );
+
+  test('vacation changes use their revision-checked atomic endpoint', () {
+    final source = File('lib/core/sync/sync_service.dart').readAsStringSync();
+    expect(source, contains("'vacation_periods' ||"));
+    expect(source, contains("command.entityType == 'vacation_periods'"));
+    expect(source, contains("'apply_vacation_period_command'"));
+    expect(source, contains("'p_base_revision': command.baseRevision"));
+  });
+
+  test('privacy-safe Activity classifications get one bounded v2 retry', () {
+    expect(
+      nextActivityClassifierTransportRepairVersion(
+        reason: 'permission_denied',
+        message: 'activity_privacy_local_only',
+        currentVersion: 1,
+      ),
+      2,
+    );
+    expect(
+      nextActivityClassifierTransportRepairVersion(
+        reason: 'permission_denied',
+        message: 'device_not_registered',
+        currentVersion: 1,
+      ),
+      isNull,
+      reason: 'a revoked device must remain visible rather than be retried',
+    );
+    expect(
+      nextActivityClassifierTransportRepairVersion(
+        reason: 'permission_denied',
+        message: 'activity_privacy_local_only',
+        currentVersion: 2,
+      ),
+      isNull,
+      reason: 'the privacy repair must never become an infinite retry loop',
+    );
+  });
+
+  test(
+    'a missing Activity review retries once only with a complete approved aggregate',
+    () {
+      expect(
+        shouldRetryMissingApprovedActivityClassification(
+          reason: 'missing_entity',
+          currentVersion: 0,
+          hasCompleteApprovedLocalAggregate: true,
+        ),
+        isTrue,
+      );
+      expect(
+        shouldRetryMissingApprovedActivityClassification(
+          reason: 'missing_entity',
+          currentVersion: 0,
+          hasCompleteApprovedLocalAggregate: false,
+        ),
+        isFalse,
+        reason: 'an incomplete local Activity record must remain visible',
+      );
+      expect(
+        shouldRetryMissingApprovedActivityClassification(
+          reason: 'missing_entity',
+          currentVersion: 1,
+          hasCompleteApprovedLocalAggregate: true,
+        ),
+        isFalse,
+        reason: 'a second server rejection must not become a retry storm',
+      );
+      expect(
+        shouldRetryMissingApprovedActivityClassification(
+          reason: 'revision_mismatch',
+          currentVersion: 0,
+          hasCompleteApprovedLocalAggregate: true,
+        ),
+        isFalse,
+      );
+
+      final source = File('lib/core/sync/sync_service.dart').readAsStringSync();
+      expect(source, contains("review.status != 'confirmed'"));
+      expect(source, contains('row.confirmedByUser'));
+      expect(source, contains('row.attributionId.equals(attribution.id)'));
+      expect(source, contains("'approved_contribution': true"));
+      expect(source, contains("'missing_entity_repair_version': 1"));
+      expect(
+        source,
+        contains("'missing_entity_rebuilt_from_approved_local_aggregate'"),
+      );
     },
   );
 
@@ -637,6 +888,41 @@ void main() {
           'The legacy outbox sanitizer must strip host identity alongside URL and window details.',
     );
   });
+
+  test(
+    'approved Activity contributions allow only privacy-safe review metadata',
+    () {
+      final migration = File(
+        'supabase/migrations/'
+        '20260816091500_v0030_privacy_safe_activity_reviews.sql',
+      ).readAsStringSync();
+
+      expect(migration, contains('approved_contribution'));
+      expect(migration, contains('safe_review_metadata'));
+      expect(migration, contains('pg_catalog.jsonb_object_keys'));
+      expect(migration, contains("'classification_command_id'"));
+      expect(migration, contains("'resolved_with_review_item_id'"));
+      expect(migration, contains("new.data ->> 'capture_state' = 'finalized'"));
+      expect(migration, contains('segment.process_name is null'));
+      expect(migration, contains('segment.window_title is null'));
+      expect(migration, contains('segment.domain is null'));
+      expect(migration, contains('segment.url is null'));
+      expect(migration, contains('segment.page_title is null'));
+      expect(migration, contains('"raw_samples_included": false'));
+      expect(
+        RegExp(
+          r"jsonb_object_keys\([\s\S]*?segment\.raw_metadata[\s\S]*?metadata_key not in",
+        ).hasMatch(migration),
+        isTrue,
+      );
+      expect(
+        migration,
+        contains(
+          "raise exception 'activity_privacy_local_only' using errcode = '42501'",
+        ),
+      );
+    },
+  );
 
   test('only canonical runtime mismatches can be auto-superseded', () {
     expect(
@@ -1568,6 +1854,18 @@ void main() {
     expect(
       deriveSyncHealth(
         online: true,
+        operationInFlight: false,
+        canonicalSnapshotIncomplete: true,
+        pendingChanges: 0,
+        failedChanges: 0,
+        conflicts: 0,
+        recoveryConnectionAvailable: true,
+      ),
+      SyncHealth.syncing,
+    );
+    expect(
+      deriveSyncHealth(
+        online: true,
         operationInFlight: true,
         pendingChanges: 0,
         failedChanges: 0,
@@ -1609,6 +1907,16 @@ void main() {
       ),
       SyncHealth.attention,
     );
+  });
+
+  test('canonical snapshot retries back off and remain bounded', () {
+    expect(canonicalSnapshotRetryDelay(-1), const Duration(seconds: 20));
+    expect(canonicalSnapshotRetryDelay(0), const Duration(seconds: 20));
+    expect(canonicalSnapshotRetryDelay(1), const Duration(seconds: 40));
+    expect(canonicalSnapshotRetryDelay(2), const Duration(seconds: 80));
+    expect(canonicalSnapshotRetryDelay(3), const Duration(seconds: 160));
+    expect(canonicalSnapshotRetryDelay(4), const Duration(seconds: 320));
+    expect(canonicalSnapshotRetryDelay(99), const Duration(seconds: 320));
   });
 
   test('lifecycle reconciliation rejects payloads with independent edits', () {

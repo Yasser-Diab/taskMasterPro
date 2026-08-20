@@ -611,6 +611,15 @@ class LocalNotificationService {
 
   static int executionNotificationId(String taskId) =>
       'execution:$taskId'.hashCode & 0x7fffffff;
+  static const standalonePomodoroNotificationId = 820028;
+
+  /// The quiet, ongoing execution card must never reuse the exact alarm ID.
+  /// `FlutterLocalNotificationsPlugin.show` replaces a pending schedule with
+  /// the same ID on both Android and Windows.  Keeping the live status in a
+  /// separate slot means browsing inside TaskMaster cannot silently erase the
+  /// audible focus/break boundary.
+  static int executionStatusNotificationId(String taskId) =>
+      executionNotificationId(taskId) ^ 0x40000000;
 
   /// A plugin notification ID can be reused to replace an OS alarm. This
   /// identity cannot: it names the exact interval/revision represented by
@@ -1887,6 +1896,99 @@ class LocalNotificationService {
     });
   }
 
+  /// Schedules the device-local standalone Pomodoro boundary. Unlike a task
+  /// execution alert it carries no task/session identity and therefore offers
+  /// only safe Open/Dismiss actions; the persistent store reconciles the
+  /// expired phase exactly once whether or not the timer screen is mounted.
+  Future<void> scheduleStandalonePomodoroCompletion({
+    required bool isBreak,
+    required DateTime scheduledAtUtc,
+    required NotificationSoundChoice sound,
+    bool enabled = true,
+    bool vibration = true,
+    String localeCode = 'en',
+  }) async {
+    await initialize();
+    if (!enabled || !await ensureExecutionNotificationsAuthorized()) {
+      await _cancelSerialized(standalonePomodoroNotificationId);
+      return;
+    }
+    final l10n = AppLocalizations(Locale(localeCode));
+    final category = isBreak ? 'short_break_completed' : 'focus_completed';
+    final title = l10n.text(
+      isBreak
+          ? 'notification_break_completed_title'
+          : 'notification_focus_completed_title',
+    );
+    final body = l10n.format(
+      isBreak
+          ? 'notification_break_completed_body'
+          : 'notification_focus_completed_body',
+      {'task': l10n.text('standalone_pomodoro')},
+    );
+    final payload = ownedPayload(
+      'standalone-pomodoro',
+      eventType: isBreak
+          ? 'standalone_break_completed'
+          : 'standalone_focus_completed',
+      boundaryAtUtc: scheduledAtUtc,
+    );
+    await _serializeNotificationMutation(() async {
+      await _plugin.cancel(id: standalonePomodoroNotificationId);
+      if (!NotificationSchedulePolicy.canSchedule(scheduledAtUtc)) return;
+      await _plugin.zonedSchedule(
+        id: standalonePomodoroNotificationId,
+        title: title,
+        body: body,
+        scheduledDate: tz.TZDateTime.from(scheduledAtUtc.toUtc(), tz.UTC),
+        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+        notificationDetails: NotificationDetails(
+          android: _androidDetails(
+            l10n: l10n,
+            category: category,
+            sound: sound,
+            vibration: vibration,
+            title: title,
+            body: body,
+            notificationTag: 'standalone-pomodoro:$category',
+            actions: [
+              AndroidNotificationAction(
+                'open',
+                l10n.text('open'),
+                showsUserInterface: true,
+              ),
+              AndroidNotificationAction('dismiss', l10n.text('dismiss')),
+            ],
+          ),
+          windows: WindowsNotificationDetails(
+            audio: _windowsAudio(sound),
+            scenario: WindowsNotificationScenario.alarm,
+            actions: [
+              WindowsAction(
+                content: l10n.text('open'),
+                arguments: windowsNotificationActionArguments(
+                  actionId: 'open',
+                  payload: payload,
+                ),
+              ),
+              WindowsAction(
+                content: l10n.text('dismiss'),
+                arguments: windowsNotificationActionArguments(
+                  actionId: 'dismiss',
+                  payload: payload,
+                ),
+              ),
+            ],
+          ),
+        ),
+        payload: payload,
+      );
+    });
+  }
+
+  Future<void> cancelStandalonePomodoroCompletion() =>
+      cancel(standalonePomodoroNotificationId);
+
   Future<void> scheduleDailySleepReminder({
     required bool enabled,
     required int sleepTimeMinutes,
@@ -1985,6 +2087,7 @@ class LocalNotificationService {
     String ledgerState = 'cancelled',
   }) async {
     await cancel(executionNotificationId(taskId));
+    await cancel(executionStatusNotificationId(taskId));
     await _setExecutionLedgerState(taskId: taskId, state: ledgerState);
   }
 

@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
+import 'package:drift/drift.dart' show TableUpdateQuery;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart' hide TextDirection;
@@ -18,6 +20,8 @@ import '../../tasks/domain/task_occurrence_policy.dart';
 import '../../tasks/presentation/task_card.dart';
 import '../../tasks/presentation/task_workspace_screen.dart';
 import '../data/performance_report_service.dart';
+
+enum _ReportAction { print, export, share }
 
 class PerformanceReportScreen extends ConsumerStatefulWidget {
   const PerformanceReportScreen({
@@ -51,6 +55,8 @@ class _PerformanceReportScreenState
   };
   Future<Uint8List>? _bytes;
   Future<PerformanceReportSnapshot>? _snapshot;
+  StreamSubscription<dynamic>? _reportInputSubscription;
+  Timer? _reportRefreshDebounce;
   bool _initialized = false;
   bool _showPdf = false;
 
@@ -77,6 +83,7 @@ class _PerformanceReportScreenState
     _initialized = true;
     _localeCode = context.l10n.locale.languageCode;
     _regenerate();
+    _watchReportInputs();
   }
 
   PerformanceReportOptions get _options => PerformanceReportOptions(
@@ -96,6 +103,7 @@ class _PerformanceReportScreenState
   );
 
   void _regenerate() {
+    if (!mounted) return;
     final service = PerformanceReportService(ref.read(databaseProvider));
     final options = _options;
     final snapshot = service.load(options);
@@ -103,6 +111,43 @@ class _PerformanceReportScreenState
       _snapshot = snapshot;
       _bytes = snapshot.then((value) => service.buildPdf(value, options));
     });
+  }
+
+  void _watchReportInputs() {
+    final database = ref.read(databaseProvider);
+    // Listen to invalidations only. This avoids materializing every report
+    // table while still refreshing when a synchronized row arrives.
+    _reportInputSubscription = database
+        .tableUpdates(
+          TableUpdateQuery.onAllTables({
+            database.localProfiles,
+            database.localAppSettings,
+            database.localTasks,
+            database.localDomains,
+            database.localRoadmaps,
+            database.localActivitySegments,
+            database.localAttributions,
+            database.localContributions,
+            database.localEntityRecords,
+            database.localRuntimeStates,
+          }),
+        )
+        .listen((_) => _scheduleReportRefresh());
+  }
+
+  void _scheduleReportRefresh() {
+    _reportRefreshDebounce?.cancel();
+    _reportRefreshDebounce = Timer(const Duration(milliseconds: 300), () {
+      if (mounted) _regenerate();
+    });
+  }
+
+  @override
+  void dispose() {
+    _reportRefreshDebounce?.cancel();
+    final subscription = _reportInputSubscription;
+    if (subscription != null) unawaited(subscription.cancel());
+    super.dispose();
   }
 
   Future<void> _pickRange() async {
@@ -244,9 +289,73 @@ class _PerformanceReportScreenState
         '${DateFormat('yyyy-MM-dd').format(_to)}.pdf';
   }
 
+  void _selectLanguage(String? value) {
+    if (value == null) return;
+    setState(() => _localeCode = value);
+    _regenerate();
+  }
+
+  void _selectOrientation(bool? value) {
+    if (value == null) return;
+    setState(() => _landscape = value);
+    _regenerate();
+  }
+
+  void _selectPreview(bool? value) {
+    if (value == null) return;
+    setState(() => _showPdf = value);
+  }
+
+  Future<void> _runReportAction(_ReportAction action) async {
+    switch (action) {
+      case _ReportAction.print:
+        return _print();
+      case _ReportAction.export:
+        return _export();
+      case _ReportAction.share:
+        return _share();
+    }
+  }
+
+  Future<Set<String>> _updateMobileSection(
+    String section,
+    bool selected,
+  ) async {
+    await _setSection(section, selected);
+    return _sections;
+  }
+
+  Future<void> _showMobileSettings(Map<String, String> sectionLabels) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (context) => _MobileReportSettingsSheet(
+        localeCode: _localeCode,
+        landscape: _landscape,
+        showPdf: _showPdf,
+        sections: _sections,
+        sectionLabels: sectionLabels,
+        onLanguageChanged: _selectLanguage,
+        onOrientationChanged: _selectOrientation,
+        onPreviewChanged: _selectPreview,
+        onSectionChanged: _updateMobileSection,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    ref.listen(appSettingsProvider, (previous, next) {
+      final before = previous?.asData?.value;
+      final after = next.asData?.value;
+      if (before?.timeZone != after?.timeZone ||
+          before?.healthReportPrivacy != after?.healthReportPrivacy) {
+        _scheduleReportRefresh();
+      }
+    });
     final l10n = context.l10n;
+    final phone = MediaQuery.sizeOf(context).width < 600;
     final sectionLabels = <String, String>{
       'summary': l10n.text('report_summary'),
       'tasks': l10n.text('report_tasks'),
@@ -273,27 +382,61 @@ class _PerformanceReportScreenState
               name?.trim().isNotEmpty == true
                   ? name!.trim()
                   : l10n.text(_reportType.titleLocalizationKey),
+              maxLines: phone ? 2 : 1,
+              overflow: TextOverflow.ellipsis,
             );
           },
         ),
-        actions: [
-          IconButton(
-            tooltip: l10n.text('report_print'),
-            onPressed: _print,
-            icon: const Icon(Icons.print_outlined),
-          ),
-          IconButton(
-            tooltip: l10n.text('report_export_pdf'),
-            onPressed: _export,
-            icon: const Icon(Icons.picture_as_pdf_outlined),
-          ),
-          if (Platform.isAndroid)
-            IconButton(
-              tooltip: l10n.text('report_share'),
-              onPressed: _share,
-              icon: const Icon(Icons.share_outlined),
-            ),
-        ],
+        actions: phone
+            ? [
+                PopupMenuButton<_ReportAction>(
+                  key: const ValueKey('mobile-report-actions'),
+                  tooltip: l10n.text('settings'),
+                  onSelected: _runReportAction,
+                  itemBuilder: (context) => [
+                    PopupMenuItem(
+                      value: _ReportAction.print,
+                      child: _ReportActionLabel(
+                        icon: Icons.print_outlined,
+                        label: l10n.text('report_print'),
+                      ),
+                    ),
+                    PopupMenuItem(
+                      value: _ReportAction.export,
+                      child: _ReportActionLabel(
+                        icon: Icons.picture_as_pdf_outlined,
+                        label: l10n.text('report_export_pdf'),
+                      ),
+                    ),
+                    if (Platform.isAndroid)
+                      PopupMenuItem(
+                        value: _ReportAction.share,
+                        child: _ReportActionLabel(
+                          icon: Icons.share_outlined,
+                          label: l10n.text('report_share'),
+                        ),
+                      ),
+                  ],
+                ),
+              ]
+            : [
+                IconButton(
+                  tooltip: l10n.text('report_print'),
+                  onPressed: _print,
+                  icon: const Icon(Icons.print_outlined),
+                ),
+                IconButton(
+                  tooltip: l10n.text('report_export_pdf'),
+                  onPressed: _export,
+                  icon: const Icon(Icons.picture_as_pdf_outlined),
+                ),
+                if (Platform.isAndroid)
+                  IconButton(
+                    tooltip: l10n.text('report_share'),
+                    onPressed: _share,
+                    icon: const Icon(Icons.share_outlined),
+                  ),
+              ],
       ),
       body: Column(
         children: [
@@ -308,105 +451,30 @@ class _PerformanceReportScreenState
                       final dateRange =
                           '${DateFormat.yMMMd(l10n.locale.toLanguageTag()).format(_from)} - '
                           '${DateFormat.yMMMd(l10n.locale.toLanguageTag()).format(_to)}';
-                      void selectLanguage(String? value) {
-                        if (value == null) return;
-                        setState(() => _localeCode = value);
-                        _regenerate();
-                      }
-
-                      void selectOrientation(bool? value) {
-                        if (value == null) return;
-                        setState(() => _landscape = value);
-                        _regenerate();
-                      }
-
-                      void selectPreview(bool? value) {
-                        if (value == null) return;
-                        setState(() => _showPdf = value);
-                      }
-
                       if (constraints.maxWidth < 600) {
-                        return Column(
+                        return Row(
                           key: const ValueKey('mobile-report-controls'),
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            OutlinedButton.icon(
-                              onPressed: _pickRange,
-                              icon: const Icon(Icons.date_range_outlined),
-                              label: Text(
-                                dateRange,
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                textAlign: TextAlign.center,
+                            Expanded(
+                              child: OutlinedButton.icon(
+                                key: const ValueKey('mobile-report-date'),
+                                onPressed: _pickRange,
+                                icon: const Icon(Icons.date_range_outlined),
+                                label: Text(
+                                  dateRange,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  textAlign: TextAlign.center,
+                                ),
                               ),
                             ),
-                            const SizedBox(height: 10),
-                            DropdownButtonFormField<String>(
-                              initialValue: _localeCode,
-                              isExpanded: true,
-                              decoration: InputDecoration(
-                                labelText: l10n.text('report_language'),
-                                prefixIcon: const Icon(Icons.language_outlined),
-                              ),
-                              items: const [
-                                DropdownMenuItem(
-                                  value: 'en',
-                                  child: Text('English'),
-                                ),
-                                DropdownMenuItem(
-                                  value: 'ar',
-                                  child: Text('العربية'),
-                                ),
-                                DropdownMenuItem(
-                                  value: 'de',
-                                  child: Text('Deutsch'),
-                                ),
-                              ],
-                              onChanged: selectLanguage,
-                            ),
-                            const SizedBox(height: 10),
-                            DropdownButtonFormField<bool>(
-                              initialValue: _landscape,
-                              isExpanded: true,
-                              decoration: InputDecoration(
-                                labelText: l10n.text('report_orientation'),
-                                prefixIcon: const Icon(
-                                  Icons.screen_rotation_outlined,
-                                ),
-                              ),
-                              items: [
-                                DropdownMenuItem(
-                                  value: false,
-                                  child: Text(l10n.text('report_portrait')),
-                                ),
-                                DropdownMenuItem(
-                                  value: true,
-                                  child: Text(l10n.text('report_landscape')),
-                                ),
-                              ],
-                              onChanged: selectOrientation,
-                            ),
-                            const SizedBox(height: 10),
-                            DropdownButtonFormField<bool>(
-                              initialValue: _showPdf,
-                              isExpanded: true,
-                              decoration: InputDecoration(
-                                labelText: l10n.text('report_preview_type'),
-                                prefixIcon: const Icon(Icons.preview_outlined),
-                              ),
-                              items: [
-                                DropdownMenuItem(
-                                  value: false,
-                                  child: Text(
-                                    l10n.text('report_interactive_preview'),
-                                  ),
-                                ),
-                                DropdownMenuItem(
-                                  value: true,
-                                  child: Text(l10n.text('report_pdf_preview')),
-                                ),
-                              ],
-                              onChanged: selectPreview,
+                            const SizedBox(width: 8),
+                            IconButton.filledTonal(
+                              key: const ValueKey('mobile-report-settings'),
+                              tooltip: l10n.text('settings'),
+                              onPressed: () =>
+                                  _showMobileSettings(sectionLabels),
+                              icon: const Icon(Icons.tune_rounded),
                             ),
                           ],
                         );
@@ -430,7 +498,7 @@ class _PerformanceReportScreenState
                               DropdownMenuEntry(value: 'ar', label: 'العربية'),
                               DropdownMenuEntry(value: 'de', label: 'Deutsch'),
                             ],
-                            onSelected: selectLanguage,
+                            onSelected: _selectLanguage,
                           ),
                           SegmentedButton<bool>(
                             segments: [
@@ -447,7 +515,7 @@ class _PerformanceReportScreenState
                             ],
                             selected: {_landscape},
                             onSelectionChanged: (value) =>
-                                selectOrientation(value.first),
+                                _selectOrientation(value.first),
                           ),
                           SegmentedButton<bool>(
                             segments: [
@@ -466,28 +534,30 @@ class _PerformanceReportScreenState
                             ],
                             selected: {_showPdf},
                             onSelectionChanged: (value) =>
-                                selectPreview(value.first),
+                                _selectPreview(value.first),
                           ),
                         ],
                       );
                     },
                   ),
-                  const SizedBox(height: 10),
-                  Align(
-                    alignment: AlignmentDirectional.centerStart,
-                    child: Wrap(
-                      spacing: 7,
-                      runSpacing: 7,
-                      children: sectionLabels.entries.map((entry) {
-                        return FilterChip(
-                          label: Text(entry.value),
-                          selected: _sections.contains(entry.key),
-                          onSelected: (selected) =>
-                              _setSection(entry.key, selected),
-                        );
-                      }).toList(),
+                  if (!phone) ...[
+                    const SizedBox(height: 10),
+                    Align(
+                      alignment: AlignmentDirectional.centerStart,
+                      child: Wrap(
+                        spacing: 7,
+                        runSpacing: 7,
+                        children: sectionLabels.entries.map((entry) {
+                          return FilterChip(
+                            label: Text(entry.value),
+                            selected: _sections.contains(entry.key),
+                            onSelected: (selected) =>
+                                _setSection(entry.key, selected),
+                          );
+                        }).toList(),
+                      ),
                     ),
-                  ),
+                  ],
                 ],
               ),
             ),
@@ -531,6 +601,209 @@ class _PerformanceReportScreenState
                   ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _ReportActionLabel extends StatelessWidget {
+  const _ReportActionLabel({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(icon, size: 20),
+        const SizedBox(width: 12),
+        Flexible(child: Text(label)),
+      ],
+    );
+  }
+}
+
+class _MobileReportSettingsSheet extends StatefulWidget {
+  const _MobileReportSettingsSheet({
+    required this.localeCode,
+    required this.landscape,
+    required this.showPdf,
+    required this.sections,
+    required this.sectionLabels,
+    required this.onLanguageChanged,
+    required this.onOrientationChanged,
+    required this.onPreviewChanged,
+    required this.onSectionChanged,
+  });
+
+  final String localeCode;
+  final bool landscape;
+  final bool showPdf;
+  final Set<String> sections;
+  final Map<String, String> sectionLabels;
+  final ValueChanged<String?> onLanguageChanged;
+  final ValueChanged<bool?> onOrientationChanged;
+  final ValueChanged<bool?> onPreviewChanged;
+  final Future<Set<String>> Function(String section, bool selected)
+  onSectionChanged;
+
+  @override
+  State<_MobileReportSettingsSheet> createState() =>
+      _MobileReportSettingsSheetState();
+}
+
+class _MobileReportSettingsSheetState
+    extends State<_MobileReportSettingsSheet> {
+  late String _localeCode = widget.localeCode;
+  late bool _landscape = widget.landscape;
+  late bool _showPdf = widget.showPdf;
+  late Set<String> _sections = {...widget.sections};
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = context.l10n;
+    return FractionallySizedBox(
+      heightFactor: 0.88,
+      child: Material(
+        key: const ValueKey('mobile-report-settings-sheet'),
+        color: Theme.of(context).colorScheme.surface,
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 12, 8, 6),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      l10n.text('settings'),
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: l10n.text('close'),
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(Icons.close_rounded),
+                  ),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
+            Expanded(
+              child: SingleChildScrollView(
+                keyboardDismissBehavior:
+                    ScrollViewKeyboardDismissBehavior.onDrag,
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    DropdownButtonFormField<String>(
+                      initialValue: _localeCode,
+                      isExpanded: true,
+                      decoration: InputDecoration(
+                        labelText: l10n.text('report_language'),
+                        prefixIcon: const Icon(Icons.language_outlined),
+                      ),
+                      items: const [
+                        DropdownMenuItem(value: 'en', child: Text('English')),
+                        DropdownMenuItem(value: 'ar', child: Text('العربية')),
+                        DropdownMenuItem(value: 'de', child: Text('Deutsch')),
+                      ],
+                      onChanged: (value) {
+                        if (value == null) return;
+                        setState(() => _localeCode = value);
+                        widget.onLanguageChanged(value);
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<bool>(
+                      initialValue: _landscape,
+                      isExpanded: true,
+                      decoration: InputDecoration(
+                        labelText: l10n.text('report_orientation'),
+                        prefixIcon: const Icon(Icons.screen_rotation_outlined),
+                      ),
+                      items: [
+                        DropdownMenuItem(
+                          value: false,
+                          child: Text(l10n.text('report_portrait')),
+                        ),
+                        DropdownMenuItem(
+                          value: true,
+                          child: Text(l10n.text('report_landscape')),
+                        ),
+                      ],
+                      onChanged: (value) {
+                        if (value == null) return;
+                        setState(() => _landscape = value);
+                        widget.onOrientationChanged(value);
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<bool>(
+                      initialValue: _showPdf,
+                      isExpanded: true,
+                      decoration: InputDecoration(
+                        labelText: l10n.text('report_preview_type'),
+                        prefixIcon: const Icon(Icons.preview_outlined),
+                      ),
+                      items: [
+                        DropdownMenuItem(
+                          value: false,
+                          child: Text(l10n.text('report_interactive_preview')),
+                        ),
+                        DropdownMenuItem(
+                          value: true,
+                          child: Text(l10n.text('report_pdf_preview')),
+                        ),
+                      ],
+                      onChanged: (value) {
+                        if (value == null) return;
+                        setState(() => _showPdf = value);
+                        widget.onPreviewChanged(value);
+                      },
+                    ),
+                    const SizedBox(height: 18),
+                    Text(
+                      l10n.text('report_sections'),
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 7,
+                      runSpacing: 7,
+                      children: widget.sectionLabels.entries
+                          .map((entry) {
+                            return FilterChip(
+                              label: Text(entry.value),
+                              selected: _sections.contains(entry.key),
+                              onSelected: (selected) async {
+                                final result = await widget.onSectionChanged(
+                                  entry.key,
+                                  selected,
+                                );
+                                if (!mounted) return;
+                                setState(() => _sections = {...result});
+                              },
+                            );
+                          })
+                          .toList(growable: false),
+                    ),
+                    const SizedBox(height: 22),
+                    FilledButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: Text(l10n.text('done')),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -621,18 +894,34 @@ class _InteractivePerformanceReport extends StatelessWidget {
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final contentWidth = constraints.maxWidth.clamp(0.0, 1480.0);
-        final columns = contentWidth >= 1180
+        final phone = constraints.maxWidth < 600;
+        final horizontalPadding = phone ? 12.0 : 20.0;
+        final contentWidth = math.max(
+          0.0,
+          math.min(1480.0, constraints.maxWidth - horizontalPadding * 2),
+        );
+        final scaledBodySize = MediaQuery.textScalerOf(context).scale(14);
+        final phoneGrid =
+            phone && contentWidth >= 330 && scaledBodySize <= 15.5;
+        final columns = phone
+            ? (phoneGrid ? 2 : 1)
+            : contentWidth >= 1180
             ? 4
             : contentWidth >= 760
             ? 2
             : 1;
         final metricWidth = math.max(
-          220.0,
-          (contentWidth - (columns - 1) * 12) / columns,
+          0.0,
+          (contentWidth - (columns - 1) * (phone ? 8 : 12)) / columns,
         );
         return SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(20, 18, 20, 36),
+          key: const ValueKey('interactive-performance-report'),
+          padding: EdgeInsets.fromLTRB(
+            horizontalPadding,
+            phone ? 12 : 18,
+            horizontalPadding,
+            phone ? 24 : 36,
+          ),
           child: Align(
             alignment: Alignment.topCenter,
             child: ConstrainedBox(
@@ -641,6 +930,7 @@ class _InteractivePerformanceReport extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   _ReportHero(
+                    compact: phone,
                     title: l10n.text(options.type.titleLocalizationKey),
                     name: reportName,
                     from: options.from,
@@ -657,11 +947,13 @@ class _InteractivePerformanceReport extends StatelessWidget {
                     _ReportEmptyState()
                   else ...[
                     Wrap(
-                      spacing: 12,
-                      runSpacing: 12,
+                      key: const ValueKey('report-metric-grid'),
+                      spacing: phone ? 8 : 12,
+                      runSpacing: phone ? 8 : 12,
                       children: [
                         _ReportMetricCard(
                           width: metricWidth,
+                          compact: phone,
                           icon: Icons.calendar_today_outlined,
                           color: colorScheme.primary,
                           label: l10n.text('report_planned_effort'),
@@ -674,6 +966,7 @@ class _InteractivePerformanceReport extends StatelessWidget {
                         ),
                         _ReportMetricCard(
                           width: metricWidth,
+                          compact: phone,
                           icon: Icons.bolt_rounded,
                           color: const Color(0xFF2FCF8F),
                           label: l10n.text('report_productive_work'),
@@ -686,6 +979,7 @@ class _InteractivePerformanceReport extends StatelessWidget {
                         ),
                         _ReportMetricCard(
                           width: metricWidth,
+                          compact: phone,
                           icon: Icons.center_focus_strong,
                           color: const Color(0xFF43A5FF),
                           label: l10n.text('report_focus_time'),
@@ -698,6 +992,7 @@ class _InteractivePerformanceReport extends StatelessWidget {
                         ),
                         _ReportMetricCard(
                           width: metricWidth,
+                          compact: phone,
                           icon: Icons.free_breakfast_outlined,
                           color: const Color(0xFF4CC6CE),
                           label: l10n.text('report_break_time'),
@@ -710,6 +1005,7 @@ class _InteractivePerformanceReport extends StatelessWidget {
                         ),
                         _ReportMetricCard(
                           width: metricWidth,
+                          compact: phone,
                           icon: Icons.timelapse_rounded,
                           color: const Color(0xFF8B7CFF),
                           label: l10n.text('report_continuous_work'),
@@ -722,6 +1018,7 @@ class _InteractivePerformanceReport extends StatelessWidget {
                         ),
                         _ReportMetricCard(
                           width: metricWidth,
+                          compact: phone,
                           icon: Icons.warning_amber_rounded,
                           color: const Color(0xFFFFA24B),
                           label: l10n.text('report_interruptions'),
@@ -739,6 +1036,7 @@ class _InteractivePerformanceReport extends StatelessWidget {
                         ),
                         _ReportMetricCard(
                           width: metricWidth,
+                          compact: phone,
                           icon: Icons.task_alt_rounded,
                           color: const Color(0xFF32C57A),
                           label: l10n.text('report_completed_tasks'),
@@ -751,6 +1049,7 @@ class _InteractivePerformanceReport extends StatelessWidget {
                         ),
                         _ReportMetricCard(
                           width: metricWidth,
+                          compact: phone,
                           icon: Icons.schedule_outlined,
                           color: const Color(0xFFE87171),
                           label: l10n.text('report_overdue_tasks'),
@@ -765,6 +1064,7 @@ class _InteractivePerformanceReport extends StatelessWidget {
                     ),
                     const SizedBox(height: 14),
                     _ResponsiveReportPanels(
+                      compact: phone,
                       children: [
                         _ReportPanel(
                           title: l10n.text(
@@ -879,7 +1179,7 @@ class _InteractivePerformanceReport extends StatelessWidget {
                       ],
                     ),
                     const SizedBox(height: 14),
-                    _ActivityTotalsPanel(facts: facts),
+                    _ActivityTotalsPanel(facts: facts, compact: phone),
                     if (health.isNotEmpty) ...[
                       const SizedBox(height: 14),
                       _HealthReportPanel(entries: health),
@@ -961,6 +1261,7 @@ class _InteractivePerformanceReport extends StatelessWidget {
 
 class _ReportHero extends StatelessWidget {
   const _ReportHero({
+    required this.compact,
     required this.title,
     required this.name,
     required this.from,
@@ -968,6 +1269,7 @@ class _ReportHero extends StatelessWidget {
     required this.recordCount,
   });
 
+  final bool compact;
   final String title;
   final String? name;
   final DateTime from;
@@ -980,6 +1282,58 @@ class _ReportHero extends StatelessWidget {
     final dateFormat = DateFormat.yMMMd(
       Localizations.localeOf(context).toLanguageTag(),
     );
+    final titleBlock = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          maxLines: compact ? 2 : null,
+          overflow: compact ? TextOverflow.ellipsis : null,
+          style:
+              (compact
+                      ? theme.textTheme.titleLarge
+                      : theme.textTheme.headlineSmall)
+                  ?.copyWith(fontWeight: FontWeight.w800),
+        ),
+        if (name?.trim().isNotEmpty == true) ...[
+          const SizedBox(height: 4),
+          Text(
+            name!.trim(),
+            maxLines: compact ? 2 : null,
+            overflow: compact ? TextOverflow.ellipsis : null,
+            style:
+                (compact
+                        ? theme.textTheme.titleSmall
+                        : theme.textTheme.titleMedium)
+                    ?.copyWith(
+                      color: theme.colorScheme.primary,
+                      fontWeight: FontWeight.w700,
+                    ),
+          ),
+        ],
+      ],
+    );
+    final dateBlock = Column(
+      crossAxisAlignment: compact
+          ? CrossAxisAlignment.start
+          : CrossAxisAlignment.end,
+      children: [
+        Text(
+          '${dateFormat.format(from)} — ${dateFormat.format(to)}',
+          maxLines: compact ? 2 : 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+        const SizedBox(height: 4),
+        Text(
+          context.l10n.format('report_record_basis', {'count': recordCount}),
+          maxLines: compact ? 2 : 1,
+          overflow: TextOverflow.ellipsis,
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ],
+    );
     return DecoratedBox(
       decoration: BoxDecoration(
         gradient: LinearGradient(
@@ -988,58 +1342,26 @@ class _ReportHero extends StatelessWidget {
             theme.colorScheme.secondaryContainer.withValues(alpha: 0.45),
           ],
         ),
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(compact ? 18 : 24),
         border: Border.all(
           color: theme.colorScheme.outlineVariant.withValues(alpha: 0.65),
         ),
       ),
       child: Padding(
-        padding: const EdgeInsets.all(22),
-        child: Wrap(
-          alignment: WrapAlignment.spaceBetween,
-          runAlignment: WrapAlignment.center,
-          crossAxisAlignment: WrapCrossAlignment.center,
-          spacing: 18,
-          runSpacing: 12,
-          children: [
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: theme.textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                if (name?.trim().isNotEmpty == true) ...[
-                  const SizedBox(height: 4),
-                  Text(
-                    name!.trim(),
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      color: theme.colorScheme.primary,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ],
-              ],
-            ),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Text('${dateFormat.format(from)} — ${dateFormat.format(to)}'),
-                const SizedBox(height: 4),
-                Text(
-                  context.l10n.format('report_record_basis', {
-                    'count': recordCount,
-                  }),
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
+        padding: EdgeInsets.all(compact ? 16 : 22),
+        child: compact
+            ? Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [titleBlock, const SizedBox(height: 12), dateBlock],
+              )
+            : Wrap(
+                alignment: WrapAlignment.spaceBetween,
+                runAlignment: WrapAlignment.center,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                spacing: 18,
+                runSpacing: 12,
+                children: [titleBlock, dateBlock],
+              ),
       ),
     );
   }
@@ -1080,6 +1402,7 @@ class _ReportEmptyState extends StatelessWidget {
 class _ReportMetricCard extends StatelessWidget {
   const _ReportMetricCard({
     required this.width,
+    required this.compact,
     required this.icon,
     required this.color,
     required this.label,
@@ -1088,6 +1411,7 @@ class _ReportMetricCard extends StatelessWidget {
   });
 
   final double width;
+  final bool compact;
   final IconData icon;
   final Color color;
   final String label;
@@ -1098,53 +1422,88 @@ class _ReportMetricCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return SizedBox(
+      key: ValueKey('report-metric-$label'),
       width: width,
       child: Card(
         clipBehavior: Clip.antiAlias,
         child: InkWell(
           onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.all(18),
-            child: Row(
-              children: [
-                DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: color.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.all(11),
-                    child: Icon(icon, color: color),
-                  ),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final stacked = compact && constraints.maxWidth < 210;
+              final iconBox = DecoratedBox(
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(compact ? 11 : 14),
                 ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        value,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                      const SizedBox(height: 3),
-                      Text(
-                        label,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ],
-                  ),
+                child: Padding(
+                  padding: EdgeInsets.all(compact ? 8 : 11),
+                  child: Icon(icon, color: color, size: compact ? 21 : null),
                 ),
-                const Icon(Icons.chevron_right_rounded, size: 20),
-              ],
-            ),
+              );
+              final copy = Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    value,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style:
+                        (compact
+                                ? theme.textTheme.titleMedium
+                                : theme.textTheme.titleLarge)
+                            ?.copyWith(fontWeight: FontWeight.w900),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    label,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style:
+                        (compact
+                                ? theme.textTheme.bodySmall
+                                : theme.textTheme.bodyMedium)
+                            ?.copyWith(
+                              color: theme.colorScheme.onSurfaceVariant,
+                            ),
+                  ),
+                ],
+              );
+              return Padding(
+                padding: EdgeInsets.all(compact ? 12 : 18),
+                child: stacked
+                    ? ConstrainedBox(
+                        constraints: const BoxConstraints(minHeight: 112),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Row(
+                              children: [
+                                iconBox,
+                                const Spacer(),
+                                const Icon(
+                                  Icons.chevron_right_rounded,
+                                  size: 19,
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            copy,
+                          ],
+                        ),
+                      )
+                    : Row(
+                        children: [
+                          iconBox,
+                          SizedBox(width: compact ? 10 : 14),
+                          Expanded(child: copy),
+                          const Icon(Icons.chevron_right_rounded, size: 20),
+                        ],
+                      ),
+              );
+            },
           ),
         ),
       ),
@@ -1153,9 +1512,13 @@ class _ReportMetricCard extends StatelessWidget {
 }
 
 class _ResponsiveReportPanels extends StatelessWidget {
-  const _ResponsiveReportPanels({required this.children});
+  const _ResponsiveReportPanels({
+    required this.children,
+    required this.compact,
+  });
 
   final List<Widget> children;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -1169,7 +1532,7 @@ class _ResponsiveReportPanels extends StatelessWidget {
           runSpacing: 14,
           children: [
             for (final child in children)
-              SizedBox(width: width, height: 330, child: child),
+              SizedBox(width: width, height: compact ? 285 : 330, child: child),
           ],
         );
       },
@@ -1202,29 +1565,56 @@ class _ReportPanel extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      title,
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w800,
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final compact = constraints.maxWidth < 420;
+                  final titleWidget = Text(
+                    title,
+                    maxLines: compact ? 2 : 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+                  );
+                  final action = Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Flexible(
+                        child: Text(
+                          subtitle,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            color: theme.colorScheme.primary,
+                          ),
+                        ),
                       ),
-                    ),
-                  ),
-                  Text(
-                    subtitle,
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      color: theme.colorScheme.primary,
-                    ),
-                  ),
-                  const SizedBox(width: 4),
-                  Icon(
-                    Icons.open_in_new_rounded,
-                    size: 16,
-                    color: theme.colorScheme.primary,
-                  ),
-                ],
+                      const SizedBox(width: 4),
+                      Icon(
+                        Icons.open_in_new_rounded,
+                        size: 16,
+                        color: theme.colorScheme.primary,
+                      ),
+                    ],
+                  );
+                  if (compact) {
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        titleWidget,
+                        const SizedBox(height: 4),
+                        action,
+                      ],
+                    );
+                  }
+                  return Row(
+                    children: [
+                      Expanded(child: titleWidget),
+                      const SizedBox(width: 8),
+                      action,
+                    ],
+                  );
+                },
               ),
               const SizedBox(height: 14),
               Expanded(child: child),
@@ -1503,61 +1893,94 @@ class _ChartEmpty extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.query_stats_outlined,
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxHeight < 160) {
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.all(8),
+              child: Text(
+                message,
+                maxLines: 4,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+              ),
             ),
-            const SizedBox(height: 8),
-            Text(message, textAlign: TextAlign.center),
-          ],
-        ),
-      ),
+          );
+        }
+        return Center(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.query_stats_outlined,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+                const SizedBox(height: 8),
+                Text(message, textAlign: TextAlign.center),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 }
 
 class _ActivityTotalsPanel extends StatelessWidget {
-  const _ActivityTotalsPanel({required this.facts});
+  const _ActivityTotalsPanel({required this.facts, required this.compact});
 
   final PerformanceReportFacts facts;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(18),
-        child: Wrap(
-          spacing: 24,
-          runSpacing: 14,
-          children: [
-            _InlineTotal(
-              icon: Icons.auto_graph_rounded,
-              label: context.l10n.text('report_active_activity'),
-              value: context.l10n.duration(
-                Duration(milliseconds: facts.activeActivityMs),
+        padding: EdgeInsets.all(compact ? 14 : 18),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final entries = [
+              _InlineTotal(
+                expanded: compact,
+                icon: Icons.auto_graph_rounded,
+                label: context.l10n.text('report_active_activity'),
+                value: context.l10n.duration(
+                  Duration(milliseconds: facts.activeActivityMs),
+                ),
               ),
-            ),
-            _InlineTotal(
-              icon: Icons.hourglass_empty_rounded,
-              label: context.l10n.text('report_idle_activity'),
-              value: context.l10n.duration(
-                Duration(milliseconds: facts.idleActivityMs),
+              _InlineTotal(
+                expanded: compact,
+                icon: Icons.hourglass_empty_rounded,
+                label: context.l10n.text('report_idle_activity'),
+                value: context.l10n.duration(
+                  Duration(milliseconds: facts.idleActivityMs),
+                ),
               ),
-            ),
-            _InlineTotal(
-              icon: Icons.pause_circle_outline_rounded,
-              label: context.l10n.text('report_paused_time'),
-              value: context.l10n.duration(
-                Duration(milliseconds: facts.pausedMs),
+              _InlineTotal(
+                expanded: compact,
+                icon: Icons.pause_circle_outline_rounded,
+                label: context.l10n.text('report_paused_time'),
+                value: context.l10n.duration(
+                  Duration(milliseconds: facts.pausedMs),
+                ),
               ),
-            ),
-          ],
+            ];
+            if (compact) {
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  for (var index = 0; index < entries.length; index++) ...[
+                    entries[index],
+                    if (index != entries.length - 1) const SizedBox(height: 12),
+                  ],
+                ],
+              );
+            }
+            return Wrap(spacing: 24, runSpacing: 14, children: entries);
+          },
         ),
       ),
     );
@@ -1566,11 +1989,13 @@ class _ActivityTotalsPanel extends StatelessWidget {
 
 class _InlineTotal extends StatelessWidget {
   const _InlineTotal({
+    required this.expanded,
     required this.icon,
     required this.label,
     required this.value,
   });
 
+  final bool expanded;
   final IconData icon;
   final String label;
   final String value;
@@ -1578,11 +2003,20 @@ class _InlineTotal extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Row(
-      mainAxisSize: MainAxisSize.min,
+      mainAxisSize: expanded ? MainAxisSize.max : MainAxisSize.min,
       children: [
         Icon(icon, color: Theme.of(context).colorScheme.primary),
         const SizedBox(width: 8),
-        Text('$label · $value'),
+        if (expanded)
+          Expanded(
+            child: Text(
+              '$label · $value',
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+          )
+        else
+          Text('$label · $value'),
       ],
     );
   }

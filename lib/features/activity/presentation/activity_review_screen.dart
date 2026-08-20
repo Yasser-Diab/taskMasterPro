@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:drift/drift.dart' hide Column;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -5,6 +7,7 @@ import 'package:intl/intl.dart' hide TextDirection;
 import 'package:timezone/timezone.dart' as tz;
 
 import '../../../core/database/app_database.dart';
+import '../../../core/learning/application_system_learning.dart';
 import '../../../core/localization/app_localizations.dart';
 import '../../../core/providers.dart';
 import '../data/activity_aggregation_service.dart';
@@ -482,10 +485,23 @@ class _ActivityReviewScreenState extends ConsumerState<ActivityReviewScreen> {
   ) async {
     final repository = ref.read(activityRepositoryProvider);
     try {
+      final communityChoices = <String, ApplicationLearningSource>{};
       for (final segmentId in segmentIds) {
         final entry = await repository.reviewEntryForSegment(segmentId);
-        if (entry != null) await repository.resolve(entry, resolution);
+        if (entry != null) {
+          await repository.resolve(entry, resolution);
+          final source = applicationLearningSourceForCapture(
+            sourceType: entry.segment.sourceType,
+            processName: entry.segment.processName,
+            rawMetadataJson: entry.segment.rawMetadataJson,
+          );
+          if (source != null) {
+            communityChoices['${source.platform}:${source.applicationIdentifier.toLowerCase()}'] =
+                source;
+          }
+        }
       }
+      unawaited(_submitCommunityChoice(communityChoices.values, resolution));
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(_ActivityCopy.of(context).reviewSaved)),
@@ -495,6 +511,34 @@ class _ActivityReviewScreenState extends ConsumerState<ActivityReviewScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(_ActivityCopy.of(context).couldNotSave)),
       );
+    }
+  }
+
+  Future<void> _submitCommunityChoice(
+    Iterable<ApplicationLearningSource> sources,
+    ActivityResolution resolution,
+  ) async {
+    final isSystemActivity = switch (resolution.classification) {
+      'system_activity' => true,
+      'user_application' => false,
+      _ => null,
+    };
+    if (isSystemActivity == null) return;
+    try {
+      final service = await ref.read(
+        applicationSystemLearningServiceProvider.future,
+      );
+      if (service == null) return;
+      for (final source in sources) {
+        await service.submitExplicitChoice(
+          platform: source.platform,
+          applicationIdentifier: source.applicationIdentifier,
+          isSystemActivity: isSystemActivity,
+        );
+      }
+    } catch (_) {
+      // The local Activity decision is already saved. Optional community
+      // learning can never turn a successful review into an error.
     }
   }
 

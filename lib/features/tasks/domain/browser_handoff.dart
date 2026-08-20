@@ -1,5 +1,72 @@
 import 'dart:convert';
 
+/// A login draft read from the currently visible page after the user chooses
+/// Save sign-in. The value exists only long enough to prefill the native vault
+/// confirmation dialog; it is never written to browser storage or sync data.
+class BrowserCredentialDraft {
+  const BrowserCredentialDraft({
+    required this.username,
+    required this.password,
+    required this.website,
+  });
+
+  final String username;
+  final String password;
+  final String website;
+
+  String get suggestedName {
+    final user = username.trim();
+    if (user.isNotEmpty) return user;
+    return canonicalWebsiteHost(website) ?? '';
+  }
+
+  /// WebView2 and Android WebView encode JavaScript results differently. This
+  /// accepts either shape, then binds the captured value to the exact current
+  /// HTTPS origin before it can reach the vault confirmation UI.
+  static BrowserCredentialDraft? fromJavaScript(
+    Object? raw, {
+    required String pageUrl,
+  }) {
+    final page = Uri.tryParse(pageUrl.trim());
+    if (page == null ||
+        page.scheme.toLowerCase() != 'https' ||
+        page.host.isEmpty) {
+      return null;
+    }
+    Object? decoded = raw;
+    for (var attempt = 0; attempt < 2 && decoded is String; attempt++) {
+      try {
+        decoded = jsonDecode(decoded);
+      } catch (_) {
+        return null;
+      }
+    }
+    if (decoded is! Map) return null;
+    final origin = decoded['origin']?.toString().trim();
+    final captured = Uri.tryParse(origin ?? '');
+    if (captured == null ||
+        captured.scheme.toLowerCase() != 'https' ||
+        captured.host.toLowerCase() != page.host.toLowerCase() ||
+        _effectivePort(captured) != _effectivePort(page)) {
+      return null;
+    }
+    final password = decoded['password']?.toString() ?? '';
+    if (password.isEmpty || password.length > 4096) return null;
+    final username = decoded['username']?.toString() ?? '';
+    if (username.length > 512) return null;
+    return BrowserCredentialDraft(
+      username: username,
+      password: password,
+      website: captured.origin,
+    );
+  }
+}
+
+int _effectivePort(Uri uri) {
+  if (uri.hasPort) return uri.port;
+  return uri.scheme.toLowerCase() == 'https' ? 443 : 80;
+}
+
 String normalizeBrowserAddress(String value) {
   final trimmed = value.trim();
   final parsed = Uri.tryParse(trimmed);
@@ -100,3 +167,48 @@ String buildCredentialFillScript({
 })()
 ''';
 }
+
+/// Reads only visible sign-in fields after the user explicitly chooses
+/// Save sign-in. It does not install listeners, intercept submission, send a
+/// message, mutate the page, or retain a value in browser storage.
+const browserCredentialCaptureScript = r'''
+(() => {
+  if (window.top !== window || window.location.protocol !== 'https:') {
+    return null;
+  }
+  const visible = (element) => {
+    if (!element || element.disabled) return false;
+    const style = window.getComputedStyle(element);
+    const rect = element.getBoundingClientRect();
+    return style.display !== 'none' &&
+      style.visibility !== 'hidden' &&
+      rect.width > 0 && rect.height > 0;
+  };
+  const passwords = Array.from(document.querySelectorAll('input[type="password"]'))
+    .filter(visible)
+    .filter((input) => String(input.autocomplete || '').toLowerCase() !== 'new-password');
+  const passwordInput = passwords.find(
+    (input) => String(input.autocomplete || '').toLowerCase() === 'current-password',
+  ) || (passwords.length === 1 ? passwords[0] : null);
+  if (!passwordInput || !passwordInput.value) return null;
+  const form = passwordInput.form;
+  const scope = form || document;
+  const candidates = [
+    'input[autocomplete="username"]',
+    'input[type="email"]',
+    'input[name*="email" i]',
+    'input[name*="user" i]',
+    'input[type="text"]',
+  ];
+  let usernameInput = null;
+  for (const selector of candidates) {
+    usernameInput = Array.from(scope.querySelectorAll(selector)).find(visible) || null;
+    if (usernameInput) break;
+  }
+  return JSON.stringify({
+    origin: window.location.origin,
+    username: usernameInput ? String(usernameInput.value || '') : '',
+    password: String(passwordInput.value),
+  });
+})()
+''';

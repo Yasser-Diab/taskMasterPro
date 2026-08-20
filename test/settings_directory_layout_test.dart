@@ -36,7 +36,8 @@ void main() {
       ),
     );
 
-    expect(find.text('Settings sections'), findsOneWidget);
+    expect(find.text('Settings'), findsOneWidget);
+    expect(find.text('Choose what you want to customize.'), findsOneWidget);
     await tester.tap(
       find.byKey(const ValueKey('settings-section-tasks_and_execution')),
     );

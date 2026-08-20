@@ -454,7 +454,6 @@ class _ActiveTaskPanelState extends ConsumerState<_ActiveTaskPanel> {
           padding: const EdgeInsets.all(22),
           child: LayoutBuilder(
             builder: (context, constraints) {
-              final narrow = constraints.maxWidth < 600;
               final details = Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -495,107 +494,85 @@ class _ActiveTaskPanelState extends ConsumerState<_ActiveTaskPanel> {
                 runtime: runtime,
                 pomodoro: pomodoro,
               );
-              final actions = Wrap(
-                spacing: 10,
-                runSpacing: 10,
-                children: [
-                  FilledButton.icon(
-                    onPressed: _busy
-                        ? null
-                        : () => _runPrimary(controls.primary),
-                    icon: _busy
-                        ? const SizedBox.square(
-                            dimension: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : Icon(switch (controls.primary) {
-                            TaskExecutionPrimaryAction.pause => Icons.pause,
-                            TaskExecutionPrimaryAction.startBreak =>
-                              Icons.coffee_outlined,
-                            TaskExecutionPrimaryAction.startFocus =>
-                              Icons.center_focus_strong,
-                            _ => Icons.play_arrow,
-                          }),
-                    label: Text(
-                      context.l10n.text(switch (controls.primary) {
-                        TaskExecutionPrimaryAction.start => 'start',
-                        TaskExecutionPrimaryAction.pause => 'pause',
-                        TaskExecutionPrimaryAction.resume => 'resume',
-                        TaskExecutionPrimaryAction.startBreak =>
-                          'notification_start_break',
-                        TaskExecutionPrimaryAction.startFocus =>
-                          'notification_start_focus',
-                      }),
-                    ),
+              final primaryActions = <Widget>[
+                FilledButton.icon(
+                  onPressed: _busy ? null : () => _runPrimary(controls.primary),
+                  icon: _busy
+                      ? const SizedBox.square(
+                          dimension: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : Icon(switch (controls.primary) {
+                          TaskExecutionPrimaryAction.pause => Icons.pause,
+                          TaskExecutionPrimaryAction.startBreak =>
+                            Icons.coffee_outlined,
+                          TaskExecutionPrimaryAction.startFocus =>
+                            Icons.center_focus_strong,
+                          _ => Icons.play_arrow,
+                        }),
+                  label: Text(
+                    context.l10n.text(switch (controls.primary) {
+                      TaskExecutionPrimaryAction.start => 'start',
+                      TaskExecutionPrimaryAction.pause => 'pause',
+                      TaskExecutionPrimaryAction.resume => 'resume',
+                      TaskExecutionPrimaryAction.startBreak =>
+                        'notification_start_break',
+                      TaskExecutionPrimaryAction.startFocus =>
+                        'notification_start_focus',
+                    }),
                   ),
-                  if (controls.canStartBreakEarly)
-                    OutlinedButton.icon(
-                      onPressed: _busy
-                          ? null
-                          : () => _runBusy(
-                              () => ref
-                                  .read(taskRepositoryProvider)
-                                  .startBreak(task),
-                            ),
-                      icon: const Icon(Icons.coffee_outlined),
-                      label: Text(
-                        context.l10n.text('notification_start_break'),
-                      ),
-                    ),
-                  if (controls.canSkipBreak)
-                    OutlinedButton.icon(
-                      onPressed: _busy ? null : _skipBreak,
-                      icon: const Icon(Icons.skip_next_rounded),
-                      label: Text(context.l10n.text('pomodoro_skip_break')),
-                    ),
-                  if (controls.canExtendBreak)
-                    OutlinedButton.icon(
-                      onPressed: _busy ? null : _extendBreak,
-                      icon: const Icon(Icons.more_time),
-                      label: Text(
-                        context.l10n.text('notification_extend_break'),
-                      ),
-                    ),
+                ),
+                if (controls.canStartBreakEarly)
                   OutlinedButton.icon(
                     onPressed: _busy
                         ? null
                         : () => _runBusy(
-                            () => completeTaskWithUndo(context, ref, task),
+                            () => ref
+                                .read(taskRepositoryProvider)
+                                .startBreak(task),
                           ),
-                    icon: const Icon(Icons.check),
-                    label: Text(context.l10n.text('complete')),
+                    icon: const Icon(Icons.coffee_outlined),
+                    label: Text(context.l10n.text('notification_start_break')),
                   ),
-                  IconButton.outlined(
-                    tooltip: context.l10n.text('add_interruption'),
-                    onPressed: () => _addInterruption(context, ref),
-                    icon: const Icon(Icons.flash_on_outlined),
+                if (controls.canSkipBreak)
+                  OutlinedButton.icon(
+                    onPressed: _busy ? null : _skipBreak,
+                    icon: const Icon(Icons.skip_next_rounded),
+                    label: Text(context.l10n.text('pomodoro_skip_break')),
                   ),
-                  IconButton.outlined(
-                    tooltip: context.l10n.text('add_note'),
-                    onPressed: () => _addNote(context, ref),
-                    icon: const Icon(Icons.note_add_outlined),
+                if (controls.canExtendBreak)
+                  OutlinedButton.icon(
+                    onPressed: _busy ? null : _extendBreak,
+                    icon: const Icon(Icons.more_time),
+                    label: Text(context.l10n.text('notification_extend_break')),
                   ),
-                ],
-              );
-              if (narrow) {
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    details,
-                    const SizedBox(height: 18),
-                    timer,
-                    const SizedBox(height: 18),
-                    actions,
-                  ],
-                );
-              }
-              return Row(
-                children: [
-                  Expanded(child: details),
-                  timer,
-                  const SizedBox(width: 24),
-                  actions,
-                ],
+                OutlinedButton.icon(
+                  onPressed: _busy
+                      ? null
+                      : () => _runBusy(
+                          () => completeTaskWithUndo(context, ref, task),
+                        ),
+                  icon: const Icon(Icons.check),
+                  label: Text(context.l10n.text('complete')),
+                ),
+              ];
+              final utilityActions = <Widget>[
+                IconButton.outlined(
+                  tooltip: context.l10n.text('add_interruption'),
+                  onPressed: () => _addInterruption(context, ref),
+                  icon: const Icon(Icons.flash_on_outlined),
+                ),
+                IconButton.outlined(
+                  tooltip: context.l10n.text('add_note'),
+                  onPressed: () => _addNote(context, ref),
+                  icon: const Icon(Icons.note_add_outlined),
+                ),
+              ];
+              return DashboardActiveTaskResponsiveLayout(
+                details: details,
+                timer: timer,
+                primaryActions: primaryActions,
+                utilityActions: utilityActions,
               );
             },
           ),
@@ -643,6 +620,137 @@ class _ActiveTaskPanelState extends ConsumerState<_ActiveTaskPanel> {
           ),
         );
     unawaited(ref.read(syncServiceProvider).drainOutbox());
+  }
+}
+
+/// Keeps the active task readable when a desktop window is resized down to
+/// tablet width, while also giving phone controls a full-width touch target.
+///
+/// This is public only so the responsive geometry can be exercised without
+/// constructing the dashboard's database-backed providers in widget tests.
+@visibleForTesting
+class DashboardActiveTaskResponsiveLayout extends StatelessWidget {
+  const DashboardActiveTaskResponsiveLayout({
+    required this.details,
+    required this.timer,
+    required this.primaryActions,
+    required this.utilityActions,
+    super.key,
+  });
+
+  final Widget details;
+  final Widget timer;
+  final List<Widget> primaryActions;
+  final List<Widget> utilityActions;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final actions = _DashboardActiveTaskActions(
+          primaryActions: primaryActions,
+          utilityActions: utilityActions,
+        );
+
+        // The control group can contain Start/Skip break, Complete, an
+        // interruption, and a note at the same time. A 600 px breakpoint was
+        // therefore too small: at common narrow Windows sizes the controls
+        // kept their desktop row and reduced the title to a few characters.
+        if (constraints.maxWidth >= 1120) {
+          return Row(
+            key: const ValueKey('dashboard-active-task-wide-layout'),
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Expanded(flex: 4, child: details),
+              const SizedBox(width: 18),
+              timer,
+              const SizedBox(width: 24),
+              Expanded(flex: 5, child: actions),
+            ],
+          );
+        }
+
+        if (constraints.maxWidth >= 560) {
+          return Column(
+            key: const ValueKey('dashboard-active-task-reflow-layout'),
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Expanded(child: details),
+                  const SizedBox(width: 18),
+                  timer,
+                ],
+              ),
+              const SizedBox(height: 18),
+              actions,
+            ],
+          );
+        }
+
+        return Column(
+          key: const ValueKey('dashboard-active-task-phone-layout'),
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            details,
+            const SizedBox(height: 16),
+            Align(alignment: AlignmentDirectional.centerStart, child: timer),
+            const SizedBox(height: 16),
+            actions,
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _DashboardActiveTaskActions extends StatelessWidget {
+  const _DashboardActiveTaskActions({
+    required this.primaryActions,
+    required this.utilityActions,
+  });
+
+  final List<Widget> primaryActions;
+  final List<Widget> utilityActions;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth < 390) {
+          return Column(
+            key: const ValueKey('dashboard-active-task-stacked-actions'),
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (var index = 0; index < primaryActions.length; index++) ...[
+                SizedBox(width: double.infinity, child: primaryActions[index]),
+                if (index != primaryActions.length - 1)
+                  const SizedBox(height: 10),
+              ],
+              if (primaryActions.isNotEmpty && utilityActions.isNotEmpty)
+                const SizedBox(height: 10),
+              if (utilityActions.isNotEmpty)
+                Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  child: Wrap(
+                    spacing: 10,
+                    runSpacing: 10,
+                    children: utilityActions,
+                  ),
+                ),
+            ],
+          );
+        }
+
+        return Wrap(
+          key: const ValueKey('dashboard-active-task-wrapped-actions'),
+          spacing: 10,
+          runSpacing: 10,
+          children: [...primaryActions, ...utilityActions],
+        );
+      },
+    );
   }
 }
 

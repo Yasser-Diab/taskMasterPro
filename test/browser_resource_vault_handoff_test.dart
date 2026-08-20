@@ -132,6 +132,52 @@ void main() {
     expect(script, isNot(contains('sessionStorage')));
   });
 
+  test('explicit save capture accepts only the current secure origin', () {
+    final raw = jsonEncode({
+      'origin': 'https://accounts.example.test',
+      'username': 'person@example.test',
+      'password': 'temporary-password',
+    });
+    final captured = BrowserCredentialDraft.fromJavaScript(
+      jsonEncode(raw),
+      pageUrl: 'https://accounts.example.test/sign-in',
+    );
+
+    expect(captured, isNotNull);
+    expect(captured!.username, 'person@example.test');
+    expect(captured.password, 'temporary-password');
+    expect(captured.website, 'https://accounts.example.test');
+    expect(captured.suggestedName, 'person@example.test');
+    expect(
+      BrowserCredentialDraft.fromJavaScript(
+        raw,
+        pageUrl: 'https://example.test/sign-in',
+      ),
+      isNull,
+    );
+    expect(
+      BrowserCredentialDraft.fromJavaScript(
+        raw,
+        pageUrl: 'http://accounts.example.test/sign-in',
+      ),
+      isNull,
+    );
+  });
+
+  test('save capture reads visible login fields only when explicitly run', () {
+    expect(browserCredentialCaptureScript, contains('window.top !== window'));
+    expect(browserCredentialCaptureScript, contains("protocol !== 'https:'"));
+    expect(browserCredentialCaptureScript, contains('current-password'));
+    expect(browserCredentialCaptureScript, contains('new-password'));
+    expect(browserCredentialCaptureScript, contains('getBoundingClientRect'));
+    expect(browserCredentialCaptureScript, isNot(contains('addEventListener')));
+    expect(browserCredentialCaptureScript, isNot(contains('postMessage')));
+    expect(browserCredentialCaptureScript, isNot(contains('.submit(')));
+    expect(browserCredentialCaptureScript, isNot(contains('localStorage')));
+    expect(browserCredentialCaptureScript, isNot(contains('sessionStorage')));
+    expect(browserCredentialCaptureScript, isNot(contains('document.cookie')));
+  });
+
   test('vault test credential remains encrypted at rest', () async {
     final crypto = VaultCryptoService();
     final material = await crypto.createKey('temporary QA vault password');

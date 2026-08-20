@@ -1080,18 +1080,23 @@ class PerformanceReportService {
       );
     final intervals = <_ReportInterval>[];
     DateTime? activeStartedAt;
+    var sawActiveBoundary = false;
 
     for (final event in orderedEvents) {
       final at = _clampInstant(_eventInstant(event), sessionStart, sessionEnd);
       final eventType = _eventType(event);
       if (_startsActiveTime(eventType)) {
         activeStartedAt ??= at;
+        sawActiveBoundary = true;
       } else if (_stopsActiveTime(eventType)) {
         // A partial history can begin with a stop event.  The session start is
         // the only defensible lower bound, and the accumulated-duration cap
-        // below prevents it from inflating the report.
-        activeStartedAt ??= sessionStart;
-        if (at.isAfter(activeStartedAt)) {
+        // below prevents it from inflating the report. A later stop after a
+        // break must not reopen the entire session and overlap earlier work.
+        if (activeStartedAt == null && !sawActiveBoundary) {
+          activeStartedAt = sessionStart;
+        }
+        if (activeStartedAt != null && at.isAfter(activeStartedAt)) {
           intervals.add(
             _ReportInterval(
               start: activeStartedAt,
@@ -1102,6 +1107,7 @@ class PerformanceReportService {
           );
         }
         activeStartedAt = null;
+        sawActiveBoundary = true;
       }
     }
 
@@ -1132,6 +1138,17 @@ class PerformanceReportService {
     }
 
     var reportedActiveMs = _integerValue(data['accumulated_active_ms']);
+    // Execution transition events carry the canonical cumulative active
+    // duration at each boundary. A device can receive those append-only rows
+    // before the mutable session projection catches up, so never let a stale
+    // zero on the session row erase already-recorded work.
+    for (final event in events) {
+      final eventData = _decodeJsonMap(event.dataJson);
+      reportedActiveMs = math.max(
+        reportedActiveMs,
+        _integerValue(eventData['duration_ms']),
+      );
+    }
     if (runtime?.sessionId == session.id && runtime?.activeTaskId == task.id) {
       var runtimeActiveMs = runtime!.accumulatedActiveMs;
       if (runtime.state == 'running' && runtime.segmentStartedAt != null) {
@@ -1146,15 +1163,36 @@ class PerformanceReportService {
     }
     final physicalMs = sessionEnd.difference(sessionStart).inMilliseconds;
     final cappedMs = math.min(physicalMs, reportedActiveMs);
+    // A synchronized start can leave a zero-duration session row behind after
+    // another device creates and completes the canonical session. Only the
+    // account runtime can prove that such an open row is still live; otherwise
+    // extending it to report-generation time invents days of productive work.
+    final isCanonicalRunningSession =
+        state == 'running' &&
+        runtime?.state == 'running' &&
+        runtime?.sessionId == session.id &&
+        runtime?.activeTaskId == task.id;
     final maximumMs = cappedMs > 0
         ? cappedMs
-        : state == 'running'
+        : isCanonicalRunningSession
         ? null
         : 0;
-    return _capIntervalsToDuration(
+    final knownBreaks = _sessionBreakIntervals(
+      session: session,
+      events: events,
+      runtime: runtime,
+      effectiveNow: effectiveNow,
+    );
+    final reconciled = _reconcileIntervalsToDuration(
       intervals.where((interval) => interval.isPositive),
       maximumMs,
+      sessionStart: sessionStart,
+      sessionEnd: sessionEnd,
+      taskId: task.id,
+      executionMode: task.executionMode,
+      excluded: knownBreaks,
     );
+    return reconciled;
   }
 
   static _ReportInterval? _fallbackTaskInterval(LocalTask task) {
@@ -1251,32 +1289,20 @@ class PerformanceReportService {
       eventsBySession.putIfAbsent(sessionId, () => []).add(event);
     }
     final result = <_ReportInterval>[];
+    final sessionsById = {
+      for (final session in snapshot.sessions) session.id: session,
+    };
     for (final entry in eventsBySession.entries) {
-      DateTime? breakStartedAt;
-      final events = [...entry.value]
-        ..sort(
-          (left, right) => _eventInstant(left).compareTo(_eventInstant(right)),
-        );
-      for (final event in events) {
-        final at = _eventInstant(event);
-        final type = _eventType(event);
-        if (type == 'start_break') {
-          breakStartedAt ??= at;
-        } else if (const {
-              'finish_break',
-              'skip_break',
-              'complete',
-            }.contains(type) &&
-            breakStartedAt != null) {
-          if (at.isAfter(breakStartedAt)) {
-            result.add(_ReportInterval(start: breakStartedAt, end: at));
-          }
-          breakStartedAt = null;
-        }
-      }
-      if (breakStartedAt != null && effectiveNow.isAfter(breakStartedAt)) {
-        result.add(_ReportInterval(start: breakStartedAt, end: effectiveNow));
-      }
+      final session = sessionsById[entry.key];
+      if (session == null) continue;
+      result.addAll(
+        _sessionBreakIntervals(
+          session: session,
+          events: entry.value,
+          runtime: snapshot.runtime,
+          effectiveNow: effectiveNow,
+        ),
+      );
     }
 
     for (final cycle in snapshot.pomodoroCycles) {
@@ -1320,6 +1346,98 @@ class PerformanceReportService {
             end: effectiveNow,
           ),
         );
+      }
+    }
+    return result.where((interval) => interval.isPositive).toList();
+  }
+
+  static List<_ReportInterval> _sessionBreakIntervals({
+    required LocalEntityRecord session,
+    required List<LocalEntityRecord> events,
+    required LocalRuntime? runtime,
+    required DateTime effectiveNow,
+  }) {
+    final sessionData = _decodeJsonMap(session.dataJson);
+    final sessionStart =
+        (_parseDateTime(sessionData['started_at']) ?? session.createdAt)
+            .toUtc();
+    final canonicalLiveBreak =
+        runtime?.state == 'break' && runtime?.sessionId == session.id;
+    final sessionEnd =
+        (_parseDateTime(sessionData['finished_at']) ??
+                (canonicalLiveBreak ? effectiveNow : session.updatedAt))
+            .toUtc();
+    if (!sessionEnd.isAfter(sessionStart)) return const [];
+
+    final orderedEvents = [...events]
+      ..sort(
+        (left, right) => _eventInstant(left).compareTo(_eventInstant(right)),
+      );
+    var finalActiveMs = _integerValue(sessionData['accumulated_active_ms']);
+    for (final event in orderedEvents) {
+      finalActiveMs = math.max(
+        finalActiveMs,
+        _integerValue(_decodeJsonMap(event.dataJson)['duration_ms']),
+      );
+    }
+    if (runtime?.sessionId == session.id) {
+      finalActiveMs = math.max(finalActiveMs, runtime!.accumulatedActiveMs);
+    }
+
+    final result = <_ReportInterval>[];
+    DateTime? breakStartedAt;
+    var activeMsAtBreakStart = 0;
+    for (final event in orderedEvents) {
+      final at = _clampInstant(_eventInstant(event), sessionStart, sessionEnd);
+      final type = _eventType(event);
+      final activeMs = _integerValue(
+        _decodeJsonMap(event.dataJson)['duration_ms'],
+      );
+      if (type == 'start_break') {
+        breakStartedAt ??= at;
+        activeMsAtBreakStart = math.max(activeMsAtBreakStart, activeMs);
+        continue;
+      }
+      if (!const {
+            'finish_break',
+            'skip_break',
+            'complete',
+            'finish_task',
+            'cancel',
+            'cancelled',
+          }.contains(type) ||
+          breakStartedAt == null) {
+        continue;
+      }
+      final activeAfterBreakStarted = math.max(
+        0,
+        activeMs - activeMsAtBreakStart,
+      );
+      final inferredEnd = at.subtract(
+        Duration(milliseconds: activeAfterBreakStarted),
+      );
+      final end = inferredEnd.isBefore(breakStartedAt)
+          ? breakStartedAt
+          : inferredEnd;
+      if (end.isAfter(breakStartedAt)) {
+        result.add(_ReportInterval(start: breakStartedAt, end: end));
+      }
+      breakStartedAt = null;
+      activeMsAtBreakStart = 0;
+    }
+    if (breakStartedAt != null) {
+      final activeAfterBreakStarted = math.max(
+        0,
+        finalActiveMs - activeMsAtBreakStart,
+      );
+      final inferredEnd = sessionEnd.subtract(
+        Duration(milliseconds: activeAfterBreakStarted),
+      );
+      final end = inferredEnd.isBefore(breakStartedAt)
+          ? breakStartedAt
+          : inferredEnd;
+      if (end.isAfter(breakStartedAt)) {
+        result.add(_ReportInterval(start: breakStartedAt, end: end));
       }
     }
     return result.where((interval) => interval.isPositive).toList();
@@ -1610,12 +1728,12 @@ class PerformanceReportService {
     final values = <int>{};
     for (final interval in intervals) {
       values
-        ..add(interval.start.toUtc().millisecondsSinceEpoch)
-        ..add(interval.end.toUtc().millisecondsSinceEpoch);
+        ..add(interval.start.toUtc().microsecondsSinceEpoch)
+        ..add(interval.end.toUtc().microsecondsSinceEpoch);
     }
     final sorted = values.toList()..sort();
     return sorted
-        .map((value) => DateTime.fromMillisecondsSinceEpoch(value, isUtc: true))
+        .map((value) => DateTime.fromMicrosecondsSinceEpoch(value, isUtc: true))
         .toList(growable: false);
   }
 
@@ -1638,16 +1756,84 @@ class PerformanceReportService {
     return total + end.difference(start).inMilliseconds;
   }
 
-  static List<_ReportInterval> _capIntervalsToDuration(
+  static List<_ReportInterval> _reconcileIntervalsToDuration(
     Iterable<_ReportInterval> source,
-    int? maximumMs,
-  ) {
-    final intervals = source.where((interval) => interval.isPositive).toList()
-      ..sort((left, right) => left.start.compareTo(right.start));
+    int? maximumMs, {
+    required DateTime sessionStart,
+    required DateTime sessionEnd,
+    required String taskId,
+    required String executionMode,
+    Iterable<_ReportInterval> excluded = const [],
+  }) {
+    final exclusions =
+        excluded
+            .map((interval) => interval.clip(sessionStart, sessionEnd))
+            .where((interval) => interval.isPositive)
+            .toList()
+          ..sort((left, right) => left.start.compareTo(right.start));
+    final intervals = <_ReportInterval>[];
+    for (final sourceInterval in source) {
+      var pieces = <_ReportInterval>[
+        sourceInterval.clip(sessionStart, sessionEnd),
+      ].where((interval) => interval.isPositive).toList();
+      for (final exclusion in exclusions) {
+        final next = <_ReportInterval>[];
+        for (final piece in pieces) {
+          if (!exclusion.end.isAfter(piece.start) ||
+              !exclusion.start.isBefore(piece.end)) {
+            next.add(piece);
+            continue;
+          }
+          if (exclusion.start.isAfter(piece.start)) {
+            next.add(
+              _ReportInterval(
+                start: piece.start,
+                end: exclusion.start,
+                taskId: piece.taskId,
+                executionMode: piece.executionMode,
+              ),
+            );
+          }
+          if (exclusion.end.isBefore(piece.end)) {
+            next.add(
+              _ReportInterval(
+                start: exclusion.end,
+                end: piece.end,
+                taskId: piece.taskId,
+                executionMode: piece.executionMode,
+              ),
+            );
+          }
+        }
+        pieces = next;
+      }
+      intervals.addAll(pieces.where((interval) => interval.isPositive));
+    }
+    intervals.sort((left, right) => left.start.compareTo(right.start));
     if (maximumMs == null) return intervals;
-    var remaining = math.max(0, maximumMs);
-    final result = <_ReportInterval>[];
+    var remaining = math.min(
+      math.max(0, maximumMs),
+      sessionEnd.difference(sessionStart).inMilliseconds,
+    );
+    if (remaining == 0) return const [];
+
+    final coverage = <_ReportInterval>[];
     for (final interval in intervals) {
+      final previous = coverage.lastOrNull;
+      if (previous == null || interval.start.isAfter(previous.end)) {
+        coverage.add(interval);
+      } else if (interval.end.isAfter(previous.end)) {
+        coverage[coverage.length - 1] = _ReportInterval(
+          start: previous.start,
+          end: interval.end,
+          taskId: taskId,
+          executionMode: executionMode,
+        );
+      }
+    }
+
+    final result = <_ReportInterval>[];
+    for (final interval in coverage) {
       if (remaining <= 0) break;
       final durationMs = math.min(remaining, interval.durationMs);
       result.add(
@@ -1660,6 +1846,51 @@ class PerformanceReportService {
       );
       remaining -= durationMs;
     }
+    if (remaining <= 0) return result;
+
+    // Missing or delayed event rows must not erase an authoritative cumulative
+    // total. Fill uncovered time from the session end backwards: cumulative
+    // boundary durations prove that missing work happened after the preceding
+    // boundary, while known breaks are never reused as productive time.
+    final blocked = [...coverage, ...exclusions]
+      ..sort((left, right) => left.start.compareTo(right.start));
+    final mergedBlocked = <_ReportInterval>[];
+    for (final interval in blocked) {
+      final previous = mergedBlocked.lastOrNull;
+      if (previous == null || interval.start.isAfter(previous.end)) {
+        mergedBlocked.add(interval);
+      } else if (interval.end.isAfter(previous.end)) {
+        mergedBlocked[mergedBlocked.length - 1] = _ReportInterval(
+          start: previous.start,
+          end: interval.end,
+        );
+      }
+    }
+    final gaps = <_ReportInterval>[];
+    var cursor = sessionStart;
+    for (final interval in mergedBlocked) {
+      if (interval.start.isAfter(cursor)) {
+        gaps.add(_ReportInterval(start: cursor, end: interval.start));
+      }
+      if (interval.end.isAfter(cursor)) cursor = interval.end;
+    }
+    if (sessionEnd.isAfter(cursor)) {
+      gaps.add(_ReportInterval(start: cursor, end: sessionEnd));
+    }
+    for (final gap in gaps.reversed) {
+      if (remaining <= 0) break;
+      final durationMs = math.min(remaining, gap.durationMs);
+      result.add(
+        _ReportInterval(
+          start: gap.end.subtract(Duration(milliseconds: durationMs)),
+          end: gap.end,
+          taskId: taskId,
+          executionMode: executionMode,
+        ),
+      );
+      remaining -= durationMs;
+    }
+    result.sort((left, right) => left.start.compareTo(right.start));
     return result;
   }
 

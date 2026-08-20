@@ -176,6 +176,7 @@ class TaskBrowserController {
   Future<void> Function()? _forward;
   Future<void> Function()? _reload;
   Future<bool> Function(String username, String password)? _fillCredentials;
+  Future<BrowserCredentialDraft?> Function()? _captureCredentials;
   Future<BrowserWorkspaceCheckpoint?> Function()? _captureCheckpoint;
   Future<void> Function(BrowserWorkspaceCheckpoint)? _restoreCheckpoint;
 
@@ -194,6 +195,10 @@ class TaskBrowserController {
   }) async {
     final fill = _fillCredentials;
     return fill == null ? false : fill(username, password);
+  }
+
+  Future<BrowserCredentialDraft?> captureCredentials() async {
+    return _captureCredentials?.call();
   }
 
   /// The workspace, rather than a scroll listener, chooses the bounded
@@ -305,6 +310,7 @@ class _CrossPlatformWebViewState extends State<CrossPlatformWebView> {
             );
             return result == true || result?.toString() == 'true';
           }
+          .._captureCredentials = _captureCredentials
           .._captureCheckpoint = _captureCheckpoint
           .._restoreCheckpoint = _restoreCheckpointNow;
         await controller.loadUrl(widget.initialUrl);
@@ -371,6 +377,7 @@ class _CrossPlatformWebViewState extends State<CrossPlatformWebView> {
           return result == true || result.toString() == 'true';
         };
         widget.controller
+          .._captureCredentials = _captureCredentials
           .._captureCheckpoint = _captureCheckpoint
           .._restoreCheckpoint = _restoreCheckpointNow;
         await controller.loadRequest(Uri.parse(widget.initialUrl));
@@ -455,6 +462,22 @@ class _CrossPlatformWebViewState extends State<CrossPlatformWebView> {
     } catch (_) {
       // A document can disappear during navigation or be a restricted page.
       // Resume state is best effort; normal browsing must remain usable.
+      return null;
+    }
+  }
+
+  Future<BrowserCredentialDraft?> _captureCredentials() async {
+    final pageUrl = _navigation.currentUrl;
+    try {
+      final result = Platform.isWindows
+          ? await _windows?.executeScript(browserCredentialCaptureScript)
+          : await _mobile?.runJavaScriptReturningResult(
+              browserCredentialCaptureScript,
+            );
+      return BrowserCredentialDraft.fromJavaScript(result, pageUrl: pageUrl);
+    } catch (_) {
+      // Restricted pages and documents navigating during capture simply offer
+      // no draft. No password value is retained outside this stack frame.
       return null;
     }
   }
@@ -553,6 +576,7 @@ class _CrossPlatformWebViewState extends State<CrossPlatformWebView> {
       .._forward = null
       .._reload = null
       .._fillCredentials = null
+      .._captureCredentials = null
       .._captureCheckpoint = null
       .._restoreCheckpoint = null;
     super.dispose();

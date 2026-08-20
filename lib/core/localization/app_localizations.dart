@@ -475,6 +475,7 @@ class AppLocalizations {
     'add': 'Add',
     'close': 'Close',
     'open': 'Open',
+    'more': 'More',
     'retry': 'Try again',
     'done': 'Done',
     'loading': 'Loading…',
@@ -605,12 +606,16 @@ class AppLocalizations {
     'coaching_adaptive_paused_title': 'Make restarting easy',
     'coaching_adaptive_paused_body':
         '{count} tasks are paused. Pick the one with the clearest next action—or make that action smaller—then resume.',
+    'coaching_adaptive_paused_task_body':
+        '“{task}” is paused. Open it, check the next unfinished step, and resume when that step is clear. You have {count} paused tasks in total.',
     'coaching_adaptive_roadmap_title': 'One clear step will move this forward',
     'coaching_adaptive_roadmap_body':
         '“{task}” is ready in your roadmap. A short, protected session is enough to move the larger plan.',
     'coaching_adaptive_focus_title': 'That focus pattern is working',
     'coaching_adaptive_focus_body':
         'You completed {count} focus cycles this week. Reuse a duration that felt sustainable and build on what already worked.',
+    'coaching_adaptive_session_body':
+        'You completed {count} work sessions this week. Repeat the setup that helped you finish, without assuming every session needs a Pomodoro.',
     'coaching_adaptive_rest_title': 'Let today flex with your energy',
     'coaching_adaptive_rest_body':
         'Your approved health summary is available. Use it as private context for a flexible workload, never as a diagnosis.',
@@ -627,6 +632,8 @@ class AppLocalizations {
     'coaching_evidence_active_task': 'Task currently active',
     'coaching_evidence_paused': '{count} paused tasks',
     'coaching_evidence_focus_cycles': '{count} recent focus cycles',
+    'coaching_evidence_completed_sessions':
+        '{count} recently completed work sessions',
     'coaching_evidence_ready_tasks': '{count} scheduled tasks ready',
     'coaching_feedback': 'Coaching feedback',
     'coaching_feedback_saved': 'Your feedback will shape future coaching.',
@@ -798,6 +805,12 @@ class AppLocalizations {
     'retention_until_deleted': 'Keep until manually deleted',
     'hide_confirmed_system_activity': 'Hide confirmed system activity',
     'show_possible_system_activity': 'Show possible system activity',
+    'community_system_learning': 'Help identify system apps',
+    'community_system_learning_description':
+        'Optional. After you classify an app, share an anonymous yes-or-no vote so TaskMaster Pro can suggest likely system apps to others. Your account, tasks, titles, websites, paths, and activity history are never shared.',
+    'community_system_learning_consent':
+        'Only a protected app identifier and your anonymous yes-or-no choice will be shared. The choice cannot identify your account or connect your votes across apps. Suggestions never override your own decision.',
+    'share_anonymous_votes': 'Allow anonymous votes',
     'review_hidden_system_activity': 'Review hidden system activity',
     'clear_local_unclassified_activity': 'Clear unclassified local Activity',
     'clear_local_system_activity': 'Clear local system Activity',
@@ -911,7 +924,7 @@ class AppLocalizations {
         'Removes the remembered device key without deleting saved accounts',
     'vault_recovery_options': 'Vault recovery options',
     'vault_recovery_body':
-        'Your privacy password is the recovery method. Fingerprint unlock works only on this device. TaskMaster Pro cannot read or reset the protected contents of your vault.',
+        'Your vault password is the recovery method. Device unlock works only on this device. TaskMaster Pro cannot read or reset your protected saved accounts.',
     'vault_learn_title': 'How the Password Vault works',
     'vault_learn_body':
         'Your vault password unlocks saved accounts on your device. Protected vault data can synchronize, but readable usernames and passwords are never uploaded.',
@@ -929,9 +942,9 @@ class AppLocalizations {
     'vault_create_body':
         'Choose a vault password you can remember. It is required to unlock protected accounts on a new device.',
     'confirm_vault_password': 'Confirm vault password',
-    'vault_allow_device_auth': 'Enable fingerprint unlock',
+    'vault_allow_device_auth': 'Use this device to unlock',
     'vault_device_key_detail':
-        'Use your fingerprint on this Android device. The encrypted device key never leaves this device.',
+        'Use your device security, such as biometrics or Windows Hello, when available. The protected device key never leaves this device.',
     'vault_create_action': 'Create vault',
     'vault_password_length': 'Use at least 10 characters.',
     'vault_password_mismatch': 'The passwords do not match.',
@@ -941,6 +954,8 @@ class AppLocalizations {
     'website': 'Website',
     'private_notes': 'Private notes',
     'vault_save_account': 'Save account',
+    'vault_review_captured_sign_in':
+        'Review this sign-in before saving it. Nothing is saved until you choose Save account.',
     'synchronization': 'Synchronization',
     'sync_close_panel': 'Close synchronization panel',
     'sync_connection': 'Connection',
@@ -1742,6 +1757,8 @@ class AppLocalizations {
         'Sign-in fields filled. Review them, then submit the form yourself.',
     'browser_vault_fields_not_found':
         'No compatible visible sign-in fields were found on this page.',
+    'browser_vault_capture_fields_not_found':
+        'Enter your sign-in on this secure page first, then choose Save sign-in again.',
     'browser_open_external': 'Open externally',
     'browser_full_screen': 'Enter full screen',
     'browser_exit_full_screen': 'Exit full screen',
@@ -2014,6 +2031,7 @@ class AppLocalizations {
     'report_generated': 'Generated {date}',
     'report_page_number': 'Page {page} of {pages}',
     'report_summary': 'Summary',
+    'report_sections': 'Report sections',
     'report_planned_effort': 'Planned effort',
     'report_active_work': 'Active work',
     'report_productive_work': 'Productive work',
@@ -2189,16 +2207,45 @@ class AppLocalizations {
     'height_invalid': 'Enter a height between 50 and 250 cm.',
     'profile_height_value': '{height} cm',
     'profile_height_missing': 'Add height for distance estimates',
-    'settings_sections': 'Settings sections',
-    'settings_sections_description':
-        'Choose an area. The same organized list is used on phone and desktop.',
+    'settings_sections': 'Settings',
+    'settings_sections_description': 'Choose what you want to customize.',
+    'routine_and_vacations': 'Routine and vacations',
+    'settings_routine_vacations_description':
+        'Pause or move selected recurring tasks during time away without changing past work.',
+    'vacations_title': 'Vacations',
+    'vacations_description':
+        'Add as many time-away periods as you need. Only future recurring tasks are adjusted.',
+    'vacation_add': 'Add vacation',
+    'vacation_edit': 'Edit vacation',
+    'vacation_empty': 'No vacations added yet.',
+    'vacation_name': 'Vacation name',
+    'vacation_starts': 'Starts',
+    'vacation_ends': 'Ends',
+    'vacation_repeats': 'Repeats',
+    'vacation_repeat_none': 'Does not repeat',
+    'vacation_repeat_yearly': 'Every year',
+    'vacation_handling': 'Recurring tasks during this vacation',
+    'vacation_handling_postpone': 'Move them to after the vacation',
+    'vacation_handling_skip': 'Skip these occurrences',
+    'vacation_scope': 'Tasks to adjust',
+    'vacation_scope_all': 'All recurring tasks',
+    'vacation_scope_selected': 'Only selected recurring tasks',
+    'vacation_choose_tasks': 'Choose recurring tasks',
+    'vacation_selected_count': '{count} selected',
+    'vacation_select_one_task': 'Choose at least one recurring task.',
+    'vacation_invalid_range':
+        'The end date must be on or after the start date.',
+    'vacation_delete_question': 'Delete this vacation?',
+    'vacation_delete_explanation':
+        'Future tasks managed by it will return to their original schedule.',
+    'vacation_saved': 'Vacation saved.',
     'show_all_settings': 'Show all settings on one page',
     'hide_all_settings': 'Hide the expanded settings',
     'settings_tasks_execution_description':
-        'Choose how each task is planned and carried out. Execution method and planned effort belong to the task they control.',
+        'Choose when each task happens, how its timer works, and how it is completed.',
     'manage_task_settings': 'Manage task settings',
     'task_settings_per_task_description':
-        'Open a task to set its execution method, schedule, reminders, and planned effort.',
+        'Open a task to set its schedule, timer, reminders, and expected duration.',
     'settings_pomodoro_description':
         'Focus and break lengths are saved with each Pomodoro task so the same task behaves consistently on every device.',
     'manage_pomodoro_settings': 'Manage Pomodoro settings',
@@ -2232,18 +2279,18 @@ class AppLocalizations {
     'standalone_pomodoro_skip_focus': 'End focus and start break',
     'stop_and_reset': 'Stop and reset',
     'settings_activity_privacy_description':
-        'Control what this device observes, what remains private, and which approved contributions synchronize.',
+        'Choose what this device records and what can be shared with your other devices.',
     'settings_reports_description':
         'Choose report privacy and open your account performance reports.',
     'settings_appearance_description':
         'Choose theme, language, and time zone for this account.',
     'settings_sync_description':
-        'Review synchronization state and resolve device delivery problems.',
+        'Check whether your changes reached your other devices and fix anything that needs attention.',
     'settings_connected_devices_description':
         'Review signed-in phones and computers and remove account access when needed.',
     'review_connected_devices': 'Review connected devices',
     'settings_help_diagnostics_description':
-        'Review synchronization health and open installation help without exposing technical logs in normal settings.',
+        'Check connection problems or get help installing the app.',
     'review_sync_status': 'Review synchronization status',
     'installation_help': 'Installation help',
     'settings_about_legal_description':
@@ -2253,7 +2300,7 @@ class AppLocalizations {
     'health': 'Health',
     'coaching': 'Coaching',
     'reports': 'Reports',
-    'help_and_diagnostics': 'Help and diagnostics',
+    'help_and_diagnostics': 'Help and troubleshooting',
     'about_and_legal': 'About and legal',
     'update_windows_installer': 'Windows installer',
     'update_android_installer': 'Android installer',
@@ -2291,7 +2338,7 @@ class AppLocalizations {
         'Paired health wearables could not be refreshed.',
     'health_wearables_none': 'No paired health watch or band was found.',
     'health_wearables_history_notice':
-        'Direct features are shown only after a paired wearable exposes the required standard characteristic. Historical data stays with its companion app and Health Connect.',
+        'Live features appear only when the watch confirms that it supports them. Past data stays in its companion app and Health Connect.',
     'health_wearables_unnamed': 'Unnamed health wearable',
     'health_wearables_not_checked':
         'Direct health features have not been checked',
@@ -2300,7 +2347,7 @@ class AppLocalizations {
     'health_wearables_inspection_failed':
         'Direct feature check failed — try again',
     'health_wearables_no_direct_service':
-        'No supported direct health feature. Historical data may be available through the companion app and Health Connect.',
+        'This watch did not offer a supported live health feature. Past data may still be available in its companion app and Health Connect.',
     'health_wearables_direct_available':
         'Direct watch connection · {capabilities}',
     'health_wearables_connected': 'Connected now',
@@ -2313,9 +2360,9 @@ class AppLocalizations {
         'Cycling speed and cadence',
     'health_wearables_capability_pulse_oximetry': 'Pulse oximetry',
     'health_wearables_capability_available': '{capability}: Available',
-    'health_ble_discovery': 'Bluetooth watch discovery',
+    'health_ble_discovery': 'Find a health watch',
     'health_ble_discovery_detail':
-        'Find nearby or bonded Bluetooth LE watches. Advertisement UUIDs are hints; inspect GATT services before a capability is shown.',
+        'Find nearby or paired watches. TaskMaster Pro shows only health features that the watch confirms it supports.',
     'health_ble_scan': 'Discover watches',
     'health_ble_settings': 'Bluetooth settings',
     'health_ble_disabled': 'Turn on Bluetooth to discover nearby watches.',
@@ -2324,16 +2371,16 @@ class AppLocalizations {
     'health_ble_no_devices': 'No nearby Bluetooth devices were discovered.',
     'health_ble_scan_failed': 'Watch discovery could not be completed.',
     'health_ble_history_notice':
-        'GATT discovery confirms supported live capabilities only. TaskMaster Pro does not claim access to historical watch data.',
+        'This check covers features available now. Past watch data stays in the watch’s companion app or Health Connect.',
     'health_ble_unnamed_device': 'Unnamed Bluetooth device',
     'health_ble_no_supported_capabilities':
-        'No supported standard live-health service was found. The watch may still provide health data through its companion application.',
+        'No supported live health feature was found. The watch may still share health data through its companion app.',
     'health_ble_capabilities_unknown':
-        'Capabilities not verified — inspect GATT services',
-    'health_ble_inspect': 'Inspect capabilities',
-    'health_ble_inspecting': 'Inspecting GATT services…',
+        'Available watch features have not been checked',
+    'health_ble_inspect': 'Check available features',
+    'health_ble_inspecting': 'Checking watch features…',
     'health_ble_inspection_failed':
-        'Capability inspection failed — tap to retry',
+        'Watch features could not be checked — try again',
     'health_ble_bonded': 'Paired',
     'health_ble_capability_live_heart_rate': 'Live heart rate',
     'health_ble_capability_battery': 'Battery level',
@@ -2456,6 +2503,7 @@ class AppLocalizations {
     'add': 'إضافة',
     'close': 'إغلاق',
     'open': 'فتح',
+    'more': 'المزيد',
     'retry': 'حاول مرة أخرى',
     'done': 'تم',
     'loading': 'جارٍ التحميل…',
@@ -2578,12 +2626,16 @@ class AppLocalizations {
     'coaching_adaptive_paused_title': 'اجعل العودة سهلة',
     'coaching_adaptive_paused_body':
         'لديك {count} مهام متوقفة مؤقتًا. اختر المهمة ذات الإجراء التالي الأوضح، أو صغّر هذا الإجراء، ثم استأنف.',
+    'coaching_adaptive_paused_task_body':
+        'المهمة «{task}» متوقفة مؤقتًا. افتحها، وراجع أول خطوة غير مكتملة، ثم تابع عندما تصبح هذه الخطوة واضحة. لديك {count} مهام متوقفة مؤقتًا إجمالًا.',
     'coaching_adaptive_roadmap_title': 'خطوة واضحة واحدة ستحرك الخطة',
     'coaching_adaptive_roadmap_body':
         'مهمة «{task}» جاهزة في خارطة الطريق. تكفي جلسة قصيرة محمية لدفع الخطة الأكبر إلى الأمام.',
     'coaching_adaptive_focus_title': 'نمط التركيز هذا يعمل جيدًا',
     'coaching_adaptive_focus_body':
         'أكملت {count} دورات تركيز هذا الأسبوع. كرر مدة كانت مريحة وابنِ على ما نجح معك.',
+    'coaching_adaptive_session_body':
+        'أكملت {count} جلسات عمل هذا الأسبوع. كرر الترتيب الذي ساعدك على الإكمال، من دون افتراض أن كل جلسة تحتاج إلى بومودورو.',
     'coaching_adaptive_rest_title': 'دع خطة اليوم تتكيف مع طاقتك',
     'coaching_adaptive_rest_body':
         'ملخصك الصحي المعتمد متاح. استخدمه كسياق خاص لعبء عمل مرن، وليس كتشخيص.',
@@ -2600,6 +2652,7 @@ class AppLocalizations {
     'coaching_evidence_active_task': 'مهمة نشطة الآن',
     'coaching_evidence_paused': '{count} مهام متوقفة مؤقتًا',
     'coaching_evidence_focus_cycles': '{count} دورات تركيز حديثة',
+    'coaching_evidence_completed_sessions': '{count} جلسات عمل مكتملة حديثًا',
     'coaching_evidence_ready_tasks': '{count} مهام مجدولة جاهزة',
     'coaching_feedback': 'ملاحظات التدريب',
     'coaching_feedback_saved': 'ستؤثر ملاحظاتك في رسائل التدريب القادمة.',
@@ -2764,6 +2817,12 @@ class AppLocalizations {
     'retention_until_deleted': 'الاحتفاظ حتى الحذف يدويًا',
     'hide_confirmed_system_activity': 'إخفاء نشاط النظام المؤكد',
     'show_possible_system_activity': 'إظهار نشاط النظام المحتمل',
+    'community_system_learning': 'المساعدة في تمييز تطبيقات النظام',
+    'community_system_learning_description':
+        'اختياري. بعد تصنيف تطبيق، شارك اختيارًا مجهولًا بنعم أو لا كي يتمكن TaskMaster Pro من اقتراح تطبيقات النظام المحتملة للآخرين. لن تتم مشاركة حسابك أو مهامك أو العناوين أو المواقع أو المسارات أو سجل نشاطك.',
+    'community_system_learning_consent':
+        'ستتم مشاركة معرّف محمي للتطبيق واختيارك المجهول بنعم أو لا فقط. لا يمكن للاختيار تحديد حسابك أو ربط اختياراتك بين التطبيقات، ولن تتجاوز الاقتراحات قرارك الشخصي.',
+    'share_anonymous_votes': 'السماح بالاختيارات المجهولة',
     'review_hidden_system_activity': 'مراجعة نشاط النظام المخفي',
     'clear_local_unclassified_activity': 'مسح النشاط المحلي غير المصنف',
     'clear_local_system_activity': 'مسح نشاط النظام المحلي',
@@ -2875,7 +2934,7 @@ class AppLocalizations {
         'يزيل مفتاح الجهاز المحفوظ دون حذف الحسابات المحفوظة',
     'vault_recovery_options': 'خيارات استرداد الخزنة',
     'vault_recovery_body':
-        'كلمة مرور الخصوصية هي وسيلة الاسترداد. يعمل الفتح بالبصمة على هذا الجهاز فقط. لا يستطيع TaskMaster Pro قراءة محتويات خزنتك المحمية أو إعادة تعيينها.',
+        'كلمة مرور الخزنة هي وسيلة الاسترداد. يعمل فتح القفل بالجهاز على هذا الجهاز فقط. لا يستطيع TaskMaster Pro قراءة حساباتك المحفوظة المحمية أو إعادة تعيينها.',
     'vault_learn_title': 'كيف تعمل خزنة كلمات المرور',
     'vault_learn_body':
         'تفتح كلمة مرور الخزنة الحسابات المحفوظة على جهازك. يمكن مزامنة البيانات المحمية، لكن لا يتم رفع أسماء المستخدمين أو كلمات المرور المقروءة.',
@@ -2893,9 +2952,9 @@ class AppLocalizations {
     'vault_create_body':
         'اختر كلمة مرور للخزنة يمكنك تذكرها. ستحتاج إليها لفتح الحسابات المحمية على جهاز جديد.',
     'confirm_vault_password': 'تأكيد كلمة مرور الخزنة',
-    'vault_allow_device_auth': 'تفعيل فتح القفل بالبصمة',
+    'vault_allow_device_auth': 'استخدام هذا الجهاز لفتح القفل',
     'vault_device_key_detail':
-        'استخدم بصمتك على جهاز Android هذا. لا يغادر مفتاح الجهاز المشفر هذا الجهاز أبدًا.',
+        'استخدم حماية جهازك، مثل البصمة أو Windows Hello، عند توفرها. لا يغادر مفتاح الجهاز المحمي هذا الجهاز.',
     'vault_create_action': 'إنشاء الخزنة',
     'vault_password_length': 'استخدم 10 أحرف على الأقل.',
     'vault_password_mismatch': 'كلمتا المرور غير متطابقتين.',
@@ -2905,6 +2964,8 @@ class AppLocalizations {
     'website': 'الموقع',
     'private_notes': 'ملاحظات خاصة',
     'vault_save_account': 'حفظ الحساب',
+    'vault_review_captured_sign_in':
+        'راجع بيانات الدخول قبل حفظها. لن يُحفظ شيء حتى تختار حفظ الحساب.',
     'synchronization': 'المزامنة',
     'sync_close_panel': 'إغلاق لوحة المزامنة',
     'sync_connection': 'الاتصال',
@@ -3693,6 +3754,8 @@ class AppLocalizations {
         'تم ملء حقول الدخول. راجعها ثم أرسل النموذج بنفسك.',
     'browser_vault_fields_not_found':
         'لم يتم العثور على حقول دخول ظاهرة ومتوافقة في هذه الصفحة.',
+    'browser_vault_capture_fields_not_found':
+        'أدخل بيانات دخولك في هذه الصفحة الآمنة أولًا، ثم اختر حفظ بيانات الدخول مرة أخرى.',
     'browser_open_external': 'فتح خارجيًا',
     'browser_full_screen': 'ملء الشاشة',
     'browser_exit_full_screen': 'الخروج من ملء الشاشة',
@@ -3964,6 +4027,7 @@ class AppLocalizations {
     'report_generated': 'تم الإنشاء في {date}',
     'report_page_number': 'الصفحة {page} من {pages}',
     'report_summary': 'الملخص',
+    'report_sections': 'أقسام التقرير',
     'report_planned_effort': 'الجهد المخطط',
     'report_active_work': 'العمل النشط',
     'report_productive_work': 'العمل المنتج',
@@ -4132,16 +4196,45 @@ class AppLocalizations {
     'height_invalid': 'أدخل طولًا بين 50 و250 سم.',
     'profile_height_value': '{height} سم',
     'profile_height_missing': 'أضف طولك لتقدير المسافة',
-    'settings_sections': 'أقسام الإعدادات',
-    'settings_sections_description':
-        'اختر قسمًا. تظهر القائمة المنظمة نفسها على الهاتف وسطح المكتب.',
+    'settings_sections': 'الإعدادات',
+    'settings_sections_description': 'اختر ما تريد تخصيصه.',
+    'routine_and_vacations': 'الروتين والإجازات',
+    'settings_routine_vacations_description':
+        'أوقف المهام المتكررة المحددة أو انقلها أثناء الإجازة دون تغيير العمل السابق.',
+    'vacations_title': 'الإجازات',
+    'vacations_description':
+        'أضف أي عدد من فترات الإجازة. لن تتغير إلا المهام المتكررة المستقبلية.',
+    'vacation_add': 'إضافة إجازة',
+    'vacation_edit': 'تعديل الإجازة',
+    'vacation_empty': 'لم تتم إضافة إجازات بعد.',
+    'vacation_name': 'اسم الإجازة',
+    'vacation_starts': 'تبدأ',
+    'vacation_ends': 'تنتهي',
+    'vacation_repeats': 'التكرار',
+    'vacation_repeat_none': 'لا تتكرر',
+    'vacation_repeat_yearly': 'كل سنة',
+    'vacation_handling': 'المهام المتكررة أثناء هذه الإجازة',
+    'vacation_handling_postpone': 'نقلها إلى ما بعد الإجازة',
+    'vacation_handling_skip': 'تخطي هذه المرات',
+    'vacation_scope': 'المهام التي ستتغير',
+    'vacation_scope_all': 'كل المهام المتكررة',
+    'vacation_scope_selected': 'المهام المتكررة المحددة فقط',
+    'vacation_choose_tasks': 'اختيار المهام المتكررة',
+    'vacation_selected_count': 'تم تحديد {count}',
+    'vacation_select_one_task': 'اختر مهمة متكررة واحدة على الأقل.',
+    'vacation_invalid_range':
+        'يجب أن يكون تاريخ النهاية بعد تاريخ البداية أو مساويًا له.',
+    'vacation_delete_question': 'هل تريد حذف هذه الإجازة؟',
+    'vacation_delete_explanation':
+        'ستعود المهام المستقبلية التي تديرها إلى جدولها الأصلي.',
+    'vacation_saved': 'تم حفظ الإجازة.',
     'show_all_settings': 'إظهار كل الإعدادات في صفحة واحدة',
     'hide_all_settings': 'إخفاء الإعدادات الموسعة',
     'settings_tasks_execution_description':
-        'اختر طريقة تخطيط كل مهمة وتنفيذها. ترتبط طريقة التنفيذ والجهد المخطط بالمهمة التي تتحكم بها.',
+        'حدّد موعد كل مهمة، وطريقة عمل مؤقتها، وكيفية إكمالها.',
     'manage_task_settings': 'إدارة إعدادات المهام',
     'task_settings_per_task_description':
-        'افتح مهمة لتحديد طريقة التنفيذ والجدول والتذكيرات والجهد المخطط.',
+        'افتح المهمة لتحديد موعدها ومؤقتها وتذكيراتها والمدة المتوقعة.',
     'settings_pomodoro_description':
         'تُحفظ مدد التركيز والاستراحة مع كل مهمة بومودورو لكي تعمل المهمة نفسها باتساق على جميع الأجهزة.',
     'manage_pomodoro_settings': 'إدارة إعدادات بومودورو',
@@ -4175,18 +4268,18 @@ class AppLocalizations {
     'standalone_pomodoro_skip_focus': 'إنهاء التركيز وبدء الاستراحة',
     'stop_and_reset': 'إيقاف وإعادة ضبط',
     'settings_activity_privacy_description':
-        'تحكّم فيما يرصده هذا الجهاز وما يبقى خاصًا وأي مساهمات معتمدة تتم مزامنتها.',
+        'اختر ما يسجله هذا الجهاز وما يمكن مشاركته مع أجهزتك الأخرى.',
     'settings_reports_description':
         'اختر خصوصية التقارير وافتح تقارير أداء حسابك.',
     'settings_appearance_description':
         'اختر السمة واللغة والمنطقة الزمنية لهذا الحساب.',
     'settings_sync_description':
-        'راجع حالة المزامنة وعالج مشكلات وصول التغييرات إلى الأجهزة.',
+        'تحقق من وصول تغييراتك إلى أجهزتك الأخرى وعالج ما يحتاج إلى انتباه.',
     'settings_connected_devices_description':
         'راجع الهواتف وأجهزة الكمبيوتر المسجل دخولها وأزل وصول الحساب عند الحاجة.',
     'review_connected_devices': 'مراجعة الأجهزة المتصلة',
     'settings_help_diagnostics_description':
-        'راجع سلامة المزامنة وافتح مساعدة التثبيت دون عرض سجلات تقنية في الإعدادات العادية.',
+        'تحقق من مشكلات الاتصال أو احصل على مساعدة في تثبيت التطبيق.',
     'review_sync_status': 'مراجعة حالة المزامنة',
     'installation_help': 'مساعدة التثبيت',
     'settings_about_legal_description':
@@ -4196,7 +4289,7 @@ class AppLocalizations {
     'health': 'الصحة',
     'coaching': 'الإرشاد',
     'reports': 'التقارير',
-    'help_and_diagnostics': 'المساعدة والتشخيص',
+    'help_and_diagnostics': 'المساعدة وحل المشكلات',
     'about_and_legal': 'حول التطبيق والمعلومات القانونية',
     'update_windows_installer': 'مثبّت Windows',
     'update_android_installer': 'مثبّت Android',
@@ -4233,7 +4326,7 @@ class AppLocalizations {
     'health_wearables_refresh_failed': 'تعذر تحديث الأجهزة الصحية المقترنة.',
     'health_wearables_none': 'لم يتم العثور على ساعة أو سوار صحي مقترن.',
     'health_wearables_history_notice':
-        'لا تُعرض الإمكانات المباشرة إلا بعد أن يكشف جهاز مقترن عن الخاصية القياسية المطلوبة. تبقى البيانات التاريخية لدى التطبيق المصاحب وHealth Connect.',
+        'لا تظهر الميزات المباشرة إلا عندما تؤكد الساعة أنها تدعمها. تبقى البيانات السابقة في تطبيقها المصاحب وHealth Connect.',
     'health_wearables_unnamed': 'جهاز صحي بلا اسم',
     'health_wearables_not_checked': 'لم يتم فحص إمكانات الصحة المباشرة',
     'health_wearables_check_live': 'فحص الإمكانات المباشرة',
@@ -4241,7 +4334,7 @@ class AppLocalizations {
     'health_wearables_inspection_failed':
         'فشل فحص الإمكانات المباشرة — حاول مرة أخرى',
     'health_wearables_no_direct_service':
-        'لا توجد ميزة صحية مباشرة مدعومة. قد تتوفر البيانات التاريخية عبر التطبيق المصاحب وHealth Connect.',
+        'لم توفر هذه الساعة ميزة صحية مباشرة مدعومة. قد تبقى البيانات السابقة متاحة في تطبيقها المصاحب وHealth Connect.',
     'health_wearables_direct_available': 'اتصال مباشر بالساعة · {capabilities}',
     'health_wearables_connected': 'متصل الآن',
     'health_wearables_paired': 'مقترن بهذا الهاتف',
@@ -4252,9 +4345,9 @@ class AppLocalizations {
         'سرعة وإيقاع ركوب الدراجة',
     'health_wearables_capability_pulse_oximetry': 'قياس التأكسج النبضي',
     'health_wearables_capability_available': '{capability}: متاح',
-    'health_ble_discovery': 'اكتشاف الساعة عبر Bluetooth',
+    'health_ble_discovery': 'البحث عن ساعة صحية',
     'health_ble_discovery_detail':
-        'ابحث عن ساعات Bluetooth LE القريبة أو المقترنة. معرّفات الإعلان مجرد إشارات، وتلزم معاينة خدمات GATT قبل عرض أي إمكانات.',
+        'ابحث عن الساعات القريبة أو المقترنة. يعرض TaskMaster Pro الميزات الصحية التي تؤكد الساعة أنها تدعمها فقط.',
     'health_ble_scan': 'اكتشاف الساعات',
     'health_ble_settings': 'إعدادات Bluetooth',
     'health_ble_disabled': 'شغّل Bluetooth لاكتشاف الساعات القريبة.',
@@ -4262,15 +4355,16 @@ class AppLocalizations {
     'health_ble_no_devices': 'لم يتم اكتشاف أجهزة Bluetooth قريبة.',
     'health_ble_scan_failed': 'تعذر إكمال اكتشاف الساعة.',
     'health_ble_history_notice':
-        'يؤكد اكتشاف GATT الإمكانات المباشرة المدعومة فقط. لا يدّعي TaskMaster Pro الوصول إلى بيانات الساعة التاريخية.',
+        'يشمل هذا الفحص الميزات المتاحة الآن فقط. تبقى بيانات الساعة السابقة في تطبيقها المصاحب أو Health Connect.',
     'health_ble_unnamed_device': 'جهاز Bluetooth بلا اسم',
     'health_ble_no_supported_capabilities':
-        'لم يتم العثور على خدمة صحية مباشرة قياسية ومدعومة. قد تظل الساعة توفر بيانات الصحة عبر تطبيقها المصاحب.',
+        'لم يتم العثور على ميزة صحية مباشرة مدعومة. قد تظل الساعة تشارك البيانات الصحية عبر تطبيقها المصاحب.',
     'health_ble_capabilities_unknown':
-        'لم يتم التحقق من الإمكانات — افحص خدمات GATT',
-    'health_ble_inspect': 'فحص الإمكانات',
-    'health_ble_inspecting': 'جارٍ فحص خدمات GATT…',
-    'health_ble_inspection_failed': 'فشل فحص الإمكانات — اضغط لإعادة المحاولة',
+        'لم يتم التحقق من الميزات المتاحة على هذه الساعة',
+    'health_ble_inspect': 'التحقق من الميزات المتاحة',
+    'health_ble_inspecting': 'جارٍ التحقق من ميزات الساعة…',
+    'health_ble_inspection_failed':
+        'تعذر التحقق من ميزات الساعة — حاول مرة أخرى',
     'health_ble_bonded': 'مقترن',
     'health_ble_capability_live_heart_rate': 'معدل نبض القلب المباشر',
     'health_ble_capability_battery': 'مستوى البطارية',
@@ -4394,6 +4488,7 @@ class AppLocalizations {
     'add': 'Hinzufügen',
     'close': 'Schließen',
     'open': 'Öffnen',
+    'more': 'Mehr',
     'retry': 'Erneut versuchen',
     'done': 'Fertig',
     'loading': 'Wird geladen…',
@@ -4527,6 +4622,8 @@ class AppLocalizations {
     'coaching_adaptive_paused_title': 'Mach den Wiedereinstieg leicht',
     'coaching_adaptive_paused_body':
         '{count} Aufgaben sind pausiert. Wähle die mit der klarsten nächsten Aktion—oder verkleinere diese Aktion—und setze sie fort.',
+    'coaching_adaptive_paused_task_body':
+        '„{task}“ ist pausiert. Öffne die Aufgabe, prüfe den nächsten unerledigten Schritt und setze sie fort, sobald dieser Schritt klar ist. Insgesamt sind {count} Aufgaben pausiert.',
     'coaching_adaptive_roadmap_title':
         'Ein klarer Schritt bringt den Plan voran',
     'coaching_adaptive_roadmap_body':
@@ -4534,6 +4631,8 @@ class AppLocalizations {
     'coaching_adaptive_focus_title': 'Dieses Fokusmuster funktioniert',
     'coaching_adaptive_focus_body':
         'Du hast diese Woche {count} Fokuszyklen abgeschlossen. Wiederhole eine Dauer, die sich gut tragen ließ, und baue auf dem Erfolg auf.',
+    'coaching_adaptive_session_body':
+        'Du hast diese Woche {count} Arbeitssitzungen abgeschlossen. Wiederhole die Vorbereitung, die dir beim Abschluss geholfen hat, ohne jede Sitzung automatisch als Pomodoro zu behandeln.',
     'coaching_adaptive_rest_title':
         'Lass den heutigen Plan mit deiner Energie mitgehen',
     'coaching_adaptive_rest_body':
@@ -4553,6 +4652,8 @@ class AppLocalizations {
     'coaching_evidence_active_task': 'Aufgabe ist derzeit aktiv',
     'coaching_evidence_paused': '{count} pausierte Aufgaben',
     'coaching_evidence_focus_cycles': '{count} aktuelle Fokuszyklen',
+    'coaching_evidence_completed_sessions':
+        '{count} kürzlich abgeschlossene Arbeitssitzungen',
     'coaching_evidence_ready_tasks': '{count} geplante Aufgaben bereit',
     'coaching_feedback': 'Coaching-Rückmeldung',
     'coaching_feedback_saved':
@@ -4735,6 +4836,12 @@ class AppLocalizations {
     'retention_until_deleted': 'Bis zum manuellen Löschen behalten',
     'hide_confirmed_system_activity': 'Bestätigte Systemaktivität ausblenden',
     'show_possible_system_activity': 'Mögliche Systemaktivität anzeigen',
+    'community_system_learning': 'System-Apps gemeinsam erkennen',
+    'community_system_learning_description':
+        'Optional. Teile nach der Einordnung einer App eine anonyme Ja-oder-Nein-Stimme, damit TaskMaster Pro anderen wahrscheinliche System-Apps vorschlagen kann. Konto, Aufgaben, Titel, Websites, Pfade und Aktivitätsverlauf werden nie geteilt.',
+    'community_system_learning_consent':
+        'Nur eine geschützte App-Kennung und deine anonyme Ja-oder-Nein-Auswahl werden geteilt. Daraus lassen sich weder dein Konto noch deine Stimmen für andere Apps ableiten. Vorschläge überschreiben nie deine eigene Entscheidung.',
+    'share_anonymous_votes': 'Anonyme Stimmen erlauben',
     'review_hidden_system_activity': 'Ausgeblendete Systemaktivität prüfen',
     'clear_local_unclassified_activity':
         'Lokale nicht klassifizierte Aktivität löschen',
@@ -4854,7 +4961,7 @@ class AppLocalizations {
         'Entfernt den gespeicherten Geräteschlüssel, ohne Konten zu löschen',
     'vault_recovery_options': 'Wiederherstellungsoptionen',
     'vault_recovery_body':
-        'Dein Datenschutzpasswort ist die Wiederherstellungsmethode. Fingerabdruck-Entsperrung funktioniert nur auf diesem Gerät. TaskMaster Pro kann den geschützten Tresorinhalt weder lesen noch zurücksetzen.',
+        'Dein Tresor-Passwort ist die Wiederherstellungsmethode. Die Geräteentsperrung funktioniert nur auf diesem Gerät. TaskMaster Pro kann deine geschützten gespeicherten Konten weder lesen noch zurücksetzen.',
     'vault_learn_title': 'So funktioniert der Passwort-Tresor',
     'vault_learn_body':
         'Dein Tresor-Passwort entsperrt gespeicherte Konten auf deinem Gerät. Geschützte Tresordaten können synchronisiert werden, lesbare Benutzernamen und Passwörter werden jedoch nie hochgeladen.',
@@ -4872,9 +4979,9 @@ class AppLocalizations {
     'vault_create_body':
         'Wähle ein Tresor-Passwort, das du dir merken kannst. Du benötigst es, um geschützte Konten auf einem neuen Gerät zu entsperren.',
     'confirm_vault_password': 'Tresor-Passwort bestätigen',
-    'vault_allow_device_auth': 'Entsperrung per Fingerabdruck aktivieren',
+    'vault_allow_device_auth': 'Mit diesem Gerät entsperren',
     'vault_device_key_detail':
-        'Nutze deinen Fingerabdruck auf diesem Android-Gerät. Der verschlüsselte Geräteschlüssel verlässt dieses Gerät nie.',
+        'Nutze die Gerätesicherheit, etwa Biometrie oder Windows Hello, sofern verfügbar. Der geschützte Geräteschlüssel verlässt dieses Gerät nie.',
     'vault_create_action': 'Tresor erstellen',
     'vault_password_length': 'Verwende mindestens 10 Zeichen.',
     'vault_password_mismatch': 'Die Passwörter stimmen nicht überein.',
@@ -4884,6 +4991,8 @@ class AppLocalizations {
     'website': 'Website',
     'private_notes': 'Private Notizen',
     'vault_save_account': 'Konto speichern',
+    'vault_review_captured_sign_in':
+        'Prüfe diese Anmeldung vor dem Speichern. Es wird nichts gespeichert, bis du Konto speichern wählst.',
     'synchronization': 'Synchronisierung',
     'sync_close_panel': 'Synchronisierungsfenster schließen',
     'sync_connection': 'Verbindung',
@@ -5708,6 +5817,8 @@ class AppLocalizations {
         'Anmeldefelder ausgefüllt. Prüfe sie und sende das Formular selbst ab.',
     'browser_vault_fields_not_found':
         'Auf dieser Seite wurden keine kompatiblen sichtbaren Anmeldefelder gefunden.',
+    'browser_vault_capture_fields_not_found':
+        'Gib deine Anmeldung zuerst auf dieser sicheren Seite ein und wähle dann erneut Anmeldung speichern.',
     'browser_open_external': 'Extern öffnen',
     'browser_full_screen': 'Vollbild öffnen',
     'browser_exit_full_screen': 'Vollbild verlassen',
@@ -5984,6 +6095,7 @@ class AppLocalizations {
     'report_generated': 'Erstellt am {date}',
     'report_page_number': 'Seite {page} von {pages}',
     'report_summary': 'Zusammenfassung',
+    'report_sections': 'Berichtsabschnitte',
     'report_planned_effort': 'Geplanter Aufwand',
     'report_active_work': 'Aktive Arbeit',
     'report_productive_work': 'Produktive Arbeit',
@@ -6164,16 +6276,45 @@ class AppLocalizations {
     'height_invalid': 'Gib eine Körpergröße zwischen 50 und 250 cm ein.',
     'profile_height_value': '{height} cm',
     'profile_height_missing': 'Körpergröße für Entfernungsschätzungen ergänzen',
-    'settings_sections': 'Einstellungsbereiche',
-    'settings_sections_description':
-        'Wähle einen Bereich. Auf Smartphone und Desktop gilt dieselbe übersichtliche Reihenfolge.',
+    'settings_sections': 'Einstellungen',
+    'settings_sections_description': 'Wähle aus, was du anpassen möchtest.',
+    'routine_and_vacations': 'Routine und Urlaub',
+    'settings_routine_vacations_description':
+        'Ausgewählte wiederkehrende Aufgaben während einer Auszeit überspringen oder verschieben, ohne vergangene Arbeit zu ändern.',
+    'vacations_title': 'Urlaub',
+    'vacations_description':
+        'Füge beliebig viele Abwesenheiten hinzu. Nur zukünftige wiederkehrende Aufgaben werden angepasst.',
+    'vacation_add': 'Urlaub hinzufügen',
+    'vacation_edit': 'Urlaub bearbeiten',
+    'vacation_empty': 'Noch kein Urlaub hinzugefügt.',
+    'vacation_name': 'Name des Urlaubs',
+    'vacation_starts': 'Beginn',
+    'vacation_ends': 'Ende',
+    'vacation_repeats': 'Wiederholung',
+    'vacation_repeat_none': 'Keine Wiederholung',
+    'vacation_repeat_yearly': 'Jedes Jahr',
+    'vacation_handling': 'Wiederkehrende Aufgaben in diesem Urlaub',
+    'vacation_handling_postpone': 'Auf die Zeit nach dem Urlaub verschieben',
+    'vacation_handling_skip': 'Diese Vorkommen überspringen',
+    'vacation_scope': 'Anzupassende Aufgaben',
+    'vacation_scope_all': 'Alle wiederkehrenden Aufgaben',
+    'vacation_scope_selected': 'Nur ausgewählte wiederkehrende Aufgaben',
+    'vacation_choose_tasks': 'Wiederkehrende Aufgaben auswählen',
+    'vacation_selected_count': '{count} ausgewählt',
+    'vacation_select_one_task': 'Wähle mindestens eine wiederkehrende Aufgabe.',
+    'vacation_invalid_range':
+        'Das Enddatum muss am oder nach dem Startdatum liegen.',
+    'vacation_delete_question': 'Diesen Urlaub löschen?',
+    'vacation_delete_explanation':
+        'Von ihm verwaltete zukünftige Aufgaben kehren zu ihrem ursprünglichen Zeitplan zurück.',
+    'vacation_saved': 'Urlaub gespeichert.',
     'show_all_settings': 'Alle Einstellungen auf einer Seite anzeigen',
     'hide_all_settings': 'Erweiterte Einstellungen ausblenden',
     'settings_tasks_execution_description':
-        'Lege fest, wie jede Aufgabe geplant und ausgeführt wird. Ausführungsart und geplanter Aufwand gehören zur jeweiligen Aufgabe.',
+        'Lege fest, wann eine Aufgabe stattfindet, wie ihr Timer läuft und wie sie abgeschlossen wird.',
     'manage_task_settings': 'Aufgabeneinstellungen verwalten',
     'task_settings_per_task_description':
-        'Öffne eine Aufgabe, um Ausführungsart, Zeitplan, Erinnerungen und geplanten Aufwand festzulegen.',
+        'Öffne eine Aufgabe, um Zeitplan, Timer, Erinnerungen und erwartete Dauer festzulegen.',
     'settings_pomodoro_description':
         'Fokus- und Pausenzeiten werden mit jeder Pomodoro-Aufgabe gespeichert, damit sie auf allen Geräten gleich funktioniert.',
     'manage_pomodoro_settings': 'Pomodoro-Einstellungen verwalten',
@@ -6209,18 +6350,18 @@ class AppLocalizations {
     'standalone_pomodoro_skip_focus': 'Fokus beenden und Pause starten',
     'stop_and_reset': 'Stoppen und zurücksetzen',
     'settings_activity_privacy_description':
-        'Lege fest, was dieses Gerät erfasst, was privat bleibt und welche bestätigten Beiträge synchronisiert werden.',
+        'Lege fest, was dieses Gerät erfasst und was mit deinen anderen Geräten geteilt werden darf.',
     'settings_reports_description':
         'Lege den Datenschutz für Berichte fest und öffne deine Leistungsberichte.',
     'settings_appearance_description':
         'Wähle Design, Sprache und Zeitzone für dieses Konto.',
     'settings_sync_description':
-        'Prüfe den Synchronisierungsstatus und behebe Übertragungsprobleme zwischen Geräten.',
+        'Prüfe, ob deine Änderungen auf den anderen Geräten angekommen sind, und behebe offene Probleme.',
     'settings_connected_devices_description':
         'Prüfe angemeldete Telefone und Computer und entziehe bei Bedarf den Kontozugriff.',
     'review_connected_devices': 'Verbundene Geräte prüfen',
     'settings_help_diagnostics_description':
-        'Prüfe die Synchronisierung und öffne die Installationshilfe, ohne technische Protokolle in normalen Einstellungen anzuzeigen.',
+        'Prüfe Verbindungsprobleme oder erhalte Hilfe bei der Installation.',
     'review_sync_status': 'Synchronisierungsstatus prüfen',
     'installation_help': 'Installationshilfe',
     'settings_about_legal_description':
@@ -6230,7 +6371,7 @@ class AppLocalizations {
     'health': 'Gesundheit',
     'coaching': 'Coaching',
     'reports': 'Berichte',
-    'help_and_diagnostics': 'Hilfe und Diagnose',
+    'help_and_diagnostics': 'Hilfe und Problemlösung',
     'about_and_legal': 'Über die App und Rechtliches',
     'update_windows_installer': 'Windows-Installationsdatei',
     'update_android_installer': 'Android-Installationsdatei',
@@ -6269,7 +6410,7 @@ class AppLocalizations {
     'health_wearables_none':
         'Keine gekoppelte Gesundheitsuhr oder kein Band gefunden.',
     'health_wearables_history_notice':
-        'Direkte Funktionen werden erst angezeigt, wenn ein gekoppeltes Gerät die benötigte Standard-Charakteristik bereitstellt. Historische Daten bleiben bei der Begleit-App und Health Connect.',
+        'Live-Funktionen erscheinen erst, wenn die Uhr bestätigt, dass sie diese unterstützt. Frühere Daten bleiben in der Begleit-App und Health Connect.',
     'health_wearables_unnamed': 'Unbenanntes Gesundheitsgerät',
     'health_wearables_not_checked':
         'Direkte Gesundheitsfunktionen wurden noch nicht geprüft',
@@ -6279,7 +6420,7 @@ class AppLocalizations {
     'health_wearables_inspection_failed':
         'Prüfung direkter Funktionen fehlgeschlagen — erneut versuchen',
     'health_wearables_no_direct_service':
-        'Keine unterstützte direkte Gesundheitsfunktion. Historische Daten können über die Begleit-App und Health Connect verfügbar sein.',
+        'Diese Uhr bietet keine unterstützte Live-Gesundheitsfunktion. Frühere Daten können weiterhin in der Begleit-App und Health Connect verfügbar sein.',
     'health_wearables_direct_available':
         'Direkte Uhrenverbindung · {capabilities}',
     'health_wearables_connected': 'Jetzt verbunden',
@@ -6292,9 +6433,9 @@ class AppLocalizations {
         'Radgeschwindigkeit und Trittfrequenz',
     'health_wearables_capability_pulse_oximetry': 'Pulsoximetrie',
     'health_wearables_capability_available': '{capability}: Verfügbar',
-    'health_ble_discovery': 'Bluetooth-Uhrensuche',
+    'health_ble_discovery': 'Gesundheitsuhr finden',
     'health_ble_discovery_detail':
-        'Suche nach Bluetooth-LE-Uhren in der Nähe oder nach gekoppelten Uhren. Angekündigte UUIDs sind nur Hinweise; Funktionen erscheinen erst nach einer GATT-Prüfung.',
+        'Finde Uhren in der Nähe oder bereits gekoppelte Uhren. TaskMaster Pro zeigt nur Gesundheitsfunktionen, die von der Uhr bestätigt werden.',
     'health_ble_scan': 'Uhren suchen',
     'health_ble_settings': 'Bluetooth-Einstellungen',
     'health_ble_disabled':
@@ -6306,16 +6447,16 @@ class AppLocalizations {
     'health_ble_scan_failed':
         'Die Uhrensuche konnte nicht abgeschlossen werden.',
     'health_ble_history_notice':
-        'Die GATT-Suche bestätigt nur unterstützte Live-Funktionen. TaskMaster Pro behauptet keinen Zugriff auf historische Uhrendaten.',
+        'Diese Prüfung umfasst nur jetzt verfügbare Funktionen. Frühere Uhrendaten bleiben in der Begleit-App oder Health Connect.',
     'health_ble_unnamed_device': 'Unbenanntes Bluetooth-Gerät',
     'health_ble_no_supported_capabilities':
-        'Kein unterstützter Standarddienst für Live-Gesundheitsdaten gefunden. Die Uhr kann weiterhin Daten über ihre Begleit-App bereitstellen.',
+        'Keine unterstützte Live-Gesundheitsfunktion gefunden. Die Uhr kann weiterhin Daten über ihre Begleit-App bereitstellen.',
     'health_ble_capabilities_unknown':
-        'Funktionen nicht geprüft — GATT-Dienste untersuchen',
-    'health_ble_inspect': 'Funktionen prüfen',
-    'health_ble_inspecting': 'GATT-Dienste werden geprüft…',
+        'Verfügbare Funktionen dieser Uhr wurden noch nicht geprüft',
+    'health_ble_inspect': 'Verfügbare Funktionen prüfen',
+    'health_ble_inspecting': 'Uhrenfunktionen werden geprüft…',
     'health_ble_inspection_failed':
-        'Funktionsprüfung fehlgeschlagen — zum Wiederholen tippen',
+        'Uhrenfunktionen konnten nicht geprüft werden — erneut versuchen',
     'health_ble_bonded': 'Gekoppelt',
     'health_ble_capability_live_heart_rate': 'Live-Herzfrequenz',
     'health_ble_capability_battery': 'Akkustand',

@@ -6,6 +6,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../../core/database/app_database.dart';
 import '../../../core/data/entity_record_repository.dart';
+import '../../../core/learning/application_system_learning.dart';
 import '../../../core/platform/device_identity.dart';
 import '../../tasks/data/installed_application_service.dart';
 import '../../tasks/data/website_rule_service.dart';
@@ -246,11 +247,18 @@ class _AtomicActivityRule {
 }
 
 class ActivityRepository {
-  ActivityRepository(this.database, this.client)
-    : _userId = client.auth.currentUser?.id ?? 'local';
+  ActivityRepository(
+    this.database,
+    this.client, {
+    Future<ApplicationSystemLearningService?>? communityLearning,
+  }) : _communityLearning =
+           communityLearning ??
+           Future<ApplicationSystemLearningService?>.value(),
+       _userId = client.auth.currentUser?.id ?? 'local';
 
   final AppDatabase database;
   final SupabaseClient client;
+  final Future<ApplicationSystemLearningService?> _communityLearning;
   final String _userId;
   Future<void> _captureTail = Future<void>.value();
   static const _uuid = Uuid();
@@ -2282,16 +2290,44 @@ class ActivityRepository {
       );
       return true;
     }
-    if (_isPossibleSystemActivity(segment)) {
+    final localSuggestion = _isPossibleSystemActivity(segment);
+    final communitySuggestion = localSuggestion
+        ? null
+        : await _communitySystemSuggestion(segment);
+    if (localSuggestion || communitySuggestion != null) {
       await _insertLocalAttribution(
         segment: segment,
         classification: 'possible_system_activity',
         status: 'proposed',
         confirmedByUser: false,
-        confidence: 0.95,
+        confidence: communitySuggestion?.confidenceLowerBound ?? 0.95,
       );
     }
     return false;
+  }
+
+  Future<ApplicationSystemConsensus?> _communitySystemSuggestion(
+    LocalActivitySegment segment,
+  ) async {
+    final source = applicationLearningSourceForCapture(
+      sourceType: segment.sourceType,
+      processName: segment.processName,
+      rawMetadataJson: segment.rawMetadataJson,
+    );
+    if (source == null) return null;
+    try {
+      final service = await _communityLearning;
+      if (service == null) return null;
+      return service.possibleSystemSuggestion(
+        platform: source.platform,
+        applicationIdentifier: source.applicationIdentifier,
+        // This method is reached only after canonical local-rule lookup found
+        // no remembered decision, so community evidence cannot override one.
+        hasLocalRememberedRule: false,
+      );
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<void> _insertLocalAttribution({

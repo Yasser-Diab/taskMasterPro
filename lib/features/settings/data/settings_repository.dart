@@ -621,9 +621,18 @@ class SettingsRepository {
           );
     });
 
-    await client?.auth.updateUser(
-      UserAttributes(data: {'display_name': displayName.trim()}),
-    );
+    // `profiles` plus its durable outbox command is the cross-device
+    // authority. Auth metadata is only a signed-out/bootstrap fallback. A
+    // temporary Auth request failure must not make the already-saved profile
+    // look rejected or tempt the user to create a duplicate edit.
+    try {
+      await client?.auth.updateUser(
+        UserAttributes(data: {'display_name': displayName.trim()}),
+      );
+    } catch (_) {
+      // The outbox watcher delivers the authoritative profile command as soon
+      // as connectivity is available; metadata can be refreshed later.
+    }
   }
 
   /// Detailed Activity history is a privacy consent, not an ordinary display

@@ -832,19 +832,117 @@ class _ExecutionLiveHero extends ConsumerWidget {
         : pomodoro.isBreak
         ? context.l10n.text('pomodoro_break_session')
         : context.l10n.text('pomodoro_focus_session');
-    final palette = _timerPalette(
-      context,
+    return ExecutionTimerSurface(
+      surfaceKey: ValueKey('execution-hero-${task.executionMode}'),
+      mode: task.executionMode,
+      title: semanticLabel,
+      stateLabel: stateLabel,
+      icon: _executionModeIcon(task.executionMode),
       isBreak: isBreak,
       active: running || breakActive,
+      paused: paused,
+      waiting: waiting,
+      remainingFraction: remainingFraction,
+      contentBuilder: (context, palette) => LayoutBuilder(
+        builder: (context, constraints) {
+          final horizontal = constraints.maxWidth >= 760;
+          final timer = ExecutionTimerDial(
+            displayTime: displayTime,
+            progress: ringProgress,
+            remainingFraction: remainingFraction,
+            isBreak: isBreak,
+            active: running || breakActive,
+            waiting: waiting,
+            paused: paused,
+            semanticLabel: semanticLabel,
+            stateLabel: stateLabel,
+            modeIcon: _executionModeIcon(task.executionMode),
+          );
+          final details = _ExecutionDetails(
+            task: task,
+            pomodoro: pomodoro,
+            activeMs: activeMs,
+            recordedMs: recordedMs,
+            remainingMs: rawRemainingMs,
+            rawTaskProgress: rawTaskProgress,
+            stateLabel: stateLabel,
+            controls: controls,
+            busy: busy,
+            palette: palette,
+            onPrimary: onPrimary,
+            onStartBreakEarly: onStartBreakEarly,
+            onSkipBreak: onSkipBreak,
+            onExtendBreak: onExtendBreak,
+            onFinishTask: onFinishTask,
+          );
+          if (!horizontal) {
+            return Column(
+              children: [
+                Center(child: timer),
+                const SizedBox(height: 22),
+                details,
+              ],
+            );
+          }
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Expanded(flex: 11, child: Center(child: timer)),
+              const SizedBox(width: 34),
+              Expanded(flex: 10, child: details),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+/// Shared presentation shell for both task-bound and standalone Pomodoro
+/// timers. It owns the visual language (palette, field, header and responsive
+/// padding), while each timer supplies only its canonical state and actions.
+class ExecutionTimerSurface extends StatelessWidget {
+  const ExecutionTimerSurface({
+    required this.surfaceKey,
+    required this.mode,
+    required this.title,
+    required this.stateLabel,
+    required this.icon,
+    required this.isBreak,
+    required this.active,
+    required this.paused,
+    required this.waiting,
+    required this.remainingFraction,
+    required this.contentBuilder,
+    super.key,
+  });
+
+  final String mode;
+  final Key surfaceKey;
+  final String title;
+  final String stateLabel;
+  final IconData icon;
+  final bool isBreak;
+  final bool active;
+  final bool paused;
+  final bool waiting;
+  final double remainingFraction;
+  final Widget Function(BuildContext, ExecutionTimerPalette) contentBuilder;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = executionTimerPalette(
+      context,
+      isBreak: isBreak,
+      active: active,
       paused: paused,
       waiting: waiting,
       remainingFraction: remainingFraction,
     );
     final reducedMotion = MediaQuery.of(context).disableAnimations;
     final colorScheme = Theme.of(context).colorScheme;
-
     return AnimatedContainer(
-      key: ValueKey('execution-hero-${task.executionMode}'),
+      key: surfaceKey,
       duration: reducedMotion
           ? Duration.zero
           : const Duration(milliseconds: 520),
@@ -902,64 +1000,14 @@ class _ExecutionLiveHero extends ConsumerWidget {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 _ExecutionHeroHeader(
-                  mode: task.executionMode,
-                  title: semanticLabel,
+                  mode: mode,
+                  title: title,
                   stateLabel: stateLabel,
-                  icon: _executionModeIcon(task.executionMode),
+                  icon: icon,
                   palette: palette,
                 ),
                 const SizedBox(height: 22),
-                LayoutBuilder(
-                  builder: (context, constraints) {
-                    final horizontal = constraints.maxWidth >= 760;
-                    final timer = _HolographicExecutionTimer(
-                      displayTime: displayTime,
-                      progress: ringProgress,
-                      remainingFraction: remainingFraction,
-                      isBreak: isBreak,
-                      active: running || breakActive,
-                      waiting: waiting,
-                      paused: paused,
-                      semanticLabel: semanticLabel,
-                      stateLabel: stateLabel,
-                      modeIcon: _executionModeIcon(task.executionMode),
-                    );
-                    final details = _ExecutionDetails(
-                      task: task,
-                      pomodoro: pomodoro,
-                      activeMs: activeMs,
-                      recordedMs: recordedMs,
-                      remainingMs: rawRemainingMs,
-                      rawTaskProgress: rawTaskProgress,
-                      stateLabel: stateLabel,
-                      controls: controls,
-                      busy: busy,
-                      palette: palette,
-                      onPrimary: onPrimary,
-                      onStartBreakEarly: onStartBreakEarly,
-                      onSkipBreak: onSkipBreak,
-                      onExtendBreak: onExtendBreak,
-                      onFinishTask: onFinishTask,
-                    );
-                    if (!horizontal) {
-                      return Column(
-                        children: [
-                          Center(child: timer),
-                          const SizedBox(height: 22),
-                          details,
-                        ],
-                      );
-                    }
-                    return Row(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        Expanded(flex: 11, child: Center(child: timer)),
-                        const SizedBox(width: 34),
-                        Expanded(flex: 10, child: details),
-                      ],
-                    );
-                  },
-                ),
+                contentBuilder(context, palette),
               ],
             ),
           ),
@@ -982,7 +1030,7 @@ class _ExecutionHeroHeader extends StatelessWidget {
   final String title;
   final String stateLabel;
   final IconData icon;
-  final _TimerPalette palette;
+  final ExecutionTimerPalette palette;
 
   @override
   Widget build(BuildContext context) {
@@ -1092,7 +1140,7 @@ class _ExecutionDetails extends StatelessWidget {
   final String stateLabel;
   final TaskExecutionControlState controls;
   final bool busy;
-  final _TimerPalette palette;
+  final ExecutionTimerPalette palette;
   final Future<void> Function(TaskExecutionPrimaryAction action) onPrimary;
   final Future<void> Function() onStartBreakEarly;
   final Future<void> Function() onSkipBreak;
@@ -1241,7 +1289,7 @@ class _ExecutionMetricTile extends StatelessWidget {
   final IconData icon;
   final String label;
   final String value;
-  final _TimerPalette palette;
+  final ExecutionTimerPalette palette;
 
   @override
   Widget build(BuildContext context) {
@@ -1302,7 +1350,7 @@ class _ExecutionActionCluster extends StatelessWidget {
 
   final TaskExecutionControlState controls;
   final bool busy;
-  final _TimerPalette palette;
+  final ExecutionTimerPalette palette;
   final Future<void> Function(TaskExecutionPrimaryAction action) onPrimary;
   final Future<void> Function() onStartBreakEarly;
   final Future<void> Function() onSkipBreak;
@@ -1379,8 +1427,8 @@ class _ExecutionActionCluster extends StatelessWidget {
   }
 }
 
-class _HolographicExecutionTimer extends StatefulWidget {
-  const _HolographicExecutionTimer({
+class ExecutionTimerDial extends StatefulWidget {
+  const ExecutionTimerDial({
     required this.displayTime,
     required this.progress,
     required this.remainingFraction,
@@ -1391,6 +1439,7 @@ class _HolographicExecutionTimer extends StatefulWidget {
     required this.semanticLabel,
     required this.stateLabel,
     required this.modeIcon,
+    super.key,
   });
 
   final String displayTime;
@@ -1405,11 +1454,10 @@ class _HolographicExecutionTimer extends StatefulWidget {
   final IconData modeIcon;
 
   @override
-  State<_HolographicExecutionTimer> createState() =>
-      _HolographicExecutionTimerState();
+  State<ExecutionTimerDial> createState() => _ExecutionTimerDialState();
 }
 
-class _HolographicExecutionTimerState extends State<_HolographicExecutionTimer>
+class _ExecutionTimerDialState extends State<ExecutionTimerDial>
     with SingleTickerProviderStateMixin {
   late final AnimationController _orbit = AnimationController(
     vsync: this,
@@ -1446,7 +1494,7 @@ class _HolographicExecutionTimerState extends State<_HolographicExecutionTimer>
     } else if (!shouldAnimate && _orbit.isAnimating) {
       _orbit.stop(canceled: false);
     }
-    final palette = _timerPalette(
+    final palette = executionTimerPalette(
       context,
       isBreak: widget.isBreak,
       active: widget.active,
@@ -1572,8 +1620,8 @@ class _HolographicExecutionTimerState extends State<_HolographicExecutionTimer>
   }
 }
 
-class _TimerPalette {
-  const _TimerPalette({
+class ExecutionTimerPalette {
+  const ExecutionTimerPalette({
     required this.accent,
     required this.secondary,
     required this.ambient,
@@ -1588,7 +1636,7 @@ class _TimerPalette {
   final Color border;
 }
 
-_TimerPalette _timerPalette(
+ExecutionTimerPalette executionTimerPalette(
   BuildContext context, {
   required bool isBreak,
   required bool active,
@@ -1601,10 +1649,10 @@ _TimerPalette _timerPalette(
   final ambient = scheme.primary;
   Color tuneForSurface(Color color) =>
       isLight ? Color.lerp(color, Colors.black, .11)! : color;
-  _TimerPalette resolved(Color rawAccent, Color rawSecondary) {
+  ExecutionTimerPalette resolved(Color rawAccent, Color rawSecondary) {
     final accent = tuneForSurface(rawAccent);
     final secondary = tuneForSurface(Color.lerp(rawSecondary, ambient, .10)!);
-    return _TimerPalette(
+    return ExecutionTimerPalette(
       accent: accent,
       secondary: secondary,
       ambient: ambient,
@@ -2079,7 +2127,7 @@ class _PomodoroWaitingIndicator extends StatelessWidget {
   });
 
   final String message;
-  final _TimerPalette palette;
+  final ExecutionTimerPalette palette;
 
   @override
   Widget build(BuildContext context) {

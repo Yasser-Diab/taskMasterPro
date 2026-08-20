@@ -310,6 +310,23 @@ bool shouldReuseStartedSyncService({
   required String requestedUserId,
 }) => startedForUserId == requestedUserId;
 
+/// A local mutation is its own synchronization wake-up. Realtime only tells
+/// this installation about *remote* work, so waiting for a network event or a
+/// later screen action can otherwise strand a freshly queued profile or
+/// settings command indefinitely.
+///
+/// Persisted retry deadlines remain authoritative: the local watcher must not
+/// bypass backoff after a genuine transport failure.
+@visibleForTesting
+bool shouldAutoDrainPendingOutbox({
+  required String? startedForUserId,
+  required String observedUserId,
+  required Iterable<DateTime?> nextAttemptAt,
+  required DateTime now,
+}) =>
+    startedForUserId == observedUserId &&
+    nextAttemptAt.any((deadline) => deadline == null || !deadline.isAfter(now));
+
 /// Realtime reconnects continue with bounded exponential backoff. This delay
 /// schedules only another channel join; a given outage generation is allowed
 /// at most one incremental catch-up pull.
@@ -356,6 +373,7 @@ const authoritativeSnapshotEntityTypes = <String>[
   'user_settings',
   'task_domains',
   'recurrence_rules',
+  'vacation_periods',
   'task_templates',
   'task_occurrences',
   'task_resources',
@@ -396,14 +414,55 @@ const authoritativeSnapshotEntityTypes = <String>[
 /// `website_rules`, so the task's Website Connections could remain absent even
 /// when its Resources were present. v3 also omitted recurrence rules and task
 /// reminders, leaving a second device unable to generate or alert the owner's
-/// imported routine. Bumping this epoch performs one bounded, authoritative
+/// imported routine. v4 devices could also retain a cursor beyond execution
+/// history that was absent from their local cache, producing a green sync state
+/// with zero recorded focus time. v5 could still advance after deliberately
+/// skipping a canonical row that had a pending local command; once that
+/// command drained, the stale cache was never repaired. v6 predates account
+/// vacation policies. Bumping this epoch performs one bounded authoritative
 /// repair snapshot for the incomplete local cache; it does not alter server
 /// state or replay local commands.
-const _authoritativeSnapshotCursorEpoch = 4;
+const _authoritativeSnapshotCursorEpoch = 7;
 
 @visibleForTesting
 String authoritativeSnapshotStateId(String userId) =>
     'sync:v$_authoritativeSnapshotCursorEpoch:$userId';
+
+/// Returns the next bounded transport-repair version for an Activity
+/// classification rejected before the atomic classifier could run.
+///
+/// A generic permission failure gets the historical one-time privilege retry.
+/// The narrower v2 retry is reserved for the server's explicit privacy-policy
+/// rejection after a privacy-safe approved contribution was queued. This keeps
+/// revoked devices and unrelated authorization failures visible to the user.
+@visibleForTesting
+int? nextActivityClassifierTransportRepairVersion({
+  required String? reason,
+  required String? message,
+  required int currentVersion,
+}) {
+  if (reason != 'permission_denied') return null;
+  if (currentVersion < 1) return 1;
+  if (currentVersion < 2 &&
+      (message ?? '').contains('activity_privacy_local_only')) {
+    return 2;
+  }
+  return null;
+}
+
+/// A missing canonical Activity review is repairable only once, and only from
+/// a complete owner-scoped aggregate that has already been approved locally.
+/// The caller performs the typed-row proof; this guard keeps a second server
+/// rejection visible instead of turning it into an unbounded retry loop.
+@visibleForTesting
+bool shouldRetryMissingApprovedActivityClassification({
+  required String? reason,
+  required int currentVersion,
+  required bool hasCompleteApprovedLocalAggregate,
+}) =>
+    reason == 'missing_entity' &&
+    currentVersion < 1 &&
+    hasCompleteApprovedLocalAggregate;
 
 @visibleForTesting
 bool shouldMigrateLegacyActivityConflict({
@@ -869,13 +928,16 @@ bool isCanonicalActivityClassificationResponse({
 SyncHealth deriveSyncHealth({
   required bool online,
   required bool operationInFlight,
+  bool canonicalSnapshotIncomplete = false,
   required int pendingChanges,
   required int failedChanges,
   required int conflicts,
   required bool recoveryConnectionAvailable,
 }) {
   if (!online) return SyncHealth.offline;
-  if (operationInFlight) return SyncHealth.syncing;
+  if (operationInFlight || canonicalSnapshotIncomplete) {
+    return SyncHealth.syncing;
+  }
   if (failedChanges > 0 || conflicts > 0) {
     return SyncHealth.attention;
   }
@@ -885,10 +947,63 @@ SyncHealth deriveSyncHealth({
 }
 
 @visibleForTesting
+Duration canonicalSnapshotRetryDelay(int attempt) {
+  const delaysInSeconds = [20, 40, 80, 160, 320];
+  final index = attempt < 0
+      ? 0
+      : attempt >= delaysInSeconds.length
+      ? delaysInSeconds.length - 1
+      : attempt;
+  return Duration(seconds: delaysInSeconds[index]);
+}
+
+@visibleForTesting
 String remoteEntityTypeForCommand(String localEntityType) =>
     localEntityType == 'task_health_summaries'
     ? 'health_summaries'
     : localEntityType;
+
+/// Whether one pending local command owns an optimistic projection of a
+/// canonical row. Atomic runtime commands update the runtime, task, and
+/// session together even though their outbox entity type is not the table
+/// name, so an exact type/id comparison is insufficient.
+@visibleForTesting
+bool pendingCommandProjectsCanonicalRow({
+  required String canonicalEntityType,
+  required String canonicalEntityId,
+  required String commandEntityType,
+  required String commandEntityId,
+  required Map<String, dynamic> payload,
+}) {
+  if (remoteEntityTypeForCommand(commandEntityType) == canonicalEntityType &&
+      commandEntityId == canonicalEntityId) {
+    return true;
+  }
+  if (!const {
+    'execution_runtime',
+    'execution_runtime_switch',
+  }.contains(commandEntityType)) {
+    return false;
+  }
+  return switch (canonicalEntityType) {
+    'user_runtime_state' => true,
+    'execution_sessions' =>
+      commandEntityId == canonicalEntityId ||
+          payload['expected_active_session_id'] == canonicalEntityId,
+    'task_occurrences' =>
+      payload['task_occurrence_id'] == canonicalEntityId ||
+          payload['expected_active_task_id'] == canonicalEntityId,
+    _ => false,
+  };
+}
+
+@visibleForTesting
+int incrementalCursorAfterPage({
+  required int pageLastSequence,
+  int? firstDeferredSequence,
+}) => firstDeferredSequence == null
+    ? pageLastSequence
+    : firstDeferredSequence - 1;
 
 @visibleForTesting
 String localEntityTypeForRemoteRow(
@@ -1110,10 +1225,13 @@ class SyncService {
 
   final _health = StreamController<SyncHealth>.broadcast();
   StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
+  StreamSubscription<List<LocalOutboxCommand>>? _pendingOutboxSubscription;
   // One-shot timer for a durable command's persisted retry deadline. It is
   // intentionally not a periodic synchronization worker.
   Timer? _drainTimer;
+  Timer? _pendingOutboxWakeTimer;
   Timer? _realtimeRecoveryTimer;
+  Timer? _snapshotRetryTimer;
   RealtimeChannel? _channel;
   SyncHealth _currentHealth = SyncHealth.syncing;
   bool _liveConnectionAvailable = false;
@@ -1125,6 +1243,8 @@ class SyncService {
       ReplayableSyncOperation();
   int _accountGeneration = 0;
   bool _snapshotRetryRequired = false;
+  final Map<String, Set<String>> _snapshotDeferredRows = {};
+  final Map<String, Set<String>> _incrementalDeferredRows = {};
   String? _startedForUserId;
   DateTime? _lastDeviceAuthorizationCheck;
   Timer? _realtimePullTimer;
@@ -1139,6 +1259,7 @@ class SyncService {
   int _realtimeFallbackGeneration = -1;
   int _realtimeCatchUpGeneration = -1;
   int _realtimeReconnectAttempts = 0;
+  int _snapshotRetryAttempts = 0;
   bool _pendingConnectivityRecovery = false;
   bool _pendingRealtimeRecovery = false;
   bool _pendingRealtimeGapRecovery = false;
@@ -1240,12 +1361,18 @@ class SyncService {
     ];
     _drainTimer?.cancel();
     _drainTimer = null;
+    _pendingOutboxWakeTimer?.cancel();
+    _pendingOutboxWakeTimer = null;
     _realtimeRecoveryTimer?.cancel();
     _realtimeRecoveryTimer = null;
+    _snapshotRetryTimer?.cancel();
+    _snapshotRetryTimer = null;
     _realtimePullTimer?.cancel();
     _realtimePullTimer = null;
     await _connectivitySubscription?.cancel();
     _connectivitySubscription = null;
+    await _pendingOutboxSubscription?.cancel();
+    _pendingOutboxSubscription = null;
     await _channel?.unsubscribe();
     _channel = null;
     _subscribedForUserId = null;
@@ -1254,6 +1381,9 @@ class SyncService {
     await waitForInFlightSyncOperations(operations);
     _startedForUserId = null;
     _snapshotRetryRequired = false;
+    _snapshotRetryAttempts = 0;
+    _snapshotDeferredRows.clear();
+    _incrementalDeferredRows.clear();
     _liveConnectionAvailable = false;
     _fallbackCheckAvailable = false;
     _lastDeviceAuthorizationCheck = null;
@@ -1278,6 +1408,40 @@ class SyncService {
     _health.add(value);
   }
 
+  void _cancelSnapshotRetrySchedule() {
+    _snapshotRetryTimer?.cancel();
+    _snapshotRetryTimer = null;
+    _snapshotRetryAttempts = 0;
+  }
+
+  void _scheduleSnapshotRetry() {
+    if (!_snapshotRetryRequired || _snapshotRetryTimer != null) return;
+    final userId = _startedForUserId;
+    if (userId == null) return;
+    final generation = _accountGeneration;
+    final delay = canonicalSnapshotRetryDelay(_snapshotRetryAttempts);
+    _snapshotRetryAttempts += 1;
+    _setHealth(SyncHealth.syncing);
+    _snapshotRetryTimer = Timer(delay, () {
+      _snapshotRetryTimer = null;
+      if (!_snapshotRetryRequired || !_isCurrentOperation(generation, userId)) {
+        return;
+      }
+      unawaited(_retryCanonicalSnapshot(generation, userId));
+    });
+  }
+
+  Future<void> _retryCanonicalSnapshot(int generation, String userId) async {
+    await _runBestEffort(_reconcileCanonicalState);
+    if (!_isCurrentOperation(generation, userId)) return;
+    if (_snapshotRetryRequired) {
+      _scheduleSnapshotRetry();
+      return;
+    }
+    _cancelSnapshotRetrySchedule();
+    await _runBestEffort(pullChanges);
+  }
+
   Future<void> start() async {
     var user = client.auth.currentUser;
     if (user == null) return;
@@ -1299,6 +1463,9 @@ class SyncService {
     final generation = _accountGeneration;
     _startedForUserId = user.id;
     _snapshotRetryRequired = false;
+    _snapshotRetryAttempts = 0;
+    _snapshotDeferredRows.clear();
+    _incrementalDeferredRows.clear();
     _initialSyncComplete = false;
 
     // A device-registration or identifier repair failure is not allowed to
@@ -1352,6 +1519,7 @@ class SyncService {
     await drainOutbox();
     if (!_isCurrentOperation(generation, user.id)) return;
     _initialSyncComplete = true;
+    _watchPendingOutbox(generation: generation, userId: user.id);
     if (!_liveConnectionAvailable) {
       _scheduleRealtimeRecovery();
     }
@@ -1455,6 +1623,14 @@ class SyncService {
     if (user == null || user.id != userId) {
       throw const _StaleSyncOperation();
     }
+    if (_snapshotRetryRequired &&
+        await _hasPendingDeferredRows(_snapshotDeferredRows, userId: userId)) {
+      // A retry cannot become authoritative while the same optimistic command
+      // still owns one of its rows. Avoid re-downloading every account table
+      // on each Realtime message while that durable command is in backoff.
+      _scheduleSnapshotRetry();
+      return;
+    }
     final stateId = authoritativeSnapshotStateId(user.id);
     final state = await (database.select(
       database.localSyncStates,
@@ -1464,6 +1640,7 @@ class SyncService {
     _ensureCurrentOperation(generation, userId);
     if (highWater == null) {
       _snapshotRetryRequired = true;
+      _scheduleSnapshotRetry();
       throw const _IncompleteCanonicalSnapshot({'sync_change_log'});
     }
     // A durable cursor means the incremental log is authoritative regardless
@@ -1505,14 +1682,26 @@ class SyncService {
               canonicalExecutionSessionIds.add(entityId);
             }
             if (entityId == null ||
-                !await _shouldApplyRemoteEntity(entityType, userId: userId) ||
-                await _hasPendingCommand(
-                  entityType,
-                  entityId,
-                  userId: userId,
-                )) {
+                !await _shouldApplyRemoteEntity(entityType, userId: userId)) {
               continue;
             }
+            if (await _hasPendingCommand(
+              entityType,
+              entityId,
+              userId: userId,
+            )) {
+              // The optimistic row remains visible, but this snapshot is not
+              // yet authoritative. After the outbox drains, retry so a stale
+              // local session total cannot survive behind a green cursor.
+              _deferCanonicalRow(_snapshotDeferredRows, entityType, entityId);
+              failedEntities.add(entityType);
+              continue;
+            }
+            _resolveDeferredCanonicalRow(
+              _snapshotDeferredRows,
+              entityType,
+              entityId,
+            );
             _ensureCurrentOperation(generation, userId);
             await _applyEntity(entityType, row);
           }
@@ -1527,6 +1716,7 @@ class SyncService {
     }
     if (!authoritativeSnapshotCanAdvanceCursor(failedEntities)) {
       _snapshotRetryRequired = true;
+      _scheduleSnapshotRetry();
       throw _IncompleteCanonicalSnapshot(failedEntities);
     }
     _ensureCurrentOperation(generation, userId);
@@ -1551,6 +1741,12 @@ class SyncService {
         );
     _ensureCurrentOperation(generation, userId);
     _snapshotRetryRequired = false;
+    _cancelSnapshotRetrySchedule();
+    _snapshotDeferredRows.clear();
+    // This high-water cursor supersedes any incremental marker created by a
+    // Realtime pull that raced with bootstrap. Changes above the high-water
+    // are discovered by the immediately following incremental pull.
+    _incrementalDeferredRows.clear();
   }
 
   Future<int?> _latestRemoteChangeSequence() async {
@@ -2078,6 +2274,7 @@ class SyncService {
     'tags',
     'task_templates',
     'recurrence_rules',
+    'vacation_periods',
     'recurrence_exceptions',
     'task_dependencies',
     'task_reminders',
@@ -2110,6 +2307,7 @@ class SyncService {
     'roadmaps' || 'roadmap_phases' => 'Roadmap change',
     'profiles' => 'Profile change',
     'user_settings' => 'Settings change',
+    'vacation_periods' => 'Vacation change',
     'task_application_links' => 'Connected application change',
     _ => 'Unsynchronized change',
   };
@@ -2369,9 +2567,68 @@ class SyncService {
     return _drainOperation.run(() => _drainOutboxTracked(generation, userId));
   }
 
+  void _watchPendingOutbox({required int generation, required String userId}) {
+    unawaited(_pendingOutboxSubscription?.cancel());
+    _pendingOutboxSubscription =
+        (database.select(database.localOutboxCommands)..where(
+              (row) => row.userId.equals(userId) & row.status.equals('pending'),
+            ))
+            .watch()
+            .listen((commands) {
+              if (!_isCurrentOperation(generation, userId) ||
+                  !shouldAutoDrainPendingOutbox(
+                    startedForUserId: _startedForUserId,
+                    observedUserId: userId,
+                    nextAttemptAt: commands.map(
+                      (command) => command.nextAttemptAt,
+                    ),
+                    now: DateTime.now(),
+                  )) {
+                return;
+              }
+              // One repository transaction can insert several dependent
+              // commands. Let Drift deliver that burst, then drain it once.
+              // ReplayableSyncOperation preserves a wake-up that arrives
+              // after an active pass has already read its batch.
+              _pendingOutboxWakeTimer?.cancel();
+              _pendingOutboxWakeTimer = Timer(
+                const Duration(milliseconds: 120),
+                () {
+                  _pendingOutboxWakeTimer = null;
+                  if (_isCurrentOperation(generation, userId)) {
+                    unawaited(drainOutbox());
+                  }
+                },
+              );
+            });
+  }
+
   Future<void> _drainOutboxTracked(int generation, String userId) async {
     try {
       await _drainOutboxInternal(generation, userId);
+      _ensureCurrentOperation(generation, userId);
+      if (_snapshotRetryRequired &&
+          !await _hasPendingDeferredRows(
+            _snapshotDeferredRows,
+            userId: userId,
+          )) {
+        await _runBestEffort(_reconcileCanonicalState);
+        _ensureCurrentOperation(generation, userId);
+        if (!_snapshotRetryRequired) {
+          await _runBestEffort(pullChanges);
+        }
+      } else if (!_snapshotRetryRequired &&
+          _incrementalDeferredRows.isNotEmpty &&
+          await _hasReadyDeferredRows(
+            _incrementalDeferredRows,
+            userId: userId,
+          )) {
+        // The durable cursor still points immediately before the first row
+        // that collided with an optimistic command. Once that owner command
+        // settles, replay only the bounded change page instead of a full
+        // authoritative account snapshot.
+        await _runBestEffort(pullChanges);
+      }
     } on _StaleSyncOperation {
       // Account switches invalidate delivery without mutating retry state.
     } finally {
@@ -2535,6 +2792,19 @@ class SyncService {
                   'p_decision_payload': payload,
                 },
               )
+            : command.entityType == 'vacation_periods'
+            ? await client.rpc<Object?>(
+                'apply_vacation_period_command',
+                params: {
+                  'p_command_id': command.commandId,
+                  'p_device_id': command.deviceId,
+                  'p_device_sequence': command.deviceSequence,
+                  'p_entity_id': command.entityId,
+                  'p_base_revision': command.baseRevision,
+                  'p_operation': command.commandType,
+                  'p_payload': payload,
+                },
+              )
             : command.entityType == 'task_occurrences'
             ? await client.rpc<Object?>(
                 'apply_task_occurrence_v0026_command',
@@ -2549,40 +2819,85 @@ class SyncService {
                 },
               )
             : command.entityType == 'execution_runtime'
-            ? await client.rpc<Object?>(
-                'apply_execution_transition_v0028_command',
-                params: {
-                  'p_command_id': command.commandId,
-                  'p_device_id': command.deviceId,
-                  'p_device_sequence': command.deviceSequence,
-                  'p_session_id': command.entityId,
-                  'p_task_occurrence_id': payload['task_occurrence_id'],
-                  'p_action': payload['action'],
-                  'p_mode': payload['mode'],
-                  // The runtime mutation is compare-and-set, not last writer
-                  // wins.  A delayed device must receive the canonical state
-                  // rather than silently rewrite a newer focus/break interval.
-                  'p_expected_runtime_revision': command.baseRevision,
-                },
-              )
+            ? payload['projected_active_ms'] is num &&
+                      payload['projected_boundary_at'] is String
+                  ? await client.rpc<Object?>(
+                      'apply_execution_transition_v0032_command',
+                      params: {
+                        'p_command_id': command.commandId,
+                        'p_device_id': command.deviceId,
+                        'p_device_sequence': command.deviceSequence,
+                        'p_session_id': command.entityId,
+                        'p_task_occurrence_id': payload['task_occurrence_id'],
+                        'p_action': payload['action'],
+                        'p_mode': payload['mode'],
+                        // Freeze the exact local projection at the user action
+                        // so an offline command cannot turn delivery delay into
+                        // focused work.
+                        'p_projected_active_ms':
+                            (payload['projected_active_ms'] as num).toInt(),
+                        'p_boundary_at': payload['projected_boundary_at'],
+                        'p_expected_runtime_revision': command.baseRevision,
+                      },
+                    )
+                  // Durable commands created by v0.0.38 do not contain the
+                  // projection. Keep their old RPC callable during rollout;
+                  // the v0032 database trigger still caps them to one focus.
+                  : await client.rpc<Object?>(
+                      'apply_execution_transition_v0028_command',
+                      params: {
+                        'p_command_id': command.commandId,
+                        'p_device_id': command.deviceId,
+                        'p_device_sequence': command.deviceSequence,
+                        'p_session_id': command.entityId,
+                        'p_task_occurrence_id': payload['task_occurrence_id'],
+                        'p_action': payload['action'],
+                        'p_mode': payload['mode'],
+                        'p_expected_runtime_revision': command.baseRevision,
+                      },
+                    )
             : command.entityType == 'execution_runtime_switch'
-            ? await client.rpc<Object?>(
-                'apply_execution_switch_v0028_command',
-                params: {
-                  'p_command_id': command.commandId,
-                  'p_device_id': command.deviceId,
-                  'p_device_sequence': command.deviceSequence,
-                  'p_new_session_id': command.entityId,
-                  'p_new_task_occurrence_id': payload['task_occurrence_id'],
-                  'p_expected_active_session_id':
-                      payload['expected_active_session_id'],
-                  'p_expected_active_task_id':
-                      payload['expected_active_task_id'],
-                  'p_current_task_action': payload['current_task_action'],
-                  'p_mode': payload['mode'],
-                  'p_expected_runtime_revision': command.baseRevision,
-                },
-              )
+            ? payload['projected_active_ms'] is num &&
+                      payload['projected_boundary_at'] is String
+                  ? await client.rpc<Object?>(
+                      'apply_execution_switch_v0032_command',
+                      params: {
+                        'p_command_id': command.commandId,
+                        'p_device_id': command.deviceId,
+                        'p_device_sequence': command.deviceSequence,
+                        'p_new_session_id': command.entityId,
+                        'p_new_task_occurrence_id':
+                            payload['task_occurrence_id'],
+                        'p_expected_active_session_id':
+                            payload['expected_active_session_id'],
+                        'p_expected_active_task_id':
+                            payload['expected_active_task_id'],
+                        'p_current_task_action': payload['current_task_action'],
+                        'p_mode': payload['mode'],
+                        'p_projected_active_ms':
+                            (payload['projected_active_ms'] as num).toInt(),
+                        'p_boundary_at': payload['projected_boundary_at'],
+                        'p_expected_runtime_revision': command.baseRevision,
+                      },
+                    )
+                  : await client.rpc<Object?>(
+                      'apply_execution_switch_v0028_command',
+                      params: {
+                        'p_command_id': command.commandId,
+                        'p_device_id': command.deviceId,
+                        'p_device_sequence': command.deviceSequence,
+                        'p_new_session_id': command.entityId,
+                        'p_new_task_occurrence_id':
+                            payload['task_occurrence_id'],
+                        'p_expected_active_session_id':
+                            payload['expected_active_session_id'],
+                        'p_expected_active_task_id':
+                            payload['expected_active_task_id'],
+                        'p_current_task_action': payload['current_task_action'],
+                        'p_mode': payload['mode'],
+                        'p_expected_runtime_revision': command.baseRevision,
+                      },
+                    )
             : command.entityType == 'activity_review_classifications'
             ? await client.rpc<Object?>(
                 'classify_activity_review',
@@ -2932,7 +3247,10 @@ class SyncService {
       'privacy_settings' ||
       'account_devices' => 10,
       'task_domains' || 'task_categories' || 'tags' => 20,
-      'task_templates' || 'recurrence_rules' || 'recurrence_exceptions' => 30,
+      'task_templates' ||
+      'recurrence_rules' ||
+      'vacation_periods' ||
+      'recurrence_exceptions' => 30,
       'roadmaps' => 40,
       'roadmap_phases' ||
       'roadmap_milestones' ||
@@ -4303,8 +4621,249 @@ class SyncService {
     }
   }
 
-  /// Retries only classifier calls rejected before the v0.0.27 database
-  /// function received its owner-scoped execution context.
+  Future<
+    ({
+      Map<String, Object?> segmentPayload,
+      Map<String, Object?> classifierPayload,
+      bool needsSegmentCreate,
+    })?
+  >
+  _approvedMissingActivityClassificationEvidence({
+    required String userId,
+    required LocalOutboxCommand command,
+    required Map<String, Object?> originalPayload,
+    required String deviceId,
+  }) async {
+    final settings =
+        await (database.select(database.localAppSettings)
+              ..where((row) => row.id.equals(localAppSettingsId(userId))))
+            .getSingleOrNull();
+    final privacy = await ActivityPrivacyPolicy.load(database, userId);
+    if (!privacy.allowsApprovedContributionUpload(settings)) return null;
+
+    final review =
+        await (database.select(database.localActivityReviews)..where(
+              (row) =>
+                  row.userId.equals(userId) &
+                  row.id.equals(command.entityId) &
+                  row.deletedAt.isNull(),
+            ))
+            .getSingleOrNull();
+    if (review == null ||
+        review.status != 'confirmed' ||
+        review.reviewedAt == null) {
+      return null;
+    }
+    final segment =
+        await (database.select(database.localActivitySegments)..where(
+              (row) =>
+                  row.userId.equals(userId) &
+                  row.id.equals(review.activitySegmentId) &
+                  row.deletedAt.isNull(),
+            ))
+            .getSingleOrNull();
+    if (segment == null || !segment.endedAt.isAfter(segment.startedAt)) {
+      return null;
+    }
+
+    String? payloadUuid(String key) {
+      final value = originalPayload[key];
+      return value is String ? _uuidOrNull(value) : null;
+    }
+
+    final requestedAttributionId = payloadUuid('attribution_id');
+    final attributions =
+        await (database.select(database.localAttributions)..where(
+              (row) =>
+                  row.userId.equals(userId) &
+                  row.activitySegmentId.equals(segment.id) &
+                  row.deletedAt.isNull(),
+            ))
+            .get();
+    final approvedAttributions =
+        attributions.where((row) {
+          final approved =
+              row.confirmedByUser || row.attributionStatus == 'confirmed';
+          return approved &&
+              row.classification.trim().isNotEmpty &&
+              (requestedAttributionId == null ||
+                  row.id == requestedAttributionId);
+        }).toList()..sort((left, right) {
+          final updated = right.updatedAt.compareTo(left.updatedAt);
+          return updated != 0 ? updated : right.id.compareTo(left.id);
+        });
+    final attribution = approvedAttributions.firstOrNull;
+    if (attribution == null ||
+        _normalizedActivityTargetType(attribution.targetType) !=
+            'task_occurrence') {
+      return null;
+    }
+    final targetTaskId = _uuidOrNull(attribution.targetId);
+    if (targetTaskId == null) return null;
+    final targetTask =
+        await (database.select(database.localTasks)..where(
+              (row) =>
+                  row.userId.equals(userId) &
+                  row.id.equals(targetTaskId) &
+                  row.deletedAt.isNull(),
+            ))
+            .getSingleOrNull();
+    if (targetTask == null) return null;
+
+    final requestedContributionId = payloadUuid('contribution_id');
+    final contributions =
+        await (database.select(database.localContributions)..where(
+              (row) =>
+                  row.userId.equals(userId) &
+                  row.activitySegmentId.equals(segment.id) &
+                  row.attributionId.equals(attribution.id) &
+                  row.deletedAt.isNull(),
+            ))
+            .get();
+    final approvedContributions =
+        contributions.where((row) {
+          return row.targetType == attribution.targetType &&
+              row.targetId == attribution.targetId &&
+              row.contributionType.trim().isNotEmpty &&
+              row.physicalDurationMs > 0 &&
+              row.creditedDurationMs >= 0 &&
+              row.creditedDurationMs <= row.physicalDurationMs &&
+              (requestedContributionId == null ||
+                  row.id == requestedContributionId);
+        }).toList()..sort((left, right) {
+          final updated = right.updatedAt.compareTo(left.updatedAt);
+          return updated != 0 ? updated : right.id.compareTo(left.id);
+        });
+    final contribution = approvedContributions.firstOrNull;
+    if (contribution == null) return null;
+
+    final segmentCommands =
+        await (database.select(database.localOutboxCommands)..where(
+              (row) =>
+                  row.userId.equals(userId) &
+                  row.entityType.equals('activity_segments') &
+                  row.entityId.equals(segment.id) &
+                  row.commandType.equals('create') &
+                  row.status.isIn(const ['pending', 'accepted', 'conflict']),
+            ))
+            .get();
+    if (segmentCommands.any((row) => row.status == 'conflict')) return null;
+    final needsSegmentCreate = !segmentCommands.any(
+      (row) => row.status == 'pending' || row.status == 'accepted',
+    );
+
+    final originalRuleScope = originalPayload['rule_scope'] as String?;
+    final applicationIdentifier =
+        (originalPayload['application_identifier'] as String?)?.trim();
+    final applicationPlatform =
+        (originalPayload['application_platform'] as String?)?.trim();
+    final includeRememberedRule =
+        settings?.activityRuleSyncEnabled == true &&
+        const {'task', 'user'}.contains(originalRuleScope) &&
+        applicationIdentifier?.isNotEmpty == true &&
+        applicationPlatform?.isNotEmpty == true;
+    final end = segment.endedAt.isBefore(segment.startedAt)
+        ? segment.startedAt
+        : segment.endedAt;
+    final segmentPayload = <String, Object?>{
+      'device_id': _uuidOrNull(segment.deviceId) ?? deviceId,
+      'device_event_id': segment.deviceEventId.isEmpty
+          ? segment.id
+          : segment.deviceEventId,
+      'started_at': segment.startedAt.toUtc().toIso8601String(),
+      'ended_at': end.toUtc().toIso8601String(),
+      'source_type': segment.sourceType.isEmpty
+          ? 'unknown'
+          : segment.sourceType,
+      'application_id': null,
+      'website_rule_id': null,
+      'resource_id': null,
+      'process_name': null,
+      'window_title': null,
+      'domain': null,
+      'url': null,
+      'page_title': null,
+      'input_state': segment.idleState == 'technical_idle' ? 'idle' : 'active',
+      'idle_state': segment.idleState,
+      'screen_state': 'unlocked',
+      'capture_confidence': segment.captureConfidence?.clamp(0.0, 1.0),
+      'raw_metadata': const <String, Object?>{
+        'normalized': true,
+        'raw_samples_included': false,
+      },
+      'data': const <String, Object?>{
+        'approved_contribution': true,
+        'capture_state': 'finalized',
+        'detail_level': 'privacy_safe',
+        'raw_samples_included': false,
+        'missing_entity_rebuilt': true,
+      },
+    };
+    final classifierPayload = <String, Object?>{
+      'activity_segment_id': segment.id,
+      'review_reason': review.reviewReason,
+      'priority': review.priority.clamp(0, 4),
+      'status': 'confirmed',
+      'classification': attribution.classification,
+      'target_type': 'task_occurrence',
+      'target_task_id': targetTaskId,
+      'contribution_type': contribution.contributionType,
+      'physical_duration_ms': contribution.physicalDurationMs,
+      'credited_duration_ms': contribution.creditedDurationMs,
+      'source_task_id': payloadUuid('source_task_id'),
+      'source_session_id': payloadUuid('source_session_id'),
+      'is_idle_derived': contribution.isIdleDerived,
+      'is_automatic': contribution.isAutomatic,
+      'confidence': attribution.confidence.clamp(0.0, 1.0),
+      'attribution_id': attribution.id,
+      'contribution_id': contribution.id,
+      'classification_feedback_id': payloadUuid('classification_feedback_id'),
+      'suggested_classification': review.suggestedClassification,
+      'suggested_target_type': review.suggestedTargetType,
+      'suggested_target_id': _uuidOrNull(review.suggestedTargetId),
+      'feedback_type': 'confirmed',
+      'rule_scope': includeRememberedRule ? originalRuleScope : null,
+      'rule_scope_id': includeRememberedRule && originalRuleScope == 'task'
+          ? targetTaskId
+          : null,
+      'rule_id': includeRememberedRule ? payloadUuid('rule_id') : null,
+      'application_id': includeRememberedRule
+          ? payloadUuid('application_id')
+          : null,
+      'application_platform': includeRememberedRule
+          ? applicationPlatform
+          : null,
+      'application_identifier': includeRememberedRule
+          ? applicationIdentifier
+          : null,
+      'application_display_name': includeRememberedRule
+          ? (originalPayload['application_display_name'] as String?)?.trim()
+          : null,
+      'rule_priority': includeRememberedRule
+          ? ((originalPayload['rule_priority'] as num?)?.toInt() ?? 200).clamp(
+              0,
+              1000,
+            )
+          : null,
+      'contribution_data': <String, Object?>{
+        'source_device_id': segment.deviceId,
+        'utc_started_at': segment.startedAt.toUtc().toIso8601String(),
+        'utc_ended_at': end.toUtc().toIso8601String(),
+        'classification_source': 'approved_local_recovery',
+        'raw_details_included': false,
+      },
+      'transport_repair_version': 2,
+      'missing_entity_repair_version': 1,
+    };
+    return (
+      segmentPayload: segmentPayload,
+      classifierPayload: classifierPayload,
+      needsSegmentCreate: needsSegmentCreate,
+    );
+  }
+
+  /// Retries classifier calls rejected before their owner-scoped context was
+  /// available, plus one narrowly proven missing-review recovery.
   ///
   /// The marker prevents a bad deployment from becoming another infinite
   /// retry loop. A fresh command ID is used because processed command results
@@ -4335,13 +4894,38 @@ class SyncService {
       final repairVersion =
           (payload['transport_repair_version'] as num?)?.toInt() ?? 0;
       final reason = error['reason'];
+      final missingEntityRepairVersion =
+          (payload['missing_entity_repair_version'] as num?)?.toInt() ?? 0;
+      final missingEvidence =
+          reason == 'missing_entity' && missingEntityRepairVersion < 1
+          ? await _approvedMissingActivityClassificationEvidence(
+              userId: userId,
+              command: command,
+              originalPayload: payload,
+              deviceId: deviceId,
+            )
+          : null;
+      final permissionRepairVersion =
+          nextActivityClassifierTransportRepairVersion(
+            reason: reason as String?,
+            message: error['message'] as String?,
+            currentVersion: repairVersion,
+          );
       final nextPayload = switch (reason) {
-        'permission_denied' when repairVersion < 1 => <String, Object?>{
-          ...payload,
-          'transport_repair_version': 1,
-        },
+        'permission_denied' when permissionRepairVersion != null =>
+          <String, Object?>{
+            ...payload,
+            'transport_repair_version': permissionRepairVersion,
+          },
         'invalid_command_payload' when repairVersion < 2 =>
           _sanitizeAtomicActivityPayload(payload),
+        'missing_entity'
+            when shouldRetryMissingApprovedActivityClassification(
+              reason: reason,
+              currentVersion: missingEntityRepairVersion,
+              hasCompleteApprovedLocalAggregate: missingEvidence != null,
+            ) =>
+          missingEvidence!.classifierPayload,
         _ => null,
       };
       if (nextPayload == null) {
@@ -4353,6 +4937,27 @@ class SyncService {
       final now = DateTime.now().toUtc();
       await database.transaction(() async {
         await _supersedeCommands(group);
+        if (missingEvidence?.needsSegmentCreate == true) {
+          await database
+              .into(database.localOutboxCommands)
+              .insert(
+                LocalOutboxCommandsCompanion.insert(
+                  commandId: _uuid.v4(),
+                  userId: userId,
+                  deviceId: deviceId,
+                  deviceSequence: await DeviceIdentity.nextSequence(userId),
+                  entityType: 'activity_segments',
+                  entityId:
+                      missingEvidence!.classifierPayload['activity_segment_id']!
+                          as String,
+                  commandType: 'create',
+                  baseRevision: 0,
+                  payloadJson: jsonEncode(missingEvidence.segmentPayload),
+                  clientTimestamp: now,
+                  createdAt: now,
+                ),
+              );
+        }
         await database
             .into(database.localOutboxCommands)
             .insert(
@@ -4364,7 +4969,9 @@ class SyncService {
                 entityType: command.entityType,
                 entityId: command.entityId,
                 commandType: command.commandType,
-                baseRevision: command.baseRevision,
+                baseRevision: missingEvidence == null
+                    ? command.baseRevision
+                    : 1,
                 payloadJson: jsonEncode(nextPayload),
                 clientTimestamp: now,
                 createdAt: now,
@@ -4373,7 +4980,9 @@ class SyncService {
       });
       await _markRemoteConflictResolved(
         command,
-        strategy: 'local_command_already_superseded',
+        strategy: missingEvidence == null
+            ? 'local_command_already_superseded'
+            : 'missing_entity_rebuilt_from_approved_local_aggregate',
       );
     }
   }
@@ -5535,6 +6144,11 @@ class SyncService {
   Future<void> _pullChangesTracked(int generation, String userId) async {
     try {
       _ensureCurrentOperation(generation, userId);
+      final activeSnapshot = _snapshotFuture;
+      if (activeSnapshot != null) {
+        await activeSnapshot;
+        _ensureCurrentOperation(generation, userId);
+      }
       if (_snapshotRetryRequired) {
         await _reconcileCanonicalState();
         _ensureCurrentOperation(generation, userId);
@@ -5594,19 +6208,24 @@ class SyncService {
       // may appear many times in one change page.  Fetch its current
       // canonical row once instead of issuing one HTTP request per change.
       final latestByEntity = <String, Map<String, dynamic>>{};
+      var pageLastSequence = sequence;
       for (final raw in rows) {
         final change = Map<String, dynamic>.from(raw);
         final entityType = change['entity_type'] as String;
         final entityId = change['entity_id'] as String;
         final changeSequence = (change['change_sequence'] as num).toInt();
         latestByEntity['$entityType:$entityId'] = change;
-        sequence = changeSequence;
+        pageLastSequence = changeSequence;
       }
-      await _pullChangedEntityBatch(
+      final firstDeferredSequence = await _pullChangedEntityBatch(
         latestByEntity.values,
         affectedRoadmapIds,
         generation: generation,
         userId: userId,
+      );
+      sequence = incrementalCursorAfterPage(
+        pageLastSequence: pageLastSequence,
+        firstDeferredSequence: firstDeferredSequence,
       );
       _ensureCurrentOperation(generation, userId);
       await database
@@ -5619,7 +6238,7 @@ class SyncService {
               updatedAt: DateTime.now().toUtc(),
             ),
           );
-      if (rows.length < 250) break;
+      if (firstDeferredSequence != null || rows.length < 250) break;
     }
     _ensureCurrentOperation(generation, userId);
     await database
@@ -5645,7 +6264,7 @@ class SyncService {
   ///
   /// This is deliberately independent of Realtime: a client that was asleep
   /// or missed broadcasts can catch up through the same efficient path.
-  Future<void> _pullChangedEntityBatch(
+  Future<int?> _pullChangedEntityBatch(
     Iterable<Map<String, dynamic>> changes,
     Set<String> affectedRoadmapIds, {
     required int generation,
@@ -5653,13 +6272,31 @@ class SyncService {
   }) async {
     _ensureCurrentOperation(generation, userId);
     final grouped = <String, List<Map<String, dynamic>>>{};
+    int? firstDeferredSequence;
     for (final change in changes) {
       final entityType = change['entity_type'] as String;
       final entityId = change['entity_id'] as String;
-      if (!await _shouldApplyRemoteEntity(entityType, userId: userId)) continue;
-      if (await _hasPendingCommand(entityType, entityId, userId: userId)) {
+      if (!await _shouldApplyRemoteEntity(entityType, userId: userId)) {
+        _resolveDeferredCanonicalRow(
+          _incrementalDeferredRows,
+          entityType,
+          entityId,
+        );
         continue;
       }
+      if (await _hasPendingCommand(entityType, entityId, userId: userId)) {
+        _deferCanonicalRow(_incrementalDeferredRows, entityType, entityId);
+        final sequence = (change['change_sequence'] as num).toInt();
+        if (firstDeferredSequence == null || sequence < firstDeferredSequence) {
+          firstDeferredSequence = sequence;
+        }
+        continue;
+      }
+      _resolveDeferredCanonicalRow(
+        _incrementalDeferredRows,
+        entityType,
+        entityId,
+      );
       _ensureCurrentOperation(generation, userId);
       grouped.putIfAbsent(entityType, () => []).add(change);
     }
@@ -5701,6 +6338,7 @@ class SyncService {
         }
       }
     }
+    return firstDeferredSequence;
   }
 
   /// Detailed Activity records are intentionally device-local unless the user
@@ -6822,17 +7460,7 @@ class SyncService {
 
   Future<void> _settleHealth() async {
     final snapshot = await getSnapshot(checkRemoteDevices: false);
-    _setHealth(
-      snapshot.connectionAvailable == false
-          ? SyncHealth.offline
-          : snapshot.failedChanges > 0 || snapshot.conflicts > 0
-          ? SyncHealth.attention
-          : snapshot.pendingChanges > 0
-          ? SyncHealth.syncing
-          : !snapshot.liveConnectionAvailable
-          ? SyncHealth.syncing
-          : SyncHealth.idle,
-    );
+    _setHealth(snapshot.health);
   }
 
   Future<SyncSnapshot> getSnapshot({bool checkRemoteDevices = true}) async {
@@ -6925,6 +7553,7 @@ class SyncService {
           _pullFuture != null ||
           _drainOperation.inFlight != null ||
           _snapshotFuture != null,
+      canonicalSnapshotIncomplete: _snapshotRetryRequired,
       pendingChanges: pending,
       failedChanges: failed,
       conflicts: conflicts,
@@ -6954,6 +7583,68 @@ class SyncService {
         (raw?.trim().isNotEmpty == true ? raw!.trim() : 'waiting');
   }
 
+  void _deferCanonicalRow(
+    Map<String, Set<String>> deferredRows,
+    String entityType,
+    String entityId,
+  ) {
+    deferredRows.putIfAbsent(entityType, () => <String>{}).add(entityId);
+  }
+
+  void _resolveDeferredCanonicalRow(
+    Map<String, Set<String>> deferredRows,
+    String entityType,
+    String entityId,
+  ) {
+    final ids = deferredRows[entityType];
+    ids?.remove(entityId);
+    if (ids?.isEmpty == true) deferredRows.remove(entityType);
+  }
+
+  Iterable<({String entityType, String entityId})> _deferredCanonicalRows(
+    Map<String, Set<String>> deferredRows,
+  ) sync* {
+    for (final entry in deferredRows.entries) {
+      for (final entityId in entry.value) {
+        yield (entityType: entry.key, entityId: entityId);
+      }
+    }
+  }
+
+  Future<bool> _hasPendingDeferredRows(
+    Map<String, Set<String>> deferredRows, {
+    required String userId,
+  }) async {
+    final rows = _deferredCanonicalRows(deferredRows).toList(growable: false);
+    for (final row in rows) {
+      if (await _hasPendingCommand(
+        row.entityType,
+        row.entityId,
+        userId: userId,
+      )) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  Future<bool> _hasReadyDeferredRows(
+    Map<String, Set<String>> deferredRows, {
+    required String userId,
+  }) async {
+    final rows = _deferredCanonicalRows(deferredRows).toList(growable: false);
+    for (final row in rows) {
+      if (!await _hasPendingCommand(
+        row.entityType,
+        row.entityId,
+        userId: userId,
+      )) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   Future<bool> _hasPendingCommand(
     String entityType,
     String entityId, {
@@ -6961,24 +7652,38 @@ class SyncService {
   }) async {
     final scopedUserId = userId ?? client.auth.currentUser?.id;
     if (scopedUserId == null) return false;
-    final localTypes = entityType == 'health_summaries'
-        ? const ['health_summaries', 'task_health_summaries']
-        : <String>[entityType];
-    final count =
-        await (database.selectOnly(database.localOutboxCommands)
-              ..addColumns([database.localOutboxCommands.commandId.count()])
-              ..where(
-                database.localOutboxCommands.userId.equals(scopedUserId) &
-                    database.localOutboxCommands.entityType.isIn(localTypes) &
-                    database.localOutboxCommands.entityId.equals(entityId) &
-                    database.localOutboxCommands.status.equals('pending'),
-              ))
-            .map(
+    final canonicalEntityType = remoteEntityTypeForCommand(entityType);
+    final localTypes = <String>{entityType};
+    if (canonicalEntityType == 'health_summaries') {
+      localTypes.addAll(const ['health_summaries', 'task_health_summaries']);
+    }
+    if (const {
+      'user_runtime_state',
+      'execution_sessions',
+      'task_occurrences',
+    }.contains(canonicalEntityType)) {
+      localTypes.addAll(const [
+        'execution_runtime',
+        'execution_runtime_switch',
+      ]);
+    }
+    final commands =
+        await (database.select(database.localOutboxCommands)..where(
               (row) =>
-                  row.read(database.localOutboxCommands.commandId.count()) ?? 0,
-            )
-            .getSingle();
-    return count > 0;
+                  row.userId.equals(scopedUserId) &
+                  row.entityType.isIn(localTypes) &
+                  row.status.equals('pending'),
+            ))
+            .get();
+    return commands.any(
+      (command) => pendingCommandProjectsCanonicalRow(
+        canonicalEntityType: canonicalEntityType,
+        canonicalEntityId: entityId,
+        commandEntityType: command.entityType,
+        commandEntityId: command.entityId,
+        payload: _payloadMap(command.payloadJson),
+      ),
+    );
   }
 
   Future<void> _pullEntity(String entityType, String entityId) async {

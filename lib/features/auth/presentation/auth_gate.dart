@@ -73,9 +73,18 @@ class _AuthGateState extends ConsumerState<AuthGate>
     final sync = ref.read(syncServiceProvider);
     final activity = ref.read(activityCaptureServiceProvider);
     final database = ref.read(databaseProvider);
+    final vacationCoordinator = _accountTransition.activeAccountId == null
+        ? null
+        : ref.read(vacationScheduleCoordinatorProvider);
     return _accountTransition.select(
       userId,
-      stopSync: sync.stop,
+      stopSync: () async {
+        // The vacation stream can be reconciling task rows when an account is
+        // switched. Stop it before Sync and before closing the old account's
+        // Drift database so no queued adjustment can cross that boundary.
+        await vacationCoordinator?.dispose();
+        await sync.stop();
+      },
       stopActivity: activity.dispose,
       closeDatabase: database.close,
       activate: (selectedUserId) {
@@ -113,10 +122,15 @@ class _AuthGateState extends ConsumerState<AuthGate>
           final routineResult = await ref
               .read(ownerRoutineInstallerProvider)
               .ensureInstalled();
+          final vacationAdjustments = await ref
+              .read(vacationSchedulingServiceProvider)
+              .reconcileUpcoming();
           final generated = await ref
               .read(recurrenceServiceProvider)
               .generateUpcoming();
-          if (routineResult.changed || generated > 0) {
+          if (routineResult.changed ||
+              vacationAdjustments > 0 ||
+              generated > 0) {
             await ref.read(syncServiceProvider).drainOutbox();
           }
           await ref.read(activityCaptureServiceProvider).start();

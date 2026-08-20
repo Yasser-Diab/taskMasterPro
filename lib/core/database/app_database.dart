@@ -477,7 +477,218 @@ class AppDatabase extends _$AppDatabase {
     : super(driftDatabase(name: localDatabaseNameForAccount(userId)));
 
   @override
-  int get schemaVersion => 18;
+  int get schemaVersion => 19;
+
+  /// Repairs a narrow v0.0.28 canonical-duration corruption.
+  ///
+  /// The local completion path saved the correct capped Pomodoro duration in
+  /// its immutable completion snapshot.  The old server completion function
+  /// subsequently replaced that value with raw wall-clock time since the last
+  /// focus began.  A repair is accepted only when the task, completion command
+  /// and exact execution session all match that snapshot.  Revisions and
+  /// command identities stay unchanged because this is projection repair, not
+  /// a new user mutation.
+  Future<void> repairCorruptedPomodoroCompletionDurations() async {
+    const evidence = r'''
+      WITH completion_evidence AS (
+        SELECT
+          record.parent_id AS task_id,
+          COALESCE(
+            json_extract(
+              record.data_json,
+              '$.evidence_metadata.completed_active_duration_ms'
+            ),
+            json_extract(
+              record.data_json,
+              '$.data.completed_active_duration_ms'
+            )
+          ) AS safe_active_value,
+          COALESCE(
+            json_extract(
+              record.data_json,
+              '$.evidence_metadata.task_completion_command_id'
+            ),
+            json_extract(
+              record.data_json,
+              '$.data.task_completion_command_id'
+            )
+          ) AS completion_command_id,
+          COALESCE(
+            json_extract(
+              record.data_json,
+              '$.evidence_metadata.previous_runtime_session_id'
+            ),
+            json_extract(
+              record.data_json,
+              '$.data.previous_runtime_session_id'
+            )
+          ) AS session_id,
+          COALESCE(
+            json_extract(
+              record.data_json,
+              '$.evidence_metadata.pomodoro_boundary_command_id'
+            ),
+            json_extract(
+              record.data_json,
+              '$.data.pomodoro_boundary_command_id'
+            )
+          ) AS pomodoro_boundary_command_id
+        FROM local_entity_records AS record
+        WHERE record.entity_type = 'task_completion_evidence'
+          AND record.deleted_at IS NULL
+          AND COALESCE(
+            json_extract(record.data_json, '$.evidence_type'),
+            json_extract(record.data_json, '$.data.evidence_type')
+          ) = 'completion_snapshot'
+      ), valid_repairs AS (
+        SELECT
+          evidence.task_id,
+          evidence.session_id,
+          evidence.completion_command_id,
+          evidence.pomodoro_boundary_command_id,
+          CAST(evidence.safe_active_value AS INTEGER) AS safe_active_ms
+        FROM completion_evidence AS evidence
+        JOIN local_tasks AS task
+          ON task.id = evidence.task_id
+         AND task.execution_mode = 'pomodoro'
+         AND task.status = 'completed'
+         AND task.deleted_at IS NULL
+         AND task.last_command_id = evidence.completion_command_id
+        WHERE typeof(evidence.safe_active_value) IN ('integer', 'real')
+          AND CAST(evidence.safe_active_value AS INTEGER) >= 0
+          AND evidence.session_id IS NOT NULL
+      )
+    ''';
+
+    await transaction(() async {
+      await customStatement('''
+        $evidence
+        UPDATE local_tasks AS task
+        SET active_duration_ms = (
+          SELECT repair.safe_active_ms
+          FROM valid_repairs AS repair
+          WHERE repair.task_id = task.id
+        )
+        WHERE EXISTS (
+          SELECT 1
+          FROM valid_repairs AS repair
+          WHERE repair.task_id = task.id
+            AND task.active_duration_ms > repair.safe_active_ms
+        )
+      ''');
+      await customStatement('''
+        $evidence
+        UPDATE local_entity_records AS session
+        SET data_json = json_set(
+          CASE WHEN json_valid(session.data_json)
+            THEN session.data_json ELSE '{}' END,
+          '\$.accumulated_active_ms',
+          (
+            SELECT repair.safe_active_ms
+            FROM valid_repairs AS repair
+            WHERE repair.session_id = session.id
+          )
+        )
+        WHERE session.entity_type = 'execution_sessions'
+          AND EXISTS (
+            SELECT 1
+            FROM valid_repairs AS repair
+            WHERE repair.session_id = session.id
+              AND session.parent_id = repair.task_id
+              AND session.last_command_id = repair.completion_command_id
+              AND CAST(COALESCE(
+                json_extract(session.data_json, '\$.accumulated_active_ms'),
+                0
+              ) AS INTEGER) > repair.safe_active_ms
+          )
+      ''');
+      await customStatement('''
+        $evidence
+        UPDATE local_entity_records AS event
+        SET data_json = json_set(
+          CASE WHEN json_valid(event.data_json)
+            THEN event.data_json ELSE '{}' END,
+          '\$.duration_ms',
+          (
+            SELECT repair.safe_active_ms
+            FROM valid_repairs AS repair
+            WHERE repair.session_id = event.parent_id
+          )
+        )
+        WHERE event.entity_type = 'session_events'
+          AND COALESCE(
+            json_extract(event.data_json, '\$.event_type'),
+            ''
+          ) = 'complete'
+          AND EXISTS (
+            SELECT 1
+            FROM valid_repairs AS repair
+            WHERE repair.session_id = event.parent_id
+              AND event.last_command_id = repair.completion_command_id
+              AND CAST(COALESCE(
+                json_extract(event.data_json, '\$.duration_ms'),
+                0
+              ) AS INTEGER) > repair.safe_active_ms
+          )
+      ''');
+      await customStatement('''
+        $evidence
+        UPDATE local_runtime_states AS runtime
+        SET accumulated_active_ms = (
+          SELECT repair.safe_active_ms
+          FROM valid_repairs AS repair
+          WHERE repair.completion_command_id = runtime.last_command_id
+        )
+        WHERE runtime.state = 'idle'
+          AND EXISTS (
+            SELECT 1
+            FROM valid_repairs AS repair
+            WHERE repair.completion_command_id = runtime.last_command_id
+              AND runtime.accumulated_active_ms > repair.safe_active_ms
+          )
+      ''');
+      await customStatement('''
+        $evidence
+        UPDATE local_entity_records AS cycle
+        SET data_json = json_set(
+          CASE WHEN json_valid(cycle.data_json)
+            THEN cycle.data_json ELSE '{}' END,
+          '\$.focus_ended_at',
+          strftime(
+            '%Y-%m-%dT%H:%M:%fZ',
+            julianday(json_extract(cycle.data_json, '\$.focus_started_at')) +
+              CAST(json_extract(
+                cycle.data_json,
+                '\$.focus_duration_ms'
+              ) AS REAL) / 86400000.0
+          )
+        )
+        WHERE cycle.entity_type = 'pomodoro_cycles'
+          AND COALESCE(
+            json_extract(cycle.data_json, '\$.boundary_reason'),
+            json_extract(cycle.data_json, '\$.data.boundary_reason')
+          ) = 'task_completed'
+          AND EXISTS (
+            SELECT 1
+            FROM valid_repairs AS repair
+            WHERE repair.session_id = cycle.parent_id
+              AND repair.pomodoro_boundary_command_id IS NOT NULL
+              AND cycle.last_command_id =
+                repair.pomodoro_boundary_command_id
+              AND julianday(json_extract(
+                cycle.data_json,
+                '\$.focus_ended_at'
+              )) > julianday(json_extract(
+                cycle.data_json,
+                '\$.focus_started_at'
+              )) + CAST(json_extract(
+                cycle.data_json,
+                '\$.focus_duration_ms'
+              ) AS REAL) / 86400000.0 + 0.0000001
+          )
+      ''');
+    });
+  }
 
   /// Reconstructs the current Pomodoro interval from durable local events.
   ///
@@ -872,6 +1083,9 @@ class AppDatabase extends _$AppDatabase {
           localRuntimeStates.dataJson,
         );
         await backfillPomodoroRuntimeIntervalMetadata();
+      }
+      if (from < 19) {
+        await repairCorruptedPomodoroCompletionDurations();
       }
     },
     beforeOpen: (details) async {

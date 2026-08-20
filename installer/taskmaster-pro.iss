@@ -1,6 +1,9 @@
 #ifndef MyAppVersion
   #define MyAppVersion "0.0.28"
 #endif
+#ifndef MyAppDisplayVersion
+  #define MyAppDisplayVersion MyAppVersion
+#endif
 #ifndef SourceDir
   #error SourceDir must point to the Flutter Windows release folder
 #endif
@@ -15,8 +18,8 @@
 [Setup]
 AppId={{7A13549B-2DF3-4D0B-9C04-605F8D150025}
 AppName={#MyAppName}
-AppVersion={#MyAppVersion}
-AppVerName={#MyAppName} {#MyAppVersion}
+AppVersion={#MyAppDisplayVersion}
+AppVerName={#MyAppName} {#MyAppDisplayVersion}
 AppPublisher={#MyAppPublisher}
 AppPublisherURL=https://github.com/Yasser-Diab/taskMasterPro
 AppSupportURL=mailto:yasserdiabhassan@gmail.com

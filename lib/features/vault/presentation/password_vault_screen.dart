@@ -32,13 +32,21 @@ Future<void> copyVaultCredentialToClipboard(String value) async {
 class PasswordVaultScreen extends ConsumerStatefulWidget {
   const PasswordVaultScreen({
     this.initialWebsite,
+    this.initialAccountName,
+    this.initialUsername,
+    this.initialPassword,
     this.openAddWhenUnlocked = false,
+    this.closeAfterInitialSave = false,
     this.autofillForWebsite,
     super.key,
   });
 
   final String? initialWebsite;
+  final String? initialAccountName;
+  final String? initialUsername;
+  final String? initialPassword;
   final bool openAddWhenUnlocked;
+  final bool closeAfterInitialSave;
   final String? autofillForWebsite;
 
   @override
@@ -253,20 +261,58 @@ class _PasswordVaultScreenState extends ConsumerState<PasswordVaultScreen>
     }
     _initialDraftOpened = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) unawaited(_editItem(initialWebsite: widget.initialWebsite));
+      if (!mounted) return;
+      final matchingItem = widget.initialWebsite == null
+          ? null
+          : _items
+                .where(
+                  (item) =>
+                      websiteMatchesForCredential(
+                        savedWebsite: item.website,
+                        pageUrl: widget.initialWebsite!,
+                      ) &&
+                      item.username.trim().toLowerCase() ==
+                          (widget.initialUsername ?? '').trim().toLowerCase(),
+                )
+                .firstOrNull;
+      unawaited(
+        _editItem(
+          item: matchingItem,
+          initialWebsite: widget.initialWebsite,
+          initialAccountName: widget.initialAccountName,
+          initialUsername: widget.initialUsername,
+          initialPassword: widget.initialPassword,
+        ).then((_) {
+          if (mounted && widget.closeAfterInitialSave) {
+            Navigator.of(context).pop();
+          }
+        }),
+      );
     });
   }
 
-  Future<void> _editItem({VaultItem? item, String? initialWebsite}) async {
+  Future<bool> _editItem({
+    VaultItem? item,
+    String? initialWebsite,
+    String? initialAccountName,
+    String? initialUsername,
+    String? initialPassword,
+  }) async {
     final key = _key;
     final vault = _vault;
-    if (key == null || vault == null) return;
+    if (key == null || vault == null) return false;
     final draft = await showDialog<_VaultItemDraft>(
       context: context,
-      builder: (_) =>
-          _VaultItemDialog(item: item, initialWebsite: initialWebsite),
+      barrierDismissible: initialPassword == null,
+      builder: (_) => _VaultItemDialog(
+        item: item,
+        initialWebsite: initialWebsite,
+        initialAccountName: initialAccountName,
+        initialUsername: initialUsername,
+        initialPassword: initialPassword,
+      ),
     );
-    if (draft == null) return;
+    if (draft == null) return false;
     await _repository.saveItem(
       vaultId: vault.id,
       key: key,
@@ -279,6 +325,7 @@ class _PasswordVaultScreenState extends ConsumerState<PasswordVaultScreen>
     );
     await _refreshItems();
     unawaited(ref.read(syncServiceProvider).drainOutbox());
+    return true;
   }
 
   Future<void> _deleteItem(VaultItem item) async {
@@ -1194,10 +1241,19 @@ class _VaultItemDraft {
 }
 
 class _VaultItemDialog extends StatefulWidget {
-  const _VaultItemDialog({this.item, this.initialWebsite});
+  const _VaultItemDialog({
+    this.item,
+    this.initialWebsite,
+    this.initialAccountName,
+    this.initialUsername,
+    this.initialPassword,
+  });
 
   final VaultItem? item;
   final String? initialWebsite;
+  final String? initialAccountName;
+  final String? initialUsername;
+  final String? initialPassword;
 
   @override
   State<_VaultItemDialog> createState() => _VaultItemDialogState();
@@ -1213,17 +1269,26 @@ class _VaultItemDialogState extends State<_VaultItemDialog> {
   @override
   void initState() {
     super.initState();
-    _name = TextEditingController(text: widget.item?.name);
-    _username = TextEditingController(text: widget.item?.username);
-    _password = TextEditingController(text: widget.item?.password);
+    _name = TextEditingController(
+      text: widget.item?.name ?? widget.initialAccountName,
+    );
+    _username = TextEditingController(
+      text: widget.initialUsername ?? widget.item?.username,
+    );
+    _password = TextEditingController(
+      text: widget.initialPassword ?? widget.item?.password,
+    );
     _website = TextEditingController(
-      text: widget.item?.website ?? widget.initialWebsite,
+      text: widget.initialWebsite ?? widget.item?.website,
     );
     _notes = TextEditingController(text: widget.item?.notes);
   }
 
   @override
   void dispose() {
+    // Drop the captured cleartext as soon as the confirmation dialog closes.
+    _username.clear();
+    _password.clear();
     _name.dispose();
     _username.dispose();
     _password.dispose();
@@ -1264,6 +1329,15 @@ class _VaultItemDialogState extends State<_VaultItemDialog> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              if (widget.initialPassword != null) ...[
+                Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  child: Text(
+                    context.l10n.text('vault_review_captured_sign_in'),
+                  ),
+                ),
+                const SizedBox(height: 14),
+              ],
               TextField(
                 controller: _name,
                 autofocus: true,

@@ -7,7 +7,7 @@ String _read(String relativePath) =>
 
 void main() {
   test('release-facing version metadata is aligned to v0.0.28', () {
-    expect(_read('pubspec.yaml'), contains('version: 0.0.28+34'));
+    expect(_read('pubspec.yaml'), contains('version: 0.0.28+39'));
     expect(_read('package.json'), contains('"version": "0.0.28"'));
     expect(_read('package-lock.json'), contains('"version": "0.0.28"'));
     expect(
@@ -31,12 +31,29 @@ void main() {
   test('package script uses only the staged toolchain and fails closed', () {
     final script = _read('scripts/package-release.ps1');
     final androidGradle = _read('android/app/build.gradle.kts');
+    final installer = _read('installer/taskmaster-pro.iss');
 
     expect(script, contains("\$toolRoot = 'E:\\codingTools'"));
     expect(script, contains('Resolve-StagedTool'));
     expect(script, contains('& \$npm ci'));
     expect(script, contains('& \$flutter build windows --release'));
     expect(script, contains('& \$flutter build apk --release'));
+    expect(script, contains(r'$displayVersion = "$version+$buildNumber"'));
+    expect(script, contains(r'ProductVersion'));
+    expect(script, contains('Windows build version mismatch'));
+    expect(script, contains('Windows app snapshot'));
+    expect(script, contains('Refusing to package a stale backend'));
+    expect(
+      script,
+      contains('Anonymous application learning is not configured'),
+    );
+    expect(script, contains(r'$learningProjectRefMatch.Groups[1].Value'));
+    expect(script, contains(r'$learningKeyMatch.Groups[1].Value'));
+    expect(script, contains(r'/DMyAppDisplayVersion=$displayVersion'));
+    expect(script, contains('buildNumber = [int]\$buildNumber'));
+    expect(script, contains('displayVersion = \$displayVersion'));
+    expect(installer, contains('#define MyAppDisplayVersion MyAppVersion'));
+    expect(installer, contains('AppVersion={#MyAppDisplayVersion}'));
     expect(script, isNot(contains('& npm ci')));
     expect(script, isNot(contains('Get-Command iscc.exe')));
     expect(script, contains('Refusing to generate a replacement key'));

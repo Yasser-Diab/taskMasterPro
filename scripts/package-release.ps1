@@ -157,6 +157,8 @@ if (-not $versionMatch.Success) {
     throw 'Could not read the semantic version from pubspec.yaml'
 }
 $version = $versionMatch.Groups[1].Value
+$buildNumber = $versionMatch.Groups[2].Value
+$displayVersion = "$version+$buildNumber"
 
 if (Test-Path -LiteralPath $stagingDirectory) {
     Remove-Item -LiteralPath $stagingDirectory -Recurse -Force
@@ -217,6 +219,74 @@ try {
     & $flutter build windows --release
     if ($LASTEXITCODE -ne 0) { throw 'Windows release build failed' }
 
+    $windowsBuild = Join-Path (
+        Join-Path $projectRoot 'build\windows\x64\runner\Release'
+    ) 'taskmaster_pro.exe'
+    Assert-ReleaseArtifact -Path $windowsBuild -Label 'Windows build'
+    $builtProductVersion = (
+        Get-Item -LiteralPath $windowsBuild
+    ).VersionInfo.ProductVersion
+    if ($builtProductVersion -ne $displayVersion) {
+        throw (
+            "Windows build version mismatch. Expected $displayVersion but " +
+            "compiled $builtProductVersion. Refusing to package a stale build."
+        )
+    }
+
+    $supabaseConfig = Get-Content -Raw -LiteralPath (
+        Join-Path $projectRoot 'lib\core\config\supabase_config.dart'
+    )
+    $projectRefMatch = [regex]::Match(
+        $supabaseConfig,
+        "static const projectRef = '([^']+)'"
+    )
+    $authCallbackMatch = [regex]::Match(
+        $supabaseConfig,
+        "static const authCallback = '([^']+)'"
+    )
+    if (-not $projectRefMatch.Success -or -not $authCallbackMatch.Success) {
+        throw 'Could not read the release backend identity from SupabaseConfig'
+    }
+    $learningConfig = Get-Content -Raw -LiteralPath (
+        Join-Path $projectRoot `
+            'lib\core\learning\application_system_learning.dart'
+    )
+    $learningProjectRefMatch = [regex]::Match(
+        $learningConfig,
+        "static const projectRef = '([^']+)'"
+    )
+    $learningKeyMatch = [regex]::Match(
+        $learningConfig,
+        "defaultValue:\s*'(sb_publishable_[^']+)'"
+    )
+    if (-not $learningProjectRefMatch.Success -or
+        -not $learningKeyMatch.Success) {
+        throw (
+            'Anonymous application learning is not configured for release. ' +
+            'Refusing to package a silently disabled build.'
+        )
+    }
+    $windowsAppSnapshot = Join-Path (
+        Join-Path $projectRoot 'build\windows\x64\runner\Release\data'
+    ) 'app.so'
+    Assert-ReleaseArtifact -Path $windowsAppSnapshot -Label 'Windows app snapshot'
+    $snapshotText = [System.Text.Encoding]::ASCII.GetString(
+        [System.IO.File]::ReadAllBytes($windowsAppSnapshot)
+    )
+    foreach ($expectedIdentity in @(
+        $projectRefMatch.Groups[1].Value,
+        $authCallbackMatch.Groups[1].Value,
+        $learningProjectRefMatch.Groups[1].Value,
+        $learningKeyMatch.Groups[1].Value
+    )) {
+        if (-not $snapshotText.Contains($expectedIdentity)) {
+            throw (
+                "Windows app snapshot is missing $expectedIdentity. " +
+                'Refusing to package a stale backend or authentication build.'
+            )
+        }
+    }
+
     & $flutter build apk --release
     if ($LASTEXITCODE -ne 0) { throw 'Android release build failed' }
 }
@@ -235,6 +305,7 @@ $installerPackaged = $false
 for ($attempt = 1; $attempt -le 3; $attempt++) {
     & $innoCompiler `
         "/DMyAppVersion=$version" `
+        "/DMyAppDisplayVersion=$displayVersion" `
         "/DSourceDir=$windowsStage" `
         "/DOutputDir=$candidateReleaseDirectory" `
         $innoScript
@@ -278,6 +349,8 @@ foreach ($installer in $installers) {
 $manifest = [ordered]@{
     product = 'TaskMaster Pro'
     version = $version
+    buildNumber = [int]$buildNumber
+    displayVersion = $displayVersion
     generatedAt = [DateTime]::UtcNow.ToString('o')
     releasePage = 'https://github.com/Yasser-Diab/taskMasterPro/releases'
     files = @(

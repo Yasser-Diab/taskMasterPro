@@ -88,6 +88,7 @@ void main() {
     required String sessionId,
     required String type,
     required DateTime at,
+    int? durationMs,
   }) => LocalEntityRecord(
     id: id,
     userId: 'user-1',
@@ -100,6 +101,7 @@ void main() {
       'session_id': sessionId,
       'event_type': type,
       'occurred_at': at.toIso8601String(),
+      'duration_ms': durationMs,
     }),
     revision: 1,
     createdAt: at,
@@ -112,6 +114,7 @@ void main() {
     List<LocalEntityRecord> events = const [],
     List<LocalActivitySegment> activity = const [],
     List<LocalAttribution> attributions = const [],
+    LocalRuntime? runtime,
   }) => PerformanceReportSnapshot(
     profile: null,
     roadmap: null,
@@ -126,6 +129,7 @@ void main() {
     health: const [],
     sessions: sessions,
     sessionEvents: events,
+    runtime: runtime,
   );
 
   LocalActivitySegment activity({
@@ -250,6 +254,401 @@ void main() {
       );
     },
   );
+
+  test(
+    'ignores a stale zero-duration running session when canonical runtime is idle',
+    () {
+      final staleStart = DateTime.utc(2026, 7, 10, 8);
+      final realStart = DateTime.utc(2026, 7, 10, 8, 10);
+      final realPause = realStart.add(const Duration(minutes: 14));
+      final realFinish = realPause.add(const Duration(minutes: 3));
+      final recordedMs = realPause.difference(realStart).inMilliseconds;
+      final completedTask = task(
+        id: 'completed-task',
+        mode: 'pomodoro',
+        status: 'completed',
+        actualStart: realStart,
+        actualFinish: realFinish,
+        activeMs: recordedMs,
+      );
+      final staleSession = LocalEntityRecord(
+        id: 'stale-running-session',
+        userId: 'user-1',
+        entityType: 'execution_sessions',
+        parentId: completedTask.id,
+        title: 'Session',
+        status: 'running',
+        position: 0,
+        dataJson: jsonEncode({
+          'task_occurrence_id': completedTask.id,
+          'started_at': staleStart.toIso8601String(),
+          'finished_at': null,
+          'active_segment_started_at': staleStart.toIso8601String(),
+          'accumulated_active_ms': 0,
+          'state': 'running',
+        }),
+        revision: 1,
+        createdAt: staleStart,
+        updatedAt: staleStart,
+      );
+      final completedSession = session(
+        id: 'completed-session',
+        taskId: completedTask.id,
+        start: realStart,
+        finish: realFinish,
+        activeMs: recordedMs,
+      );
+      final data = snapshot(
+        tasks: [completedTask],
+        sessions: [staleSession, completedSession],
+        events: [
+          event(
+            id: 'real-start',
+            sessionId: completedSession.id,
+            type: 'start',
+            at: realStart,
+          ),
+          event(
+            id: 'real-pause',
+            sessionId: completedSession.id,
+            type: 'pause',
+            at: realPause,
+          ),
+          event(
+            id: 'real-complete',
+            sessionId: completedSession.id,
+            type: 'complete',
+            at: realFinish,
+          ),
+        ],
+        runtime: LocalRuntime(
+          id: 'runtime:user-1',
+          userId: 'user-1',
+          state: 'idle',
+          accumulatedActiveMs: recordedMs,
+          accumulatedPausedMs: 0,
+          dataJson: '{}',
+          revision: 1,
+          updatedAt: realFinish,
+        ),
+      );
+
+      final facts = PerformanceReportService.factsForSnapshot(
+        data,
+        options(),
+        l10n,
+        now: DateTime.utc(2026, 7, 13, 12),
+      );
+
+      expect(facts.productiveMs, recordedMs);
+      expect(facts.focusMs, recordedMs);
+      expect(
+        facts.daily
+            .singleWhere((point) => point.day == DateTime(2026, 7, 10))
+            .productiveMs,
+        recordedMs,
+      );
+      expect(
+        PerformanceReportService.taskGroupsForReport(
+          data.tasks,
+          facts,
+          now: DateTime.utc(2026, 7, 13, 12),
+        ).single.recordedMs,
+        recordedMs,
+      );
+    },
+  );
+
+  test(
+    'uses canonical session totals when a remote snapshot has no event rows',
+    () {
+      final startedAt = DateTime.utc(2026, 7, 10, 9);
+      final finishedAt = DateTime.utc(2026, 7, 10, 12);
+      final recordedMs = const Duration(hours: 1, minutes: 40).inMilliseconds;
+      final synchronizedTask = task(
+        id: 'remote-task',
+        mode: 'pomodoro',
+        status: 'completed',
+        actualStart: startedAt,
+        actualFinish: finishedAt,
+        // A fresh device must not depend on the task's denormalized cache.
+        activeMs: 0,
+      );
+      final remoteSession = session(
+        id: 'remote-session',
+        taskId: synchronizedTask.id,
+        start: startedAt,
+        finish: finishedAt,
+        activeMs: recordedMs,
+      );
+      final data = snapshot(
+        tasks: [synchronizedTask],
+        sessions: [remoteSession],
+        // This is the shape observed after an authoritative mobile snapshot:
+        // the canonical session is present while its event ledger is absent.
+        events: const [],
+      );
+
+      final facts = PerformanceReportService.factsForSnapshot(
+        data,
+        options(),
+        l10n,
+        now: DateTime.utc(2026, 7, 10, 13),
+      );
+
+      expect(facts.productiveMs, recordedMs);
+      expect(facts.focusMs, recordedMs);
+      expect(facts.continuousMs, 0);
+      expect(facts.taskWork.single.durationMs, recordedMs);
+    },
+  );
+
+  test(
+    'uses cumulative event duration while the mobile session row is stale',
+    () {
+      final startedAt = DateTime.utc(2026, 7, 11, 9);
+      final firstBoundary = startedAt.add(const Duration(minutes: 25));
+      final resumedAt = startedAt.add(const Duration(minutes: 35));
+      final finishedAt = startedAt.add(const Duration(minutes: 55));
+      final recordedMs = const Duration(minutes: 45).inMilliseconds;
+      final synchronizedTask = task(
+        id: 'stale-mobile-task',
+        mode: 'pomodoro',
+        status: 'completed',
+        actualStart: startedAt,
+        actualFinish: finishedAt,
+        activeMs: 0,
+      );
+      final staleSession = session(
+        id: 'stale-mobile-session',
+        taskId: synchronizedTask.id,
+        start: startedAt,
+        finish: finishedAt,
+        // The mutable session row arrived before its final canonical update.
+        activeMs: 0,
+      );
+      final data = snapshot(
+        tasks: [synchronizedTask],
+        sessions: [staleSession],
+        events: [
+          event(
+            id: 'mobile-start',
+            sessionId: staleSession.id,
+            type: 'start',
+            at: startedAt,
+          ),
+          event(
+            id: 'mobile-break',
+            sessionId: staleSession.id,
+            type: 'start_break',
+            at: firstBoundary,
+            durationMs: const Duration(minutes: 25).inMilliseconds,
+          ),
+          event(
+            id: 'mobile-resume',
+            sessionId: staleSession.id,
+            type: 'finish_break',
+            at: resumedAt,
+            durationMs: const Duration(minutes: 25).inMilliseconds,
+          ),
+          event(
+            id: 'mobile-complete',
+            sessionId: staleSession.id,
+            type: 'complete',
+            at: finishedAt,
+            durationMs: recordedMs,
+          ),
+        ],
+      );
+
+      final facts = PerformanceReportService.factsForSnapshot(
+        data,
+        options(),
+        l10n,
+        now: finishedAt.add(const Duration(hours: 1)),
+      );
+
+      expect(facts.productiveMs, recordedMs);
+      expect(facts.focusMs, recordedMs);
+      expect(facts.breakMs, const Duration(minutes: 10).inMilliseconds);
+    },
+  );
+
+  test('fills only uncovered work after a trailing break completion', () {
+    final startedAt = DateTime.utc(2026, 7, 12, 9);
+    final finishedAt = DateTime.utc(2026, 7, 12, 12);
+    final recordedMs = const Duration(hours: 1).inMilliseconds;
+    final synchronizedTask = task(
+      id: 'partial-ledger-task',
+      mode: 'pomodoro',
+      status: 'completed',
+      actualStart: startedAt,
+      actualFinish: finishedAt,
+      activeMs: 0,
+    );
+    final staleSession = session(
+      id: 'partial-ledger-session',
+      taskId: synchronizedTask.id,
+      start: startedAt,
+      finish: finishedAt,
+      activeMs: 0,
+    );
+    final data = snapshot(
+      tasks: [synchronizedTask],
+      sessions: [staleSession],
+      events: [
+        event(
+          id: 'partial-start',
+          sessionId: staleSession.id,
+          type: 'start',
+          at: startedAt,
+        ),
+        event(
+          id: 'partial-break-1',
+          sessionId: staleSession.id,
+          type: 'start_break',
+          at: startedAt.add(const Duration(minutes: 25)),
+          durationMs: const Duration(minutes: 25).inMilliseconds,
+        ),
+        event(
+          id: 'partial-resume',
+          sessionId: staleSession.id,
+          type: 'finish_break',
+          at: startedAt.add(const Duration(minutes: 35)),
+          durationMs: const Duration(minutes: 25).inMilliseconds,
+        ),
+        event(
+          id: 'partial-break-2',
+          sessionId: staleSession.id,
+          type: 'start_break',
+          at: startedAt.add(const Duration(minutes: 55)),
+          durationMs: const Duration(minutes: 45).inMilliseconds,
+        ),
+        event(
+          id: 'partial-complete',
+          sessionId: staleSession.id,
+          type: 'complete',
+          at: finishedAt,
+          durationMs: recordedMs,
+        ),
+      ],
+    );
+
+    final facts = PerformanceReportService.factsForSnapshot(
+      data,
+      options(),
+      l10n,
+      now: finishedAt.add(const Duration(days: 2)),
+    );
+
+    expect(facts.productiveMs, recordedMs);
+    expect(facts.focusMs, recordedMs);
+    expect(facts.breakMs, const Duration(hours: 2).inMilliseconds);
+    expect(
+      facts.productiveMs + facts.breakMs,
+      finishedAt.difference(startedAt).inMilliseconds,
+    );
+  });
+
+  test('bounds an unmatched completed break at the session finish', () {
+    final startedAt = DateTime.utc(2026, 7, 13, 9);
+    final finishedAt = DateTime.utc(2026, 7, 13, 10);
+    final synchronizedTask = task(
+      id: 'bounded-break-task',
+      mode: 'pomodoro',
+      status: 'completed',
+      actualStart: startedAt,
+      actualFinish: finishedAt,
+      activeMs: const Duration(minutes: 50).inMilliseconds,
+    );
+    final completedSession = session(
+      id: 'bounded-break-session',
+      taskId: synchronizedTask.id,
+      start: startedAt,
+      finish: finishedAt,
+      activeMs: const Duration(minutes: 50).inMilliseconds,
+    );
+    final data = snapshot(
+      tasks: [synchronizedTask],
+      sessions: [completedSession],
+      events: [
+        event(
+          id: 'bounded-break-start',
+          sessionId: completedSession.id,
+          type: 'start_break',
+          at: finishedAt.subtract(const Duration(minutes: 10)),
+          durationMs: const Duration(minutes: 50).inMilliseconds,
+        ),
+      ],
+    );
+
+    final facts = PerformanceReportService.factsForSnapshot(
+      data,
+      options(),
+      l10n,
+      now: finishedAt.add(const Duration(days: 3)),
+    );
+
+    expect(facts.breakMs, const Duration(minutes: 10).inMilliseconds);
+  });
+
+  test('keeps the canonical live running session visible', () {
+    final now = DateTime.utc(2026, 7, 10, 10, 10);
+    final start = now.subtract(const Duration(minutes: 10));
+    final runningTask = task(
+      id: 'running-task',
+      mode: 'pomodoro',
+      status: 'running',
+      actualStart: start,
+    );
+    final runningSession = LocalEntityRecord(
+      id: 'running-session',
+      userId: 'user-1',
+      entityType: 'execution_sessions',
+      parentId: runningTask.id,
+      title: 'Session',
+      status: 'running',
+      position: 0,
+      dataJson: jsonEncode({
+        'task_occurrence_id': runningTask.id,
+        'started_at': start.toIso8601String(),
+        'finished_at': null,
+        'active_segment_started_at': start.toIso8601String(),
+        'accumulated_active_ms': 0,
+        'state': 'running',
+      }),
+      revision: 1,
+      createdAt: start,
+      updatedAt: start,
+    );
+    final data = snapshot(
+      tasks: [runningTask],
+      sessions: [runningSession],
+      runtime: LocalRuntime(
+        id: 'runtime:user-1',
+        userId: 'user-1',
+        activeTaskId: runningTask.id,
+        sessionId: runningSession.id,
+        state: 'running',
+        segmentStartedAt: start,
+        accumulatedActiveMs: 0,
+        accumulatedPausedMs: 0,
+        dataJson: '{}',
+        revision: 1,
+        updatedAt: now,
+      ),
+    );
+
+    final facts = PerformanceReportService.factsForSnapshot(
+      data,
+      options(),
+      l10n,
+      now: now,
+    );
+
+    expect(facts.productiveMs, const Duration(minutes: 10).inMilliseconds);
+    expect(facts.focusMs, facts.productiveMs);
+  });
 
   test(
     'splits a recorded interval at midnight and never reports over 24 elapsed hours',

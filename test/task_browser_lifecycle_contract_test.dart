@@ -146,4 +146,19 @@ void main() {
     expect(source, isNot(contains("entityType: 'browser_history_events'")));
     expect(source, contains('onOpenNewTab: (url)'));
   });
+
+  test('browser timer pill exposes every canonical interval command', () {
+    final source = File(
+      'lib/features/tasks/presentation/task_browser_workspace.dart',
+    ).readAsStringSync();
+
+    expect(source, contains("ValueKey('browser-task-primary-control')"));
+    expect(source, contains("ValueKey('browser-task-more-controls')"));
+    expect(source, contains('_BrowserTimerAction.startBreakEarly'));
+    expect(source, contains('_BrowserTimerAction.skipOfferedBreak'));
+    expect(source, contains('_BrowserTimerAction.extendBreak'));
+    expect(source, contains('_BrowserTimerAction.finishTask'));
+    expect(source, contains('TaskExecutionCommands.skipOfferedBreak('));
+    expect(source, contains('TaskExecutionCommands.extendBreak('));
+  });
 }

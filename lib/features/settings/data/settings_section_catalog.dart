@@ -5,6 +5,7 @@
 const settingsSectionOrderKeys = <String>[
   'profile_and_account',
   'schedule_wellbeing',
+  'routine_and_vacations',
   'tasks_and_execution',
   'pomodoro',
   'activity_and_privacy',
@@ -134,6 +135,7 @@ bool hasDuplicateCanonicalSettings() {
 enum SettingsSectionDestination {
   categoryPage,
   scheduleAndWellbeing,
+  routineAndVacations,
   coachingPreferences,
   notificationsAndSounds,
   health,
@@ -144,6 +146,7 @@ enum SettingsSectionDestination {
 SettingsSectionDestination settingsSectionDestination(String key) =>
     switch (key) {
       'schedule_wellbeing' => SettingsSectionDestination.scheduleAndWellbeing,
+      'routine_and_vacations' => SettingsSectionDestination.routineAndVacations,
       'coaching' => SettingsSectionDestination.coachingPreferences,
       'notifications_and_sounds' =>
         SettingsSectionDestination.notificationsAndSounds,

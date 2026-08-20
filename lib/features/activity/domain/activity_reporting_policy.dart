@@ -15,29 +15,78 @@ bool activityClassificationAllowsCredit(String? classification) =>
 
 bool isTaskMasterActivityIdentity(String? value) {
   if (value == null) return false;
-  final normalized = value
-      .trim()
-      .toLowerCase()
-      .replaceAll('\\', '/')
-      .split('/')
-      .last
-      .replaceAll(' ', '');
-  return normalized == 'pro.taskmaster.app' ||
-      normalized == 'taskmaster_pro.exe' ||
-      normalized == 'taskmasterpro.exe';
+  final normalizedPath = value.trim().toLowerCase().replaceAll('\\', '/');
+  if (normalizedPath.isEmpty) return false;
+
+  // Old Windows captures used both the executable name and the visible
+  // product name. Android history has likewise existed with the application
+  // id and the Kotlin namespace. Compare exact normalized identity tokens so
+  // those legacy spellings are recognized without treating a window title
+  // which merely mentions TaskMaster Pro as the app itself.
+  final pathParts = normalizedPath.split('/');
+  // A process identity may be either a visible product name or a full
+  // executable path. Only compare the complete value and its basename: a
+  // different executable living inside a folder named "TaskMaster Pro" must
+  // not be mistaken for this application.
+  final candidates = <String>{normalizedPath, pathParts.last};
+  for (final candidate in candidates) {
+    final token = candidate.replaceAll(RegExp('[^a-z0-9]'), '');
+    if (const {
+      'taskmasterpro',
+      'taskmasterproexe',
+      'protaskmasterapp',
+      'protaskmastertaskmasterpro',
+    }.contains(token)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 bool isTaskMasterSelfActivity(LocalActivitySegment segment) {
   if (isTaskMasterActivityIdentity(segment.processName)) return true;
   try {
     final decoded = jsonDecode(segment.rawMetadataJson);
-    if (decoded is! Map) return false;
-    return isTaskMasterActivityIdentity(decoded['package_name']?.toString()) ||
-        isTaskMasterActivityIdentity(decoded['packageName']?.toString()) ||
-        isTaskMasterActivityIdentity(decoded['process_name']?.toString());
+    return _metadataContainsTaskMasterIdentity(decoded);
   } on FormatException {
     return false;
   }
+}
+
+const _activityIdentityMetadataKeys = <String>{
+  'application',
+  'application_name',
+  'applicationname',
+  'executable',
+  'executable_name',
+  'executablename',
+  'executable_path',
+  'package',
+  'package_name',
+  'packagename',
+  'process',
+  'process_name',
+  'processname',
+  'process_path',
+};
+
+bool _metadataContainsTaskMasterIdentity(Object? value) {
+  if (value is! Map) return false;
+  for (final entry in value.entries) {
+    final key = entry.key.toString().trim().toLowerCase().replaceAll('-', '_');
+    if (_activityIdentityMetadataKeys.contains(key) &&
+        isTaskMasterActivityIdentity(entry.value?.toString())) {
+      return true;
+    }
+    // Synchronized rows may wrap the same privacy-safe metadata in `data` or
+    // `raw_metadata`. Only inspect nested maps; arbitrary text is never used
+    // as an application identity.
+    if (entry.value is Map &&
+        _metadataContainsTaskMasterIdentity(entry.value)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 Map<String, LocalAttribution> latestActivityAttributionBySegment(
