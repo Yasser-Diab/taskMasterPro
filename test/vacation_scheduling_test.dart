@@ -83,6 +83,41 @@ void main() {
     expect(occurrence.endsOn, DateTime(2027, 1, 2));
   });
 
+  test('queued vacation keeps schema metadata inside data', () async {
+    SharedPreferences.setMockInitialValues({});
+    final database = AppDatabase(NativeDatabase.memory());
+    addTearDown(database.close);
+    final client = SupabaseClient(
+      'https://example.supabase.co',
+      'sb_publishable_test_key',
+      authOptions: const AuthClientOptions(autoRefreshToken: false),
+    );
+    final vacations = VacationRepository(
+      EntityRecordRepository(database, client),
+    );
+
+    final vacationId = await vacations.create(
+      VacationPeriodDraft(
+        title: 'Summer holiday',
+        startsOn: DateTime(2026, 8, 10),
+        endsOn: DateTime(2026, 8, 12),
+      ),
+    );
+    final command =
+        await (database.select(database.localOutboxCommands)..where(
+              (row) =>
+                  row.entityType.equals(VacationRepository.entityType) &
+                  row.entityId.equals(vacationId),
+            ))
+            .getSingle();
+    final payload = Map<String, Object?>.from(
+      jsonDecode(command.payloadJson) as Map,
+    );
+
+    expect(payload, isNot(contains('schema_version')));
+    expect(payload['data'], {'schema_version': 1});
+  });
+
   test('reconciliation is reversible, idempotent and future-only', () async {
     SharedPreferences.setMockInitialValues({});
     final database = AppDatabase(NativeDatabase.memory());

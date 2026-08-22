@@ -17,12 +17,19 @@ import com.google.gson.reflect.TypeToken;
 import org.json.JSONObject;
 
 import java.lang.reflect.Type;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
+import java.util.concurrent.TimeUnit;
 
 /** Created by michaelbui on 24/3/18. */
 @Keep
 public class ScheduledNotificationReceiver extends BroadcastReceiver {
 
   private static final String TAG = "ScheduledNotifReceiver";
+  private static final int TASKMASTER_SLEEP_REMINDER_ID = 820026;
+  private static final long TASKMASTER_SLEEP_MAX_OVERDUE_MILLIS =
+      TimeUnit.HOURS.toMillis(2);
 
   @Override
   @SuppressWarnings("deprecation")
@@ -60,6 +67,16 @@ public class ScheduledNotificationReceiver extends BroadcastReceiver {
       Type type = new TypeToken<NotificationDetails>() {}.getType();
       NotificationDetails notificationDetails = gson.fromJson(notificationDetailsJson, type);
 
+      if (taskMasterSleepReminderIsGrosslyOverdue(notificationDetails)) {
+        // Android can retain a pre-update AlarmManager entry and deliver it as
+        // soon as ACTION_MY_PACKAGE_REPLACED reschedules the plugin cache. Do
+        // not turn that several-days-old boundary into a misleading wellbeing
+        // alert. Advance the normal daily recurrence from the current clock.
+        FlutterLocalNotificationsPlugin.scheduleNextNotification(context, notificationDetails);
+        Log.i(TAG, "Suppressed overdue TaskMaster sleep reminder");
+        return;
+      }
+
       if (!executionIdentityIsCurrent(context, notificationDetails)) {
         FlutterLocalNotificationsPlugin.removeNotificationFromCache(
             context, notificationDetails.id);
@@ -70,6 +87,41 @@ public class ScheduledNotificationReceiver extends BroadcastReceiver {
 
       FlutterLocalNotificationsPlugin.showNotification(context, notificationDetails);
       FlutterLocalNotificationsPlugin.scheduleNextNotification(context, notificationDetails);
+    }
+  }
+
+  /**
+   * TaskMaster's daily sleep reminder is the only recurring notification for
+   * which a package-replacement catch-up is actively harmful. Keep this guard
+   * scoped to its stable ID and owned route so ordinary reminders and exact
+   * task execution boundaries retain upstream plugin behavior.
+   */
+  private boolean taskMasterSleepReminderIsGrosslyOverdue(
+      NotificationDetails notificationDetails) {
+    if (notificationDetails == null
+        || notificationDetails.id == null
+        || notificationDetails.id != TASKMASTER_SLEEP_REMINDER_ID
+        || StringUtils.isNullOrEmpty(notificationDetails.payload)
+        || StringUtils.isNullOrEmpty(notificationDetails.scheduledDateTime)
+        || StringUtils.isNullOrEmpty(notificationDetails.timeZoneName)) {
+      return false;
+    }
+    try {
+      JSONObject payload = new JSONObject(notificationDetails.payload);
+      if (!"settings/wellbeing".equals(payload.optString("route"))) return false;
+      long scheduledAtMillis = ZonedDateTime.of(
+              LocalDateTime.parse(notificationDetails.scheduledDateTime),
+              ZoneId.of(notificationDetails.timeZoneName))
+          .toInstant()
+          .toEpochMilli();
+      return System.currentTimeMillis() - scheduledAtMillis
+          > TASKMASTER_SLEEP_MAX_OVERDUE_MILLIS;
+    } catch (Exception exception) {
+      // A malformed non-execution reminder keeps the plugin's established
+      // behavior. This guard suppresses only a positively identified stale
+      // TaskMaster sleep occurrence.
+      Log.w(TAG, "Could not validate TaskMaster sleep reminder age", exception);
+      return false;
     }
   }
 

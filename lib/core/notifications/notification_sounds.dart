@@ -590,6 +590,8 @@ abstract final class NotificationSchedulePolicy {
   }
 }
 
+enum ExecutionAlarmScheduleResult { scheduled, disabled, unauthorized, expired }
+
 class LocalNotificationService {
   static const _nativeChannel = MethodChannel('taskmasterpro/notifications');
   static const _backgroundResponseStore =
@@ -612,6 +614,7 @@ class LocalNotificationService {
   static int executionNotificationId(String taskId) =>
       'execution:$taskId'.hashCode & 0x7fffffff;
   static const standalonePomodoroNotificationId = 820028;
+  static const _sleepReminderNotificationId = 820026;
 
   /// The quiet, ongoing execution card must never reuse the exact alarm ID.
   /// `FlutterLocalNotificationsPlugin.show` replaces a pending schedule with
@@ -1680,7 +1683,10 @@ class LocalNotificationService {
     });
   }
 
-  Future<void> scheduleExecutionCompletion({
+  /// Reports whether the platform accepted a future execution alarm. The
+  /// caller retries only an expired boundary or a thrown transient platform
+  /// failure; disabled and unauthorized categories are intentional states.
+  Future<ExecutionAlarmScheduleResult> scheduleExecutionCompletion({
     required int id,
     required String taskId,
     required String taskTitle,
@@ -1721,7 +1727,7 @@ class LocalNotificationService {
         intervalId: intervalId,
         boundaryAtUtc: scheduledAtUtc,
       );
-      return;
+      return ExecutionAlarmScheduleResult.disabled;
     }
     if (!await ensureExecutionNotificationsAuthorized()) {
       // Keep the exact notification slot empty while Android has denied the
@@ -1738,7 +1744,7 @@ class LocalNotificationService {
         intervalId: intervalId,
         boundaryAtUtc: scheduledAtUtc,
       );
-      return;
+      return ExecutionAlarmScheduleResult.unauthorized;
     }
     final l10n = AppLocalizations(Locale(localeCode));
     final isBreak =
@@ -1819,7 +1825,7 @@ class LocalNotificationService {
       runtimeRevision: runtimeRevision,
       intervalId: intervalId,
     );
-    await _serializeNotificationMutation(() async {
+    return _serializeNotificationMutation(() async {
       await _plugin.cancel(id: id);
       if (!NotificationSchedulePolicy.canSchedule(scheduledAtUtc)) {
         await _setExecutionLedgerState(
@@ -1831,7 +1837,7 @@ class LocalNotificationService {
           intervalId: intervalId,
           boundaryAtUtc: scheduledAtUtc,
         );
-        return;
+        return ExecutionAlarmScheduleResult.expired;
       }
       await _plugin.zonedSchedule(
         id: id,
@@ -1893,6 +1899,7 @@ class LocalNotificationService {
         intervalId: intervalId,
         boundaryAtUtc: scheduledAtUtc,
       );
+      return ExecutionAlarmScheduleResult.scheduled;
     });
   }
 
@@ -1999,7 +2006,7 @@ class LocalNotificationService {
     bool vibration = true,
     String localeCode = 'en',
   }) async {
-    const id = 820026;
+    const id = _sleepReminderNotificationId;
     await initialize();
     if (!enabled || !notificationsEnabled) {
       await _cancelSerialized(id);
@@ -2141,6 +2148,16 @@ class LocalNotificationService {
 
       final entries = await _readExecutionLedger(ownerId);
       if (entries.isEmpty) return;
+      for (final taskId in entries.keys) {
+        final executionIds = <int>{
+          executionNotificationId(taskId),
+          executionStatusNotificationId(taskId),
+        };
+        for (final id in executionIds) {
+          if (id == _sleepReminderNotificationId) continue;
+          await _plugin.cancel(id: id);
+        }
+      }
       final repaired = <String, Map<String, Object?>>{
         for (final entry in entries.entries)
           entry.key: <String, Object?>{

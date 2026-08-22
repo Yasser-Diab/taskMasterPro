@@ -14,6 +14,7 @@ import '../platform/device_identity.dart';
 import '../../features/activity/data/activity_privacy_policy.dart';
 import '../../features/roadmaps/data/roadmap_repository.dart';
 import '../../features/tasks/data/installed_application_service.dart';
+import '../../features/tasks/data/task_repository.dart';
 import '../../features/tasks/domain/task_domain_catalog.dart';
 
 enum SyncHealth { offline, idle, syncing, attention }
@@ -224,6 +225,123 @@ Map<String, dynamic>? normalizedApplicationCatalogCreatePayload(
     'display_name': displayName,
     'default_display_name': displayName,
   };
+}
+
+/// Moves vacation payload metadata into the extensible `data` object accepted
+/// by the dedicated vacation command RPC. v0.0.28+40 briefly emitted
+/// `schema_version` as a database column, which the server correctly rejected.
+@visibleForTesting
+Map<String, dynamic> normalizedVacationCommandPayload(
+  Map<String, dynamic> payload,
+) {
+  final normalized = <String, dynamic>{...payload};
+  final schemaVersion = normalized.remove('schema_version');
+  if (schemaVersion != null) {
+    final data = normalized['data'] is Map
+        ? Map<String, dynamic>.from(normalized['data'] as Map)
+        : <String, dynamic>{};
+    data.putIfAbsent('schema_version', () => schemaVersion);
+    normalized['data'] = data;
+  }
+  return normalized;
+}
+
+@visibleForTesting
+bool isLegacyVacationContractFailure({
+  required String entityType,
+  required String commandType,
+  required String status,
+  required Map<String, dynamic> payload,
+  required String? lastError,
+}) {
+  final message = lastError?.toLowerCase() ?? '';
+  return entityType == 'vacation_periods' &&
+      const {'create', 'update'}.contains(commandType) &&
+      status == 'conflict' &&
+      payload.containsKey('schema_version') &&
+      message.contains('invalid_payload_columns') &&
+      message.contains('schema_version');
+}
+
+@visibleForTesting
+String repairedVacationCommandId({
+  required String userId,
+  required String originalCommandId,
+}) => const Uuid().v5(
+  Namespace.url.value,
+  'https://taskmasterpro.app/account/$userId/sync-repair/'
+  'vacation-contract/$originalCommandId',
+);
+
+@visibleForTesting
+Map<String, dynamic>? repairedTaskOccurrenceIdentityPayload({
+  required Map<String, dynamic> commandPayload,
+  required Map<String, dynamic> canonicalRow,
+}) {
+  final canonicalTemplateId = (canonicalRow['template_id'] as String?)?.trim();
+  final canonicalOccurrenceKey = (canonicalRow['occurrence_key'] as String?)
+      ?.trim();
+  if (canonicalTemplateId == null ||
+      canonicalTemplateId.isEmpty ||
+      canonicalOccurrenceKey == null ||
+      canonicalOccurrenceKey.isEmpty) {
+    return null;
+  }
+  return <String, dynamic>{
+    ...commandPayload,
+    'template_id': canonicalTemplateId,
+    'occurrence_key': canonicalOccurrenceKey,
+  };
+}
+
+@visibleForTesting
+String repairedTaskOccurrenceIdentityCommandId({
+  required String userId,
+  required String originalCommandId,
+}) => const Uuid().v5(
+  Namespace.url.value,
+  'https://taskmasterpro.app/account/$userId/sync-repair/'
+  'task-occurrence-identity/$originalCommandId',
+);
+
+/// Proves that a rejected task update tried to move one existing recurring
+/// occurrence onto another occurrence's immutable template/key identity.
+/// Only that exact same-owner, live-row shape is safe to repair automatically.
+@visibleForTesting
+bool isProvenRejectedTaskOccurrenceIdentityCollision({
+  required String userId,
+  required String commandId,
+  required String commandEntityId,
+  required Map<String, dynamic> commandPayload,
+  required Map<String, dynamic> canonicalRow,
+  required Map<String, dynamic> collisionRow,
+}) {
+  final attemptedTemplateId = (commandPayload['template_id'] as String?)
+      ?.trim();
+  final attemptedOccurrenceKey = (commandPayload['occurrence_key'] as String?)
+      ?.trim();
+  final canonicalOccurrenceKey = (canonicalRow['occurrence_key'] as String?)
+      ?.trim();
+  final collisionId = (collisionRow['id'] as String?)?.trim();
+  return attemptedTemplateId != null &&
+      attemptedTemplateId.isNotEmpty &&
+      attemptedOccurrenceKey != null &&
+      attemptedOccurrenceKey.isNotEmpty &&
+      canonicalOccurrenceKey != null &&
+      canonicalOccurrenceKey.isNotEmpty &&
+      canonicalOccurrenceKey != attemptedOccurrenceKey &&
+      canonicalRow['id'] == commandEntityId &&
+      canonicalRow['user_id'] == userId &&
+      canonicalRow['deleted_at'] == null &&
+      canonicalRow['template_id'] == attemptedTemplateId &&
+      canonicalRow['last_command_id'] != commandId &&
+      collisionId != null &&
+      collisionId.isNotEmpty &&
+      collisionId != commandEntityId &&
+      collisionRow['user_id'] == userId &&
+      collisionRow['deleted_at'] == null &&
+      collisionRow['template_id'] == attemptedTemplateId &&
+      collisionRow['occurrence_key'] == attemptedOccurrenceKey;
 }
 
 @visibleForTesting
@@ -858,6 +976,157 @@ CanonicalRuntimeApplyDecision canonicalRuntimeApplyDecision({
     return CanonicalRuntimeApplyDecision.duplicate;
   }
   return CanonicalRuntimeApplyDecision.staleOrInconsistent;
+}
+
+/// Allows an equal-revision canonical runtime to repair one very narrow local
+/// cache state: the receiver saw the runtime before its referenced task and
+/// session, and the repository hid it as idle while retaining exact evidence.
+/// Valid active runtimes, stale revisions, different commands and unrelated
+/// references remain forward-only no-ops.
+@visibleForTesting
+bool shouldRestoreSanitizedCanonicalRuntime({
+  required String localState,
+  required String? localTaskId,
+  required String? localSessionId,
+  required String localDataJson,
+  required int? localRevision,
+  required String? localCommandId,
+  required String incomingState,
+  required String? incomingTaskId,
+  required String? incomingSessionId,
+  required int incomingRevision,
+  required String? incomingCommandId,
+  required bool hasPendingRuntimeCommand,
+  required bool exactTaskReferenceExists,
+  required bool exactSessionReferenceExists,
+}) {
+  if (hasPendingRuntimeCommand ||
+      localState != 'idle' ||
+      localTaskId != null ||
+      localSessionId != null ||
+      !const {'running', 'paused', 'break'}.contains(incomingState) ||
+      incomingTaskId == null ||
+      incomingSessionId == null ||
+      incomingCommandId == null ||
+      localRevision != incomingRevision ||
+      localCommandId != incomingCommandId ||
+      !exactTaskReferenceExists ||
+      !exactSessionReferenceExists) {
+    return false;
+  }
+  Object? decoded;
+  try {
+    decoded = jsonDecode(localDataJson);
+  } on FormatException {
+    return false;
+  }
+  if (decoded is! Map) return false;
+  final marker = decoded[localRuntimeReferenceRepairMarkerKey];
+  // v0.0.39 already sanitized some equal-revision rows before the explicit
+  // marker existed. Idle/null references plus the exact canonical revision
+  // and command identity cannot represent a different legitimate transition,
+  // so the same strict live-reference and no-pending guards recover it too.
+  if (marker == null) return true;
+  if (marker is! Map) return false;
+  return marker['task_id'] == incomingTaskId &&
+      marker['session_id'] == incomingSessionId &&
+      marker['state'] == incomingState &&
+      marker['revision'] == incomingRevision &&
+      marker['command_id'] == incomingCommandId;
+}
+
+@visibleForTesting
+bool isSupersededStartCleanupCandidate({
+  required String entityType,
+  required String commandType,
+  required String sessionId,
+  required Map<String, dynamic> payload,
+  required Map<String, dynamic> result,
+}) {
+  final runtime = result['canonical_runtime'];
+  return entityType == 'execution_runtime' &&
+      commandType == 'start' &&
+      payload['action'] == 'start' &&
+      payload['task_occurrence_id'] is String &&
+      result['status'] == 'accepted' &&
+      result['canonical_only'] == true &&
+      result['superseded'] == true &&
+      runtime is Map &&
+      runtime['active_session_id'] != sessionId;
+}
+
+@visibleForTesting
+String supersededStartCleanupCommandId({
+  required String userId,
+  required String runtimeCommandId,
+  required String sessionCreateCommandId,
+  required String sessionId,
+}) => const Uuid().v5(
+  Namespace.url.value,
+  'https://taskmasterpro.app/account/$userId/execution/'
+  'superseded-start/$runtimeCommandId/$sessionCreateCommandId/$sessionId',
+);
+
+@visibleForTesting
+bool shouldApplySupersededStartCanonicalTask({
+  required String userId,
+  required String taskId,
+  required String runtimeCommandId,
+  required String orphanSessionId,
+  required LocalTask? localTask,
+  required Map<String, dynamic> canonicalTask,
+  required Map<String, dynamic> canonicalRuntime,
+  required bool hasPendingTaskCommand,
+}) {
+  return !hasPendingTaskCommand &&
+      localTask != null &&
+      localTask.userId == userId &&
+      localTask.id == taskId &&
+      localTask.lastCommandId == runtimeCommandId &&
+      canonicalTask['user_id'] == userId &&
+      canonicalTask['id'] == taskId &&
+      canonicalRuntime['user_id'] == userId &&
+      canonicalRuntime['active_session_id'] != orphanSessionId;
+}
+
+@visibleForTesting
+bool shouldApplySupersededStartCanonicalSession({
+  required String userId,
+  required String taskId,
+  required String runtimeCommandId,
+  required String sessionCreateCommandId,
+  required String cleanupCommandId,
+  required String orphanSessionId,
+  required LocalEntityRecord? localSession,
+  required Map<String, dynamic> canonicalSession,
+  required bool hasPendingSessionCommand,
+}) {
+  final canonicalData = canonicalSession['data'];
+  final retiredByBackfill =
+      canonicalData is Map &&
+      canonicalData['retired_reason'] == 'noncanonical_zero_work_session_v0033';
+  final canonicalRevision =
+      (canonicalSession['revision'] as num?)?.toInt() ?? 0;
+  return !hasPendingSessionCommand &&
+      localSession != null &&
+      localSession.userId == userId &&
+      localSession.id == orphanSessionId &&
+      localSession.entityType == 'execution_sessions' &&
+      localSession.parentId == taskId &&
+      localSession.deletedAt == null &&
+      const {'running', 'paused'}.contains(localSession.status) &&
+      {
+        runtimeCommandId,
+        sessionCreateCommandId,
+      }.contains(localSession.lastCommandId) &&
+      localSession.revision <= canonicalRevision &&
+      canonicalSession['user_id'] == userId &&
+      canonicalSession['id'] == orphanSessionId &&
+      canonicalSession['task_occurrence_id'] == taskId &&
+      canonicalSession['state'] == 'cancelled' &&
+      canonicalSession['deleted_at'] != null &&
+      (canonicalSession['last_command_id'] == cleanupCommandId ||
+          retiredByBackfill);
 }
 
 /// An RPC acknowledgement may legitimately correct optimistic fields while
@@ -2694,6 +2963,8 @@ class SyncService {
     await _runBestEffort(
       () => _repairLegacyApplicationCatalogContractFailures(user.id),
     );
+    _ensureCurrentOperation(generation, userId);
+    await _runBestEffort(() => _repairLegacyVacationContractFailures(user.id));
     final connectivity = await Connectivity().checkConnectivity();
     _ensureCurrentOperation(generation, userId);
     if (connectivity.every((result) => result == ConnectivityResult.none)) {
@@ -2790,6 +3061,20 @@ class SyncService {
                   'p_original_entity_id': payload['original_entity_id'],
                   'p_strategy': payload['strategy'],
                   'p_decision_payload': payload,
+                },
+              )
+            : command.entityType == 'execution_runtime_start_cleanup'
+            ? await client.rpc<Object?>(
+                'retire_superseded_execution_start_v0033_command',
+                params: {
+                  'p_command_id': command.commandId,
+                  'p_device_id': command.deviceId,
+                  'p_device_sequence': command.deviceSequence,
+                  'p_runtime_command_id': payload['runtime_command_id'],
+                  'p_session_create_command_id':
+                      payload['session_create_command_id'],
+                  'p_session_id': command.entityId,
+                  'p_task_occurrence_id': payload['task_occurrence_id'],
                 },
               )
             : command.entityType == 'vacation_periods'
@@ -3098,6 +3383,7 @@ class SyncService {
           // canonical runtime with the same revision/order guards used by an
           // ordinary accepted execution acknowledgement.
           await _applyAcceptedCommandRevision(command, result);
+          await _queueSupersededStartCleanup(command, result: result);
         } else if (remoteStatus == 'accepted') {
           await _applyAcceptedCommandRevision(command, result);
         } else if (command.entityType == 'sync_conflict_decisions') {
@@ -3263,6 +3549,7 @@ class SyncService {
       'task_application_links' => 58,
       'execution_sessions' || 'pomodoro_cycles' => 60,
       'execution_runtime' || 'execution_runtime_switch' => 62,
+      'execution_runtime_start_cleanup' => 63,
       'session_events' || 'interruptions' => 65,
       'checklist_items' ||
       'task_notes' ||
@@ -3429,6 +3716,203 @@ class SyncService {
       );
     }
   }
+
+  /// Replays one corrected vacation command for the short-lived client build
+  /// that sent schema metadata as an RPC column. The replacement ID is derived
+  /// from the rejected command, so repeated startups cannot create new work.
+  Future<void> _repairLegacyVacationContractFailures(
+    String userId, {
+    bool resolveRemote = true,
+  }) async {
+    final candidates =
+        await (database.select(database.localOutboxCommands)..where(
+              (row) =>
+                  row.userId.equals(userId) &
+                  row.status.isIn(const ['pending', 'conflict']) &
+                  row.entityType.equals('vacation_periods') &
+                  row.commandType.isIn(const ['create', 'update']),
+            ))
+            .get();
+    for (final command in candidates) {
+      final payload = _payloadMap(command.payloadJson);
+      if (!payload.containsKey('schema_version')) continue;
+      final repaired = normalizedVacationCommandPayload(payload);
+
+      if (command.status == 'pending') {
+        await (database.update(
+          database.localOutboxCommands,
+        )..where((row) => row.commandId.equals(command.commandId))).write(
+          LocalOutboxCommandsCompanion(
+            payloadJson: Value(jsonEncode(repaired)),
+            attemptCount: const Value(0),
+            nextAttemptAt: const Value(null),
+            lastError: const Value(null),
+          ),
+        );
+        continue;
+      }
+
+      if (!isLegacyVacationContractFailure(
+        entityType: command.entityType,
+        commandType: command.commandType,
+        status: command.status,
+        payload: payload,
+        lastError: command.lastError,
+      )) {
+        continue;
+      }
+
+      final replacementId = repairedVacationCommandId(
+        userId: userId,
+        originalCommandId: command.commandId,
+      );
+      final replacement = await (database.select(
+        database.localOutboxCommands,
+      )..where((row) => row.commandId.equals(replacementId))).getSingleOrNull();
+      if (replacement != null) {
+        if (replacement.userId != userId ||
+            replacement.entityType != command.entityType ||
+            replacement.entityId != command.entityId ||
+            replacement.commandType != command.commandType ||
+            replacement.baseRevision != command.baseRevision ||
+            !const DeepCollectionEquality().equals(
+              _payloadMap(replacement.payloadJson),
+              repaired,
+            )) {
+          continue;
+        }
+        await database.transaction(() async {
+          await _supersedeCommands([command]);
+          await (database.update(database.localEntityRecords)..where(
+                (row) =>
+                    row.userId.equals(userId) &
+                    row.entityType.equals('vacation_periods') &
+                    row.id.equals(command.entityId) &
+                    row.lastCommandId.equals(command.commandId),
+              ))
+              .write(
+                LocalEntityRecordsCompanion(
+                  lastCommandId: Value(replacementId),
+                ),
+              );
+        });
+        if (resolveRemote) {
+          await _markRemoteConflictResolved(
+            command,
+            strategy: 'vacation_contract_repaired',
+          );
+        }
+        continue;
+      }
+
+      final localRecord =
+          await (database.select(database.localEntityRecords)..where(
+                (row) =>
+                    row.userId.equals(userId) &
+                    row.entityType.equals('vacation_periods') &
+                    row.id.equals(command.entityId) &
+                    row.deletedAt.isNull() &
+                    row.lastCommandId.equals(command.commandId),
+              ))
+              .getSingleOrNull();
+      final pendingForEntity =
+          await (database.select(database.localOutboxCommands)
+                ..where(
+                  (row) =>
+                      row.userId.equals(userId) &
+                      row.entityType.equals('vacation_periods') &
+                      row.entityId.equals(command.entityId) &
+                      row.status.equals('pending'),
+                )
+                ..limit(1))
+              .getSingleOrNull();
+      if (localRecord == null || pendingForEntity != null) continue;
+
+      final now = DateTime.now().toUtc();
+      final currentDeviceId = await DeviceIdentity.accountId(userId);
+      final sequence = await DeviceIdentity.nextSequence(userId);
+      var repairedInTransaction = false;
+      await database.transaction(() async {
+        final currentCommand =
+            await (database.select(database.localOutboxCommands)..where(
+                  (row) =>
+                      row.commandId.equals(command.commandId) &
+                      row.status.equals('conflict'),
+                ))
+                .getSingleOrNull();
+        final currentRecord =
+            await (database.select(database.localEntityRecords)..where(
+                  (row) =>
+                      row.userId.equals(userId) &
+                      row.entityType.equals('vacation_periods') &
+                      row.id.equals(command.entityId) &
+                      row.deletedAt.isNull() &
+                      row.lastCommandId.equals(command.commandId),
+                ))
+                .getSingleOrNull();
+        final currentPending =
+            await (database.select(database.localOutboxCommands)
+                  ..where(
+                    (row) =>
+                        row.userId.equals(userId) &
+                        row.entityType.equals('vacation_periods') &
+                        row.entityId.equals(command.entityId) &
+                        row.status.equals('pending'),
+                  )
+                  ..limit(1))
+                .getSingleOrNull();
+        if (currentCommand == null ||
+            currentRecord == null ||
+            currentPending != null) {
+          return;
+        }
+        await database
+            .into(database.localOutboxCommands)
+            .insert(
+              LocalOutboxCommandsCompanion.insert(
+                commandId: replacementId,
+                userId: userId,
+                deviceId: currentDeviceId,
+                deviceSequence: sequence,
+                entityType: command.entityType,
+                entityId: command.entityId,
+                commandType: command.commandType,
+                baseRevision: command.baseRevision,
+                payloadJson: jsonEncode(repaired),
+                clientTimestamp: now,
+                createdAt: now,
+              ),
+            );
+        await _supersedeCommands([currentCommand]);
+        await (database.update(database.localEntityRecords)..where(
+              (row) =>
+                  row.userId.equals(userId) &
+                  row.entityType.equals('vacation_periods') &
+                  row.id.equals(command.entityId) &
+                  row.lastCommandId.equals(command.commandId),
+            ))
+            .write(
+              LocalEntityRecordsCompanion(
+                lastCommandId: Value(replacementId),
+                updatedAt: Value(now),
+                updatedByDeviceId: Value(currentDeviceId),
+              ),
+            );
+        repairedInTransaction = true;
+      });
+      if (!repairedInTransaction) continue;
+      if (resolveRemote) {
+        await _markRemoteConflictResolved(
+          command,
+          strategy: 'vacation_contract_repaired',
+        );
+      }
+    }
+  }
+
+  @visibleForTesting
+  Future<void> repairLegacyVacationContractFailuresForTesting(String userId) =>
+      _repairLegacyVacationContractFailures(userId, resolveRemote: false);
 
   Future<void> _restoreMissingParentCommands(String userId) async {
     // Starter domains used to be inserted directly into SQLite before an
@@ -3629,7 +4113,9 @@ class SyncService {
     String entityType,
     Map<String, Object?> payload,
   ) {
-    final normalized = <String, Object?>{...payload};
+    final normalized = entityType == 'vacation_periods'
+        ? normalizedVacationCommandPayload(Map<String, dynamic>.from(payload))
+        : <String, Object?>{...payload};
     if (entityType == 'recurrence_rules') {
       final weekdays = normalized['weekdays'];
       if (weekdays is List) {
@@ -3652,6 +4138,7 @@ class SyncService {
       )..where((row) => row.commandId.equals(command.commandId))).write(
         const LocalOutboxCommandsCompanion(
           status: Value('superseded'),
+          nextAttemptAt: Value(null),
           lastError: Value(null),
         ),
       );
@@ -5071,6 +5558,10 @@ class SyncService {
     LocalOutboxCommand command,
     Map<String, dynamic> result,
   ) async {
+    if (command.entityType == 'execution_runtime_start_cleanup') {
+      await _applySupersededStartCleanupResult(command, result);
+      return;
+    }
     if (const {
           'execution_runtime',
           'execution_runtime_switch',
@@ -5119,6 +5610,249 @@ class SyncService {
           ))
           .write(LocalOutboxCommandsCompanion(baseRevision: Value(revision)));
     });
+  }
+
+  Future<void> _queueSupersededStartCleanup(
+    LocalOutboxCommand runtimeCommand, {
+    Map<String, dynamic>? result,
+  }) async {
+    final payload = _payloadMap(runtimeCommand.payloadJson);
+    if (result != null) {
+      if (!isSupersededStartCleanupCandidate(
+        entityType: runtimeCommand.entityType,
+        commandType: runtimeCommand.commandType,
+        sessionId: runtimeCommand.entityId,
+        payload: payload,
+        result: result,
+      )) {
+        return;
+      }
+    } else if (runtimeCommand.entityType != 'execution_runtime' ||
+        runtimeCommand.commandType != 'start' ||
+        runtimeCommand.status != 'superseded' ||
+        payload['action'] != 'start') {
+      return;
+    }
+    final taskId = payload['task_occurrence_id'] as String?;
+    if (taskId == null) return;
+
+    final createCommand =
+        await (database.select(database.localOutboxCommands)
+              ..where(
+                (command) =>
+                    command.userId.equals(runtimeCommand.userId) &
+                    command.deviceId.equals(runtimeCommand.deviceId) &
+                    command.entityType.equals('execution_sessions') &
+                    command.entityId.equals(runtimeCommand.entityId) &
+                    command.commandType.equals('create') &
+                    command.status.equals('accepted') &
+                    command.deviceSequence.isSmallerThanValue(
+                      runtimeCommand.deviceSequence,
+                    ),
+              )
+              ..orderBy([
+                (command) => OrderingTerm.desc(command.deviceSequence),
+              ])
+              ..limit(1))
+            .getSingleOrNull();
+    if (createCommand == null ||
+        _payloadMap(createCommand.payloadJson)['task_occurrence_id'] !=
+            taskId) {
+      return;
+    }
+    final session =
+        await (database.select(database.localEntityRecords)..where(
+              (row) =>
+                  row.id.equals(runtimeCommand.entityId) &
+                  row.userId.equals(runtimeCommand.userId) &
+                  row.entityType.equals('execution_sessions') &
+                  row.parentId.equals(taskId) &
+                  row.deletedAt.isNull(),
+            ))
+            .getSingleOrNull();
+    if (session == null ||
+        session.createdByDeviceId != createCommand.deviceId ||
+        !const {'running', 'paused'}.contains(session.status) ||
+        !{
+          runtimeCommand.commandId,
+          createCommand.commandId,
+        }.contains(session.lastCommandId)) {
+      return;
+    }
+    final sessionData = _payloadMap(session.dataJson);
+    if ((sessionData['accumulated_active_ms'] as num?)?.toInt() != 0 ||
+        (sessionData['accumulated_paused_ms'] as num?)?.toInt() != 0 ||
+        (sessionData['accumulated_idle_ms'] as num?)?.toInt() != 0) {
+      return;
+    }
+    final event =
+        await (database.select(database.localEntityRecords)
+              ..where(
+                (row) =>
+                    row.userId.equals(runtimeCommand.userId) &
+                    row.entityType.equals('session_events') &
+                    row.parentId.equals(runtimeCommand.entityId),
+              )
+              ..limit(1))
+            .getSingleOrNull();
+    if (event != null) return;
+    final currentRuntime =
+        await (database.select(database.localRuntimeStates)..where(
+              (row) =>
+                  row.id.equals(localRuntimeStateId(runtimeCommand.userId)) &
+                  row.userId.equals(runtimeCommand.userId),
+            ))
+            .getSingleOrNull();
+    if (currentRuntime?.sessionId == runtimeCommand.entityId) return;
+
+    final cleanupId = supersededStartCleanupCommandId(
+      userId: runtimeCommand.userId,
+      runtimeCommandId: runtimeCommand.commandId,
+      sessionCreateCommandId: createCommand.commandId,
+      sessionId: runtimeCommand.entityId,
+    );
+    final existing =
+        await (database.select(database.localOutboxCommands)
+              ..where((command) => command.commandId.equals(cleanupId)))
+            .getSingleOrNull();
+    if (existing != null) return;
+    final now = DateTime.now().toUtc();
+    await database
+        .into(database.localOutboxCommands)
+        .insert(
+          LocalOutboxCommandsCompanion.insert(
+            commandId: cleanupId,
+            userId: runtimeCommand.userId,
+            deviceId: runtimeCommand.deviceId,
+            deviceSequence: await DeviceIdentity.nextSequence(
+              runtimeCommand.userId,
+            ),
+            entityType: 'execution_runtime_start_cleanup',
+            entityId: runtimeCommand.entityId,
+            commandType: 'retire',
+            baseRevision: 0,
+            payloadJson: jsonEncode({
+              'runtime_command_id': runtimeCommand.commandId,
+              'session_create_command_id': createCommand.commandId,
+              'task_occurrence_id': taskId,
+            }),
+            clientTimestamp: now,
+            createdAt: now,
+          ),
+          mode: InsertMode.insertOrIgnore,
+        );
+  }
+
+  /// Rebuilds a cleanup command if the process stopped after the canonical
+  /// runtime rejection was durably recorded but before its orphan-session
+  /// cleanup was inserted. The deterministic cleanup ID makes every startup
+  /// and drain pass idempotent; the server RPC remains the final locked guard.
+  Future<void> _repairSupersededStartCleanupCommands(String userId) async {
+    final supersededStarts =
+        await (database.select(database.localOutboxCommands)..where(
+              (command) =>
+                  command.userId.equals(userId) &
+                  command.entityType.equals('execution_runtime') &
+                  command.commandType.equals('start') &
+                  command.status.equals('superseded'),
+            ))
+            .get();
+    for (final command in supersededStarts) {
+      await _queueSupersededStartCleanup(command);
+    }
+  }
+
+  @visibleForTesting
+  Future<void> repairSupersededStartCleanupCommandsForTesting(String userId) =>
+      _repairSupersededStartCleanupCommands(userId);
+
+  Future<void> _applySupersededStartCleanupResult(
+    LocalOutboxCommand cleanupCommand,
+    Map<String, dynamic> result,
+  ) async {
+    final payload = _payloadMap(cleanupCommand.payloadJson);
+    final userId = cleanupCommand.userId;
+    final taskId = payload['task_occurrence_id'] as String?;
+    final runtimeCommandId = payload['runtime_command_id'] as String?;
+    final sessionCreateCommandId =
+        payload['session_create_command_id'] as String?;
+    final canonicalRuntimeValue = result['canonical_runtime'];
+    if (canonicalRuntimeValue is! Map) return;
+    final canonicalRuntime = Map<String, dynamic>.from(canonicalRuntimeValue);
+    if (canonicalRuntime['user_id'] != userId) return;
+
+    if (result['retired'] == true &&
+        taskId != null &&
+        runtimeCommandId != null &&
+        sessionCreateCommandId != null) {
+      final canonicalTaskValue = result['canonical_task'];
+      final retiredSessionValue = result['retired_session'];
+      final canonicalTask = canonicalTaskValue is Map
+          ? Map<String, dynamic>.from(canonicalTaskValue)
+          : null;
+      final retiredSession = retiredSessionValue is Map
+          ? Map<String, dynamic>.from(retiredSessionValue)
+          : null;
+      // Re-read every guard inside one Drift transaction. This prevents a
+      // task edit, a newer session projection, or a newly queued command from
+      // landing between validation and the canonical rollback writes.
+      await database.transaction(() async {
+        if (canonicalTask != null) {
+          final localTask =
+              await (database.select(database.localTasks)..where(
+                    (task) =>
+                        task.userId.equals(userId) & task.id.equals(taskId),
+                  ))
+                  .getSingleOrNull();
+          final pendingTask = await _hasPendingCommand(
+            'task_occurrences',
+            taskId,
+            userId: userId,
+          );
+          if (shouldApplySupersededStartCanonicalTask(
+            userId: userId,
+            taskId: taskId,
+            runtimeCommandId: runtimeCommandId,
+            orphanSessionId: cleanupCommand.entityId,
+            localTask: localTask,
+            canonicalTask: canonicalTask,
+            canonicalRuntime: canonicalRuntime,
+            hasPendingTaskCommand: pendingTask,
+          )) {
+            await _applyTask(canonicalTask);
+          }
+        }
+        if (retiredSession != null) {
+          final localSession =
+              await (database.select(database.localEntityRecords)..where(
+                    (row) =>
+                        row.userId.equals(userId) &
+                        row.id.equals(cleanupCommand.entityId) &
+                        row.entityType.equals('execution_sessions'),
+                  ))
+                  .getSingleOrNull();
+          final pendingSession = await _hasPendingCommand(
+            'execution_sessions',
+            cleanupCommand.entityId,
+            userId: userId,
+          );
+          if (shouldApplySupersededStartCanonicalSession(
+            userId: userId,
+            taskId: taskId,
+            runtimeCommandId: runtimeCommandId,
+            sessionCreateCommandId: sessionCreateCommandId,
+            cleanupCommandId: cleanupCommand.commandId,
+            orphanSessionId: cleanupCommand.entityId,
+            localSession: localSession,
+            canonicalSession: retiredSession,
+            hasPendingSessionCommand: pendingSession,
+          )) {
+            await _applyGeneric('execution_sessions', retiredSession);
+          }
+        }
+      });
+    }
+    await _applyRemoteRuntime(canonicalRuntime);
   }
 
   Future<bool> _applyCanonicalActivityClassificationResponse(
@@ -6458,6 +7192,7 @@ class SyncService {
     final user = client.auth.currentUser;
     if (user == null) return;
     await _reconcileRemoteConflictDecisions(user.id);
+    await _reconcileTaskOccurrenceIdentityUpdateCollisions(user.id);
     await _reconcileTaskOccurrenceAliases(user.id);
     await _reconcileRoadmapTaskLinkAliases(user.id);
     await _reconcileTaskApplicationLinkAliases(user.id);
@@ -6466,6 +7201,7 @@ class SyncService {
     await _reconcileStaleLifecycleConflicts(user.id);
     await _retireSafeLegacyTransportConflicts(user.id);
     await _resolveRemoteCanonicalConflictHistory(user.id);
+    await _repairSupersededStartCleanupCommands(user.id);
   }
 
   Future<void> _reconcileRemoteConflictDecisions(String userId) async {
@@ -6989,6 +7725,371 @@ class SyncService {
         userId: userId,
       );
     }
+  }
+
+  /// Restores the same-ID canonical occurrence after a legacy recurrence edit
+  /// tried to rewrite its immutable occurrence key onto another live row.
+  /// This does not merge or delete either occurrence; it only rolls back the
+  /// rejected optimistic identity change after both canonical rows prove it.
+  Future<void> _reconcileTaskOccurrenceIdentityUpdateCollisions(
+    String userId,
+  ) async {
+    final candidates =
+        await (database.select(database.localOutboxCommands)..where(
+              (row) =>
+                  row.userId.equals(userId) &
+                  row.status.equals('conflict') &
+                  row.entityType.equals('task_occurrences') &
+                  row.commandType.equals('update'),
+            ))
+            .get();
+    for (final command in candidates) {
+      final error = _payloadMap(command.lastError ?? '');
+      if (error['reason'] != 'unique_constraint') continue;
+      final payload = _payloadMap(command.payloadJson);
+      final templateId = (payload['template_id'] as String?)?.trim();
+      final occurrenceKey = (payload['occurrence_key'] as String?)?.trim();
+      if (templateId == null ||
+          templateId.isEmpty ||
+          occurrenceKey == null ||
+          occurrenceKey.isEmpty) {
+        continue;
+      }
+
+      try {
+        final canonicalValue = await client
+            .from('task_occurrences')
+            .select()
+            .eq('id', command.entityId)
+            .maybeSingle();
+        if (canonicalValue == null) continue;
+        final collisionRows = await client
+            .from('task_occurrences')
+            .select()
+            .eq('template_id', templateId)
+            .eq('occurrence_key', occurrenceKey)
+            .isFilter('deleted_at', null)
+            .limit(1);
+        if (collisionRows.isEmpty) continue;
+        final canonical = Map<String, dynamic>.from(canonicalValue);
+        final collision = Map<String, dynamic>.from(collisionRows.first);
+        if (await _rebaseRejectedTaskOccurrenceIdentityUpdate(
+          command: command,
+          canonical: canonical,
+          collision: collision,
+        )) {
+          await _markRemoteConflictResolved(
+            command,
+            strategy: 'rejected_occurrence_identity_rebased',
+          );
+        }
+      } catch (_) {
+        // Keep the conflict until both canonical rows can be read under RLS.
+      }
+    }
+  }
+
+  bool _isCompleteTaskEditPayload(Map<String, dynamic> payload) {
+    const requiredKeys = {
+      'title',
+      'description',
+      'domain_id',
+      'priority',
+      'execution_mode',
+      'scheduled_date',
+      'planned_start',
+      'planned_end',
+      'due_at',
+      'estimated_duration_ms',
+      'roadmap_id',
+      'roadmap_phase_id',
+      'template_id',
+      'occurrence_key',
+      'data',
+    };
+    return requiredKeys.every(payload.containsKey) &&
+        payload['title'] is String &&
+        payload['description'] is String &&
+        payload['priority'] is num &&
+        payload['execution_mode'] is String &&
+        payload['estimated_duration_ms'] is num &&
+        payload['data'] is Map;
+  }
+
+  bool _localTaskMatchesCanonicalEditableState(
+    LocalTask task,
+    Map<String, dynamic> canonical,
+  ) {
+    final canonicalCommandId = canonical['last_command_id'] as String?;
+    if (canonicalCommandId == null || canonicalCommandId.trim().isEmpty) {
+      return false;
+    }
+    final canonicalData = canonical['data'] is Map
+        ? Map<String, dynamic>.from(canonical['data'] as Map)
+        : const <String, dynamic>{};
+    bool sameInstant(DateTime? local, Object? remote) {
+      final remoteInstant = _instant(remote)?.toLocal();
+      if (local == null || remoteInstant == null) {
+        return local == null && remoteInstant == null;
+      }
+      return local.isAtSameMomentAs(remoteInstant);
+    }
+
+    return task.userId == canonical['user_id'] &&
+        task.id == canonical['id'] &&
+        task.deletedAt == null &&
+        task.revision == (canonical['revision'] as num?)?.toInt() &&
+        task.lastCommandId == canonicalCommandId &&
+        task.title == (canonical['title'] as String? ?? 'Untitled task') &&
+        task.description == (canonical['description'] as String? ?? '') &&
+        task.domainId == canonical['domain_id'] &&
+        task.priority == ((canonical['priority'] as num?)?.toInt() ?? 2) &&
+        task.executionMode ==
+            (canonical['execution_mode'] as String? ?? 'manual') &&
+        task.scheduledDate == _date(canonical['scheduled_date']) &&
+        sameInstant(task.plannedStart, canonical['planned_start']) &&
+        sameInstant(task.plannedEnd, canonical['planned_end']) &&
+        sameInstant(task.dueAt, canonical['due_at']) &&
+        task.estimatedDurationMs ==
+            ((canonical['estimated_duration_ms'] as num?)?.toInt() ?? 0) &&
+        task.roadmapId == canonical['roadmap_id'] &&
+        task.roadmapPhaseId == canonical['roadmap_phase_id'] &&
+        task.templateId == canonical['template_id'] &&
+        task.occurrenceKey == canonical['occurrence_key'] &&
+        const DeepCollectionEquality().equals(
+          _payloadMap(task.dataJson),
+          canonicalData,
+        );
+  }
+
+  LocalTasksCompanion _taskEditCompanionFromPayload({
+    required Map<String, dynamic> payload,
+    required Map<String, dynamic> canonical,
+    required int revision,
+    required DateTime updatedAt,
+    required String deviceId,
+    required String commandId,
+  }) {
+    final canonicalData = canonical['data'] is Map
+        ? Map<String, dynamic>.from(canonical['data'] as Map)
+        : <String, dynamic>{};
+    final payloadData = Map<String, dynamic>.from(payload['data'] as Map);
+    return LocalTasksCompanion(
+      title: Value(payload['title'] as String),
+      description: Value(payload['description'] as String),
+      domainId: Value(payload['domain_id'] as String?),
+      priority: Value((payload['priority'] as num).toInt()),
+      executionMode: Value(payload['execution_mode'] as String),
+      scheduledDate: Value(_date(payload['scheduled_date'])),
+      plannedStart: Value(_instant(payload['planned_start'])?.toLocal()),
+      plannedEnd: Value(_instant(payload['planned_end'])?.toLocal()),
+      dueAt: Value(_instant(payload['due_at'])?.toLocal()),
+      estimatedDurationMs: Value(
+        (payload['estimated_duration_ms'] as num).toInt(),
+      ),
+      roadmapId: Value(payload['roadmap_id'] as String?),
+      roadmapPhaseId: Value(payload['roadmap_phase_id'] as String?),
+      templateId: Value(canonical['template_id'] as String),
+      occurrenceKey: Value(canonical['occurrence_key'] as String),
+      // The server merges task data (`canonical || payload`) on update. Match
+      // that projection locally so derived scheduling/time-zone fields do not
+      // blink out while the replacement command is in flight.
+      dataJson: Value(jsonEncode({...canonicalData, ...payloadData})),
+      revision: Value(revision),
+      updatedAt: Value(updatedAt),
+      updatedByDeviceId: Value(deviceId),
+      lastCommandId: Value(commandId),
+    );
+  }
+
+  Future<bool> _rebaseRejectedTaskOccurrenceIdentityUpdate({
+    required LocalOutboxCommand command,
+    required Map<String, dynamic> canonical,
+    required Map<String, dynamic> collision,
+  }) async {
+    final userId = command.userId;
+    final error = _payloadMap(command.lastError ?? '');
+    final payload = _payloadMap(command.payloadJson);
+    final templateId = (payload['template_id'] as String?)?.trim();
+    final occurrenceKey = (payload['occurrence_key'] as String?)?.trim();
+    final canonicalRevision = (canonical['revision'] as num?)?.toInt();
+    if (command.status != 'conflict' ||
+        command.entityType != 'task_occurrences' ||
+        command.commandType != 'update' ||
+        error['reason'] != 'unique_constraint' ||
+        templateId == null ||
+        templateId.isEmpty ||
+        occurrenceKey == null ||
+        occurrenceKey.isEmpty ||
+        canonicalRevision == null ||
+        canonicalRevision != command.baseRevision ||
+        !isProvenRejectedTaskOccurrenceIdentityCollision(
+          userId: userId,
+          commandId: command.commandId,
+          commandEntityId: command.entityId,
+          commandPayload: payload,
+          canonicalRow: canonical,
+          collisionRow: collision,
+        )) {
+      return false;
+    }
+
+    final repairedPayload = repairedTaskOccurrenceIdentityPayload(
+      commandPayload: payload,
+      canonicalRow: canonical,
+    );
+    if (repairedPayload == null ||
+        !_isCompleteTaskEditPayload(repairedPayload)) {
+      return false;
+    }
+    bool isSafeLocalState(LocalTask task) {
+      final rejectedOptimisticState =
+          task.userId == userId &&
+          task.id == command.entityId &&
+          task.deletedAt == null &&
+          task.lastCommandId == command.commandId &&
+          task.revision == command.baseRevision + 1 &&
+          task.templateId == templateId &&
+          task.occurrenceKey == occurrenceKey;
+      return rejectedOptimisticState ||
+          _localTaskMatchesCanonicalEditableState(task, canonical);
+    }
+
+    final replacementId = repairedTaskOccurrenceIdentityCommandId(
+      userId: userId,
+      originalCommandId: command.commandId,
+    );
+    final replacement = await (database.select(
+      database.localOutboxCommands,
+    )..where((row) => row.commandId.equals(replacementId))).getSingleOrNull();
+    if (replacement != null) {
+      if (replacement.userId != userId ||
+          replacement.entityType != command.entityType ||
+          replacement.entityId != command.entityId ||
+          replacement.commandType != 'update' ||
+          replacement.baseRevision != canonicalRevision ||
+          !const DeepCollectionEquality().equals(
+            _payloadMap(replacement.payloadJson),
+            repairedPayload,
+          )) {
+        return false;
+      }
+      await (database.update(database.localOutboxCommands)..where(
+            (row) =>
+                row.commandId.equals(command.commandId) &
+                row.status.equals('conflict'),
+          ))
+          .write(
+            const LocalOutboxCommandsCompanion(
+              status: Value('superseded'),
+              nextAttemptAt: Value(null),
+              lastError: Value(null),
+            ),
+          );
+      return true;
+    }
+
+    if (await _hasPendingCommand(
+      'task_occurrences',
+      command.entityId,
+      userId: userId,
+    )) {
+      return false;
+    }
+    final localTask =
+        await (database.select(database.localTasks)..where(
+              (row) =>
+                  row.userId.equals(userId) &
+                  row.id.equals(command.entityId) &
+                  row.deletedAt.isNull(),
+            ))
+            .getSingleOrNull();
+    if (localTask == null || !isSafeLocalState(localTask)) {
+      return false;
+    }
+
+    final now = DateTime.now().toUtc();
+    final currentDeviceId = await DeviceIdentity.accountId(userId);
+    final sequence = await DeviceIdentity.nextSequence(userId);
+    var repairedInTransaction = false;
+    await database.transaction(() async {
+      final currentCommand =
+          await (database.select(database.localOutboxCommands)..where(
+                (row) =>
+                    row.commandId.equals(command.commandId) &
+                    row.status.equals('conflict'),
+              ))
+              .getSingleOrNull();
+      final currentTask =
+          await (database.select(database.localTasks)..where(
+                (row) =>
+                    row.userId.equals(userId) &
+                    row.id.equals(command.entityId) &
+                    row.deletedAt.isNull(),
+              ))
+              .getSingleOrNull();
+      if (currentCommand == null ||
+          currentTask == null ||
+          !isSafeLocalState(currentTask) ||
+          await _hasPendingCommand(
+            'task_occurrences',
+            command.entityId,
+            userId: userId,
+          )) {
+        return;
+      }
+      await database
+          .into(database.localOutboxCommands)
+          .insert(
+            LocalOutboxCommandsCompanion.insert(
+              commandId: replacementId,
+              userId: userId,
+              deviceId: currentDeviceId,
+              deviceSequence: sequence,
+              entityType: 'task_occurrences',
+              entityId: command.entityId,
+              commandType: 'update',
+              baseRevision: canonicalRevision,
+              payloadJson: jsonEncode(repairedPayload),
+              clientTimestamp: now,
+              createdAt: now,
+            ),
+          );
+      await (database.update(database.localTasks)..where(
+            (row) =>
+                row.userId.equals(userId) & row.id.equals(command.entityId),
+          ))
+          .write(
+            _taskEditCompanionFromPayload(
+              payload: repairedPayload,
+              canonical: canonical,
+              revision: canonicalRevision + 1,
+              updatedAt: now,
+              deviceId: currentDeviceId,
+              commandId: replacementId,
+            ),
+          );
+      await _supersedeCommands([currentCommand]);
+      repairedInTransaction = true;
+    });
+    return repairedInTransaction;
+  }
+
+  @visibleForTesting
+  Future<bool> rebaseRejectedTaskOccurrenceIdentityUpdateForTesting({
+    required String commandId,
+    required Map<String, dynamic> canonical,
+    required Map<String, dynamic> collision,
+  }) async {
+    final command = await (database.select(
+      database.localOutboxCommands,
+    )..where((row) => row.commandId.equals(commandId))).getSingleOrNull();
+    if (command == null) return false;
+    return _rebaseRejectedTaskOccurrenceIdentityUpdate(
+      command: command,
+      canonical: canonical,
+      collision: collision,
+    );
   }
 
   /// Adopts the canonical UUID for a recurring occurrence that an older
@@ -8344,7 +9445,15 @@ class SyncService {
             acknowledgedCommandId: acknowledgedCommandId,
             superseded: allowAcknowledgedRollback,
           );
-    if (!force && !shouldApply) {
+    final shouldRestoreSanitized =
+        !force &&
+        !shouldApply &&
+        await _canRestoreSanitizedCanonicalRuntime(
+          local: local,
+          row: row,
+          hasPendingRuntimeCommand: pending.isNotEmpty,
+        );
+    if (!force && !shouldApply && !shouldRestoreSanitized) {
       // A duplicate needs no write.  For stale/inconsistent rows, retain the
       // newer local runtime and let the already-bounded canonical recovery
       // path observe a future server revision instead of reintroducing an old
@@ -8388,6 +9497,67 @@ class SyncService {
           ),
         );
   }
+
+  Future<bool> _canRestoreSanitizedCanonicalRuntime({
+    required LocalRuntime? local,
+    required Map<String, dynamic> row,
+    required bool hasPendingRuntimeCommand,
+  }) async {
+    if (local == null) return false;
+    final userId = row['user_id'] as String?;
+    final taskId = row['active_task_occurrence_id'] as String?;
+    final sessionId = row['active_session_id'] as String?;
+    final incomingRevision = (row['revision'] as num?)?.toInt() ?? 1;
+    final eligibleByLocalEvidence = shouldRestoreSanitizedCanonicalRuntime(
+      localState: local.state,
+      localTaskId: local.activeTaskId,
+      localSessionId: local.sessionId,
+      localDataJson: local.dataJson,
+      localRevision: local.revision,
+      localCommandId: local.lastCommandId,
+      incomingState: row['state'] as String? ?? 'idle',
+      incomingTaskId: taskId,
+      incomingSessionId: sessionId,
+      incomingRevision: incomingRevision,
+      incomingCommandId: row['last_command_id'] as String?,
+      hasPendingRuntimeCommand: hasPendingRuntimeCommand,
+      exactTaskReferenceExists: true,
+      exactSessionReferenceExists: true,
+    );
+    if (!eligibleByLocalEvidence) return false;
+    final taskReference = userId == null || taskId == null
+        ? null
+        : await (database.select(database.localTasks)..where(
+                (task) =>
+                    task.id.equals(taskId) &
+                    task.userId.equals(userId) &
+                    task.deletedAt.isNull() &
+                    task.status.isNotIn(const [
+                      'completed',
+                      'cancelled',
+                      'archived',
+                    ]),
+              ))
+              .getSingleOrNull();
+    final sessionReference =
+        userId == null || taskId == null || sessionId == null
+        ? null
+        : await (database.select(database.localEntityRecords)..where(
+                (session) =>
+                    session.id.equals(sessionId) &
+                    session.userId.equals(userId) &
+                    session.entityType.equals('execution_sessions') &
+                    session.parentId.equals(taskId) &
+                    session.deletedAt.isNull() &
+                    session.status.isNotIn(const ['completed', 'cancelled']),
+              ))
+              .getSingleOrNull();
+    return taskReference != null && sessionReference != null;
+  }
+
+  @visibleForTesting
+  Future<void> applyRemoteRuntimeForTesting(Map<String, dynamic> row) =>
+      _applyRemoteRuntime(row);
 
   Future<void> _restoreCanonicalRuntime({bool force = false}) async {
     final user = client.auth.currentUser;

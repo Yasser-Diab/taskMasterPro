@@ -638,6 +638,43 @@ void main() {
     expect(isExecutionNotificationTag('wellbeing:sleep'), isFalse);
   });
 
+  test(
+    'startup cancels both execution slots from the ledger before superseding',
+    () {
+      final source = File(
+        'lib/core/notifications/notification_sounds.dart',
+      ).readAsStringSync();
+      final body = source.substring(
+        source.indexOf(
+          'Future<void> reconcileOwnedTaskNotificationsOnStartup({',
+        ),
+        source.indexOf(
+          'Future<void> cancel(int id)',
+          source.indexOf(
+            'Future<void> reconcileOwnedTaskNotificationsOnStartup({',
+          ),
+        ),
+      );
+
+      expect(body, contains('for (final taskId in entries.keys)'));
+      expect(body, contains('executionNotificationId(taskId)'));
+      expect(body, contains('executionStatusNotificationId(taskId)'));
+      expect(
+        body,
+        contains('if (id == _sleepReminderNotificationId) continue'),
+      );
+      expect(
+        body.indexOf('await _plugin.cancel(id: id)'),
+        lessThan(body.indexOf("'state': 'superseded'")),
+      );
+      expect(
+        source,
+        contains('static const _sleepReminderNotificationId = 820026'),
+      );
+      expect(body, isNot(contains('cancel(_sleepReminderNotificationId)')));
+    },
+  );
+
   test('Android receiver validates execution identity before display', () {
     final receiver = File(
       'third_party/flutter_local_notifications/android/src/main/java/'

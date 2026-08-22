@@ -121,7 +121,16 @@ class VacationRepository {
   static Map<String, Object?> _payload(VacationPeriodDraft draft) => {
     'title': draft.title.trim(),
     'status': draft.enabled ? 'active' : 'paused',
-    ..._data(draft),
+    'start_date': dateOnlyText(draft.startsOn),
+    'end_date': dateOnlyText(draft.endsOn),
+    'recurrence': draft.recurrence.name,
+    'interval_value': draft.interval,
+    'task_policy': draft.taskPolicy.name,
+    'task_scope': draft.taskScope.name,
+    'selected_template_ids': draft.selectedTemplateIds.toList()..sort(),
+    // Schema metadata belongs to the extensible JSON data column. The
+    // revision-checked vacation RPC deliberately rejects unknown top-level
+    // columns, so it must never be spread from the local data map.
     'data': {'schema_version': 1},
   };
 

@@ -24,6 +24,40 @@ import 'package:taskmaster_pro/features/tasks/presentation/task_workspace_screen
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  test(
+    'task-card Start opens Execute only after the canonical start is accepted',
+    () {
+      final source = File(
+        'lib/features/tasks/presentation/task_card.dart',
+      ).readAsStringSync();
+      final startControl = source.substring(
+        source.indexOf('class _CanonicalTaskControlState'),
+        source.indexOf(
+          '@override\n  Widget build',
+          source.indexOf('class _CanonicalTaskControlState'),
+        ),
+      );
+
+      expect(
+        startControl,
+        contains('startAccepted = await startTaskWithConfirmation('),
+      );
+      expect(startControl, contains('launchPreferredResource: false'));
+      expect(startControl, contains('if (startAccepted != true)'));
+      expect(startControl, contains("text('task_start_rejected')"));
+      expect(
+        startControl,
+        contains(
+          'TaskWorkspaceScreen.open(context, widget.task, initialSection: 1)',
+        ),
+      );
+      expect(
+        startControl.indexOf('if (startAccepted != true)'),
+        lessThan(startControl.indexOf('TaskWorkspaceScreen.open(')),
+      );
+    },
+  );
+
   group('canonical Pomodoro controls', () {
     final now = DateTime.utc(2026, 7, 28, 12);
 

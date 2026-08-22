@@ -1,9 +1,11 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:drift/drift.dart' hide isNull, isNotNull;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:taskmaster_pro/core/database/app_database.dart';
 import 'package:taskmaster_pro/core/sync/sync_service.dart';
@@ -1339,6 +1341,379 @@ void main() {
       reason: 'Malformed history must remain diagnostic instead of guessed.',
     );
   });
+
+  test('legacy vacation metadata is repaired once without changing intent', () {
+    const legacyPayload = <String, dynamic>{
+      'title': 'Summer holiday',
+      'start_date': '2026-08-10',
+      'end_date': '2026-08-12',
+      'schema_version': 1,
+      'data': <String, dynamic>{'source': 'routine_settings'},
+    };
+    final repaired = normalizedVacationCommandPayload(legacyPayload);
+
+    expect(repaired, isNot(contains('schema_version')));
+    expect(repaired['data'], {
+      'source': 'routine_settings',
+      'schema_version': 1,
+    });
+    expect(
+      isLegacyVacationContractFailure(
+        entityType: 'vacation_periods',
+        commandType: 'create',
+        status: 'conflict',
+        payload: legacyPayload,
+        lastError:
+            '{"reason":"invalid_command_contract",'
+            '"message":"invalid_payload_columns: {schema_version}"}',
+      ),
+      isTrue,
+    );
+    expect(
+      isLegacyVacationContractFailure(
+        entityType: 'vacation_periods',
+        commandType: 'create',
+        status: 'conflict',
+        payload: repaired,
+        lastError: 'invalid_payload_columns: {schema_version}',
+      ),
+      isFalse,
+    );
+    final firstId = repairedVacationCommandId(
+      userId: 'owner-1',
+      originalCommandId: 'command-1',
+    );
+    expect(
+      repairedVacationCommandId(
+        userId: 'owner-1',
+        originalCommandId: 'command-1',
+      ),
+      firstId,
+    );
+    expect(
+      repairedVacationCommandId(
+        userId: 'owner-1',
+        originalCommandId: 'command-2',
+      ),
+      isNot(firstId),
+    );
+  });
+
+  test('occurrence identity collision requires two distinct owner rows', () {
+    const payload = <String, dynamic>{
+      'template_id': 'template-1',
+      'occurrence_key': '2026-08-22',
+    };
+    const canonical = <String, dynamic>{
+      'id': 'task-23',
+      'user_id': 'owner-1',
+      'template_id': 'template-1',
+      'occurrence_key': '2026-08-23',
+      'last_command_id': 'accepted-command',
+      'deleted_at': null,
+    };
+    const collision = <String, dynamic>{
+      'id': 'task-22',
+      'user_id': 'owner-1',
+      'template_id': 'template-1',
+      'occurrence_key': '2026-08-22',
+      'deleted_at': null,
+    };
+
+    expect(
+      isProvenRejectedTaskOccurrenceIdentityCollision(
+        userId: 'owner-1',
+        commandId: 'rejected-command',
+        commandEntityId: 'task-23',
+        commandPayload: payload,
+        canonicalRow: canonical,
+        collisionRow: collision,
+      ),
+      isTrue,
+    );
+    expect(
+      isProvenRejectedTaskOccurrenceIdentityCollision(
+        userId: 'owner-1',
+        commandId: 'rejected-command',
+        commandEntityId: 'task-23',
+        commandPayload: payload,
+        canonicalRow: canonical,
+        collisionRow: {...collision, 'user_id': 'owner-2'},
+      ),
+      isFalse,
+      reason: 'RLS ownership proof must be explicit before auto-repair.',
+    );
+    expect(
+      isProvenRejectedTaskOccurrenceIdentityCollision(
+        userId: 'owner-1',
+        commandId: 'rejected-command',
+        commandEntityId: 'task-23',
+        commandPayload: payload,
+        canonicalRow: canonical,
+        collisionRow: {...collision, 'deleted_at': '2026-08-22T12:00:00Z'},
+      ),
+      isFalse,
+    );
+  });
+
+  test('legacy vacation repair is durable and restart-idempotent', () async {
+    SharedPreferences.setMockInitialValues({});
+    final database = AppDatabase(NativeDatabase.memory());
+    addTearDown(database.close);
+    const userId = 'owner-vacation';
+    const entityId = 'vacation-1';
+    const commandId = 'vacation-command-1';
+    final now = DateTime.utc(2026, 8, 22, 12);
+    const payload = <String, dynamic>{
+      'title': 'Summer holiday',
+      'start_date': '2026-08-24',
+      'end_date': '2026-08-28',
+      'schema_version': 1,
+      'data': <String, dynamic>{},
+    };
+    await database
+        .into(database.localEntityRecords)
+        .insert(
+          LocalEntityRecordsCompanion.insert(
+            id: entityId,
+            userId: userId,
+            entityType: 'vacation_periods',
+            title: const Value('Summer holiday'),
+            dataJson: const Value('{"schema_version":1}'),
+            revision: const Value(1),
+            createdAt: now,
+            updatedAt: now,
+            lastCommandId: const Value(commandId),
+          ),
+        );
+    await database
+        .into(database.localOutboxCommands)
+        .insert(
+          LocalOutboxCommandsCompanion.insert(
+            commandId: commandId,
+            userId: userId,
+            deviceId: 'legacy-device',
+            deviceSequence: 1,
+            entityType: 'vacation_periods',
+            entityId: entityId,
+            commandType: 'create',
+            baseRevision: 0,
+            payloadJson: jsonEncode(payload),
+            status: const Value('conflict'),
+            lastError: const Value(
+              '{"reason":"invalid_command_contract",'
+              '"message":"invalid_payload_columns: {schema_version}"}',
+            ),
+            clientTimestamp: now,
+            createdAt: now,
+          ),
+        );
+    final service = SyncService(
+      database: database,
+      client: SupabaseClient(
+        'https://example.supabase.co',
+        'sb_publishable_test_key',
+      ),
+    );
+
+    await service.repairLegacyVacationContractFailuresForTesting(userId);
+    await service.repairLegacyVacationContractFailuresForTesting(userId);
+
+    final commands = await database.select(database.localOutboxCommands).get();
+    final replacementId = repairedVacationCommandId(
+      userId: userId,
+      originalCommandId: commandId,
+    );
+    expect(commands, hasLength(2));
+    expect(
+      commands.singleWhere((item) => item.commandId == commandId).status,
+      'superseded',
+    );
+    final replacement = commands.singleWhere(
+      (item) => item.commandId == replacementId,
+    );
+    expect(replacement.status, 'pending');
+    final repairedPayload = jsonDecode(replacement.payloadJson) as Map;
+    expect(repairedPayload, isNot(contains('schema_version')));
+    expect(repairedPayload['data'], {'schema_version': 1});
+    final record = await database
+        .select(database.localEntityRecords)
+        .getSingle();
+    expect(record.lastCommandId, replacementId);
+  });
+
+  test(
+    'occurrence repair rebases identity without losing task edits',
+    () async {
+      SharedPreferences.setMockInitialValues({});
+      final database = AppDatabase(NativeDatabase.memory());
+      addTearDown(database.close);
+      const userId = 'owner-task';
+      const entityId = 'task-23';
+      const commandId = 'rejected-task-update';
+      final now = DateTime.utc(2026, 8, 22, 13);
+      const rejectedPayload = <String, dynamic>{
+        'title': 'Edited routine title',
+        'description': 'Keep this detailed note',
+        'domain_id': null,
+        'priority': 3,
+        'execution_mode': 'pomodoro',
+        'scheduled_date': '2026-08-22',
+        'planned_start': '2026-08-22T07:00:00.000Z',
+        'planned_end': '2026-08-22T07:45:00.000Z',
+        'due_at': null,
+        'estimated_duration_ms': 2700000,
+        'roadmap_id': null,
+        'roadmap_phase_id': null,
+        'template_id': 'template-1',
+        'occurrence_key': '2026-08-22',
+        'data': <String, dynamic>{'note': 'Do not discard this'},
+      };
+      await database
+          .into(database.localTasks)
+          .insert(
+            LocalTasksCompanion.insert(
+              id: entityId,
+              userId: userId,
+              title: 'Canonical routine title',
+              description: const Value('Canonical note'),
+              priority: const Value(2),
+              executionMode: const Value('manual'),
+              scheduledDate: Value(DateTime(2026, 8, 23)),
+              plannedStart: Value(DateTime.utc(2026, 8, 23, 7)),
+              plannedEnd: Value(DateTime.utc(2026, 8, 23, 7, 45)),
+              estimatedDurationMs: const Value(2700000),
+              templateId: const Value('template-1'),
+              occurrenceKey: const Value('2026-08-23'),
+              dataJson: const Value(
+                '{"note":"canonical","time_zone":"Africa/Cairo"}',
+              ),
+              revision: const Value(4),
+              createdAt: now.subtract(const Duration(days: 1)),
+              updatedAt: now,
+              lastCommandId: const Value('accepted-command'),
+            ),
+          );
+      await database
+          .into(database.localOutboxCommands)
+          .insert(
+            LocalOutboxCommandsCompanion.insert(
+              commandId: commandId,
+              userId: userId,
+              deviceId: 'legacy-device',
+              deviceSequence: 1,
+              entityType: 'task_occurrences',
+              entityId: entityId,
+              commandType: 'update',
+              baseRevision: 4,
+              payloadJson: jsonEncode(rejectedPayload),
+              status: const Value('conflict'),
+              lastError: const Value(
+                '{"reason":"unique_constraint","code":"23505"}',
+              ),
+              clientTimestamp: now,
+              createdAt: now,
+            ),
+          );
+      final service = SyncService(
+        database: database,
+        client: SupabaseClient(
+          'https://example.supabase.co',
+          'sb_publishable_test_key',
+        ),
+      );
+      const canonical = <String, dynamic>{
+        'id': entityId,
+        'user_id': userId,
+        'template_id': 'template-1',
+        'occurrence_key': '2026-08-23',
+        'title': 'Canonical routine title',
+        'description': 'Canonical note',
+        'domain_id': null,
+        'priority': 2,
+        'execution_mode': 'manual',
+        'scheduled_date': '2026-08-23',
+        'planned_start': '2026-08-23T07:00:00.000Z',
+        'planned_end': '2026-08-23T07:45:00.000Z',
+        'due_at': null,
+        'estimated_duration_ms': 2700000,
+        'roadmap_id': null,
+        'roadmap_phase_id': null,
+        'data': <String, dynamic>{
+          'note': 'canonical',
+          'time_zone': 'Africa/Cairo',
+        },
+        'last_command_id': 'accepted-command',
+        'revision': 4,
+        'deleted_at': null,
+      };
+      const collision = <String, dynamic>{
+        'id': 'task-22',
+        'user_id': userId,
+        'template_id': 'template-1',
+        'occurrence_key': '2026-08-22',
+        'deleted_at': null,
+      };
+
+      expect(
+        await service.rebaseRejectedTaskOccurrenceIdentityUpdateForTesting(
+          commandId: commandId,
+          canonical: canonical,
+          collision: collision,
+        ),
+        isTrue,
+      );
+      expect(
+        await service.rebaseRejectedTaskOccurrenceIdentityUpdateForTesting(
+          commandId: commandId,
+          canonical: canonical,
+          collision: collision,
+        ),
+        isFalse,
+        reason:
+            'The rejected command is retired after exactly one replacement.',
+      );
+
+      final replacementId = repairedTaskOccurrenceIdentityCommandId(
+        userId: userId,
+        originalCommandId: commandId,
+      );
+      final commands = await database
+          .select(database.localOutboxCommands)
+          .get();
+      expect(commands, hasLength(2));
+      expect(
+        commands.singleWhere((item) => item.commandId == commandId).status,
+        'superseded',
+      );
+      final replacement = commands.singleWhere(
+        (item) => item.commandId == replacementId,
+      );
+      final payload = jsonDecode(replacement.payloadJson) as Map;
+      expect(payload['title'], rejectedPayload['title']);
+      expect(payload['description'], rejectedPayload['description']);
+      expect(payload['scheduled_date'], rejectedPayload['scheduled_date']);
+      expect(payload['planned_start'], rejectedPayload['planned_start']);
+      expect(payload['estimated_duration_ms'], 2700000);
+      expect(payload['data'], rejectedPayload['data']);
+      expect(payload['template_id'], 'template-1');
+      expect(payload['occurrence_key'], '2026-08-23');
+      expect(replacement.baseRevision, 4);
+
+      final task = await database.select(database.localTasks).getSingle();
+      expect(task.title, 'Edited routine title');
+      expect(task.description, 'Keep this detailed note');
+      expect(task.scheduledDate, DateTime(2026, 8, 22));
+      expect(task.estimatedDurationMs, 2700000);
+      expect(jsonDecode(task.dataJson), {
+        'note': 'Do not discard this',
+        'time_zone': 'Africa/Cairo',
+      });
+      expect(task.occurrenceKey, '2026-08-23');
+      expect(task.revision, 5);
+      expect(task.lastCommandId, replacementId);
+    },
+  );
 
   test(
     'only a 23505 canonical built-in Area collision is an automatic alias',

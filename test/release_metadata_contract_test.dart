@@ -7,7 +7,7 @@ String _read(String relativePath) =>
 
 void main() {
   test('release-facing version metadata is aligned to v0.0.28', () {
-    expect(_read('pubspec.yaml'), contains('version: 0.0.28+39'));
+    expect(_read('pubspec.yaml'), contains('version: 0.0.28+41'));
     expect(_read('package.json'), contains('"version": "0.0.28"'));
     expect(_read('package-lock.json'), contains('"version": "0.0.28"'));
     expect(

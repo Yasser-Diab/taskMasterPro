@@ -12,6 +12,12 @@ import '../domain/pomodoro_execution_state.dart';
 import '../domain/task_domain_catalog.dart';
 import '../domain/task_schedule_policy.dart';
 
+/// Local-only evidence that an otherwise canonical runtime was hidden because
+/// its task/session rows had not reached this device yet. The synchronization
+/// receiver consumes and removes this marker when those exact references are
+/// available; it is never a new execution command.
+const localRuntimeReferenceRepairMarkerKey = '_local_runtime_reference_repair';
+
 bool shouldSeedStarterDomain({
   required bool hasLocalRecord,
   required bool hasCommandHistory,
@@ -295,6 +301,14 @@ class TaskRepository {
 
   Future<void> _clearInvalidRuntime(LocalRuntime runtime) async {
     final now = _clock();
+    final repairedData = _runtimeData(runtime.dataJson)
+      ..[localRuntimeReferenceRepairMarkerKey] = <String, Object?>{
+        'task_id': runtime.activeTaskId,
+        'session_id': runtime.sessionId,
+        'state': runtime.state,
+        'revision': runtime.revision,
+        'command_id': runtime.lastCommandId,
+      };
     await database.transaction(() async {
       await _supersedePendingRuntimeCommands(runtime);
       await (database.update(database.localRuntimeStates)..where(
@@ -303,6 +317,7 @@ class TaskRepository {
                 row.userId.equals(_userId) &
                 row.activeTaskId.equals(runtime.activeTaskId!) &
                 row.sessionId.equals(runtime.sessionId!) &
+                row.state.equals(runtime.state) &
                 row.revision.equals(runtime.revision),
           ))
           .write(
@@ -311,6 +326,7 @@ class TaskRepository {
               sessionId: const Value(null),
               state: const Value('idle'),
               segmentStartedAt: const Value(null),
+              dataJson: Value(jsonEncode(repairedData)),
               updatedAt: Value(now),
             ),
           );
@@ -898,6 +914,16 @@ class TaskRepository {
   }) async {
     final task = await getTask(taskId);
     if (task == null) return;
+    // A recurring occurrence's template/key pair is its immutable semantic
+    // identity. Editing the recurrence may update the shared template and
+    // rule, but it must not move an already-generated occurrence onto another
+    // date's identity and collide with that date's canonical row.
+    final resolvedTemplateId = task.templateId ?? templateId;
+    final resolvedOccurrenceKey = task.occurrenceKey ?? occurrenceKey;
+    if (task.templateId == resolvedTemplateId &&
+        task.occurrenceKey == resolvedOccurrenceKey) {
+      return;
+    }
     await updateTask(
       task,
       TaskDraft(
@@ -913,8 +939,8 @@ class TaskRepository {
         estimatedDuration: Duration(milliseconds: task.estimatedDurationMs),
         roadmapId: task.roadmapId,
         roadmapPhaseId: task.roadmapPhaseId,
-        templateId: templateId,
-        occurrenceKey: occurrenceKey,
+        templateId: resolvedTemplateId,
+        occurrenceKey: resolvedOccurrenceKey,
         configuration: _configuration(task),
       ),
     );
@@ -1211,6 +1237,8 @@ class TaskRepository {
               sessionId: Value(sessionId),
               state: const Value('running'),
               segmentStartedAt: Value(now),
+              accumulatedActiveMs: const Value(0),
+              accumulatedPausedMs: const Value(0),
               dataJson: Value(
                 currentTask.executionMode == 'pomodoro'
                     ? updatedPomodoroRuntimeData(
@@ -3044,6 +3072,17 @@ class TaskRepository {
     return value is Map
         ? Map<String, Object?>.from(value)
         : <String, Object?>{};
+  }
+
+  Map<String, Object?> _runtimeData(String raw) {
+    try {
+      final value = jsonDecode(raw);
+      return value is Map
+          ? Map<String, Object?>.from(value)
+          : <String, Object?>{};
+    } on FormatException {
+      return <String, Object?>{};
+    }
   }
 
   int _recordableSegmentMs(LocalTask task, LocalRuntime runtime, DateTime now) {

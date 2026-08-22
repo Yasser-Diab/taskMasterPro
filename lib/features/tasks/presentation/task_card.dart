@@ -269,26 +269,18 @@ class _CanonicalTaskControlState extends ConsumerState<_CanonicalTaskControl> {
   Future<void> _run(TaskExecutionPrimaryAction action) async {
     if (_busy) return;
     setState(() => _busy = true);
+    bool? startAccepted;
     try {
       await TaskExecutionCommands.commitLocallyAndSynchronize(
         localCommand: () async {
           final repository = ref.read(taskRepositoryProvider);
           switch (action) {
             case TaskExecutionPrimaryAction.start:
-              await startTaskWithConfirmation(
+              startAccepted = await startTaskWithConfirmation(
                 context,
                 ref,
                 widget.task,
-                onOpenInAppResource: (url) {
-                  unawaited(
-                    TaskWorkspaceScreen.open(
-                      context,
-                      widget.task,
-                      initialSection: 3,
-                      initialBrowserUrl: url,
-                    ),
-                  );
-                },
+                launchPreferredResource: false,
               );
             case TaskExecutionPrimaryAction.pause:
               await repository.pause(widget.task);
@@ -305,6 +297,19 @@ class _CanonicalTaskControlState extends ConsumerState<_CanonicalTaskControl> {
         },
         synchronize: () => ref.read(syncServiceProvider).drainOutbox(),
       );
+      if (action == TaskExecutionPrimaryAction.start && mounted) {
+        if (startAccepted != true) {
+          final messenger = ScaffoldMessenger.of(context);
+          messenger.hideCurrentSnackBar();
+          messenger.showSnackBar(
+            SnackBar(content: Text(context.l10n.text('task_start_rejected'))),
+          );
+        } else {
+          unawaited(
+            TaskWorkspaceScreen.open(context, widget.task, initialSection: 1),
+          );
+        }
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }

@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -11,6 +13,59 @@ import 'package:taskmaster_pro/features/tasks/data/task_repository.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  test(
+    're-attaching a template preserves the immutable occurrence key',
+    () async {
+      SharedPreferences.setMockInitialValues({});
+      final database = AppDatabase(NativeDatabase.memory());
+      addTearDown(database.close);
+      final client = SupabaseClient(
+        'https://example.supabase.co',
+        'sb_publishable_test_key',
+      );
+      final tasks = TaskRepository(database, client);
+      final taskId = await tasks.createTask(
+        TaskDraft(title: 'Daily work', scheduledDate: DateTime(2026, 8, 22)),
+      );
+
+      await tasks.attachTemplate(
+        taskId: taskId,
+        templateId: 'daily-template',
+        occurrenceKey: '2026-08-22',
+      );
+      final attached = (await tasks.getTask(taskId))!;
+      final commandsBefore =
+          await (database.select(database.localOutboxCommands)..where(
+                (row) =>
+                    row.entityType.equals('task_occurrences') &
+                    row.entityId.equals(taskId),
+              ))
+              .get();
+
+      await tasks.attachTemplate(
+        taskId: taskId,
+        templateId: 'daily-template',
+        occurrenceKey: '2026-08-23',
+      );
+
+      final reattached = (await tasks.getTask(taskId))!;
+      final commandsAfter =
+          await (database.select(database.localOutboxCommands)..where(
+                (row) =>
+                    row.entityType.equals('task_occurrences') &
+                    row.entityId.equals(taskId),
+              ))
+              .get();
+      final queuedPayload = jsonDecode(commandsAfter.single.payloadJson) as Map;
+      expect(reattached.templateId, 'daily-template');
+      expect(reattached.occurrenceKey, '2026-08-22');
+      expect(reattached.revision, attached.revision);
+      expect(reattached.lastCommandId, attached.lastCommandId);
+      expect(commandsAfter, hasLength(commandsBefore.length));
+      expect(queuedPayload['occurrence_key'], '2026-08-22');
+    },
+  );
 
   test(
     'generated timetable tasks retain phase, resource, link and reminder',

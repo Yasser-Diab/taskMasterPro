@@ -1638,6 +1638,8 @@ class AppLocalizations {
     'task_pause_and_start': 'Pause current and start selected',
     'task_finish_and_start': 'Finish current and start selected',
     'task_keep_current_running': 'Keep current task running',
+    'task_start_rejected':
+        'This task did not start. Check the current active task and try again.',
     'undo': 'Undo',
     'task_completed_message': 'Task completed',
     'completion_undone': 'Completion undone',
@@ -3637,6 +3639,8 @@ class AppLocalizations {
     'task_pause_and_start': 'إيقاف الحالية وبدء المحددة',
     'task_finish_and_start': 'إنهاء الحالية وبدء المحددة',
     'task_keep_current_running': 'إبقاء المهمة الحالية قيد التشغيل',
+    'task_start_rejected':
+        'لم تبدأ هذه المهمة. تحقّق من المهمة النشطة حاليًا ثم حاول مرة أخرى.',
     'undo': 'تراجع',
     'task_completed_message': 'تم إكمال المهمة',
     'completion_undone': 'تم التراجع عن الإكمال',
@@ -5696,6 +5700,8 @@ class AppLocalizations {
     'task_pause_and_start': 'Aktuelle pausieren und ausgewählte starten',
     'task_finish_and_start': 'Aktuelle beenden und ausgewählte starten',
     'task_keep_current_running': 'Aktuelle Aufgabe weiterlaufen lassen',
+    'task_start_rejected':
+        'Diese Aufgabe wurde nicht gestartet. Prüfen Sie die aktuell aktive Aufgabe und versuchen Sie es erneut.',
     'undo': 'Rückgängig',
     'task_completed_message': 'Aufgabe abgeschlossen',
     'completion_undone': 'Abschluss rückgängig gemacht',

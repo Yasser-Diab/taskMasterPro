@@ -44,11 +44,39 @@ import '../../tasks/presentation/standalone_pomodoro_screen.dart';
 import '../../tasks/presentation/task_start_flow.dart';
 import '../../tasks/presentation/task_workspace_screen.dart';
 
-final syncHealthProvider = StreamProvider<SyncHealth>((ref) async* {
+final syncHealthProvider = StreamProvider<SyncHealth>((ref) {
   final service = ref.watch(syncServiceProvider);
-  yield service.currentHealth;
-  yield* service.health;
+  return synchronizedSyncHealthStream(
+    readCurrent: () => service.currentHealth,
+    changes: service.health,
+  );
 });
+
+/// Subscribes before reading the current value so an idle transition cannot
+/// disappear between the initial read and the broadcast-stream subscription.
+/// A missed transition here used to leave the shell showing rotating arrows
+/// even though the synchronization panel already reported a clean account.
+@visibleForTesting
+Stream<SyncHealth> synchronizedSyncHealthStream({
+  required SyncHealth Function() readCurrent,
+  required Stream<SyncHealth> changes,
+}) {
+  StreamSubscription<SyncHealth>? subscription;
+  late final StreamController<SyncHealth> controller;
+  controller = StreamController<SyncHealth>(
+    sync: true,
+    onListen: () {
+      subscription = changes.listen(
+        controller.add,
+        onError: controller.addError,
+        onDone: controller.close,
+      );
+      controller.add(readCurrent());
+    },
+    onCancel: () => subscription?.cancel(),
+  );
+  return controller.stream.distinct();
+}
 
 /// Six destinations do not have enough width for six legible labels on a
 /// compact handset.  Keep the semantic names and long-press tooltips, while
@@ -65,6 +93,151 @@ ShellSyncVisualState shellSyncVisualState(SyncHealth health) {
     SyncHealth.idle => ShellSyncVisualState.synced,
     SyncHealth.attention => ShellSyncVisualState.attention,
   };
+}
+
+@visibleForTesting
+({IconData? icon, String labelKey, bool animate})
+shellSyncIndicatorPresentation(SyncHealth health) {
+  return switch (shellSyncVisualState(health)) {
+    ShellSyncVisualState.offline => (
+      icon: null,
+      labelKey: 'sync_offline_compact',
+      animate: false,
+    ),
+    ShellSyncVisualState.pending => (
+      icon: Icons.sync_rounded,
+      labelKey: 'sync_latest',
+      animate: true,
+    ),
+    ShellSyncVisualState.attention => (
+      icon: Icons.sync_problem_rounded,
+      labelKey: 'sync_needs_attention',
+      animate: false,
+    ),
+    ShellSyncVisualState.synced => (
+      icon: Icons.check_circle_outline_rounded,
+      labelKey: 'sync_all_changes',
+      animate: false,
+    ),
+  };
+}
+
+/// Stable canonical inputs for one execution boundary. Wall-clock `now` is
+/// deliberately excluded: identical runtime emissions must deduplicate, while
+/// equal-revision repairs to accumulated work, Pomodoro interval metadata, or
+/// task timing configuration must replace the old alarm.
+@visibleForTesting
+String executionAlarmIntervalIdentity({
+  required String taskId,
+  required String? sessionId,
+  required String state,
+  required int runtimeRevision,
+  required DateTime? segmentStartedAt,
+  required int accumulatedActiveMs,
+  required String runtimeDataJson,
+  required int taskRevision,
+  required int estimatedDurationMs,
+  required String taskDataJson,
+  required String eventType,
+  required int intervalDurationMs,
+  required int completedFocuses,
+  required bool isLongBreak,
+  required bool categoryEnabled,
+  required bool notificationsAuthorized,
+}) {
+  String part(Object? value) {
+    final text = value?.toString() ?? '';
+    return '${text.length}:$text';
+  }
+
+  return <Object?>[
+    taskId,
+    sessionId,
+    state,
+    runtimeRevision,
+    segmentStartedAt?.toUtc().toIso8601String(),
+    accumulatedActiveMs,
+    runtimeDataJson,
+    taskRevision,
+    estimatedDurationMs,
+    taskDataJson,
+    eventType,
+    intervalDurationMs,
+    completedFocuses,
+    isLongBreak,
+    categoryEnabled,
+    notificationsAuthorized,
+  ].map(part).join();
+}
+
+/// Tracks one canonical execution-boundary schedule and grants at most one
+/// retry token for an identical runtime interval. A successful schedule is
+/// deduplicated; a failed interval cannot be retried by every local stream
+/// emission after its single delayed retry has been consumed.
+@visibleForTesting
+class ExecutionAlarmRetryState {
+  ExecutionAlarmRetryState({this.maxRetries = 1});
+
+  final int maxRetries;
+  String? _scheduledIdentity;
+  String? _inactiveIdentity;
+  String? _failedIdentity;
+  int _grantedRetries = 0;
+  bool _retryPending = false;
+
+  bool beginAttempt(String identity, {bool retry = false}) {
+    if (_scheduledIdentity == identity || _inactiveIdentity == identity) {
+      return false;
+    }
+    if (_scheduledIdentity != null && _scheduledIdentity != identity) {
+      _scheduledIdentity = null;
+    }
+    if (_inactiveIdentity != null && _inactiveIdentity != identity) {
+      _inactiveIdentity = null;
+    }
+    if (retry) {
+      if (_failedIdentity != identity || !_retryPending) return false;
+      _retryPending = false;
+      return true;
+    }
+    return _failedIdentity != identity;
+  }
+
+  bool recordFailure(String identity) {
+    if (_failedIdentity != identity) {
+      _failedIdentity = identity;
+      _grantedRetries = 0;
+      _retryPending = false;
+    }
+    if (_grantedRetries >= maxRetries) return false;
+    _grantedRetries += 1;
+    _retryPending = true;
+    return true;
+  }
+
+  void recordSuccess(String identity) {
+    _scheduledIdentity = identity;
+    _inactiveIdentity = null;
+    _failedIdentity = null;
+    _grantedRetries = 0;
+    _retryPending = false;
+  }
+
+  void recordInactive(String identity) {
+    _scheduledIdentity = null;
+    _inactiveIdentity = identity;
+    _failedIdentity = null;
+    _grantedRetries = 0;
+    _retryPending = false;
+  }
+
+  void reset() {
+    _scheduledIdentity = null;
+    _inactiveIdentity = null;
+    _failedIdentity = null;
+    _grantedRetries = 0;
+    _retryPending = false;
+  }
 }
 
 class HomeShell extends ConsumerStatefulWidget {
@@ -104,11 +277,11 @@ class _HomeShellState extends ConsumerState<HomeShell> with RouteAware {
   bool _forcedReminderRefreshRequested = false;
   bool _refreshedRemindersAfterInitialSync = false;
   bool _executionNotificationPermissionDenied = false;
-  String? _lastExecutionState;
-  String? _lastExecutionSession;
-  String? _lastExecutionTaskId;
-  int? _lastExecutionRevision;
-  DateTime? _lastExecutionSegmentStartedAt;
+  static const _executionAlarmRetryDelay = Duration(seconds: 3);
+  final _executionAlarmRetryState = ExecutionAlarmRetryState();
+  String? _lastObservedExecutionTaskId;
+  Timer? _executionAlarmRetryTimer;
+  String? _executionAlarmRetryIdentity;
   Future<void> _executionAlarmQueue = Future<void>.value();
   Future<void> _standaloneAlarmQueue = Future<void>.value();
   StreamSubscription<List<LocalEntityRecord>>? _taskReminderSubscription;
@@ -208,7 +381,7 @@ class _HomeShellState extends ConsumerState<HomeShell> with RouteAware {
     if (!mounted) return;
     final repository = ref.read(taskRepositoryProvider);
     _runtimeSubscription = repository.watchRuntime().listen(
-      _queueExecutionAlarmSynchronization,
+      (runtime) => _queueExecutionAlarmSynchronization(runtime),
     );
     _queueExecutionAlarmSynchronization(await repository.getRuntime());
     _standaloneSubscription = ref
@@ -240,6 +413,7 @@ class _HomeShellState extends ConsumerState<HomeShell> with RouteAware {
     unawaited(_taskReminderSubscription?.cancel());
     _trayRefresh?.cancel();
     _automaticBoundaryRefresh?.cancel();
+    _executionAlarmRetryTimer?.cancel();
     _standaloneBoundaryTimer?.cancel();
     super.dispose();
   }
@@ -382,52 +556,35 @@ class _HomeShellState extends ConsumerState<HomeShell> with RouteAware {
     }
   }
 
-  Future<void> _synchronizeExecutionAlarm(LocalRuntime? runtime) async {
-    final previousState = _lastExecutionState;
-    final previousSession = _lastExecutionSession;
-    final previousTaskId = _lastExecutionTaskId;
-    final previousRevision = _lastExecutionRevision;
-    final previousSegmentStartedAt = _lastExecutionSegmentStartedAt;
-    _lastExecutionState = runtime?.state;
-    _lastExecutionSession = runtime?.sessionId;
-    _lastExecutionTaskId = runtime?.activeTaskId;
-    _lastExecutionRevision = runtime?.revision;
-    _lastExecutionSegmentStartedAt = runtime?.segmentStartedAt;
+  Future<void> _synchronizeExecutionAlarm(
+    LocalRuntime? runtime, {
+    String? retryIdentity,
+  }) async {
+    final previousTaskId = _lastObservedExecutionTaskId;
     final taskId = runtime?.activeTaskId;
     if (taskId == null || runtime == null || runtime.state == 'idle') {
-      // Completing a task clears activeTaskId.  Keep the prior slot long
-      // enough to cancel/supersede it, otherwise its old alarm survives and
-      // fires after completion.
+      _lastObservedExecutionTaskId = null;
+      _cancelExecutionAlarmRetry();
+      _executionAlarmRetryState.reset();
+      // Completing a task clears activeTaskId. Keep the prior slot long enough
+      // to cancel/supersede it, otherwise its old alarm survives completion.
       final taskIdsToCancel = <String>{?previousTaskId, ?taskId};
       for (final id in taskIdsToCancel) {
         await localNotificationService.cancelExecutionCompletion(id);
       }
       return;
     }
+
     final task = await ref.read(taskRepositoryProvider).getTask(taskId);
     if (task == null) return;
-    final executionNotificationsAuthorized = await localNotificationService
-        .ensureExecutionNotificationsAuthorized();
-    if (!executionNotificationsAuthorized) {
-      if (mounted && !_executionNotificationPermissionDenied) {
-        setState(() => _executionNotificationPermissionDenied = true);
-      }
-      return;
-    }
-    if (mounted && _executionNotificationPermissionDenied) {
-      setState(() => _executionNotificationPermissionDenied = false);
-    }
+    _lastObservedExecutionTaskId = taskId;
     final settings = ref.read(appSettingsProvider).value;
-    final intervalChanged =
-        previousTaskId != taskId ||
-        previousState != runtime.state ||
-        previousSession != runtime.sessionId ||
-        previousRevision != runtime.revision ||
-        previousSegmentStartedAt != runtime.segmentStartedAt;
-    if (!intervalChanged) return;
     final now = DateTime.now().toUtc();
     late final int remainingMs;
     late final String eventType;
+    var intervalDurationMs = task.estimatedDurationMs;
+    var completedFocuses = 0;
+    var isLongBreak = false;
     if (task.executionMode == 'pomodoro') {
       final pomodoro = PomodoroExecutionSnapshot.fromTask(
         task: task,
@@ -435,6 +592,9 @@ class _HomeShellState extends ConsumerState<HomeShell> with RouteAware {
         now: now,
       );
       remainingMs = pomodoro.remainingMs;
+      intervalDurationMs = pomodoro.intervalDurationMs;
+      completedFocuses = pomodoro.completedFocuses;
+      isLongBreak = pomodoro.isLongBreak;
       if (!pomodoro.isBreak) {
         eventType = 'focus_completed';
       } else {
@@ -453,24 +613,57 @@ class _HomeShellState extends ConsumerState<HomeShell> with RouteAware {
         now: now,
       );
       remainingMs = (intendedMs - recordedMs).clamp(60000, intendedMs);
+      intervalDurationMs = intendedMs;
       eventType = 'duration_completed';
     }
     final category = eventType == 'duration_completed'
         ? 'task_reminders'
         : eventType;
     final preferencesJson = settings?.notificationPreferencesJson ?? '{}';
-    final sound = NotificationSounds.forCategory(
+    final categoryEnabled = NotificationSounds.categoryEnabled(
       preferencesJson: preferencesJson,
       category: category,
-      fallbackKey: settings?.notificationSoundKey ?? 'system',
     );
-    // Realtime sends the same canonical boundary to every device. Remove the
-    // previous interval alert before scheduling its successor so handling the
-    // event on one device silences stale alarms everywhere else.
-    if (previousTaskId != null && previousTaskId != task.id) {
-      await localNotificationService.cancelExecutionCompletion(previousTaskId);
+    final executionNotificationsAuthorized = await localNotificationService
+        .ensureExecutionNotificationsAuthorized();
+    if (mounted &&
+        _executionNotificationPermissionDenied ==
+            executionNotificationsAuthorized) {
+      setState(
+        () => _executionNotificationPermissionDenied =
+            !executionNotificationsAuthorized,
+      );
     }
-    await localNotificationService.cancelExecutionCompletion(task.id);
+    final scheduleIdentity = executionAlarmIntervalIdentity(
+      taskId: task.id,
+      sessionId: runtime.sessionId,
+      state: runtime.state,
+      runtimeRevision: runtime.revision,
+      segmentStartedAt: runtime.segmentStartedAt,
+      accumulatedActiveMs: runtime.accumulatedActiveMs,
+      runtimeDataJson: runtime.dataJson,
+      taskRevision: task.revision,
+      estimatedDurationMs: task.estimatedDurationMs,
+      taskDataJson: task.dataJson,
+      eventType: eventType,
+      intervalDurationMs: intervalDurationMs,
+      completedFocuses: completedFocuses,
+      isLongBreak: isLongBreak,
+      categoryEnabled: categoryEnabled,
+      notificationsAuthorized: executionNotificationsAuthorized,
+    );
+    if (_executionAlarmRetryIdentity != null &&
+        _executionAlarmRetryIdentity != scheduleIdentity) {
+      _cancelExecutionAlarmRetry();
+    }
+    final retry = retryIdentity == scheduleIdentity;
+    if (!_executionAlarmRetryState.beginAttempt(
+      scheduleIdentity,
+      retry: retry,
+    )) {
+      return;
+    }
+
     final scheduledAtUtc = now.add(Duration(milliseconds: remainingMs));
     final intervalId = [
       runtime.sessionId ?? 'no-session',
@@ -479,56 +672,149 @@ class _HomeShellState extends ConsumerState<HomeShell> with RouteAware {
       runtime.segmentStartedAt?.toUtc().toIso8601String() ??
           runtime.updatedAt.toUtc().toIso8601String(),
     ].join(':');
-    if (runtime.state != 'paused') {
-      await localNotificationService.scheduleExecutionCompletion(
-        id: LocalNotificationService.executionNotificationId(task.id),
-        taskId: task.id,
-        taskTitle: task.title,
-        eventType: eventType,
-        scheduledAtUtc: scheduledAtUtc,
-        sound: sound,
-        sessionId: runtime.sessionId,
-        runtimeRevision: runtime.revision,
-        intervalId: intervalId,
-        category: category,
-        enabled: NotificationSounds.categoryEnabled(
-          preferencesJson: preferencesJson,
-          category: category,
-        ),
-        vibration: NotificationSounds.vibrationForCategory(
-          preferencesJson: preferencesJson,
-          category: category,
-        ),
-        localeCode: settings?.localeCode ?? 'en',
-      );
+    final sound = NotificationSounds.forCategory(
+      preferencesJson: preferencesJson,
+      category: category,
+      fallbackKey: settings?.notificationSoundKey ?? 'system',
+    );
+    final shouldScheduleBoundary =
+        runtime.state != 'paused' &&
+        categoryEnabled &&
+        executionNotificationsAuthorized;
+    ExecutionAlarmScheduleResult? scheduleResult;
+    var transientScheduleFailure = false;
+    if (shouldScheduleBoundary) {
+      try {
+        // Realtime sends the same canonical boundary to every device. Remove
+        // the predecessor before replacing it with this exact interval.
+        if (previousTaskId != null && previousTaskId != task.id) {
+          await localNotificationService.cancelExecutionCompletion(
+            previousTaskId,
+          );
+        }
+        await localNotificationService.cancelExecutionCompletion(task.id);
+        scheduleResult = await localNotificationService
+            .scheduleExecutionCompletion(
+              id: LocalNotificationService.executionNotificationId(task.id),
+              taskId: task.id,
+              taskTitle: task.title,
+              eventType: eventType,
+              scheduledAtUtc: scheduledAtUtc,
+              sound: sound,
+              sessionId: runtime.sessionId,
+              runtimeRevision: runtime.revision,
+              intervalId: intervalId,
+              category: category,
+              enabled: true,
+              vibration: NotificationSounds.vibrationForCategory(
+                preferencesJson: preferencesJson,
+                category: category,
+              ),
+              localeCode: settings?.localeCode ?? 'en',
+            );
+      } catch (_) {
+        transientScheduleFailure = true;
+      }
+      if (scheduleResult == ExecutionAlarmScheduleResult.scheduled) {
+        _executionAlarmRetryState.recordSuccess(scheduleIdentity);
+        _cancelExecutionAlarmRetry();
+      } else if (transientScheduleFailure ||
+          scheduleResult == ExecutionAlarmScheduleResult.expired) {
+        if (_executionAlarmRetryState.recordFailure(scheduleIdentity)) {
+          _scheduleExecutionAlarmRetry(scheduleIdentity);
+        } else {
+          _cancelExecutionAlarmRetry();
+        }
+      } else {
+        // Authorization may have changed between the shell check and the
+        // platform call. It is intentional and must not create a retry loop.
+        _executionAlarmRetryState.recordInactive(scheduleIdentity);
+        _cancelExecutionAlarmRetry();
+      }
+    } else {
+      try {
+        if (previousTaskId != null && previousTaskId != task.id) {
+          await localNotificationService.cancelExecutionCompletion(
+            previousTaskId,
+          );
+        }
+        await localNotificationService.cancelExecutionCompletion(task.id);
+      } catch (_) {
+        // Disabled, paused, and unauthorized intervals intentionally have no
+        // boundary. A platform cancellation failure does not justify a loop.
+      }
+      _executionAlarmRetryState.recordInactive(scheduleIdentity);
+      _cancelExecutionAlarmRetry();
     }
-    if (runtime.sessionId case final sessionId?) {
-      await localNotificationService.showExecutionStatus(
-        // A foreground status card and a future audible boundary are two
-        // different OS notifications. Reusing the boundary ID here causes
-        // show() to replace the scheduled alarm while the user is browsing.
-        id: LocalNotificationService.executionStatusNotificationId(task.id),
-        taskId: task.id,
-        taskTitle: task.title,
-        state: runtime.state,
-        boundaryAtUtc: scheduledAtUtc,
-        sound: sound,
-        sessionId: sessionId,
-        runtimeRevision: runtime.revision,
-        intervalId: intervalId,
-        eventType: eventType,
-        vibration: false,
-        localeCode: settings?.localeCode ?? 'en',
-      );
+
+    // The quiet live card is independent from the future audible boundary. A
+    // transient boundary failure must not remove task controls from the shade.
+    final sessionId = runtime.sessionId;
+    if (executionNotificationsAuthorized && sessionId != null) {
+      try {
+        await localNotificationService.showExecutionStatus(
+          id: LocalNotificationService.executionStatusNotificationId(task.id),
+          taskId: task.id,
+          taskTitle: task.title,
+          state: runtime.state,
+          boundaryAtUtc: scheduledAtUtc,
+          sound: sound,
+          sessionId: sessionId,
+          runtimeRevision: runtime.revision,
+          intervalId: intervalId,
+          eventType: eventType,
+          vibration: false,
+          localeCode: settings?.localeCode ?? 'en',
+        );
+      } catch (_) {
+        // Status-card delivery has no authority over exact alarm retry state.
+      }
     }
   }
 
-  Future<void> _queueExecutionAlarmSynchronization(LocalRuntime? runtime) {
+  void _cancelExecutionAlarmRetry() {
+    _executionAlarmRetryTimer?.cancel();
+    _executionAlarmRetryTimer = null;
+    _executionAlarmRetryIdentity = null;
+  }
+
+  void _scheduleExecutionAlarmRetry(String identity) {
+    _executionAlarmRetryTimer?.cancel();
+    _executionAlarmRetryIdentity = identity;
+    _executionAlarmRetryTimer = Timer(_executionAlarmRetryDelay, () {
+      _executionAlarmRetryTimer = null;
+      unawaited(_retryExecutionAlarm(identity));
+    });
+  }
+
+  Future<void> _retryExecutionAlarm(String identity) async {
+    if (!mounted || _executionAlarmRetryIdentity != identity) return;
+    try {
+      final runtime = await ref.read(taskRepositoryProvider).getRuntime();
+      if (!mounted || _executionAlarmRetryIdentity != identity) return;
+      await _queueExecutionAlarmSynchronization(
+        runtime,
+        retryIdentity: identity,
+      );
+    } catch (_) {
+      // The one local retry is consumed. A later canonical interval change can
+      // still schedule normally, but this interval never busy-loops or polls.
+      _executionAlarmRetryIdentity = null;
+    }
+  }
+
+  Future<void> _queueExecutionAlarmSynchronization(
+    LocalRuntime? runtime, {
+    String? retryIdentity,
+  }) {
     final previous = _executionAlarmQueue;
     _executionAlarmQueue = previous
         .then((_) async {
           if (!mounted) return;
-          await _synchronizeExecutionAlarm(runtime);
+          await _synchronizeExecutionAlarm(
+            runtime,
+            retryIdentity: retryIdentity,
+          );
         })
         .catchError((Object _, StackTrace _) {
           // Preserve the queue after a transient platform scheduling failure.
@@ -1312,7 +1598,8 @@ class _HomeShellState extends ConsumerState<HomeShell> with RouteAware {
       taskId,
       ledgerState: 'superseded',
     );
-    _lastExecutionRevision = null;
+    _cancelExecutionAlarmRetry();
+    _executionAlarmRetryState.reset();
     await _queueExecutionAlarmSynchronization(await repository.getRuntime());
   }
 
@@ -1780,49 +2067,44 @@ class _SyncFooterState extends ConsumerState<_SyncFooter>
   Widget build(BuildContext context) {
     final health = ref.watch(syncHealthProvider).value ?? SyncHealth.idle;
     final visualState = shellSyncVisualState(health);
-    final (icon, key, color, background) = switch (visualState) {
+    final presentation = shellSyncIndicatorPresentation(health);
+    final (color, background) = switch (visualState) {
       ShellSyncVisualState.offline => (
-        null,
-        'sync_offline_compact',
         Theme.of(context).colorScheme.onSurfaceVariant,
         Theme.of(context).colorScheme.surfaceContainerHighest,
       ),
       ShellSyncVisualState.pending => (
-        Icons.sync_rounded,
-        'sync_latest',
         Theme.of(context).colorScheme.primary,
         Theme.of(context).colorScheme.primary,
       ),
       ShellSyncVisualState.attention => (
-        Icons.sync_problem_rounded,
-        'sync_needs_attention',
         Theme.of(context).colorScheme.error,
         Theme.of(context).colorScheme.error,
       ),
       ShellSyncVisualState.synced => (
-        Icons.cloud_done_outlined,
-        'sync_all_changes',
         TaskMasterTheme.green,
         TaskMasterTheme.green,
       ),
     };
-    if (health == SyncHealth.syncing && !_rotation.isAnimating) {
+    if (presentation.animate && !_rotation.isAnimating) {
       _rotation.repeat();
-    } else if (health != SyncHealth.syncing && _rotation.isAnimating) {
+    } else if (!presentation.animate && _rotation.isAnimating) {
       _rotation
         ..stop()
         ..value = 0;
     }
-    final syncIcon = icon == null ? null : Icon(icon, size: 20, color: color);
+    final syncIcon = presentation.icon == null
+        ? null
+        : Icon(presentation.icon, size: 20, color: color);
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       child: Align(
         alignment: AlignmentDirectional.centerStart,
         child: Semantics(
           button: true,
-          label: context.l10n.text(key),
+          label: context.l10n.text(presentation.labelKey),
           child: Tooltip(
-            message: context.l10n.text(key),
+            message: context.l10n.text(presentation.labelKey),
             child: visualState == ShellSyncVisualState.offline
                 ? TextButton(
                     key: const ValueKey('sync-offline-indicator'),
@@ -1839,7 +2121,7 @@ class _SyncFooterState extends ConsumerState<_SyncFooter>
                       side: BorderSide(color: color.withValues(alpha: 0.24)),
                     ),
                     child: Text(
-                      context.l10n.text(key),
+                      context.l10n.text(presentation.labelKey),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -1853,7 +2135,7 @@ class _SyncFooterState extends ConsumerState<_SyncFooter>
                         color: background.withValues(alpha: 0.24),
                       ),
                     ),
-                    icon: health == SyncHealth.syncing
+                    icon: presentation.animate
                         ? RotationTransition(turns: _rotation, child: syncIcon!)
                         : syncIcon!,
                   ),

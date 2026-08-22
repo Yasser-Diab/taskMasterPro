@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:taskmaster_pro/core/database/app_database.dart';
 import 'package:taskmaster_pro/features/tasks/data/task_repository.dart';
+import 'package:taskmaster_pro/features/tasks/domain/pomodoro_execution_state.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -174,10 +175,13 @@ void main() {
   );
 
   test(
-    'Start uses an idle stored runtime revision instead of revision zero',
+    'Start keeps idle revision but resets old session totals to a full focus',
     () async {
       final taskId = await repository.createTask(
-        const TaskDraft(title: 'Restart after completion'),
+        const TaskDraft(
+          title: 'Restart after completion',
+          executionMode: 'pomodoro',
+        ),
       );
       final now = DateTime.now().toUtc();
       await database
@@ -187,6 +191,8 @@ void main() {
               id: localRuntimeStateId('local'),
               userId: 'local',
               state: const drift.Value('idle'),
+              accumulatedActiveMs: const drift.Value(3000000),
+              accumulatedPausedMs: const drift.Value(900000),
               revision: const drift.Value(9),
               updatedAt: now,
               lastCommandId: const drift.Value('previous-command'),
@@ -200,6 +206,21 @@ void main() {
       expect(command.baseRevision, 9);
       expect(runtime.revision, 10);
       expect(runtime.lastCommandId, command.commandId);
+      expect(runtime.accumulatedActiveMs, 0);
+      expect(runtime.accumulatedPausedMs, 0);
+      final snapshot = PomodoroExecutionSnapshot.fromTask(
+        task: (await repository.getTask(taskId))!,
+        runtime: runtime,
+        now: runtime.segmentStartedAt!,
+      );
+      expect(snapshot.remainingMs, const Duration(minutes: 25).inMilliseconds);
+      expect(
+        runtime.segmentStartedAt!.add(
+          Duration(milliseconds: snapshot.remainingMs),
+        ),
+        runtime.segmentStartedAt!.add(const Duration(minutes: 25)),
+        reason: 'The boundary alarm must be scheduled in the future.',
+      );
     },
   );
 
