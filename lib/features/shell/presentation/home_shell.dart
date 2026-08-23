@@ -11,6 +11,7 @@ import '../../../core/database/app_database.dart';
 import '../../../core/localization/app_localizations.dart';
 import '../../../core/navigation/app_route_observer.dart';
 import '../../../core/notifications/notification_sounds.dart';
+import '../../../core/platform/android_home_widget_service.dart';
 import '../../../core/platform/windows_shell_service.dart';
 import '../../../core/profile/profile_avatar.dart';
 import '../../../core/providers.dart';
@@ -178,6 +179,19 @@ String executionAlarmIntervalIdentity({
   ].map(part).join();
 }
 
+/// A scheduled Pomodoro boundary owns its notification until the user accepts
+/// a transition. Once the countdown reaches zero, recomputing the schedule
+/// would produce a synthetic `now` boundary, cancel the audible toast that
+/// Windows/Android just delivered, and replace its exact action identity.
+///
+/// Non-Pomodoro duration tasks intentionally keep their rolling reminder
+/// behavior, so this guard is limited to a completed Pomodoro interval.
+@visibleForTesting
+bool shouldPreserveCompletedPomodoroBoundary({
+  required bool isPomodoro,
+  required bool intervalComplete,
+}) => isPomodoro && intervalComplete;
+
 /// Tracks one canonical execution-boundary schedule and grants at most one
 /// retry token for an identical runtime interval. A successful schedule is
 /// deduplicated; a failed interval cannot be retried by every local stream
@@ -267,6 +281,8 @@ class _HomeShellState extends ConsumerState<HomeShell> with RouteAware {
   final List<StreamSubscription<NotificationResponse>> _notificationResponses =
       [];
   StreamSubscription<LocalRuntime?>? _runtimeSubscription;
+  StreamSubscription<LocalTask?>? _executionTaskSubscription;
+  String? _executionTaskSubscriptionId;
   StreamSubscription<StandalonePomodoroState>? _standaloneSubscription;
   StreamSubscription<String>? _trayCommands;
   Timer? _trayRefresh;
@@ -292,12 +308,23 @@ class _HomeShellState extends ConsumerState<HomeShell> with RouteAware {
   String? _executionAlarmRetryIdentity;
   Future<void> _executionAlarmQueue = Future<void>.value();
   Future<void> _standaloneAlarmQueue = Future<void>.value();
+  bool _androidWidgetRefreshInFlight = false;
+  bool _androidWidgetRefreshRequested = false;
+  bool _androidWidgetPinRequestPending = false;
+  StreamSubscription<List<LocalTask>>? _androidWidgetTaskSubscription;
+  StreamSubscription<AndroidHomeWidgetAction>? _androidWidgetActionSubscription;
   StreamSubscription<List<LocalEntityRecord>>? _taskReminderSubscription;
   ModalRoute<dynamic>? _route;
 
   @override
   void initState() {
     super.initState();
+    final androidWidgetService = AndroidHomeWidgetService.instance;
+    if (androidWidgetService.isSupported) {
+      _androidWidgetActionSubscription = androidWidgetService.actions.listen(
+        (action) => unawaited(_handleAndroidHomeWidgetAction(action)),
+      );
+    }
     _notificationResponses
       ..add(
         LocalNotificationService.responses.stream.listen(
@@ -310,8 +337,9 @@ class _HomeShellState extends ConsumerState<HomeShell> with RouteAware {
         ),
       );
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      unawaited(_restoreNotificationAuthorityAfterLaunchAction());
+      unawaited(_restorePlatformAuthorityAfterLaunchActions());
       unawaited(_refreshTray());
+      _queueAndroidHomeWidgetRefresh(requestPinIfMissing: true);
       unawaited(_advanceAutomaticPomodoroBoundary());
     });
     _trayCommands = WindowsShellService.instance.commands.listen(
@@ -325,6 +353,16 @@ class _HomeShellState extends ConsumerState<HomeShell> with RouteAware {
       const Duration(seconds: 1),
       (_) => unawaited(_advanceAutomaticPomodoroBoundary()),
     );
+  }
+
+  Future<void> _restorePlatformAuthorityAfterLaunchActions() async {
+    final service = AndroidHomeWidgetService.instance;
+    if (service.isSupported) {
+      final action = await service.takeLaunchAction();
+      if (action != null) await _handleAndroidHomeWidgetAction(action);
+    }
+    if (!mounted) return;
+    await _restoreNotificationAuthorityAfterLaunchAction();
   }
 
   Future<void> _restoreNotificationAuthorityAfterLaunchAction() async {
@@ -389,9 +427,14 @@ class _HomeShellState extends ConsumerState<HomeShell> with RouteAware {
     if (!mounted) return;
     final repository = ref.read(taskRepositoryProvider);
     _runtimeSubscription = repository.watchRuntime().listen(
-      (runtime) => _queueExecutionAlarmSynchronization(runtime),
+      (runtime) => _observeExecutionRuntime(repository, runtime),
     );
-    _queueExecutionAlarmSynchronization(await repository.getRuntime());
+    _observeExecutionRuntime(repository, await repository.getRuntime());
+    if (AndroidHomeWidgetService.instance.isSupported) {
+      _androidWidgetTaskSubscription = repository.watchTasks().listen(
+        (_) => _queueAndroidHomeWidgetRefresh(),
+      );
+    }
     _standaloneSubscription = ref
         .read(standalonePomodoroStoreProvider)
         .watch()
@@ -417,6 +460,9 @@ class _HomeShellState extends ConsumerState<HomeShell> with RouteAware {
     }
     unawaited(_trayCommands?.cancel());
     unawaited(_runtimeSubscription?.cancel());
+    unawaited(_executionTaskSubscription?.cancel());
+    unawaited(_androidWidgetTaskSubscription?.cancel());
+    unawaited(_androidWidgetActionSubscription?.cancel());
     unawaited(_standaloneSubscription?.cancel());
     unawaited(_taskReminderSubscription?.cancel());
     _trayRefresh?.cancel();
@@ -425,6 +471,407 @@ class _HomeShellState extends ConsumerState<HomeShell> with RouteAware {
     _standaloneBoundaryTimer?.cancel();
     super.dispose();
   }
+
+  void _observeExecutionRuntime(
+    TaskRepository repository,
+    LocalRuntime? runtime,
+  ) {
+    _queueExecutionAlarmSynchronization(runtime);
+    _queueAndroidHomeWidgetRefresh();
+    final taskId = runtime?.activeTaskId;
+    if (_executionTaskSubscriptionId == taskId) return;
+
+    _executionTaskSubscriptionId = taskId;
+    final previousSubscription = _executionTaskSubscription;
+    _executionTaskSubscription = null;
+    if (previousSubscription != null) {
+      unawaited(previousSubscription.cancel());
+    }
+    if (taskId == null) return;
+
+    // Pomodoro timing is split across the runtime row and the active task
+    // configuration. Extending a break intentionally changes only the task
+    // revision/data, so watching runtime alone leaves the old AlarmManager
+    // boundary installed even though every visible timer shows the extension.
+    _executionTaskSubscription = repository.watchTask(taskId).listen((_) {
+      if (!mounted || _executionTaskSubscriptionId != taskId) return;
+      unawaited(_queueExecutionAlarmFromCurrentRuntime(repository, taskId));
+      _queueAndroidHomeWidgetRefresh();
+    });
+  }
+
+  Future<void> _queueExecutionAlarmFromCurrentRuntime(
+    TaskRepository repository,
+    String taskId,
+  ) async {
+    try {
+      final runtime = await repository.getRuntime();
+      if (!mounted ||
+          _executionTaskSubscriptionId != taskId ||
+          runtime?.activeTaskId != taskId) {
+        return;
+      }
+      await _queueExecutionAlarmSynchronization(runtime);
+    } catch (_) {
+      // A later task/runtime emission remains authoritative and will retry.
+    }
+  }
+
+  void _queueAndroidHomeWidgetRefresh({bool requestPinIfMissing = false}) {
+    final service = AndroidHomeWidgetService.instance;
+    if (!mounted || !service.isSupported) return;
+    _androidWidgetRefreshRequested = true;
+    _androidWidgetPinRequestPending |= requestPinIfMissing;
+    if (_androidWidgetRefreshInFlight) return;
+    _androidWidgetRefreshInFlight = true;
+    unawaited(_drainAndroidHomeWidgetRefreshes(service));
+  }
+
+  Future<void> _drainAndroidHomeWidgetRefreshes(
+    AndroidHomeWidgetService service,
+  ) async {
+    try {
+      while (mounted && _androidWidgetRefreshRequested) {
+        _androidWidgetRefreshRequested = false;
+        final requestPin = _androidWidgetPinRequestPending;
+        _androidWidgetPinRequestPending = false;
+        try {
+          await _refreshAndroidHomeWidget(
+            service,
+            requestPinIfMissing: requestPin,
+          );
+        } on PlatformException catch (error) {
+          debugPrint('Android home widget update failed: ${error.code}');
+        }
+      }
+    } finally {
+      _androidWidgetRefreshInFlight = false;
+      if (mounted && _androidWidgetRefreshRequested) {
+        _queueAndroidHomeWidgetRefresh();
+      }
+    }
+  }
+
+  Future<void> _refreshAndroidHomeWidget(
+    AndroidHomeWidgetService service, {
+    required bool requestPinIfMissing,
+  }) async {
+    if (!mounted) return;
+    final settings = ref.read(appSettingsProvider).value;
+    final localeCode = settings?.localeCode ?? 'en';
+    final l10n = AppLocalizations(Locale(localeCode));
+    final repository = ref.read(taskRepositoryProvider);
+    final runtime = await repository.getRuntime();
+    final task = runtime?.activeTaskId == null
+        ? null
+        : await repository.getTask(runtime!.activeTaskId!);
+    final now = DateTime.now().toUtc();
+
+    if (task == null || runtime == null) {
+      final suggestions = _selectAndroidWidgetSuggestions(
+        await repository.watchTasks().first,
+        now.toLocal(),
+      );
+      await service.update(
+        AndroidHomeWidgetState(
+          mode: AndroidHomeWidgetMode.idle,
+          localeCode: localeCode,
+          statusLabel: 'TaskMaster Pro',
+          title: l10n.text('widget_idle_title'),
+          message: suggestions.isEmpty
+              ? l10n.text('widget_no_suggestions')
+              : l10n.text('widget_idle_message'),
+          timerLabel: l10n.format('widget_tasks_ready', {
+            'count': suggestions.length,
+          }),
+          timerMode: AndroidHomeWidgetTimerMode.fixed,
+          actionLabel: l10n.text('widget_open_app'),
+          completionLabel: l10n.text('widget_idle_message'),
+          suggestions: [
+            for (final suggestion in suggestions)
+              AndroidHomeWidgetSuggestion(
+                id: suggestion.id,
+                title: suggestion.title,
+              ),
+          ],
+        ),
+        requestPinIfMissing: requestPinIfMissing,
+      );
+      return;
+    }
+
+    final recordedMs = liveTaskRecordedWorkMs(
+      recordedMs: runtime.accumulatedActiveMs,
+      running: runtime.state == 'running',
+      segmentStartedAt: runtime.segmentStartedAt,
+      now: now,
+    );
+    final pomodoro = task.executionMode == 'pomodoro'
+        ? PomodoroExecutionSnapshot.fromTask(
+            task: task,
+            runtime: runtime,
+            now: now,
+          )
+        : null;
+    final widgetMode = switch (runtime.state) {
+      'break' => AndroidHomeWidgetMode.breakTime,
+      'paused' => AndroidHomeWidgetMode.paused,
+      _ => AndroidHomeWidgetMode.running,
+    };
+    final controls = switch (runtime.state) {
+      'break' => [
+        AndroidHomeWidgetControl(
+          id: 'start_focus',
+          label: l10n.text('widget_action_focus'),
+        ),
+        AndroidHomeWidgetControl(
+          id: 'extend_break',
+          label: l10n.text('widget_action_extend'),
+        ),
+        AndroidHomeWidgetControl(
+          id: 'review_break',
+          label: l10n.text('widget_action_review'),
+        ),
+      ],
+      'paused' => [
+        AndroidHomeWidgetControl(
+          id: 'resume',
+          label: l10n.text('widget_action_continue'),
+        ),
+        AndroidHomeWidgetControl(
+          id: 'finish_task',
+          label: l10n.text('widget_action_finish'),
+        ),
+      ],
+      _ => [
+        AndroidHomeWidgetControl(
+          id: 'pause',
+          label: l10n.text('widget_action_pause'),
+        ),
+        AndroidHomeWidgetControl(
+          id: 'start_break',
+          label: l10n.text('widget_action_break'),
+        ),
+        AndroidHomeWidgetControl(
+          id: 'finish_task',
+          label: l10n.text('widget_action_finish'),
+        ),
+      ],
+    };
+    var timerMode = AndroidHomeWidgetTimerMode.fixed;
+    DateTime? timerBoundary;
+    late String timerLabel;
+    late String statusLabel;
+    late String message;
+    late String completionLabel;
+    double progress;
+
+    if (pomodoro != null) {
+      final waiting = pomodoro.isWaiting || pomodoro.remainingMs <= 0;
+      final intervalMs = pomodoro.intervalDurationMs.clamp(1, 1 << 53);
+      progress = ((intervalMs - pomodoro.remainingMs) / intervalMs).clamp(
+        0.0,
+        1.0,
+      );
+      timerLabel = formatPomodoroCountdown(pomodoro.remainingMs);
+      completionLabel = l10n.text(
+        pomodoro.isBreak ? 'widget_break_complete' : 'widget_focus_complete',
+      );
+      if (!waiting && runtime.state != 'paused') {
+        timerMode = AndroidHomeWidgetTimerMode.countdown;
+        timerBoundary = now.add(Duration(milliseconds: pomodoro.remainingMs));
+      }
+      statusLabel = l10n.text(
+        pomodoro.isBreak
+            ? 'pomodoro_break_session'
+            : runtime.state == 'paused'
+            ? 'status_paused'
+            : 'pomodoro_focus_session',
+      );
+      message = waiting
+          ? completionLabel
+          : runtime.state == 'paused'
+          ? l10n.text('widget_paused_message')
+          : pomodoro.isBreak
+          ? l10n.text('widget_break_message')
+          : l10n.text('widget_focus_message');
+    } else {
+      final plannedMs = task.estimatedDurationMs.clamp(0, 1 << 53);
+      final remainingMs = taskEffortRemainingMs(
+        plannedMs: plannedMs,
+        recordedMs: recordedMs,
+      );
+      final overtimeMs = taskEffortOvertimeMs(
+        plannedMs: plannedMs,
+        recordedMs: recordedMs,
+      );
+      progress = plannedMs <= 0 ? 0 : (recordedMs / plannedMs).clamp(0.0, 1.0);
+      completionLabel = l10n.text('status_overdue');
+      if (runtime.state == 'running' && remainingMs > 0) {
+        timerMode = AndroidHomeWidgetTimerMode.countdown;
+        timerBoundary = now.add(Duration(milliseconds: remainingMs));
+        timerLabel = formatTaskEffortCountdown(remainingMs);
+      } else if (runtime.state == 'running' && overtimeMs > 0) {
+        timerMode = AndroidHomeWidgetTimerMode.countup;
+        timerBoundary = now.subtract(Duration(milliseconds: overtimeMs));
+        timerLabel = formatTaskEffortOvertime(overtimeMs);
+      } else {
+        timerLabel = overtimeMs > 0
+            ? formatTaskEffortOvertime(overtimeMs)
+            : formatTaskEffortCountdown(remainingMs);
+      }
+      statusLabel = overtimeMs > 0
+          ? l10n.text('status_overdue')
+          : runtime.state == 'paused'
+          ? l10n.text('status_paused')
+          : l10n.text('currently_running');
+      message = runtime.state == 'paused'
+          ? l10n.text('widget_paused_message')
+          : l10n.text('widget_focus_message');
+    }
+
+    await service.update(
+      AndroidHomeWidgetState(
+        mode: widgetMode,
+        localeCode: localeCode,
+        statusLabel: statusLabel,
+        title: task.title,
+        message: message,
+        timerLabel: timerLabel,
+        timerMode: timerMode,
+        timerBoundary: timerBoundary,
+        progress: progress,
+        actionLabel: l10n.text('widget_open_task'),
+        completionLabel: completionLabel,
+        taskId: task.id,
+        sessionId: runtime.sessionId,
+        runtimeRevision: runtime.revision,
+        controls: runtime.sessionId == null ? const [] : controls,
+      ),
+      requestPinIfMissing: requestPinIfMissing,
+    );
+  }
+
+  List<LocalTask> _selectAndroidWidgetSuggestions(
+    List<LocalTask> tasks,
+    DateTime now,
+  ) {
+    final eligible = tasks
+        .where(
+          (task) => !const {
+            'completed',
+            'cancelled',
+            'archived',
+            'skipped',
+          }.contains(task.status),
+        )
+        .toList();
+    DateTime? schedule(LocalTask task) =>
+        task.plannedStart?.toLocal() ??
+        task.scheduledDate?.toLocal() ??
+        task.dueAt?.toLocal();
+    int bucket(LocalTask task) {
+      final value = schedule(task);
+      if (value == null) return 3;
+      final day = DateTime(value.year, value.month, value.day);
+      final today = DateTime(now.year, now.month, now.day);
+      if (day.isBefore(today)) return 0;
+      if (day == today) return 1;
+      return 2;
+    }
+
+    eligible.sort((left, right) {
+      final byBucket = bucket(left).compareTo(bucket(right));
+      if (byBucket != 0) return byBucket;
+      final byPriority = right.priority.compareTo(left.priority);
+      if (byPriority != 0) return byPriority;
+      final leftSchedule = schedule(left);
+      final rightSchedule = schedule(right);
+      if (leftSchedule != null && rightSchedule != null) {
+        final bySchedule = leftSchedule.compareTo(rightSchedule);
+        if (bySchedule != 0) return bySchedule;
+      }
+      return right.updatedAt.compareTo(left.updatedAt);
+    });
+    return eligible.take(3).toList(growable: false);
+  }
+
+  Future<void> _handleAndroidHomeWidgetAction(
+    AndroidHomeWidgetAction action,
+  ) async {
+    if (!mounted) return;
+    final repository = ref.read(taskRepositoryProvider);
+    final runtime = await repository.getRuntime();
+    if (!_matchesAndroidWidgetAction(runtime, action)) {
+      _queueAndroidHomeWidgetRefresh();
+      return;
+    }
+    final task = await repository.getTask(action.taskId);
+    if (task == null || !mounted) {
+      _queueAndroidHomeWidgetRefresh();
+      return;
+    }
+    if (action.id == 'review_break') {
+      if (runtime!.state == 'break') _selectDestination(4);
+      return;
+    }
+
+    await TaskExecutionCommands.commitLocallyAndSynchronize(
+      localCommand: () async {
+        final current = await repository.getRuntime();
+        if (!_matchesAndroidWidgetAction(current, action) || !mounted) return;
+        switch (action.id) {
+          case 'pause':
+            if (current!.state == 'running') await repository.pause(task);
+          case 'resume':
+            if (current!.state == 'paused') await repository.resume(task);
+          case 'start_break':
+            if (current!.state != 'running') return;
+            final pomodoro = task.executionMode == 'pomodoro'
+                ? PomodoroExecutionSnapshot.fromTask(
+                    task: task,
+                    runtime: current,
+                    now: DateTime.now().toUtc(),
+                  )
+                : null;
+            if (pomodoro?.focusComplete == true) {
+              await TaskExecutionCommands.startOfferedBreak(repository, task);
+            } else {
+              await repository.startBreak(task);
+            }
+          case 'start_focus':
+            if (current!.state == 'break') {
+              await finishBreakWithOptionalActivityCheckIn(
+                context: context,
+                ref: ref,
+                task: task,
+              );
+            }
+          case 'extend_break':
+            if (current!.state == 'break') {
+              await TaskExecutionCommands.extendBreak(
+                repository: repository,
+                task: task,
+              );
+            }
+          case 'finish_task':
+            await completeTaskWithUndo(context, ref, task);
+        }
+      },
+      synchronize: () => ref.read(syncServiceProvider).drainOutbox(),
+    );
+    if (mounted) _queueAndroidHomeWidgetRefresh();
+  }
+
+  bool _matchesAndroidWidgetAction(
+    LocalRuntime? runtime,
+    AndroidHomeWidgetAction action,
+  ) =>
+      runtime != null &&
+      runtime.activeTaskId == action.taskId &&
+      runtime.sessionId == action.sessionId &&
+      runtime.revision == action.runtimeRevision &&
+      runtime.state != 'idle';
 
   Future<void> _refreshTray() async {
     if (!mounted) return;
@@ -628,6 +1075,20 @@ class _HomeShellState extends ConsumerState<HomeShell> with RouteAware {
         eventType = pomodoro.isLongBreak
             ? 'long_break_completed'
             : 'short_break_completed';
+      }
+
+      if (shouldPreserveCompletedPomodoroBoundary(
+        isPomodoro: true,
+        intervalComplete: pomodoro.isWaiting,
+      )) {
+        // The exact OS alarm has already reached its boundary. Preserve both
+        // the delivered card and its scheduled ledger identity until a
+        // canonical Start break / Start focus / Continue / Finish command
+        // changes the runtime. In particular, do not let a later Realtime or
+        // task-row refresh turn the completed boundary into `now` and cancel
+        // the actionable Windows toast.
+        _cancelExecutionAlarmRetry();
+        return;
       }
     } else {
       final intendedMs = task.estimatedDurationMs >= 60000
@@ -1433,6 +1894,7 @@ class _HomeShellState extends ConsumerState<HomeShell> with RouteAware {
       }
     }
     final expectedBoundaryAt = ownedPayload.boundaryAtUtc;
+    final isExecutionStatus = ownedPayload.isExecutionStatus;
     final isFocusBoundary =
         ownedPayload.eventType == null ||
         ownedPayload.eventType == 'focus_completed';
@@ -1502,8 +1964,24 @@ class _HomeShellState extends ConsumerState<HomeShell> with RouteAware {
           transitionAccepted = false;
         }
       case 'start_focus':
-        if (isBreakBoundary) {
-          ActivityReviewEntry? breakActivityEntry;
+        ActivityReviewEntry? breakActivityEntry;
+        if (isExecutionStatus) {
+          final endedAt = DateTime.now().toUtc();
+          transitionAccepted =
+              await TaskExecutionCommands.startFocusFromActiveBreak(
+                repository,
+                task,
+                now: endedAt,
+                beforeFinishBreak: (task, runtime) async {
+                  breakActivityEntry = await prepareBreakActivityCheckIn(
+                    ref: ref,
+                    task: task,
+                    runtime: runtime,
+                    endedAt: endedAt,
+                  );
+                },
+              );
+        } else if (isBreakBoundary) {
           transitionAccepted =
               await TaskExecutionCommands.startFocusFromCompletedBreak(
                 repository,
@@ -1518,17 +1996,17 @@ class _HomeShellState extends ConsumerState<HomeShell> with RouteAware {
                   );
                 },
               );
-          if (transitionAccepted && breakActivityEntry != null && mounted) {
-            unawaited(
-              promptAndResolveBreakActivityCheckIn(
-                context: context,
-                ref: ref,
-                entry: breakActivityEntry!,
-              ),
-            );
-          }
         } else {
           transitionAccepted = false;
+        }
+        if (transitionAccepted && breakActivityEntry != null && mounted) {
+          unawaited(
+            promptAndResolveBreakActivityCheckIn(
+              context: context,
+              ref: ref,
+              entry: breakActivityEntry!,
+            ),
+          );
         }
       case 'finish_task':
         if (!mounted) {
@@ -1564,7 +2042,12 @@ class _HomeShellState extends ConsumerState<HomeShell> with RouteAware {
           transitionAccepted = false;
         }
       case 'extend_break':
-        if (isBreakBoundary) {
+        if (isExecutionStatus) {
+          transitionAccepted = await TaskExecutionCommands.extendBreak(
+            repository: repository,
+            task: task,
+          );
+        } else if (isBreakBoundary) {
           transitionAccepted = await TaskExecutionCommands.extendBreak(
             repository: repository,
             task: task,

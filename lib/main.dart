@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/date_symbol_data_local.dart';
@@ -7,6 +9,7 @@ import 'app/taskmaster_app.dart';
 import 'core/config/backend_target_cutover.dart';
 import 'core/config/supabase_config.dart';
 import 'core/notifications/notification_sounds.dart';
+import 'core/platform/android_home_widget_service.dart';
 import 'core/platform/windows_shell_service.dart';
 import 'core/sync/sync_service.dart';
 import 'features/auth/presentation/password_recovery_controller.dart';
@@ -50,6 +53,11 @@ Future<void> main() async {
     ),
   );
   passwordRecoveryController.start(Supabase.instance.client.auth);
+  Supabase.instance.client.auth.onAuthStateChange.listen((state) {
+    if (state.event == AuthChangeEvent.signedOut) {
+      unawaited(AndroidHomeWidgetService.instance.clear());
+    }
+  });
   WindowsShellService.instance;
 
   runApp(const ProviderScope(child: TaskMasterApp()));

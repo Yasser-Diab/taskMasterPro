@@ -191,10 +191,72 @@ String windowsExecutionActionLabelKey(String actionId, String fallbackKey) {
     'start_break' => 'notification_action_break_compact',
     'start_focus' ||
     'continue_working' => 'notification_action_continue_compact',
+    'extend_break' => 'notification_action_extend_compact',
+    'review_break' => 'notification_action_review_compact',
     'finish_task' => 'notification_action_finish_compact',
     _ => fallbackKey,
   };
 }
+
+/// Windows renders toast actions as equal-width buttons. Three concise actions
+/// are the largest set that remains readable at normal and enlarged text
+/// scales. The toast body already opens the task and Windows supplies its own
+/// close button, so duplicate Open/Dismiss actions only steal useful space.
+@visibleForTesting
+List<(String, String)> windowsExecutionActionSpecs({
+  required bool isBreak,
+  required bool isPomodoro,
+}) => isBreak
+    ? const [
+        ('start_focus', 'notification_start_focus'),
+        ('extend_break', 'notification_extend_break'),
+        ('review_break', 'notification_review_break'),
+      ]
+    : isPomodoro
+    ? const [
+        ('start_break', 'notification_start_break'),
+        ('continue_working', 'notification_continue_working'),
+        ('finish_task', 'finish_task'),
+      ]
+    : const [
+        ('continue_working', 'notification_continue_task'),
+        ('finish_task', 'finish_task'),
+      ];
+
+@visibleForTesting
+const windowsReminderActionSpecs = <(String, String)>[
+  ('start', 'start'),
+  ('complete', 'complete'),
+  ('snooze', 'snooze'),
+];
+
+@visibleForTesting
+List<(String, String)> androidExecutionActionSpecs({
+  required bool isBreak,
+  required bool isPomodoro,
+}) => windowsExecutionActionSpecs(isBreak: isBreak, isPomodoro: isPomodoro);
+
+@visibleForTesting
+List<(String, String)> executionStatusActionSpecs({
+  required bool onBreak,
+  required bool paused,
+}) => onBreak
+    ? const [
+        ('start_focus', 'notification_start_focus'),
+        ('extend_break', 'notification_extend_break'),
+        ('finish_task', 'finish_task'),
+      ]
+    : paused
+    ? const [
+        ('resume', 'resume'),
+        ('finish_task', 'finish_task'),
+        ('open', 'open'),
+      ]
+    : const [
+        ('pause', 'pause'),
+        ('finish_task', 'finish_task'),
+        ('open', 'open'),
+      ];
 
 /// A mutating Windows toast must remain pending until TaskMaster has applied
 /// the revision-guarded runtime command. Open/Dismiss actions may close
@@ -230,6 +292,7 @@ class OwnedNotificationPayload {
     required this.route,
     required this.ownerId,
     this.eventType,
+    this.executionSurface,
     this.boundaryAtUtc,
     this.notificationId,
     this.sessionId,
@@ -241,6 +304,7 @@ class OwnedNotificationPayload {
   final String route;
   final String? ownerId;
   final String? eventType;
+  final String? executionSurface;
   final DateTime? boundaryAtUtc;
   final String? notificationId;
   final String? sessionId;
@@ -259,6 +323,8 @@ class OwnedNotificationPayload {
       runtimeRevision != null &&
       intervalId != null &&
       intervalId!.isNotEmpty;
+
+  bool get isExecutionStatus => executionSurface == 'status';
 }
 
 /// The per-device notification ledger is deliberately strict.  An Android
@@ -274,8 +340,11 @@ bool executionNotificationIdentityMatches({
   if (taskId == null || taskId.isEmpty || !payload.hasExecutionIdentity) {
     return false;
   }
+  final actionableStates = payload.isExecutionStatus
+      ? const {'scheduled', 'delivered', 'expired'}
+      : const {'scheduled', 'delivered'};
   return ledger['state'] is String &&
-      const {'scheduled', 'delivered'}.contains(ledger['state']) &&
+      actionableStates.contains(ledger['state']) &&
       ledger['task_id'] == taskId &&
       ledger['notification_id'] == payload.notificationId &&
       ledger['session_id'] == payload.sessionId &&
@@ -284,6 +353,13 @@ bool executionNotificationIdentityMatches({
       ledger['interval_id'] == payload.intervalId &&
       ledger['boundary_at'] == payload.boundaryAtUtc?.toUtc().toIso8601String();
 }
+
+@visibleForTesting
+bool executionStatusBoundaryReached({
+  required bool paused,
+  required DateTime boundaryAtUtc,
+  required DateTime now,
+}) => !paused && !boundaryAtUtc.isAfter(now.toUtc());
 
 /// Protects the single execution-notification slot from delayed actions while
 /// still allowing the scheduler to replace an interval it just cancelled.
@@ -914,6 +990,11 @@ class LocalNotificationService {
     final l10n = AppLocalizations(Locale(localeCode));
     final paused = state == 'paused';
     final onBreak = state == 'break';
+    final boundaryReached = executionStatusBoundaryReached(
+      paused: paused,
+      boundaryAtUtc: boundaryAtUtc,
+      now: DateTime.now(),
+    );
     final notificationCategory = eventType == 'focus_completed'
         ? 'focus_completed'
         : eventType == 'long_break_completed'
@@ -921,7 +1002,15 @@ class LocalNotificationService {
         : eventType == 'short_break_completed' || eventType == 'break_completed'
         ? 'short_break_completed'
         : 'task_reminders';
-    final stateLabel = onBreak
+    final stateLabel = boundaryReached
+        ? l10n.text(
+            onBreak
+                ? 'notification_break_completed_title'
+                : eventType == 'focus_completed'
+                ? 'notification_focus_completed_title'
+                : 'notification_duration_completed_title',
+          )
+        : onBreak
         ? l10n.text('break_in_progress')
         : paused
         ? l10n.text('status_paused')
@@ -929,24 +1018,10 @@ class LocalNotificationService {
     final body = onBreak
         ? '$stateLabel · ${l10n.text('notification_start_focus')}'
         : stateLabel;
-    final actions = onBreak
-        ? const <(String, String)>[
-            ('start_focus', 'notification_start_focus'),
-            ('extend_break', 'notification_extend_break'),
-            ('finish_task', 'finish_task'),
-            ('open', 'open'),
-          ]
-        : paused
-        ? const <(String, String)>[
-            ('resume', 'resume'),
-            ('finish_task', 'finish_task'),
-            ('open', 'open'),
-          ]
-        : const <(String, String)>[
-            ('pause', 'pause'),
-            ('finish_task', 'finish_task'),
-            ('open', 'open'),
-          ];
+    final actions = executionStatusActionSpecs(
+      onBreak: onBreak,
+      paused: paused,
+    );
     final notificationIdentity = executionNotificationIdentity(
       taskId: taskId,
       sessionId: sessionId,
@@ -957,6 +1032,7 @@ class LocalNotificationService {
     final payload = ownedPayload(
       'task/$taskId',
       eventType: eventType,
+      executionSurface: 'status',
       boundaryAtUtc: boundaryAtUtc,
       notificationId: notificationIdentity,
       sessionId: sessionId,
@@ -981,8 +1057,8 @@ class LocalNotificationService {
             autoCancel: false,
             onlyAlertOnce: true,
             when: boundaryAtUtc.millisecondsSinceEpoch,
-            usesChronometer: !paused,
-            chronometerCountDown: !paused,
+            usesChronometer: !paused && !boundaryReached,
+            chronometerCountDown: !paused && !boundaryReached,
             actions: [
               for (final action in actions)
                 AndroidNotificationAction(
@@ -1412,6 +1488,7 @@ class LocalNotificationService {
   static String ownedPayload(
     String route, {
     String? eventType,
+    String? executionSurface,
     DateTime? boundaryAtUtc,
     String? notificationId,
     String? sessionId,
@@ -1421,6 +1498,7 @@ class LocalNotificationService {
     ownerId: Supabase.instance.client.auth.currentUser?.id,
     route: route,
     eventType: eventType,
+    executionSurface: executionSurface,
     boundaryAtUtc: boundaryAtUtc,
     notificationId: notificationId,
     sessionId: sessionId,
@@ -1433,6 +1511,7 @@ class LocalNotificationService {
     required String? ownerId,
     required String route,
     String? eventType,
+    String? executionSurface,
     DateTime? boundaryAtUtc,
     String? notificationId,
     String? sessionId,
@@ -1445,6 +1524,7 @@ class LocalNotificationService {
   }) {
     if (ownerId == null &&
         eventType == null &&
+        executionSurface == null &&
         boundaryAtUtc == null &&
         notificationId == null &&
         sessionId == null &&
@@ -1456,9 +1536,12 @@ class LocalNotificationService {
         reminderId == null) {
       return route;
     }
-    final payload = <String, Object?>{'version': 3, 'route': route};
+    final payload = <String, Object?>{'version': 4, 'route': route};
     if (ownerId != null) payload['owner_id'] = ownerId;
     if (eventType != null) payload['event_type'] = eventType;
+    if (executionSurface != null) {
+      payload['execution_surface'] = executionSurface;
+    }
     if (boundaryAtUtc != null) {
       payload['boundary_at'] = boundaryAtUtc.toUtc().toIso8601String();
     }
@@ -1488,6 +1571,7 @@ class LocalNotificationService {
           route: value['route'] as String,
           ownerId: value['owner_id'] as String?,
           eventType: value['event_type'] as String?,
+          executionSurface: value['execution_surface'] as String?,
           boundaryAtUtc: DateTime.tryParse(
             '${value['boundary_at'] ?? ''}',
           )?.toUtc(),
@@ -1759,44 +1843,15 @@ class LocalNotificationService {
           windows: WindowsNotificationDetails(
             audio: _windowsAudio(sound),
             actions: [
-              WindowsAction(
-                content: l10n.text('start'),
-                arguments: windowsNotificationActionArguments(
-                  actionId: 'start',
-                  payload: payload,
+              for (final action in windowsReminderActionSpecs)
+                WindowsAction(
+                  content: l10n.text(action.$2),
+                  arguments: windowsNotificationActionArguments(
+                    actionId: action.$1,
+                    payload: payload,
+                  ),
+                  activationBehavior: windowsReminderActionBehavior(action.$1),
                 ),
-                activationBehavior: windowsReminderActionBehavior('start'),
-              ),
-              WindowsAction(
-                content: l10n.text('complete'),
-                arguments: windowsNotificationActionArguments(
-                  actionId: 'complete',
-                  payload: payload,
-                ),
-                activationBehavior: windowsReminderActionBehavior('complete'),
-              ),
-              WindowsAction(
-                content: l10n.text('snooze'),
-                arguments: windowsNotificationActionArguments(
-                  actionId: 'snooze',
-                  payload: payload,
-                ),
-                activationBehavior: windowsReminderActionBehavior('snooze'),
-              ),
-              WindowsAction(
-                content: l10n.text('open'),
-                arguments: windowsNotificationActionArguments(
-                  actionId: 'open',
-                  payload: payload,
-                ),
-              ),
-              WindowsAction(
-                content: l10n.text('dismiss'),
-                arguments: windowsNotificationActionArguments(
-                  actionId: 'dismiss',
-                  payload: payload,
-                ),
-              ),
             ],
           ),
         ),
@@ -1898,49 +1953,18 @@ class LocalNotificationService {
           : 'notification_duration_completed_body',
       {'task': taskTitle},
     );
-    final actions = isBreak
-        ? [
-            ('start_focus', 'notification_start_focus'),
-            ('extend_break', 'notification_extend_break'),
-            ('review_break', 'notification_review_break'),
-            ('finish_task', 'finish_task'),
-            ('dismiss', 'dismiss'),
-          ]
-        : isPomodoro
-        ? [
-            ('start_break', 'notification_start_break'),
-            ('continue_working', 'notification_continue_working'),
-            ('finish_task', 'finish_task'),
-            ('dismiss', 'dismiss'),
-          ]
-        : [
-            ('continue_working', 'notification_continue_task'),
-            ('finish_task', 'finish_task'),
-            ('open', 'open'),
-            ('dismiss', 'dismiss'),
-          ];
-    final androidActions = isBreak
-        ? [
-            ('start_focus', 'notification_start_focus'),
-            ('extend_break', 'notification_extend_break'),
-            ('finish_task', 'finish_task'),
-            ('open', 'open'),
-          ]
-        : !isPomodoro
-        ? [
-            ('continue_working', 'notification_continue_task'),
-            ('finish_task', 'finish_task'),
-            ('open', 'open'),
-          ]
-        : [
-            ('start_break', 'notification_start_break'),
-            ('continue_working', 'notification_continue_working'),
-            ('finish_task', 'finish_task'),
-            ('open', 'open'),
-          ];
+    final windowsActions = windowsExecutionActionSpecs(
+      isBreak: isBreak,
+      isPomodoro: isPomodoro,
+    );
+    final androidActions = androidExecutionActionSpecs(
+      isBreak: isBreak,
+      isPomodoro: isPomodoro,
+    );
     final payload = ownedPayload(
       'task/$taskId',
       eventType: eventType,
+      executionSurface: 'boundary',
       boundaryAtUtc: scheduledAtUtc,
       notificationId: notificationIdentity,
       sessionId: sessionId,
@@ -1978,7 +2002,7 @@ class LocalNotificationService {
               body: body,
               notificationTag: 'execution:$taskId:$effectiveCategory',
               actions: [
-                for (final action in androidActions.take(4))
+                for (final action in androidActions)
                   AndroidNotificationAction(
                     action.$1,
                     l10n.text(action.$2),
@@ -1997,7 +2021,7 @@ class LocalNotificationService {
                   ? WindowsNotificationScenario.alarm
                   : null,
               actions: [
-                for (final action in actions.take(5))
+                for (final action in windowsActions)
                   WindowsAction(
                     content: l10n.text(
                       windowsExecutionActionLabelKey(action.$1, action.$2),

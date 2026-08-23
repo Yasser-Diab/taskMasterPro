@@ -4,6 +4,87 @@ import 'package:drift/drift.dart';
 
 import '../../../core/database/app_database.dart';
 
+const manualBreakActivitySourceType = 'manual_break';
+const breakActivityReviewReason = 'break_without_device_activity';
+const breakActivityClassifications = <String>{
+  'break_activity_reading',
+  'break_activity_sport',
+  'break_activity_relaxing',
+  'break_activity_drink',
+  'break_activity_other',
+};
+
+/// Returns the exact privacy-safe metadata that may leave the device for an
+/// explicit break check-in, or `null` when the local evidence is incomplete.
+///
+/// Local metadata may contain bookkeeping such as `prompt_version`; the
+/// returned map deliberately allowlists only the fields accepted by the
+/// server privacy trigger.
+Map<String, Object?>? privacySafeManualBreakSyncMetadata({
+  required String sourceType,
+  required Map<String, Object?> localMetadata,
+}) {
+  if (sourceType != manualBreakActivitySourceType ||
+      localMetadata['manual_break_check_in'] != true) {
+    return null;
+  }
+  final category = localMetadata['manual_break_category'];
+  if (category is! String || !breakActivityClassifications.contains(category)) {
+    return null;
+  }
+  final labelValue = localMetadata['manual_break_label'];
+  if (labelValue != null &&
+      (labelValue is! String || labelValue.runes.length > 120)) {
+    return null;
+  }
+
+  String? safeText(String key) {
+    final value = localMetadata[key];
+    return value is String && value.isNotEmpty ? value : null;
+  }
+
+  final label = labelValue is String && labelValue.isNotEmpty
+      ? labelValue
+      : null;
+  final result = <String, Object?>{
+    'normalized': true,
+    'raw_samples_included': false,
+    'manual_break_check_in': true,
+    'manual_break_category': category,
+  };
+  for (final key in const <String>[
+    'source_task_id',
+    'source_session_id',
+    'source_runtime_state',
+  ]) {
+    final value = safeText(key);
+    if (value != null) result[key] = value;
+  }
+  if (label != null) result['manual_break_label'] = label;
+  return result;
+}
+
+bool isApprovedPrivacySafeManualBreak({
+  required String sourceType,
+  required Map<String, Object?> localMetadata,
+  required String reviewReason,
+  required String reviewStatus,
+  required bool wasReviewed,
+  required String attributionClassification,
+  required bool attributionConfirmed,
+}) {
+  final safeMetadata = privacySafeManualBreakSyncMetadata(
+    sourceType: sourceType,
+    localMetadata: localMetadata,
+  );
+  return safeMetadata != null &&
+      reviewReason == breakActivityReviewReason &&
+      reviewStatus == 'confirmed' &&
+      wasReviewed &&
+      attributionConfirmed &&
+      attributionClassification == safeMetadata['manual_break_category'];
+}
+
 /// The server-owned storage choice for captured device Activity.
 ///
 /// `user_settings.data` contains presentation preferences, but it must never

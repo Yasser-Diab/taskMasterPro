@@ -423,12 +423,17 @@ class _ActiveTaskPanelState extends ConsumerState<_ActiveTaskPanel> {
   }
 
   Future<void> _extendBreak() async {
+    var extended = false;
     await _runBusy(() async {
-      await TaskExecutionCommands.extendBreak(
+      extended = await TaskExecutionCommands.extendBreak(
         repository: ref.read(taskRepositoryProvider),
         task: widget.task,
       );
     });
+    if (!extended || !mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(context.l10n.text('break_extended_five'))),
+    );
   }
 
   @override

@@ -2,4 +2,12 @@
     <string name="vault_biometric_title">TaskMaster Pro</string>
     <string name="vault_biometric_cancel">Cancel</string>
     <string name="vault_biometric_unlock">Unlock saved passwords</string>
+    <string name="widget_name">TaskMaster Pro focus widget</string>
+    <string name="widget_description">Live task, focus timer, and next-task suggestions</string>
+    <string name="widget_default_status">TaskMaster Pro</string>
+    <string name="widget_default_title">Ready for a focused win?</string>
+    <string name="widget_default_message">Open TaskMaster Pro to choose your next useful step.</string>
+    <string name="widget_default_ready">Ready</string>
+    <string name="widget_default_action">Open app</string>
+    <string name="widget_default_completion">Choose your next step.</string>
 </resources>

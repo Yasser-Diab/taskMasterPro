@@ -170,6 +170,47 @@ void main() {
     },
   );
 
+  test(
+    'unassigned sport still queues its privacy-safe parent before classification',
+    () async {
+      final startedAt = DateTime.utc(2026, 8, 23, 8);
+      final entry = await repository.prepareBreakActivityReviewIfNeeded(
+        taskId: 'source-task',
+        sessionId: 'session-unassigned-sport',
+        startedAt: startedAt,
+        endedAt: startedAt.add(const Duration(minutes: 5)),
+      );
+      expect(entry, isNotNull);
+
+      await repository.resolve(
+        entry!,
+        const ActivityResolution(
+          status: 'confirmed',
+          classification: 'break_activity_sport',
+        ),
+      );
+
+      final commands = await database
+          .select(database.localOutboxCommands)
+          .get();
+      commands.sort(
+        (left, right) => left.deviceSequence.compareTo(right.deviceSequence),
+      );
+      expect(commands, hasLength(2));
+      expect(commands.first.entityType, 'activity_segments');
+      expect(commands.last.entityType, 'activity_review_classifications');
+      final segmentPayload =
+          jsonDecode(commands.first.payloadJson) as Map<String, dynamic>;
+      final rawMetadata = segmentPayload['raw_metadata'] as Map;
+      expect(rawMetadata['manual_break_check_in'], isTrue);
+      expect(rawMetadata['manual_break_category'], 'break_activity_sport');
+      expect(
+        (segmentPayload['data'] as Map).containsKey('approved_contribution'),
+        isFalse,
+      );
+    },
+  );
+
   test('server privacy guard accepts only normalized manual break fields', () {
     final migration = File(
       'supabase/migrations/20260823110000_v0035_manual_break_activity.sql',

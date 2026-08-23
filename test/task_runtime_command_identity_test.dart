@@ -502,6 +502,106 @@ void main() {
     },
   );
 
+  test(
+    'an overdue break extension rebases to now and queues one atomic command',
+    () async {
+      var testNow = DateTime.utc(2026, 8, 23, 8);
+      repository = TaskRepository(
+        database,
+        SupabaseClient(
+          'https://example.supabase.co',
+          'sb_publishable_test_key',
+        ),
+        clock: () => testNow,
+      );
+      final taskId = await repository.createTask(
+        const TaskDraft(
+          title: 'Overdue break',
+          executionMode: 'pomodoro',
+          configuration: {
+            'pomodoro_focus_ms': 60000,
+            'short_break_ms': 5 * 60 * 1000,
+          },
+        ),
+      );
+      await repository.start((await repository.getTask(taskId))!);
+      testNow = testNow.add(const Duration(minutes: 1));
+      await repository.startBreak((await repository.getTask(taskId))!);
+      final breakRuntime = (await repository.getRuntime())!;
+      final breakStartedAt = breakRuntime.segmentStartedAt!;
+      testNow = breakStartedAt.add(const Duration(hours: 3));
+
+      final taskBeforeExtension = (await repository.getTask(taskId))!;
+      final commandsBeforeExtension = await allCommands();
+      expect(
+        await repository.extendCurrentBreak(taskBeforeExtension, now: testNow),
+        isTrue,
+      );
+
+      final extendedTask = (await repository.getTask(taskId))!;
+      final extendedConfiguration =
+          jsonDecode(extendedTask.dataJson) as Map<String, dynamic>;
+      final extensionCommands = commandsAfter(
+        commandsBeforeExtension,
+        await allCommands(),
+      );
+      final command = extensionCommands.single;
+      final payload = jsonDecode(command.payloadJson) as Map<String, dynamic>;
+      final snapshot = PomodoroExecutionSnapshot.fromTask(
+        task: extendedTask,
+        runtime: breakRuntime,
+        now: testNow,
+      );
+
+      expect(command.entityType, 'execution_break_extension');
+      expect(command.entityId, breakRuntime.sessionId);
+      expect(command.commandType, 'extend_break');
+      expect(command.baseRevision, taskBeforeExtension.revision);
+      expect(extendedTask.revision, taskBeforeExtension.revision + 1);
+      expect(extendedTask.lastCommandId, command.commandId);
+      expect(payload['task_occurrence_id'], taskId);
+      expect(payload['session_id'], breakRuntime.sessionId);
+      expect(
+        payload['break_started_at'],
+        breakStartedAt.toUtc().toIso8601String(),
+      );
+      expect(
+        payload['extension_ms'],
+        const Duration(minutes: 5).inMilliseconds,
+      );
+      expect(
+        extendedConfiguration['active_break_extension_ms'],
+        const Duration(hours: 3).inMilliseconds,
+        reason:
+            '175 overdue minutes plus the requested five must make five minutes visible now.',
+      );
+      expect(snapshot.remainingMs, const Duration(minutes: 5).inMilliseconds);
+
+      final beforeSecondExtension = await allCommands();
+      expect(
+        await repository.extendCurrentBreak(extendedTask, now: testNow),
+        isTrue,
+      );
+      final twiceExtendedTask = (await repository.getTask(taskId))!;
+      final twiceExtended = PomodoroExecutionSnapshot.fromTask(
+        task: twiceExtendedTask,
+        runtime: breakRuntime,
+        now: testNow,
+      );
+      expect(
+        twiceExtended.remainingMs,
+        const Duration(minutes: 10).inMilliseconds,
+      );
+      expect(
+        commandsAfter(
+          beforeSecondExtension,
+          await allCommands(),
+        ).map((queued) => queued.entityType),
+        orderedEquals(['execution_break_extension']),
+      );
+    },
+  );
+
   test('v0028 migration contains the guarded atomic execution endpoints', () {
     final migration = File(
       'supabase/migrations/20260810043734_v0028_expected_runtime_revision.sql',
@@ -572,6 +672,47 @@ void main() {
       ),
       reason: 'The client keeps one stable revision-guarded RPC surface.',
     );
+  });
+
+  test('v0036 rebases break extensions as one idempotent command', () {
+    final migration = File(
+      'supabase/migrations/20260823143000_v0036_atomic_break_extension.sql',
+    ).readAsStringSync();
+
+    expect(migration, contains('extend_active_break_v0036_command'));
+    expect(migration, contains("p_extension_ms <> 300000"));
+    expect(migration, contains("runtime_record.state <> 'break'"));
+    expect(migration, contains("guard_reason := 'break_interval_changed'"));
+    expect(
+      migration,
+      contains(
+        'overdue_ms := greatest(0::bigint, elapsed_ms - current_interval_ms)',
+      ),
+    );
+    expect(
+      migration,
+      contains(
+        'next_extension_ms := current_extension_ms + overdue_ms + p_extension_ms',
+      ),
+    );
+    expect(migration, contains("'execution_break_extension'"));
+    expect(migration, contains("'canonical_task'"));
+    expect(migration, contains("'canonical_runtime'"));
+    expect(migration, contains("'canonical_only', true"));
+    expect(
+      migration.indexOf('from public.processed_commands command_row'),
+      lessThan(migration.indexOf('from public.account_devices device_row')),
+      reason: 'An accepted retry must remain accepted after device revocation.',
+    );
+    expect(
+      migration,
+      isNot(contains('task_record.revision <> p_expected_task_revision')),
+      reason:
+          'Concurrent extensions merge against the locked task instead of conflicting.',
+    );
+    expect(migration, contains('security definer'));
+    expect(migration, contains('security invoker'));
+    expect(migration, contains("has_function_privilege('anon'"));
   });
 
   test('Pomodoro interval identity replaces lifetime modulo arithmetic', () {

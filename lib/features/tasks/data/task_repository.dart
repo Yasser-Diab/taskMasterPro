@@ -351,6 +351,7 @@ class TaskRepository {
                 'execution_sessions',
                 'execution_runtime',
                 'execution_runtime_switch',
+                'execution_break_extension',
               ]),
         ))
         .write(
@@ -2000,35 +2001,111 @@ class TaskRepository {
     });
   }
 
-  /// Extends the current shared break. The extension is task configuration
-  /// with a narrowly-scoped lifetime so it is synchronized like any other
-  /// task edit, rerenders on every device, and is cleared when that break
-  /// ends. It is not a device-only alarm re-schedule.
-  Future<void> extendCurrentBreak(
+  /// Extends the current shared break with one dedicated atomic command.
+  ///
+  /// The local projection is stored on the task so every surface rerenders
+  /// immediately, but it is not sent as a generic task edit. The server can
+  /// therefore merge simultaneous extensions against the same break interval
+  /// without manufacturing a task revision conflict.
+  Future<bool> extendCurrentBreak(
     LocalTask task, {
     Duration extension = const Duration(minutes: 5),
+    DateTime? now,
   }) => _serializeExecutionTransition(
-    () => _extendCurrentBreak(task, extension: extension),
+    () => _extendCurrentBreak(task, extension: extension, now: now),
   );
 
-  Future<void> _extendCurrentBreak(
+  Future<bool> _extendCurrentBreak(
     LocalTask task, {
     required Duration extension,
+    required DateTime? now,
   }) async {
-    final runtime = await getRuntime();
-    if (runtime == null ||
-        runtime.activeTaskId != task.id ||
-        runtime.state != 'break') {
-      return;
-    }
-    final latest = await getTask(task.id);
-    if (latest == null) return;
-    final configuration = _configuration(latest);
-    final current =
-        (configuration['active_break_extension_ms'] as num?)?.toInt() ?? 0;
-    await updateConfiguration(latest, {
-      ...configuration,
-      'active_break_extension_ms': current + extension.inMilliseconds,
+    if (extension.inMilliseconds <= 0) return false;
+    return database.transaction(() async {
+      final runtime = await getRuntime();
+      final segmentStartedAt = runtime?.segmentStartedAt;
+      final sessionId = runtime?.sessionId;
+      if (runtime == null ||
+          runtime.activeTaskId != task.id ||
+          runtime.state != 'break' ||
+          segmentStartedAt == null ||
+          sessionId == null) {
+        return false;
+      }
+      final latest = await getTask(task.id);
+      if (latest == null || latest.executionMode != 'pomodoro') return false;
+      final effectiveNow = (now ?? _clock()).toUtc();
+      final configuration = _configuration(latest);
+      final currentExtensionMs = math.max(
+        0,
+        (configuration['active_break_extension_ms'] as num?)?.toInt() ?? 0,
+      );
+      final snapshot = PomodoroExecutionSnapshot.fromTask(
+        task: latest,
+        runtime: runtime,
+        now: effectiveNow,
+      );
+      if (!snapshot.isBreak) return false;
+      final nextExtensionMs = rebasedActiveBreakExtensionMs(
+        currentExtensionMs: currentExtensionMs,
+        currentIntervalDurationMs: snapshot.intervalDurationMs,
+        segmentStartedAt: segmentStartedAt,
+        now: effectiveNow,
+        extensionMs: extension.inMilliseconds,
+      );
+      final command = await _newRuntimeCommandIdentity();
+      final changed =
+          await (database.update(database.localTasks)..where(
+                (row) =>
+                    row.id.equals(latest.id) &
+                    row.userId.equals(_userId) &
+                    row.executionMode.equals('pomodoro') &
+                    row.revision.equals(latest.revision) &
+                    row.deletedAt.isNull(),
+              ))
+              .write(
+                LocalTasksCompanion(
+                  dataJson: Value(
+                    jsonEncode({
+                      ...configuration,
+                      'active_break_extension_ms': nextExtensionMs,
+                    }),
+                  ),
+                  revision: Value(latest.revision + 1),
+                  updatedAt: Value(effectiveNow),
+                  updatedByDeviceId: Value(command.deviceId),
+                  lastCommandId: Value(command.commandId),
+                ),
+              );
+      if (changed != 1) return false;
+      await database
+          .into(database.localOutboxCommands)
+          .insert(
+            LocalOutboxCommandsCompanion.insert(
+              commandId: command.commandId,
+              userId: _userId,
+              deviceId: command.deviceId,
+              deviceSequence: command.deviceSequence,
+              entityType: 'execution_break_extension',
+              entityId: sessionId,
+              commandType: 'extend_break',
+              baseRevision: latest.revision,
+              payloadJson: jsonEncode({
+                'task_occurrence_id': latest.id,
+                'session_id': sessionId,
+                'break_started_at': segmentStartedAt.toUtc().toIso8601String(),
+                'boundary_at': segmentStartedAt
+                    .toUtc()
+                    .add(Duration(milliseconds: snapshot.intervalDurationMs))
+                    .toIso8601String(),
+                'extension_ms': extension.inMilliseconds,
+                'requested_at': effectiveNow.toIso8601String(),
+              }),
+              clientTimestamp: effectiveNow,
+              createdAt: effectiveNow,
+            ),
+          );
+      return true;
     });
   }
 

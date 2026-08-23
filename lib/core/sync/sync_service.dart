@@ -517,6 +517,42 @@ bool shouldRepairMissingSupersededStartCleanupRpc({
       errorMessage.contains(_supersededStartCleanupRpcName);
 }
 
+/// A cleanup acknowledgement may be lost after the server commits the command
+/// but before Drift records the accepted result. Only an exact immutable
+/// identity match is allowed to repair that local terminal status.
+@visibleForTesting
+bool acceptedSupersededStartCleanupLedgerRowMatches({
+  required String commandId,
+  required String userId,
+  required String deviceId,
+  required int deviceSequence,
+  required String entityType,
+  required String entityId,
+  required String commandType,
+  required Map<String, dynamic> payload,
+  required Map<String, dynamic> row,
+}) {
+  final resultValue = row['result'];
+  if (resultValue is! Map) return false;
+  final result = Map<String, dynamic>.from(resultValue);
+  return entityType == 'execution_runtime_start_cleanup' &&
+      commandType == 'retire' &&
+      row['command_id'] == commandId &&
+      row['user_id'] == userId &&
+      row['device_id'] == deviceId &&
+      (row['device_sequence'] as num?)?.toInt() == deviceSequence &&
+      row['entity_type'] == entityType &&
+      row['entity_id'] == entityId &&
+      row['command_type'] == commandType &&
+      row['status'] == 'accepted' &&
+      result['status'] == 'accepted' &&
+      result['canonical_runtime'] is Map &&
+      result['runtime_command_id'] == payload['runtime_command_id'] &&
+      result['session_create_command_id'] ==
+          payload['session_create_command_id'] &&
+      result['task_occurrence_id'] == payload['task_occurrence_id'];
+}
+
 @visibleForTesting
 int duplicateRealtimeHandlerCount({
   required int activeAccountChannels,
@@ -1258,12 +1294,21 @@ bool isCanonicalOnlyRuntimeResponse({
     'execution_runtime',
     'execution_runtime_switch',
     'execution_runtime_stale_pause',
+    'execution_break_extension',
   }.contains(entityType)) {
     return false;
   }
-  return result['status'] == 'accepted' &&
-      (result['canonical_only'] == true || result['superseded'] == true) &&
-      result['canonical_runtime'] is Map;
+  final acceptedCanonicalOnly =
+      result['status'] == 'accepted' &&
+      (result['canonical_only'] == true || result['superseded'] == true);
+  if (!acceptedCanonicalOnly) return false;
+  if (entityType == 'execution_break_extension') {
+    // A stale notification can target a break which has already ended. The
+    // task row is the only optimistic projection owned by this command, so a
+    // canonical task is sufficient to retire it without inventing a conflict.
+    return result['canonical_task'] is Map;
+  }
+  return result['canonical_runtime'] is Map;
 }
 
 /// Activity classification is an atomic aggregate command, not a single-row
@@ -1336,6 +1381,10 @@ bool pendingCommandProjectsCanonicalRow({
   if (remoteEntityTypeForCommand(commandEntityType) == canonicalEntityType &&
       commandEntityId == canonicalEntityId) {
     return true;
+  }
+  if (commandEntityType == 'execution_break_extension') {
+    return canonicalEntityType == 'task_occurrences' &&
+        payload['task_occurrence_id'] == canonicalEntityId;
   }
   if (!const {
     'execution_runtime',
@@ -1429,6 +1478,108 @@ bool isSemanticLifecyclePayload(
   return allowedKeys.isNotEmpty &&
       payload.keys.every(allowedKeys.contains) &&
       payload.keys.any(allowedKeys.contains);
+}
+
+Object? _normalizedComparableNumber(Object? value) {
+  if (value == null) return null;
+  if (value is num) return value.toDouble();
+  return num.tryParse(value.toString())?.toDouble();
+}
+
+DateTime? _normalizedComparableInstant(Object? value) {
+  if (value == null) return null;
+  if (value is DateTime) return value.toUtc();
+  return DateTime.tryParse(value.toString())?.toUtc();
+}
+
+/// Older clients persisted a break extension through the generic full-task
+/// update endpoint. If another runtime revision won first, replaying that
+/// payload later could extend an entirely different break. It is safe to
+/// retire only when the canonical task proves every durable field and every
+/// other configuration value are identical.
+@visibleForTesting
+bool isLegacyBreakExtensionOnlyTaskConflict({
+  required Map<String, dynamic> localPayload,
+  required Map<String, dynamic> canonicalRow,
+}) {
+  const legacyPayloadKeys = <String>{
+    'title',
+    'description',
+    'domain_id',
+    'priority',
+    'execution_mode',
+    'scheduled_date',
+    'planned_start',
+    'planned_end',
+    'due_at',
+    'estimated_duration_ms',
+    'roadmap_id',
+    'roadmap_phase_id',
+    'template_id',
+    'occurrence_key',
+    'data',
+  };
+  if (!const SetEquality<String>().equals(
+        localPayload.keys.toSet(),
+        legacyPayloadKeys,
+      ) ||
+      localPayload['execution_mode'] != 'pomodoro') {
+    return false;
+  }
+  final localDataValue = localPayload['data'];
+  final canonicalDataValue = canonicalRow['data'];
+  if (localDataValue is! Map || canonicalDataValue is! Map) return false;
+  final localData = Map<String, dynamic>.from(localDataValue);
+  final canonicalData = Map<String, dynamic>.from(canonicalDataValue);
+  final extensionValue = localData.remove('active_break_extension_ms');
+  final extensionMs = extensionValue is num ? extensionValue.toInt() : null;
+  canonicalData.remove('active_break_extension_ms');
+  if (extensionMs == null ||
+      extensionMs <= 0 ||
+      extensionMs % const Duration(minutes: 5).inMilliseconds != 0 ||
+      !const DeepCollectionEquality().equals(localData, canonicalData)) {
+    return false;
+  }
+
+  for (final key in const <String>[
+    'title',
+    'description',
+    'domain_id',
+    'execution_mode',
+    'roadmap_id',
+    'roadmap_phase_id',
+    'template_id',
+    'occurrence_key',
+  ]) {
+    if (!_sameNullableString(localPayload[key], canonicalRow[key])) {
+      return false;
+    }
+  }
+  for (final key in const <String>['priority', 'estimated_duration_ms']) {
+    if (_normalizedComparableNumber(localPayload[key]) !=
+        _normalizedComparableNumber(canonicalRow[key])) {
+      return false;
+    }
+  }
+  if (!_sameNullableString(
+    localPayload['scheduled_date'],
+    canonicalRow['scheduled_date'],
+  )) {
+    return false;
+  }
+  for (final key in const <String>['planned_start', 'planned_end', 'due_at']) {
+    final localValue = localPayload[key];
+    final canonicalValue = canonicalRow[key];
+    if (localValue == null && canonicalValue == null) continue;
+    final localInstant = _normalizedComparableInstant(localValue);
+    final canonicalInstant = _normalizedComparableInstant(canonicalValue);
+    if (localInstant == null ||
+        canonicalInstant == null ||
+        localInstant != canonicalInstant) {
+      return false;
+    }
+  }
+  return true;
 }
 
 @visibleForTesting
@@ -3053,6 +3204,10 @@ class SyncService {
     await _runBestEffort(_supersedeCanonicalConflicts);
     _ensureCurrentOperation(generation, userId);
     await _runBestEffort(
+      () => _reconcileAcceptedSupersededStartCleanupLedger(user.id),
+    );
+    _ensureCurrentOperation(generation, userId);
+    await _runBestEffort(
       () => _repairMissingSupersededStartCleanupRpcConflicts(user.id),
     );
     _ensureCurrentOperation(generation, userId);
@@ -3201,6 +3356,22 @@ class SyncService {
                   'p_expected_runtime_revision':
                       payload['expected_runtime_revision'],
                   'p_resolved_at': payload['resolved_at'],
+                },
+              )
+            : command.entityType == 'execution_break_extension'
+            ? await client.rpc<Object?>(
+                'extend_active_break_v0036_command',
+                params: {
+                  'p_command_id': command.commandId,
+                  'p_device_id': command.deviceId,
+                  'p_device_sequence': command.deviceSequence,
+                  'p_session_id': command.entityId,
+                  'p_task_occurrence_id': payload['task_occurrence_id'],
+                  'p_expected_task_revision': command.baseRevision,
+                  'p_break_started_at': payload['break_started_at'],
+                  'p_boundary_at': payload['boundary_at'],
+                  'p_extension_ms': payload['extension_ms'],
+                  'p_requested_at': payload['requested_at'],
                 },
               )
             : command.entityType == 'vacation_periods'
@@ -3676,7 +3847,8 @@ class SyncService {
       'execution_sessions' || 'pomodoro_cycles' => 60,
       'execution_runtime' ||
       'execution_runtime_switch' ||
-      'execution_runtime_stale_pause' => 62,
+      'execution_runtime_stale_pause' ||
+      'execution_break_extension' => 62,
       'execution_runtime_start_cleanup' => 63,
       'session_events' || 'interruptions' => 65,
       'checklist_items' ||
@@ -4522,29 +4694,93 @@ class SyncService {
     // The normal Activity privacy mode keeps unapproved device-usage records
     // on their source device.  Earlier development builds may have queued
     // those records already, so retire only their outgoing commands (never
-    // the local Activity itself).  Confirmed task contributions retain their
-    // normalized segment, attribution and review context for cross-device
-    // totals and reports.
-    final approvedSegmentIds = <String>{};
+    // the local Activity itself). Confirmed task contributions and explicit,
+    // privacy-safe manual break check-ins retain their normalized parent
+    // segment so an atomic classification never reaches the server first.
+    final contributionSegmentIds = <String>{};
+    final synchronizedSegmentIds = <String>{};
+    final manualBreakMetadataBySegmentId = <String, Map<String, Object?>>{};
     if (!detailedActivitySyncEnabled) {
-      approvedSegmentIds.addAll(
-        (await (database.select(
-          database.localContributions,
-        )..where((row) => row.userId.equals(user.id))).get()).map(
-          (row) => row.activitySegmentId,
-        ),
+      contributionSegmentIds.addAll(
+        (await (database.select(database.localContributions)..where(
+                  (row) => row.userId.equals(user.id) & row.deletedAt.isNull(),
+                ))
+                .get())
+            .map((row) => row.activitySegmentId),
       );
+      synchronizedSegmentIds.addAll(contributionSegmentIds);
+      final reviews =
+          await (database.select(database.localActivityReviews)..where(
+                (row) => row.userId.equals(user.id) & row.deletedAt.isNull(),
+              ))
+              .get();
+      final attributions =
+          await (database.select(database.localAttributions)..where(
+                (row) => row.userId.equals(user.id) & row.deletedAt.isNull(),
+              ))
+              .get();
+      final manualBreakSegments =
+          await (database.select(database.localActivitySegments)..where(
+                (row) =>
+                    row.userId.equals(user.id) &
+                    row.sourceType.equals(manualBreakActivitySourceType) &
+                    row.deletedAt.isNull(),
+              ))
+              .get();
+      for (final segment in manualBreakSegments) {
+        Map<String, Object?> localMetadata;
+        try {
+          final decoded = jsonDecode(segment.rawMetadataJson);
+          if (decoded is! Map) continue;
+          localMetadata = Map<String, Object?>.from(decoded);
+        } on FormatException {
+          continue;
+        }
+        final review = reviews
+            .where((row) => row.activitySegmentId == segment.id)
+            .sortedByCompare<DateTime>(
+              (row) => row.updatedAt,
+              (a, b) => b.compareTo(a),
+            )
+            .firstOrNull;
+        final attribution = attributions
+            .where((row) => row.activitySegmentId == segment.id)
+            .sortedByCompare<DateTime>(
+              (row) => row.updatedAt,
+              (a, b) => b.compareTo(a),
+            )
+            .firstWhereOrNull(
+              (row) =>
+                  row.confirmedByUser || row.attributionStatus == 'confirmed',
+            );
+        if (review == null ||
+            attribution == null ||
+            !isApprovedPrivacySafeManualBreak(
+              sourceType: segment.sourceType,
+              localMetadata: localMetadata,
+              reviewReason: review.reviewReason,
+              reviewStatus: review.status,
+              wasReviewed: review.reviewedAt != null,
+              attributionClassification: attribution.classification,
+              attributionConfirmed:
+                  attribution.confirmedByUser ||
+                  attribution.attributionStatus == 'confirmed',
+            )) {
+          continue;
+        }
+        final safeMetadata = privacySafeManualBreakSyncMetadata(
+          sourceType: segment.sourceType,
+          localMetadata: localMetadata,
+        );
+        if (safeMetadata == null) continue;
+        synchronizedSegmentIds.add(segment.id);
+        manualBreakMetadataBySegmentId[segment.id] = safeMetadata;
+      }
       final reviewSegmentById = {
-        for (final row in await (database.select(
-          database.localActivityReviews,
-        )..where((row) => row.userId.equals(user.id))).get())
-          row.id: row.activitySegmentId,
+        for (final row in reviews) row.id: row.activitySegmentId,
       };
       final attributionSegmentById = {
-        for (final row in await (database.select(
-          database.localAttributions,
-        )..where((row) => row.userId.equals(user.id))).get())
-          row.id: row.activitySegmentId,
+        for (final row in attributions) row.id: row.activitySegmentId,
       };
       final feedbackSegmentById = {
         for (final row
@@ -4577,11 +4813,11 @@ class SyncService {
           'classification_feedback' => feedbackSegmentById[command.entityId],
           _ => null,
         };
-        final isApprovedSegment =
+        final isSynchronizedSegment =
             command.entityType == 'activity_segments' &&
             segmentId != null &&
-            approvedSegmentIds.contains(segmentId);
-        if (isApprovedSegment) {
+            synchronizedSegmentIds.contains(segmentId);
+        if (isSynchronizedSegment) {
           continue;
         }
         await (database.update(
@@ -4614,7 +4850,7 @@ class SyncService {
             ))
             .get();
     for (final command in commands) {
-      if (!approvedSegmentIds.contains(command.entityId)) {
+      if (!synchronizedSegmentIds.contains(command.entityId)) {
         // The earlier pass normally retires this already. Keep this extra
         // guard so a malformed legacy command cannot become a raw upload.
         await (database.update(
@@ -4633,6 +4869,8 @@ class SyncService {
       final existingData = payload['data'] is Map
           ? Map<String, dynamic>.from(payload['data'] as Map)
           : <String, dynamic>{};
+      final manualBreakMetadata =
+          manualBreakMetadataBySegmentId[command.entityId];
       final safePayload = <String, dynamic>{
         ...payload,
         'process_name': null,
@@ -4640,16 +4878,20 @@ class SyncService {
         'domain': null,
         'url': null,
         'page_title': null,
-        'raw_metadata': const <String, Object?>{
-          'normalized': true,
-          'raw_samples_included': false,
-        },
+        'raw_metadata':
+            manualBreakMetadata ??
+            const <String, Object?>{
+              'normalized': true,
+              'raw_samples_included': false,
+            },
         'data': {
-          ...existingData,
-          'approved_contribution': true,
+          'normalization_version': existingData['normalization_version'] is num
+              ? existingData['normalization_version']
+              : 1,
           'capture_state': 'finalized',
+          if (contributionSegmentIds.contains(command.entityId))
+            'approved_contribution': true,
           'detail_level': 'privacy_safe',
-          'raw_samples_included': false,
         },
       };
       await (database.update(
@@ -5309,48 +5551,98 @@ class SyncService {
         });
     final attribution = approvedAttributions.firstOrNull;
     if (attribution == null ||
-        _normalizedActivityTargetType(attribution.targetType) !=
-            'task_occurrence') {
+        originalPayload['classification'] != attribution.classification) {
       return null;
     }
-    final targetTaskId = _uuidOrNull(attribution.targetId);
-    if (targetTaskId == null) return null;
-    final targetTask =
-        await (database.select(database.localTasks)..where(
-              (row) =>
-                  row.userId.equals(userId) &
-                  row.id.equals(targetTaskId) &
-                  row.deletedAt.isNull(),
-            ))
-            .getSingleOrNull();
-    if (targetTask == null) return null;
+    final targetType = _normalizedActivityTargetType(attribution.targetType);
+    final originalTargetType = originalPayload['target_type'];
+    if (originalTargetType is! String ||
+        _normalizedActivityTargetType(originalTargetType) != targetType) {
+      return null;
+    }
 
-    final requestedContributionId = payloadUuid('contribution_id');
-    final contributions =
-        await (database.select(database.localContributions)..where(
-              (row) =>
-                  row.userId.equals(userId) &
-                  row.activitySegmentId.equals(segment.id) &
-                  row.attributionId.equals(attribution.id) &
-                  row.deletedAt.isNull(),
-            ))
-            .get();
-    final approvedContributions =
-        contributions.where((row) {
-          return row.targetType == attribution.targetType &&
-              row.targetId == attribution.targetId &&
-              row.contributionType.trim().isNotEmpty &&
-              row.physicalDurationMs > 0 &&
-              row.creditedDurationMs >= 0 &&
-              row.creditedDurationMs <= row.physicalDurationMs &&
-              (requestedContributionId == null ||
-                  row.id == requestedContributionId);
-        }).toList()..sort((left, right) {
-          final updated = right.updatedAt.compareTo(left.updatedAt);
-          return updated != 0 ? updated : right.id.compareTo(left.id);
-        });
-    final contribution = approvedContributions.firstOrNull;
-    if (contribution == null) return null;
+    Map<String, Object?> localMetadata;
+    try {
+      final decoded = jsonDecode(segment.rawMetadataJson);
+      if (decoded is! Map) return null;
+      localMetadata = Map<String, Object?>.from(decoded);
+    } on FormatException {
+      return null;
+    }
+    final safeManualBreakMetadata = privacySafeManualBreakSyncMetadata(
+      sourceType: segment.sourceType,
+      localMetadata: localMetadata,
+    );
+
+    String? targetTaskId;
+    LocalContribution? contribution;
+    if (targetType == 'task_occurrence') {
+      targetTaskId = _uuidOrNull(attribution.targetId);
+      if (targetTaskId == null) return null;
+      final targetTask =
+          await (database.select(database.localTasks)..where(
+                (row) =>
+                    row.userId.equals(userId) &
+                    row.id.equals(targetTaskId!) &
+                    row.deletedAt.isNull(),
+              ))
+              .getSingleOrNull();
+      if (targetTask == null) return null;
+
+      final requestedContributionId = payloadUuid('contribution_id');
+      final contributions =
+          await (database.select(database.localContributions)..where(
+                (row) =>
+                    row.userId.equals(userId) &
+                    row.activitySegmentId.equals(segment.id) &
+                    row.attributionId.equals(attribution.id) &
+                    row.deletedAt.isNull(),
+              ))
+              .get();
+      final approvedContributions =
+          contributions.where((row) {
+            return row.targetType == attribution.targetType &&
+                row.targetId == attribution.targetId &&
+                row.contributionType.trim().isNotEmpty &&
+                row.physicalDurationMs > 0 &&
+                row.creditedDurationMs >= 0 &&
+                row.creditedDurationMs <= row.physicalDurationMs &&
+                (requestedContributionId == null ||
+                    row.id == requestedContributionId);
+          }).toList()..sort((left, right) {
+            final updated = right.updatedAt.compareTo(left.updatedAt);
+            return updated != 0 ? updated : right.id.compareTo(left.id);
+          });
+      contribution = approvedContributions.firstOrNull;
+      if (contribution == null) return null;
+    } else if (targetType == 'unassigned_activity') {
+      final hasExactManualEvidence =
+          attribution.targetId == null &&
+          safeManualBreakMetadata != null &&
+          isApprovedPrivacySafeManualBreak(
+            sourceType: segment.sourceType,
+            localMetadata: localMetadata,
+            reviewReason: review.reviewReason,
+            reviewStatus: review.status,
+            wasReviewed: review.reviewedAt != null,
+            attributionClassification: attribution.classification,
+            attributionConfirmed:
+                attribution.confirmedByUser ||
+                attribution.attributionStatus == 'confirmed',
+          );
+      if (!hasExactManualEvidence) return null;
+      final activeContributions =
+          await (database.select(database.localContributions)..where(
+                (row) =>
+                    row.userId.equals(userId) &
+                    row.activitySegmentId.equals(segment.id) &
+                    row.deletedAt.isNull(),
+              ))
+              .get();
+      if (activeContributions.isNotEmpty) return null;
+    } else {
+      return null;
+    }
 
     final segmentCommands =
         await (database.select(database.localOutboxCommands)..where(
@@ -5402,36 +5694,42 @@ class SyncService {
       'idle_state': segment.idleState,
       'screen_state': 'unlocked',
       'capture_confidence': segment.captureConfidence?.clamp(0.0, 1.0),
-      'raw_metadata': const <String, Object?>{
-        'normalized': true,
-        'raw_samples_included': false,
-      },
-      'data': const <String, Object?>{
-        'approved_contribution': true,
+      'raw_metadata':
+          safeManualBreakMetadata ??
+          const <String, Object?>{
+            'normalized': true,
+            'raw_samples_included': false,
+          },
+      'data': <String, Object?>{
+        'normalization_version': 1,
         'capture_state': 'finalized',
+        if (contribution != null) 'approved_contribution': true,
         'detail_level': 'privacy_safe',
-        'raw_samples_included': false,
-        'missing_entity_rebuilt': true,
       },
     };
+    final physicalDurationMs =
+        contribution?.physicalDurationMs ??
+        end.difference(segment.startedAt).inMilliseconds;
+    final creditedDurationMs =
+        contribution?.creditedDurationMs ?? physicalDurationMs;
     final classifierPayload = <String, Object?>{
       'activity_segment_id': segment.id,
       'review_reason': review.reviewReason,
       'priority': review.priority.clamp(0, 4),
       'status': 'confirmed',
       'classification': attribution.classification,
-      'target_type': 'task_occurrence',
+      'target_type': targetType,
       'target_task_id': targetTaskId,
-      'contribution_type': contribution.contributionType,
-      'physical_duration_ms': contribution.physicalDurationMs,
-      'credited_duration_ms': contribution.creditedDurationMs,
+      'contribution_type': contribution?.contributionType,
+      'physical_duration_ms': physicalDurationMs,
+      'credited_duration_ms': creditedDurationMs,
       'source_task_id': payloadUuid('source_task_id'),
       'source_session_id': payloadUuid('source_session_id'),
-      'is_idle_derived': contribution.isIdleDerived,
-      'is_automatic': contribution.isAutomatic,
+      'is_idle_derived': contribution?.isIdleDerived ?? false,
+      'is_automatic': contribution?.isAutomatic ?? false,
       'confidence': attribution.confidence.clamp(0.0, 1.0),
       'attribution_id': attribution.id,
-      'contribution_id': contribution.id,
+      'contribution_id': contribution?.id,
       'classification_feedback_id': payloadUuid('classification_feedback_id'),
       'suggested_classification': review.suggestedClassification,
       'suggested_target_type': review.suggestedTargetType,
@@ -5688,6 +5986,43 @@ class SyncService {
   ) async {
     if (command.entityType == 'execution_runtime_start_cleanup') {
       await _applySupersededStartCleanupResult(command, result);
+      return;
+    }
+    if (command.entityType == 'execution_break_extension') {
+      final payload = _payloadMap(command.payloadJson);
+      final userId = command.userId;
+      final taskId = payload['task_occurrence_id'] as String?;
+      final canonicalTaskValue = result['canonical_task'];
+      if (taskId == null || canonicalTaskValue is! Map) return;
+      final canonicalTask = Map<String, dynamic>.from(canonicalTaskValue);
+      if (canonicalTask['user_id'] != userId || canonicalTask['id'] != taskId) {
+        return;
+      }
+      final localTask = await (database.select(
+        database.localTasks,
+      )..where((task) => task.id.equals(taskId))).getSingleOrNull();
+      final pendingTask = await _hasPendingCommand(
+        'task_occurrences',
+        taskId,
+        userId: userId,
+        excludingCommandId: command.commandId,
+      );
+      final incomingRevision = (canonicalTask['revision'] as num?)?.toInt();
+      if ((localTask == null || localTask.userId == userId) &&
+          incomingRevision != null &&
+          shouldApplyAcknowledgedCanonicalAggregate(
+            localRevision: localTask?.revision,
+            localCommandId: localTask?.lastCommandId,
+            incomingRevision: incomingRevision,
+            incomingCommandId: canonicalTask['last_command_id'] as String?,
+            acknowledgedCommandId: command.commandId,
+            hasPendingProjection: pendingTask,
+            allowAcknowledgedRollback:
+                result['canonical_only'] == true ||
+                result['superseded'] == true,
+          )) {
+        await _applyTask(canonicalTask);
+      }
       return;
     }
     if (command.entityType == 'execution_runtime_stale_pause') {
@@ -6028,6 +6363,79 @@ class SyncService {
             );
       }
     });
+  }
+
+  /// Reconciles only cleanup commands which the owner-scoped server ledger
+  /// proves were already accepted. This closes the commit/acknowledgement gap
+  /// without replaying a destructive cleanup or hiding a genuine rejection.
+  Future<void> _reconcileAcceptedSupersededStartCleanupLedger(
+    String userId,
+  ) async {
+    final conflicts =
+        await (database.select(database.localOutboxCommands)..where(
+              (command) =>
+                  command.userId.equals(userId) &
+                  command.entityType.equals('execution_runtime_start_cleanup') &
+                  command.status.equals('conflict'),
+            ))
+            .get();
+    if (conflicts.isEmpty) return;
+
+    final commandIds = conflicts.map((command) => command.commandId).toList();
+    final response = await _trackedRemote<Object?>(
+      'table:processed_commands.cleanup_recovery',
+      () => client
+          .from('processed_commands')
+          .select(
+            'user_id,command_id,device_id,device_sequence,entity_type,'
+            'entity_id,command_type,base_revision,status,result',
+          )
+          .eq('user_id', userId)
+          .inFilter('command_id', commandIds),
+      uploaded: {'command_ids': commandIds},
+      fingerprint: commandIds.join(','),
+    );
+    if (response is! List) return;
+    final rowsByCommandId = <String, Map<String, dynamic>>{};
+    for (final value in response) {
+      if (value is! Map) continue;
+      final row = Map<String, dynamic>.from(value);
+      final commandId = row['command_id'];
+      if (commandId is String) rowsByCommandId[commandId] = row;
+    }
+
+    for (final command in conflicts) {
+      final row = rowsByCommandId[command.commandId];
+      if (row == null) continue;
+      final payload = _payloadMap(command.payloadJson);
+      if (!acceptedSupersededStartCleanupLedgerRowMatches(
+        commandId: command.commandId,
+        userId: command.userId,
+        deviceId: command.deviceId,
+        deviceSequence: command.deviceSequence,
+        entityType: command.entityType,
+        entityId: command.entityId,
+        commandType: command.commandType,
+        payload: payload,
+        row: row,
+      )) {
+        continue;
+      }
+      final result = Map<String, dynamic>.from(row['result'] as Map);
+      await _applySupersededStartCleanupResult(command, result);
+      await (database.update(database.localOutboxCommands)..where(
+            (local) =>
+                local.commandId.equals(command.commandId) &
+                local.status.equals('conflict'),
+          ))
+          .write(
+            const LocalOutboxCommandsCompanion(
+              status: Value('accepted'),
+              nextAttemptAt: Value(null),
+              lastError: Value(null),
+            ),
+          );
+    }
   }
 
   @visibleForTesting
@@ -7482,10 +7890,98 @@ class SyncService {
     await _reconcileTaskApplicationLinkAliases(user.id);
     await _reconcileLegacyActivityCommandConflicts(user.id);
     await _reconcileDuplicateCreates(user.id);
+    await _reconcileLegacyBreakExtensionConflicts(user.id);
     await _reconcileStaleLifecycleConflicts(user.id);
     await _retireSafeLegacyTransportConflicts(user.id);
     await _resolveRemoteCanonicalConflictHistory(user.id);
     await _repairSupersededStartCleanupCommands(user.id);
+  }
+
+  /// Retires only pre-v0036 generic task updates whose complete payload proves
+  /// that the sole rejected intent was an interval-less break extension. New
+  /// extensions carry session and boundary identity through the atomic v0036
+  /// command and never enter this recovery path.
+  Future<void> _reconcileLegacyBreakExtensionConflicts(String userId) async {
+    final conflicts =
+        await (database.select(database.localOutboxCommands)..where(
+              (row) =>
+                  row.userId.equals(userId) &
+                  row.status.equals('conflict') &
+                  row.commandType.equals('update') &
+                  row.entityType.equals('task_occurrences'),
+            ))
+            .get();
+    final candidates = <LocalOutboxCommand>[];
+    for (final command in conflicts) {
+      if (_payloadMap(command.lastError ?? '')['reason'] !=
+          'revision_mismatch') {
+        continue;
+      }
+      if (await _hasPendingCommand(
+        'task_occurrences',
+        command.entityId,
+        userId: userId,
+        excludingCommandId: command.commandId,
+      )) {
+        continue;
+      }
+      candidates.add(command);
+    }
+    if (candidates.isEmpty) return;
+
+    try {
+      final taskIds = candidates.map((command) => command.entityId).toSet();
+      final response = await _trackedRemote<Object?>(
+        'table:task_occurrences.legacy_break_extension_recovery',
+        () => client
+            .from('task_occurrences')
+            .select()
+            .inFilter('id', taskIds.toList()),
+        uploaded: {'task_ids': taskIds.toList()},
+        fingerprint: taskIds.join(','),
+      );
+      if (response is! List) return;
+      final canonicalById = <String, Map<String, dynamic>>{};
+      for (final raw in response) {
+        if (raw is! Map) continue;
+        final row = Map<String, dynamic>.from(raw);
+        final taskId = row['id'];
+        if (taskId is String && row['user_id'] == userId) {
+          canonicalById[taskId] = row;
+        }
+      }
+
+      for (final command in candidates) {
+        final canonical = canonicalById[command.entityId];
+        if (canonical == null ||
+            !isLegacyBreakExtensionOnlyTaskConflict(
+              localPayload: _payloadMap(command.payloadJson),
+              canonicalRow: canonical,
+            )) {
+          continue;
+        }
+        await _applyTask(canonical);
+        await (database.update(database.localOutboxCommands)..where(
+              (row) =>
+                  row.commandId.equals(command.commandId) &
+                  row.status.equals('conflict'),
+            ))
+            .write(
+              const LocalOutboxCommandsCompanion(
+                status: Value('superseded'),
+                nextAttemptAt: Value(null),
+                lastError: Value(null),
+              ),
+            );
+        await _markRemoteConflictResolved(
+          command,
+          strategy: 'local_command_already_superseded',
+        );
+      }
+    } catch (_) {
+      // Keep every conflict visible unless the owner-scoped canonical row can
+      // be read and the exact legacy-only shape is positively proven.
+    }
   }
 
   Future<void> _reconcileRemoteConflictDecisions(String userId) async {
@@ -9055,6 +9551,9 @@ class SyncService {
         'execution_runtime_switch',
         'execution_runtime_stale_pause',
       ]);
+    }
+    if (canonicalEntityType == 'task_occurrences') {
+      localTypes.add('execution_break_extension');
     }
     final commands =
         await (database.select(database.localOutboxCommands)..where(

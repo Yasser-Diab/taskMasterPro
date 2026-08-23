@@ -1,8 +1,10 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:ui';
 
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:taskmaster_pro/core/localization/app_localizations.dart';
 import 'package:taskmaster_pro/core/notifications/notification_sounds.dart';
 
 void main() {
@@ -161,6 +163,62 @@ void main() {
       ),
       isFalse,
     );
+    final exactStatusPayload = OwnedNotificationPayload(
+      route: exactPayload.route,
+      ownerId: exactPayload.ownerId,
+      eventType: exactPayload.eventType,
+      executionSurface: 'status',
+      notificationId: exactPayload.notificationId,
+      sessionId: exactPayload.sessionId,
+      runtimeRevision: exactPayload.runtimeRevision,
+      intervalId: exactPayload.intervalId,
+      boundaryAtUtc: exactPayload.boundaryAtUtc,
+    );
+    expect(
+      executionNotificationIdentityMatches(
+        payload: exactStatusPayload,
+        ledger: {...ledger, 'state': 'expired'},
+      ),
+      isTrue,
+      reason:
+          'the exact current status card remains actionable after its countdown',
+    );
+    expect(
+      executionNotificationIdentityMatches(
+        payload: exactPayload,
+        ledger: {...ledger, 'state': 'expired'},
+      ),
+      isFalse,
+      reason: 'an expired boundary alarm must never gain action authority',
+    );
+  });
+
+  test('expired execution status cards stop their countdown', () {
+    final boundary = DateTime.utc(2026, 8, 23, 12);
+    expect(
+      executionStatusBoundaryReached(
+        paused: false,
+        boundaryAtUtc: boundary,
+        now: boundary.add(const Duration(seconds: 1)),
+      ),
+      isTrue,
+    );
+    expect(
+      executionStatusBoundaryReached(
+        paused: false,
+        boundaryAtUtc: boundary,
+        now: boundary.subtract(const Duration(seconds: 1)),
+      ),
+      isFalse,
+    );
+    expect(
+      executionStatusBoundaryReached(
+        paused: true,
+        boundaryAtUtc: boundary,
+        now: boundary.add(const Duration(hours: 1)),
+      ),
+      isFalse,
+    );
   });
 
   test('Windows action envelope preserves command and owned task payload', () {
@@ -206,6 +264,46 @@ void main() {
     expect(decoded.taskId, 'task-1');
     expect(decoded.sessionId, 'session-1');
     expect(decoded.runtimeRevision, 8);
+  });
+
+  test('ongoing execution cards remain distinct from boundary alarms', () {
+    final boundary = DateTime.utc(2026, 8, 23, 12, 30);
+    final statusPayload = LocalNotificationService.ownedPayloadForOwner(
+      ownerId: 'owner-1',
+      route: 'task/task-1',
+      eventType: 'short_break_completed',
+      executionSurface: 'status',
+      boundaryAtUtc: boundary,
+      notificationId: 'notification-1',
+      sessionId: 'session-1',
+      runtimeRevision: 9,
+      intervalId: 'session-1:break:short',
+    );
+    final boundaryPayload = LocalNotificationService.ownedPayloadForOwner(
+      ownerId: 'owner-1',
+      route: 'task/task-1',
+      eventType: 'short_break_completed',
+      executionSurface: 'boundary',
+      boundaryAtUtc: boundary,
+      notificationId: 'notification-1',
+      sessionId: 'session-1',
+      runtimeRevision: 9,
+      intervalId: 'session-1:break:short',
+    );
+
+    expect(
+      LocalNotificationService.decodeOwnedPayload(
+        statusPayload,
+      ).isExecutionStatus,
+      isTrue,
+    );
+    expect(
+      LocalNotificationService.decodeOwnedPayload(
+        boundaryPayload,
+      ).isExecutionStatus,
+      isFalse,
+    );
+    expect(jsonDecode(statusPayload), containsPair('version', 4));
   });
 
   test(
@@ -261,6 +359,49 @@ void main() {
       windowsExecutionActionLabelKey('finish_task', 'finish_task'),
       'notification_action_finish_compact',
     );
+    expect(
+      windowsExecutionActionLabelKey(
+        'extend_break',
+        'notification_extend_break',
+      ),
+      'notification_action_extend_compact',
+    );
+    expect(
+      windowsExecutionActionLabelKey(
+        'review_break',
+        'notification_review_break',
+      ),
+      'notification_action_review_compact',
+    );
+    final breakActions = windowsExecutionActionSpecs(
+      isBreak: true,
+      isPomodoro: false,
+    );
+    expect(
+      breakActions.map((action) => action.$1),
+      orderedEquals(['start_focus', 'extend_break', 'review_break']),
+    );
+    expect(breakActions, hasLength(3));
+    expect(
+      windowsExecutionActionSpecs(isBreak: false, isPomodoro: true),
+      hasLength(3),
+    );
+    expect(
+      windowsExecutionActionSpecs(isBreak: false, isPomodoro: false),
+      hasLength(2),
+    );
+    expect(windowsReminderActionSpecs, hasLength(3));
+    expect(
+      androidExecutionActionSpecs(isBreak: true, isPomodoro: false),
+      orderedEquals(breakActions),
+    );
+    for (final actions in [
+      executionStatusActionSpecs(onBreak: true, paused: false),
+      executionStatusActionSpecs(onBreak: false, paused: true),
+      executionStatusActionSpecs(onBreak: false, paused: false),
+    ]) {
+      expect(actions, hasLength(3));
+    }
     for (final action in const <String>[
       'start_break',
       'start_focus',
@@ -295,6 +436,27 @@ void main() {
       windowsReminderActionBehavior('dismiss'),
       WindowsNotificationBehavior.dismiss,
     );
+  });
+
+  test('Windows compact notification labels stay single-line sized', () {
+    for (final locale in const ['en', 'ar', 'de']) {
+      final l10n = AppLocalizations(Locale(locale));
+      for (final key in const [
+        'notification_action_break_compact',
+        'notification_action_continue_compact',
+        'notification_action_extend_compact',
+        'notification_action_review_compact',
+        'notification_action_finish_compact',
+      ]) {
+        final label = l10n.text(key);
+        expect(label, isNot(contains('\n')));
+        expect(
+          label.runes.length,
+          lessThanOrEqualTo(9),
+          reason: '$locale/$key must fit a Windows toast action',
+        );
+      }
+    }
   });
 
   test('ordinary reminder identity survives the Windows action envelope', () {

@@ -88,6 +88,56 @@ void main() {
     );
   });
 
+  test('completed Pomodoro keeps its delivered boundary notification', () {
+    expect(
+      shouldPreserveCompletedPomodoroBoundary(
+        isPomodoro: true,
+        intervalComplete: true,
+      ),
+      isTrue,
+    );
+    expect(
+      shouldPreserveCompletedPomodoroBoundary(
+        isPomodoro: true,
+        intervalComplete: false,
+      ),
+      isFalse,
+    );
+    expect(
+      shouldPreserveCompletedPomodoroBoundary(
+        isPomodoro: false,
+        intervalComplete: true,
+      ),
+      isFalse,
+    );
+
+    final shell = File(
+      'lib/features/shell/presentation/home_shell.dart',
+    ).readAsStringSync();
+    final preserve = shell.indexOf(
+      'shouldPreserveCompletedPomodoroBoundary(',
+      shell.indexOf('Future<void> _synchronizeExecutionAlarm('),
+    );
+    final cancellation = shell.indexOf(
+      'cancelExecutionCompletion(task.id)',
+      preserve,
+    );
+    final statusReplacement = shell.indexOf(
+      'localNotificationService.showExecutionStatus(',
+      preserve,
+    );
+
+    expect(preserve, greaterThanOrEqualTo(0));
+    expect(cancellation, greaterThan(preserve));
+    expect(statusReplacement, greaterThan(cancellation));
+    expect(
+      shell.substring(preserve, cancellation),
+      contains('return;'),
+      reason:
+          'A completed interval must return before cancellation or quiet-card replacement.',
+    );
+  });
+
   test(
     'HomeShell commits only scheduled boundaries and uses one-shot retry',
     () {
@@ -137,4 +187,26 @@ void main() {
       );
     },
   );
+
+  test('HomeShell reschedules when active task timing changes', () {
+    final shell = File(
+      'lib/features/shell/presentation/home_shell.dart',
+    ).readAsStringSync();
+
+    expect(
+      shell,
+      contains(
+        '_runtimeSubscription = repository.watchRuntime().listen(\n'
+        '      (runtime) => _observeExecutionRuntime(repository, runtime),',
+      ),
+    );
+    expect(
+      shell,
+      contains(
+        '_executionTaskSubscription = repository.watchTask(taskId).listen',
+      ),
+    );
+    expect(shell, contains('_queueExecutionAlarmFromCurrentRuntime('));
+    expect(shell, contains('unawaited(_executionTaskSubscription?.cancel())'));
+  });
 }

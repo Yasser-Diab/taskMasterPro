@@ -223,6 +223,68 @@ void main() {
     );
   });
 
+  test('accepted cleanup ledger recovery requires exact command identity', () {
+    const cleanupId = 'd66759c9-dd35-5132-bd18-dc16e8ae3a4e';
+    const payload = {
+      'runtime_command_id': _runtimeId,
+      'session_create_command_id': _createId,
+      'task_occurrence_id': _taskId,
+    };
+    const result = {
+      'status': 'accepted',
+      'retired': true,
+      'runtime_command_id': _runtimeId,
+      'session_create_command_id': _createId,
+      'task_occurrence_id': _taskId,
+      'canonical_runtime': {'user_id': _userId, 'revision': 51},
+    };
+    const row = {
+      'user_id': _userId,
+      'command_id': cleanupId,
+      'device_id': _deviceId,
+      'device_sequence': 63,
+      'entity_type': 'execution_runtime_start_cleanup',
+      'entity_id': _sessionId,
+      'command_type': 'retire',
+      'base_revision': 2,
+      'status': 'accepted',
+      'result': result,
+    };
+
+    bool matches(Map<String, dynamic> candidate) =>
+        acceptedSupersededStartCleanupLedgerRowMatches(
+          commandId: cleanupId,
+          userId: _userId,
+          deviceId: _deviceId,
+          deviceSequence: 63,
+          entityType: 'execution_runtime_start_cleanup',
+          entityId: _sessionId,
+          commandType: 'retire',
+          payload: payload,
+          row: candidate,
+        );
+
+    expect(matches(row), isTrue);
+    for (final mismatch in <Map<String, dynamic>>[
+      {...row, 'command_id': 'wrong-command'},
+      {...row, 'user_id': 'wrong-user'},
+      {...row, 'device_id': 'wrong-device'},
+      {...row, 'device_sequence': 64},
+      {...row, 'entity_id': 'wrong-session'},
+      {...row, 'status': 'conflict'},
+      {
+        ...row,
+        'result': {...result, 'runtime_command_id': 'wrong-runtime'},
+      },
+      {
+        ...row,
+        'result': {...result, 'canonical_runtime': null},
+      },
+    ]) {
+      expect(matches(mismatch), isFalse);
+    }
+  });
+
   test('newer or pending session state blocks cleanup rollback', () {
     LocalEntityRecord session({
       String lastCommandId = _runtimeId,

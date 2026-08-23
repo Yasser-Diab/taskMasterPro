@@ -13,6 +13,12 @@ import '../../tasks/data/website_rule_service.dart';
 import '../domain/activity_reporting_policy.dart';
 import 'activity_privacy_policy.dart';
 
+export 'activity_privacy_policy.dart'
+    show
+        breakActivityClassifications,
+        breakActivityReviewReason,
+        manualBreakActivitySourceType;
+
 /// Stable per-account identity for an observed application.
 ///
 /// Two devices can discover the same application before either has pulled the
@@ -94,16 +100,6 @@ String activityRuleIdFor({
   'https://taskmasterpro.app/account/$userId/application/$applicationId/'
   'rule/$scopeType/$scopeId',
 );
-
-const manualBreakActivitySourceType = 'manual_break';
-const breakActivityReviewReason = 'break_without_device_activity';
-const breakActivityClassifications = <String>{
-  'break_activity_reading',
-  'break_activity_sport',
-  'break_activity_relaxing',
-  'break_activity_drink',
-  'break_activity_other',
-};
 
 String manualBreakActivitySegmentIdFor({
   required String userId,

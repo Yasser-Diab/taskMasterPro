@@ -558,6 +558,37 @@ void main() {
       },
     );
 
+    test('an ongoing break card can start focus before the boundary', () async {
+      final taskId = await repository.createTask(
+        TaskDraft(
+          title: 'Ongoing notification break',
+          executionMode: 'pomodoro',
+          estimatedDuration: const Duration(hours: 1),
+        ),
+      );
+      final task = (await repository.getTask(taskId))!;
+      await repository.start(task);
+      await repository.startBreak(task);
+
+      expect(
+        await TaskExecutionCommands.startFocusFromCompletedBreak(
+          repository,
+          task,
+        ),
+        isFalse,
+        reason: 'the completed-boundary action must remain guarded',
+      );
+      expect(
+        await TaskExecutionCommands.startFocusFromActiveBreak(repository, task),
+        isTrue,
+        reason: 'Start focus on the ongoing card is an explicit early action',
+      );
+      final runtime = await database
+          .select(database.localRuntimeStates)
+          .getSingle();
+      expect(runtime.state, 'running');
+    });
+
     test('automatic boundaries advance without an Execute page', () async {
       final taskId = await repository.createTask(
         TaskDraft(

@@ -111,6 +111,36 @@ void main() {
       ),
       isFalse,
     );
+    const breakExtensionPayload = <String, dynamic>{
+      'task_occurrence_id': 'task-break',
+      'session_id': 'session-break',
+    };
+    expect(
+      pendingCommandProjectsCanonicalRow(
+        canonicalEntityType: 'task_occurrences',
+        canonicalEntityId: 'task-break',
+        commandEntityType: 'execution_break_extension',
+        commandEntityId: 'session-break',
+        payload: breakExtensionPayload,
+      ),
+      isTrue,
+      reason: 'A break extension owns only its optimistic task projection.',
+    );
+    for (final unrelatedType in const [
+      'execution_sessions',
+      'user_runtime_state',
+    ]) {
+      expect(
+        pendingCommandProjectsCanonicalRow(
+          canonicalEntityType: unrelatedType,
+          canonicalEntityId: 'session-break',
+          commandEntityType: 'execution_break_extension',
+          commandEntityId: 'session-break',
+          payload: breakExtensionPayload,
+        ),
+        isFalse,
+      );
+    }
     expect(
       pendingCommandProjectsCanonicalRow(
         canonicalEntityType: 'task_occurrences',
@@ -366,6 +396,9 @@ void main() {
       expect(source, contains('row.confirmedByUser'));
       expect(source, contains('row.attributionId.equals(attribution.id)'));
       expect(source, contains("'approved_contribution': true"));
+      expect(source, contains('manualBreakMetadataBySegmentId'));
+      expect(source, contains("targetType == 'unassigned_activity'"));
+      expect(source, contains('isApprovedPrivacySafeManualBreak'));
       expect(source, contains("'missing_entity_repair_version': 1"));
       expect(
         source,
@@ -2224,6 +2257,33 @@ void main() {
       );
       expect(
         isCanonicalOnlyRuntimeResponse(
+          entityType: 'execution_break_extension',
+          result: const {
+            'status': 'accepted',
+            'superseded': true,
+            'canonical_task': {'revision': 11},
+            'canonical_runtime': {'revision': 15},
+          },
+        ),
+        isTrue,
+        reason:
+            'A stale notification action already carries the break interval which replaced it.',
+      );
+      expect(
+        isCanonicalOnlyRuntimeResponse(
+          entityType: 'execution_break_extension',
+          result: const {
+            'status': 'accepted',
+            'canonical_only': true,
+            'canonical_task': {'revision': 12},
+          },
+        ),
+        isTrue,
+        reason:
+            'A stale break action owns only the task projection and does not require a live runtime row.',
+      );
+      expect(
+        isCanonicalOnlyRuntimeResponse(
           entityType: 'task_occurrences',
           result: const {
             'status': 'accepted',
@@ -2296,6 +2356,44 @@ void main() {
         "result['canonical_only'] == true || result['superseded'] == true",
       ),
     );
+  });
+
+  test('break extension delivery uses the dedicated v0036 aggregate RPC', () {
+    final source = File('lib/core/sync/sync_service.dart').readAsStringSync();
+    final rpcMatch = RegExp(
+      r": command\.entityType == 'execution_break_extension'"
+      r'(?<body>[\s\S]*?)'
+      r": command\.entityType == 'vacation_periods'",
+    ).firstMatch(source);
+    expect(rpcMatch, isNotNull);
+    final rpc = rpcMatch!.namedGroup('body')!;
+    expect(rpc, contains("'extend_active_break_v0036_command'"));
+    for (final parameter in const [
+      "'p_command_id': command.commandId",
+      "'p_device_id': command.deviceId",
+      "'p_device_sequence': command.deviceSequence",
+      "'p_session_id': command.entityId",
+      "'p_task_occurrence_id': payload['task_occurrence_id']",
+      "'p_expected_task_revision': command.baseRevision",
+      "'p_break_started_at': payload['break_started_at']",
+      "'p_boundary_at': payload['boundary_at']",
+      "'p_extension_ms': payload['extension_ms']",
+      "'p_requested_at': payload['requested_at']",
+    ]) {
+      expect(rpc, contains(parameter), reason: 'Missing RPC input: $parameter');
+    }
+
+    final applyMatch = RegExp(
+      r"if \(command\.entityType == 'execution_break_extension'\) \{"
+      r'(?<body>[\s\S]*?)'
+      r"\n    \}\n    if \(command\.entityType == 'execution_runtime_stale_pause'\)",
+    ).firstMatch(source);
+    expect(applyMatch, isNotNull);
+    final apply = applyMatch!.namedGroup('body')!;
+    expect(apply, contains("result['canonical_task']"));
+    expect(apply, contains('excludingCommandId: command.commandId'));
+    expect(apply, contains('shouldApplyAcknowledgedCanonicalAggregate('));
+    expect(apply, contains('await _applyTask(canonicalTask)'));
   });
 
   test('healthy idle Realtime performs no timer-driven remote recovery', () {
@@ -2622,6 +2720,77 @@ void main() {
     expect(
       isSemanticLifecyclePayload('roadmaps', const {'status': 'active'}),
       isFalse,
+    );
+  });
+
+  test('legacy generic break extension retires only its transient field', () {
+    final localPayload = <String, dynamic>{
+      'title': 'Programming study',
+      'description': 'Recurring routine',
+      'domain_id': 'domain-1',
+      'priority': 2,
+      'execution_mode': 'pomodoro',
+      'scheduled_date': '2026-08-23',
+      'planned_start': '2026-08-23T16:30:00.000Z',
+      'planned_end': '2026-08-23T18:00:00.000Z',
+      'due_at': null,
+      'estimated_duration_ms': 5400000,
+      'roadmap_id': 'roadmap-1',
+      'roadmap_phase_id': 'phase-1',
+      'template_id': 'template-1',
+      'occurrence_key': '2026-08-23',
+      'data': <String, dynamic>{
+        'time_zone': 'Africa/Cairo',
+        'completion_method': 'duration',
+        'active_break_extension_ms': 1200000,
+      },
+    };
+    final canonical = <String, dynamic>{
+      ...localPayload,
+      'planned_start': '2026-08-23T16:30:00+00:00',
+      'planned_end': '2026-08-23T18:00:00+00:00',
+      'data': <String, dynamic>{
+        'time_zone': 'Africa/Cairo',
+        'completion_method': 'duration',
+        'active_break_extension_ms': 300000,
+      },
+      'revision': 18,
+    };
+
+    expect(
+      isLegacyBreakExtensionOnlyTaskConflict(
+        localPayload: localPayload,
+        canonicalRow: canonical,
+      ),
+      isTrue,
+    );
+    expect(
+      isLegacyBreakExtensionOnlyTaskConflict(
+        localPayload: {...localPayload, 'title': 'Independent edit'},
+        canonicalRow: canonical,
+      ),
+      isFalse,
+    );
+    expect(
+      isLegacyBreakExtensionOnlyTaskConflict(
+        localPayload: {
+          ...localPayload,
+          'data': <String, dynamic>{
+            ...(localPayload['data'] as Map<String, dynamic>),
+            'completion_method': 'manual',
+          },
+        },
+        canonicalRow: canonical,
+      ),
+      isFalse,
+    );
+    expect(
+      isLegacyBreakExtensionOnlyTaskConflict(
+        localPayload: {...localPayload, 'status': 'completed'},
+        canonicalRow: canonical,
+      ),
+      isFalse,
+      reason: 'A merged independent lifecycle edit must remain reviewable.',
     );
   });
 

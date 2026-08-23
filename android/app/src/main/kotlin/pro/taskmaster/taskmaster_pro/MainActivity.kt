@@ -48,8 +48,11 @@ class MainActivity : FlutterFragmentActivity() {
     private val activityChannel = "taskmasterpro/activity"
     private val notificationChannel = "taskmasterpro/notifications"
     private val resourceChannel = "taskmasterpro/resources"
+    private val homeWidgetChannel = "taskmasterpro/home_widget"
     private val bleChannel = "taskmasterpro/ble"
     private val vaultChannel = "taskmasterpro/vault"
+    private var homeWidgetMethodChannel: MethodChannel? = null
+    private var pendingHomeWidgetAction: Map<String, Any>? = null
     private val heartRateServiceUuid =
         UUID.fromString("0000180d-0000-1000-8000-00805f9b34fb")
     private val heartRateMeasurementUuid =
@@ -287,8 +290,84 @@ class MainActivity : FlutterFragmentActivity() {
             characteristic.getDescriptor(clientCharacteristicConfigurationUuid) != null
     }
 
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        captureHomeWidgetAction(intent)
+        deliverPendingHomeWidgetAction()
+    }
+
+    private fun captureHomeWidgetAction(source: Intent?) {
+        if (source?.action != TaskMasterWidgetIntent.commandAction) return
+        val id = source.getStringExtra(TaskMasterWidgetIntent.actionIdExtra)
+            ?.trim()
+            .orEmpty()
+        val taskId = source.getStringExtra(TaskMasterWidgetIntent.taskIdExtra)
+            ?.trim()
+            .orEmpty()
+        val sessionId = source.getStringExtra(TaskMasterWidgetIntent.sessionIdExtra)
+            ?.trim()
+            .orEmpty()
+        val runtimeRevision = source.getIntExtra(
+            TaskMasterWidgetIntent.runtimeRevisionExtra,
+            -1,
+        )
+        if (id.isBlank() || taskId.isBlank() || sessionId.isBlank() || runtimeRevision < 0) {
+            clearHomeWidgetActionIntent(source)
+            return
+        }
+        pendingHomeWidgetAction = mapOf(
+            "id" to id,
+            "taskId" to taskId,
+            "sessionId" to sessionId,
+            "runtimeRevision" to runtimeRevision,
+        )
+    }
+
+    private fun takePendingHomeWidgetAction(): Map<String, Any>? {
+        val action = pendingHomeWidgetAction ?: return null
+        pendingHomeWidgetAction = null
+        clearHomeWidgetActionIntent(intent)
+        return action
+    }
+
+    private fun deliverPendingHomeWidgetAction() {
+        val channel = homeWidgetMethodChannel ?: return
+        val action = pendingHomeWidgetAction ?: return
+        channel.invokeMethod(
+            "widgetAction",
+            action,
+            object : MethodChannel.Result {
+                override fun success(result: Any?) {
+                    if (result == true && pendingHomeWidgetAction == action) {
+                        pendingHomeWidgetAction = null
+                        clearHomeWidgetActionIntent(intent)
+                    }
+                }
+
+                override fun error(
+                    errorCode: String,
+                    errorMessage: String?,
+                    errorDetails: Any?,
+                ) = Unit
+
+                override fun notImplemented() = Unit
+            },
+        )
+    }
+
+    private fun clearHomeWidgetActionIntent(target: Intent?) {
+        if (target?.action != TaskMasterWidgetIntent.commandAction) return
+        target.action = "pro.taskmaster.app.action.OPEN_FROM_WIDGET"
+        target.removeExtra(TaskMasterWidgetIntent.actionIdExtra)
+        target.removeExtra(TaskMasterWidgetIntent.taskIdExtra)
+        target.removeExtra(TaskMasterWidgetIntent.sessionIdExtra)
+        target.removeExtra(TaskMasterWidgetIntent.runtimeRevisionExtra)
+    }
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        captureHomeWidgetAction(intent)
         MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
             activityChannel,
@@ -322,6 +401,55 @@ class MainActivity : FlutterFragmentActivity() {
                     }
                 }
                 else -> result.notImplemented()
+            }
+        }
+        homeWidgetMethodChannel = MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            homeWidgetChannel,
+        ).also { channel ->
+            channel.setMethodCallHandler { call, result ->
+            when (call.method) {
+                "update" -> {
+                    val arguments = call.arguments as? Map<*, *>
+                    if (arguments == null) {
+                        result.error(
+                            "invalid_widget_state",
+                            "Android widget state must be a map",
+                            null,
+                        )
+                    } else {
+                        TaskMasterWidgetStore.save(applicationContext, arguments)
+                        TaskMasterWidgetProvider.updateAll(applicationContext)
+                        val pinRequested =
+                            arguments["requestPinIfMissing"] == true &&
+                                TaskMasterWidgetProvider.requestPin(
+                                    applicationContext,
+                                    automatic = true,
+                                )
+                        result.success(
+                            mapOf(
+                                "widgetCount" to TaskMasterWidgetProvider.widgetCount(
+                                    applicationContext,
+                                ),
+                                "pinRequested" to pinRequested,
+                            ),
+                        )
+                    }
+                }
+                "requestPin" -> result.success(
+                    TaskMasterWidgetProvider.requestPin(
+                        applicationContext,
+                        automatic = false,
+                    ),
+                )
+                "takeAction" -> result.success(takePendingHomeWidgetAction())
+                "clear" -> {
+                    TaskMasterWidgetStore.clearState(applicationContext)
+                    TaskMasterWidgetProvider.updateAll(applicationContext)
+                    result.success(null)
+                }
+                else -> result.notImplemented()
+            }
             }
         }
         MethodChannel(

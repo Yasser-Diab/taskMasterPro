@@ -115,6 +115,44 @@ abstract final class TaskExecutionCommands {
     Future<void> Function()? beforeTransition,
     Future<void> Function(LocalTask task, LocalRuntime runtime)?
     beforeFinishBreak,
+  }) => _startFocusFromBreak(
+    repository,
+    requestedTask,
+    requireCompletedBoundary: true,
+    now: now,
+    expectedBoundaryAt: expectedBoundaryAt,
+    beforeTransition: beforeTransition,
+    beforeFinishBreak: beforeFinishBreak,
+  );
+
+  /// Ends the exact active break interval from an ongoing execution card.
+  /// Unlike a boundary notification this is an explicit early transition, so
+  /// it must not require the countdown to have reached zero.
+  static Future<bool> startFocusFromActiveBreak(
+    TaskRepository repository,
+    LocalTask requestedTask, {
+    DateTime? now,
+    Future<void> Function()? beforeTransition,
+    Future<void> Function(LocalTask task, LocalRuntime runtime)?
+    beforeFinishBreak,
+  }) => _startFocusFromBreak(
+    repository,
+    requestedTask,
+    requireCompletedBoundary: false,
+    now: now,
+    beforeTransition: beforeTransition,
+    beforeFinishBreak: beforeFinishBreak,
+  );
+
+  static Future<bool> _startFocusFromBreak(
+    TaskRepository repository,
+    LocalTask requestedTask, {
+    required bool requireCompletedBoundary,
+    DateTime? now,
+    DateTime? expectedBoundaryAt,
+    Future<void> Function()? beforeTransition,
+    Future<void> Function(LocalTask task, LocalRuntime runtime)?
+    beforeFinishBreak,
   }) async {
     final runtime = await repository.getRuntime();
     final task = await repository.getTask(requestedTask.id);
@@ -130,7 +168,7 @@ abstract final class TaskExecutionCommands {
       runtime: runtime,
       now: (now ?? DateTime.now()).toUtc(),
     );
-    if (!pomodoro.breakComplete ||
+    if ((requireCompletedBoundary && !pomodoro.breakComplete) ||
         !_matchesExpectedBoundary(
           runtime: runtime,
           pomodoro: pomodoro,
@@ -192,6 +230,7 @@ abstract final class TaskExecutionCommands {
     DateTime? now,
     DateTime? expectedBoundaryAt,
   }) async {
+    final effectiveNow = (now ?? DateTime.now()).toUtc();
     if (expectedBoundaryAt != null) {
       final beforeRuntime = await repository.getRuntime();
       final beforeTask = await repository.getTask(task.id);
@@ -204,7 +243,7 @@ abstract final class TaskExecutionCommands {
       final before = PomodoroExecutionSnapshot.fromTask(
         task: beforeTask,
         runtime: beforeRuntime,
-        now: (now ?? DateTime.now()).toUtc(),
+        now: effectiveNow,
       );
       if (!before.breakComplete ||
           !_matchesExpectedBoundary(
@@ -215,14 +254,7 @@ abstract final class TaskExecutionCommands {
         return false;
       }
     }
-    await repository.extendCurrentBreak(task);
-    final runtime = await repository.getRuntime();
-    if (runtime == null ||
-        runtime.activeTaskId != task.id ||
-        runtime.state != 'break') {
-      return false;
-    }
-    return true;
+    return repository.extendCurrentBreak(task, now: effectiveNow);
   }
 
   static bool _matchesExpectedBoundary({

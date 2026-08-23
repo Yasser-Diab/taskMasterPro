@@ -61,6 +61,34 @@ int pomodoroCompletedFocuses(LocalRuntime? runtime, int focusDurationMs) {
   return math.max(0, runtime.accumulatedActiveMs) ~/ focusDurationMs;
 }
 
+/// Returns the persisted break extension after adding one more interval.
+///
+/// A completed break may remain open long after its original boundary. Merely
+/// adding five minutes to that old boundary leaves the countdown at `00:00`
+/// until every overdue minute has been added back manually. Rebase only the
+/// overdue portion before applying the requested extension so one tap always
+/// produces a visible interval from [now], while an active break still gains
+/// exactly the requested amount.
+int rebasedActiveBreakExtensionMs({
+  required int currentExtensionMs,
+  required int currentIntervalDurationMs,
+  required DateTime segmentStartedAt,
+  required DateTime now,
+  required int extensionMs,
+}) {
+  final safeCurrentExtensionMs = math.max(0, currentExtensionMs);
+  final elapsedMs = math.max(
+    0,
+    now.toUtc().difference(segmentStartedAt.toUtc()).inMilliseconds,
+  );
+  final overdueMs = math.max(
+    0,
+    elapsedMs - math.max(0, currentIntervalDurationMs),
+  );
+  return (safeCurrentExtensionMs + overdueMs + math.max(0, extensionMs))
+      .toInt();
+}
+
 String updatedPomodoroRuntimeData(
   LocalRuntime? runtime, {
   required int focusIntervalActiveBaseMs,

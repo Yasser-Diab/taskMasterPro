@@ -2,4 +2,12 @@
     <string name="vault_biometric_title">TaskMaster Pro</string>
     <string name="vault_biometric_cancel">إلغاء</string>
     <string name="vault_biometric_unlock">افتح كلمات المرور المحفوظة</string>
+    <string name="widget_name">أداة تركيز TaskMaster Pro</string>
+    <string name="widget_description">المهمة الحالية ومؤقت التركيز واقتراحات المهمة التالية</string>
+    <string name="widget_default_status">TaskMaster Pro</string>
+    <string name="widget_default_title">هل أنت مستعد لإنجاز مركز؟</string>
+    <string name="widget_default_message">افتح TaskMaster Pro لاختيار خطوتك المفيدة التالية.</string>
+    <string name="widget_default_ready">جاهز</string>
+    <string name="widget_default_action">فتح التطبيق</string>
+    <string name="widget_default_completion">اختر خطوتك التالية.</string>
 </resources>
