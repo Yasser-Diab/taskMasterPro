@@ -13,10 +13,185 @@ import '../../../core/providers.dart';
 import '../data/activity_aggregation_service.dart';
 import '../data/activity_repository.dart';
 import 'activity_badges.dart';
+import 'break_activity_check_in.dart';
 
 final activityReviewProvider = StreamProvider<List<ActivityReviewEntry>>(
   (ref) => ref.watch(activityRepositoryProvider).watchReviewQueue(),
 );
+
+Set<String> pendingReviewSegmentIdsForFilter(
+  String filter,
+  Iterable<ActivityReviewEntry> entries,
+) => entries
+    .where(
+      (entry) => switch (filter) {
+        'pending_cross_task' =>
+          activityAttentionKind(entry) == ActivityAttentionKind.crossTask,
+        'pending_idle' =>
+          activityAttentionKind(entry) == ActivityAttentionKind.inactive,
+        'pending_other' =>
+          activityAttentionKind(entry) == ActivityAttentionKind.other,
+        _ => true,
+      },
+    )
+    .map((entry) => entry.segment.id)
+    .toSet();
+
+ActivityGroupSummary _activityGroupSubset(
+  ActivityGroupSummary group,
+  List<ActivityPeriodSummary> periods,
+  String filter,
+) {
+  var activeMs = 0;
+  var idleMs = 0;
+  var uncertainMs = 0;
+  for (final period in periods) {
+    switch (period.kind) {
+      case ActivityTimeKind.active:
+        activeMs += period.durationMs;
+      case ActivityTimeKind.idle:
+        idleMs += period.durationMs;
+      case ActivityTimeKind.uncertain:
+        uncertainMs += period.durationMs;
+    }
+  }
+  return ActivityGroupSummary(
+    key: '${group.key}::$filter',
+    name: group.name,
+    sourceType: group.sourceType,
+    totalMs: activeMs + idleMs + uncertainMs,
+    activeMs: activeMs,
+    idleMs: idleMs,
+    uncertainMs: uncertainMs,
+    classification: group.classification,
+    relatedTaskId: group.relatedTaskId,
+    periods: periods,
+    containsBreak: periods.any((period) => period.isBreak),
+    containsCrossTask: periods.any((period) => period.isCrossTask),
+    suggestionSource: group.suggestionSource,
+  );
+}
+
+/// Applies the exact visual filter to the periods shown and reviewed.
+///
+/// Pending filters use the durable review queue. History filters such as
+/// Cross-task and Inactive subset the periods inside a mixed application group
+/// instead of showing every period merely because one period matched.
+List<ActivityGroupSummary> activityGroupsForFilter({
+  required ActivityAggregation aggregation,
+  required String filter,
+  required Map<String, ActivityReviewEntry> pendingBySegment,
+  required bool hideConfirmedSystem,
+  required bool showPossibleSystem,
+}) {
+  final pendingFilter = const {
+    'needs_review',
+    'pending_cross_task',
+    'pending_idle',
+    'pending_other',
+  }.contains(filter);
+  final result = <ActivityGroupSummary>[];
+  for (final group in aggregation.groups) {
+    if (!pendingFilter) {
+      if (filter == 'hidden_system') {
+        if (group.classification == 'system_activity') result.add(group);
+        continue;
+      }
+      if (hideConfirmedSystem && group.classification == 'system_activity') {
+        continue;
+      }
+      if (!showPossibleSystem &&
+          group.classification == 'possible_system_activity') {
+        continue;
+      }
+    }
+
+    final periods = switch (filter) {
+      'breaks' => group.periods.where((period) => period.isBreak).toList(),
+      'cross_task' =>
+        group.periods.where((period) => period.isCrossTask).toList(),
+      'idle' =>
+        group.periods
+            .where((period) => period.kind != ActivityTimeKind.active)
+            .toList(),
+      'needs_review' =>
+        group.periods
+            .where((period) => pendingBySegment.containsKey(period.segmentId))
+            .toList(),
+      'pending_cross_task' => group.periods.where((period) {
+        final entry = pendingBySegment[period.segmentId];
+        return entry != null &&
+            activityAttentionKind(entry) == ActivityAttentionKind.crossTask;
+      }).toList(),
+      'pending_idle' => group.periods.where((period) {
+        final entry = pendingBySegment[period.segmentId];
+        return entry != null &&
+            activityAttentionKind(entry) == ActivityAttentionKind.inactive;
+      }).toList(),
+      'pending_other' => group.periods.where((period) {
+        final entry = pendingBySegment[period.segmentId];
+        return entry != null &&
+            activityAttentionKind(entry) == ActivityAttentionKind.other;
+      }).toList(),
+      _ => const <ActivityPeriodSummary>[],
+    };
+
+    if (const {
+      'breaks',
+      'cross_task',
+      'idle',
+      'needs_review',
+      'pending_cross_task',
+      'pending_idle',
+      'pending_other',
+    }.contains(filter)) {
+      if (periods.isNotEmpty) {
+        result.add(_activityGroupSubset(group, periods, filter));
+      }
+      continue;
+    }
+
+    final include = switch (filter) {
+      'related' => !const {
+        'unclassified',
+        'unknown',
+        'requires_review',
+        'distraction',
+        'unrelated',
+        'generally_unrelated',
+        'possible_system_activity',
+        'system_activity',
+      }.contains(group.classification),
+      _ => true,
+    };
+    if (include) result.add(group);
+  }
+  return result;
+}
+
+ActivityAggregation activityAggregationWithPendingReviews(
+  ActivityAggregation aggregation,
+  Set<String> pendingSegmentIds,
+) {
+  final counted = <String>{};
+  var needsReviewMs = 0;
+  for (final group in aggregation.groups) {
+    for (final period in group.periods) {
+      if (pendingSegmentIds.contains(period.segmentId) &&
+          counted.add(period.segmentId)) {
+        needsReviewMs += period.durationMs;
+      }
+    }
+  }
+  return ActivityAggregation(
+    groups: aggregation.groups,
+    totalMs: aggregation.totalMs,
+    activeMs: aggregation.activeMs,
+    idleMs: aggregation.idleMs,
+    uncertainMs: aggregation.uncertainMs,
+    needsReviewMs: needsReviewMs,
+  );
+}
 
 class ActivityReviewScreen extends ConsumerStatefulWidget {
   const ActivityReviewScreen({
@@ -49,6 +224,12 @@ class _ActivityReviewScreenState extends ConsumerState<ActivityReviewScreen> {
   @override
   Widget build(BuildContext context) {
     final settings = ref.watch(appSettingsProvider).value;
+    final pendingReviews =
+        ref.watch(activityReviewProvider).value ??
+        const <ActivityReviewEntry>[];
+    final pendingBySegment = <String, ActivityReviewEntry>{
+      for (final entry in pendingReviews) entry.segment.id: entry,
+    };
     final copy = _ActivityCopy.of(context);
     final location = _location(settings?.timeZone);
     final now = tz.TZDateTime.now(location);
@@ -128,7 +309,16 @@ class _ActivityReviewScreenState extends ConsumerState<ActivityReviewScreen> {
               return FutureBuilder<ActivityAggregation>(
                 future: future,
                 builder: (context, aggregationSnapshot) {
-                  final aggregation = aggregationSnapshot.data;
+                  final rawAggregation = aggregationSnapshot.data;
+                  final aggregation = rawAggregation == null
+                      ? null
+                      : activityAggregationWithPendingReviews(
+                          rawAggregation,
+                          pendingReviewSegmentIdsForFilter(
+                            _filter,
+                            pendingReviews,
+                          ),
+                        );
                   return _ActivityPage(
                     copy: copy,
                     selected: selected,
@@ -155,6 +345,7 @@ class _ActivityReviewScreenState extends ConsumerState<ActivityReviewScreen> {
                                 settings?.hideConfirmedSystemActivity ?? true,
                             showPossibleSystem:
                                 settings?.showPossibleSystemActivity ?? true,
+                            pendingBySegment: pendingBySegment,
                           ),
                   );
                 },
@@ -174,44 +365,15 @@ class _ActivityReviewScreenState extends ConsumerState<ActivityReviewScreen> {
     bool isToday, {
     required bool hideConfirmedSystem,
     required bool showPossibleSystem,
+    required Map<String, ActivityReviewEntry> pendingBySegment,
   }) {
-    final groups = aggregation.groups.where((group) {
-      if (_filter == 'hidden_system') {
-        return group.classification == 'system_activity';
-      }
-      if (hideConfirmedSystem && group.classification == 'system_activity') {
-        return false;
-      }
-      if (!showPossibleSystem &&
-          group.classification == 'possible_system_activity') {
-        return false;
-      }
-      return switch (_filter) {
-        'related' => !const {
-          'unclassified',
-          'unknown',
-          'requires_review',
-          'distraction',
-          'unrelated',
-          'generally_unrelated',
-          'possible_system_activity',
-          'system_activity',
-        }.contains(group.classification),
-        'breaks' => group.containsBreak,
-        'cross_task' => group.containsCrossTask,
-        'idle' => group.idleMs > 0 || group.uncertainMs > 0,
-        'needs_review' => const {
-          'unclassified',
-          'unknown',
-          'requires_review',
-          'distraction',
-          'unrelated',
-          'generally_unrelated',
-          'possible_system_activity',
-        }.contains(group.classification),
-        _ => true,
-      };
-    }).toList();
+    final groups = activityGroupsForFilter(
+      aggregation: aggregation,
+      filter: _filter,
+      pendingBySegment: pendingBySegment,
+      hideConfirmedSystem: hideConfirmedSystem,
+      showPossibleSystem: showPossibleSystem,
+    );
     if (groups.isEmpty) {
       return _EmptyReview(copy: copy);
     }
@@ -287,6 +449,30 @@ class _ActivityReviewScreenState extends ConsumerState<ActivityReviewScreen> {
   }
 
   Future<void> _reviewGroup(ActivityGroupSummary group) async {
+    final repository = ref.read(activityRepositoryProvider);
+    final entries = <ActivityReviewEntry>[];
+    for (final period in group.periods) {
+      final entry = await repository.reviewEntryForSegment(period.segmentId);
+      if (entry != null) entries.add(entry);
+    }
+    if (entries.isNotEmpty &&
+        entries.every(
+          (entry) => entry.review.reviewReason == breakActivityReviewReason,
+        )) {
+      final tasks = await repository.listTaskTargets();
+      if (!mounted) return;
+      final choice = await showBreakActivityCheckInSheet(
+        context: context,
+        tasks: tasks,
+      );
+      if (choice != null && mounted) {
+        await _applyResolution(
+          entries.map((entry) => entry.segment.id).toSet(),
+          choice,
+        );
+      }
+      return;
+    }
     final choice = await _showClassificationSheet(group.name);
     if (choice == null || !mounted) return;
     final applyFuture = await _chooseApplicationScope(
@@ -298,6 +484,20 @@ class _ActivityReviewScreenState extends ConsumerState<ActivityReviewScreen> {
   }
 
   Future<void> _reviewPeriod(ActivityPeriodSummary period) async {
+    final repository = ref.read(activityRepositoryProvider);
+    final entry = await repository.reviewEntryForSegment(period.segmentId);
+    if (entry?.review.reviewReason == breakActivityReviewReason) {
+      final tasks = await repository.listTaskTargets();
+      if (!mounted) return;
+      final choice = await showBreakActivityCheckInSheet(
+        context: context,
+        tasks: tasks,
+      );
+      if (choice != null && mounted) {
+        await _applyResolution({period.segmentId}, choice);
+      }
+      return;
+    }
     final choice = await _showClassificationSheet(period.detail);
     if (choice == null || !mounted) return;
     final applyFuture = await _chooseApplicationScope(
@@ -778,13 +978,21 @@ class _ActivityFilterStripState extends State<_ActivityFilterStrip> {
   final _scrollController = ScrollController();
   final _optionKeys = <String, GlobalKey>{};
 
+  String get _selectedFilter => widget.filter;
+
   List<(String, String)> get _options => [
     ('all', widget.copy.all),
     ('related', widget.copy.related),
     ('breaks', widget.copy.breaks),
-    ('cross_task', widget.copy.crossTask),
-    ('idle', widget.copy.idle),
-    ('needs_review', widget.copy.needsReview),
+    widget.filter == 'pending_cross_task'
+        ? ('pending_cross_task', widget.copy.crossTaskReview)
+        : ('cross_task', widget.copy.crossTask),
+    widget.filter == 'pending_idle'
+        ? ('pending_idle', widget.copy.inactiveReview)
+        : ('idle', widget.copy.idle),
+    widget.filter == 'pending_other'
+        ? ('pending_other', widget.copy.otherActivityReview)
+        : ('needs_review', widget.copy.needsReview),
     ('hidden_system', widget.copy.hiddenSystemActivity),
   ];
 
@@ -812,7 +1020,7 @@ class _ActivityFilterStripState extends State<_ActivityFilterStrip> {
   void _scheduleSelectedIntoView({required bool animate}) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !widget.compact || !_scrollController.hasClients) return;
-      final renderObject = _optionKeys[widget.filter]?.currentContext
+      final renderObject = _optionKeys[_selectedFilter]?.currentContext
           ?.findRenderObject();
       if (renderObject == null) return;
       _scrollController.position.ensureVisible(
@@ -836,7 +1044,7 @@ class _ActivityFilterStripState extends State<_ActivityFilterStrip> {
             for (final option in options)
               ButtonSegment(value: option.$1, label: Text(option.$2)),
           ],
-          selected: {widget.filter},
+          selected: {_selectedFilter},
           onSelectionChanged: (values) => widget.onFilterChanged(values.first),
         ),
       );
@@ -854,7 +1062,7 @@ class _ActivityFilterStripState extends State<_ActivityFilterStrip> {
             ChoiceChip(
               key: _optionKeys.putIfAbsent(option.$1, GlobalKey.new),
               label: Text(option.$2),
-              selected: widget.filter == option.$1,
+              selected: _selectedFilter == option.$1,
               onSelected: (_) => widget.onFilterChanged(option.$1),
               selectedColor: colors.primaryContainer,
               tooltip: option.$2,
@@ -1136,66 +1344,73 @@ class _TaskPickerDialogState extends State<_TaskPickerDialog> {
   Widget build(BuildContext context) {
     return AlertDialog(
       title: Text(widget.copy.creditToTasks),
-      content: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 480),
+      content: SizedBox(
+        width: 480,
         child: widget.tasks.isEmpty
             ? Text(widget.copy.noTaskTargets)
-            : ListView(
-                shrinkWrap: true,
-                children: [
-                  Text(widget.copy.allocationHelp),
-                  const SizedBox(height: 8),
-                  for (final task in widget.tasks) ...[
-                    CheckboxListTile(
-                      contentPadding: EdgeInsets.zero,
-                      value: _percentages.containsKey(task.id),
-                      title: Text(
-                        task.title,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      subtitle: Text(context.l10n.taskStatus(task.status)),
-                      onChanged: (value) => _toggle(task, value ?? false),
-                    ),
-                    if (_percentages.containsKey(task.id))
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Slider(
-                              value: _percentages[task.id]!.toDouble(),
-                              min: 1,
-                              max: 100,
-                              divisions: 99,
-                              label: '${_percentages[task.id]}%',
-                              onChanged: (value) {
-                                final otherTotal =
-                                    _total - _percentages[task.id]!;
-                                final maximum = 100 - otherTotal;
-                                setState(() {
-                                  _percentages[task.id] = value.round().clamp(
-                                    1,
-                                    maximum,
-                                  );
-                                });
-                              },
-                            ),
+            : ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxHeight: MediaQuery.sizeOf(context).height * 0.55,
+                ),
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Text(widget.copy.allocationHelp),
+                      const SizedBox(height: 8),
+                      for (final task in widget.tasks) ...[
+                        CheckboxListTile(
+                          contentPadding: EdgeInsets.zero,
+                          value: _percentages.containsKey(task.id),
+                          title: Text(
+                            task.title,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
                           ),
-                          SizedBox(
-                            width: 52,
-                            child: Text(
-                              '${_percentages[task.id]}%',
-                              textAlign: TextAlign.end,
-                            ),
+                          subtitle: Text(context.l10n.taskStatus(task.status)),
+                          onChanged: (value) => _toggle(task, value ?? false),
+                        ),
+                        if (_percentages.containsKey(task.id))
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Slider(
+                                  value: _percentages[task.id]!.toDouble(),
+                                  min: 1,
+                                  max: 100,
+                                  divisions: 99,
+                                  label: '${_percentages[task.id]}%',
+                                  onChanged: (value) {
+                                    final otherTotal =
+                                        _total - _percentages[task.id]!;
+                                    final maximum = 100 - otherTotal;
+                                    setState(() {
+                                      _percentages[task.id] = value
+                                          .round()
+                                          .clamp(1, maximum);
+                                    });
+                                  },
+                                ),
+                              ),
+                              SizedBox(
+                                width: 52,
+                                child: Text(
+                                  '${_percentages[task.id]}%',
+                                  textAlign: TextAlign.end,
+                                ),
+                              ),
+                            ],
                           ),
-                        ],
+                      ],
+                      const SizedBox(height: 8),
+                      Text(
+                        widget.copy.allocatedTotal(_total),
+                        style: Theme.of(context).textTheme.labelLarge,
                       ),
-                  ],
-                  const SizedBox(height: 8),
-                  Text(
-                    widget.copy.allocatedTotal(_total),
-                    style: Theme.of(context).textTheme.labelLarge,
+                    ],
                   ),
-                ],
+                ),
               ),
       ),
       actions: [
@@ -1320,7 +1535,10 @@ class _ActivityCopy {
   String get related => l10n.text('activity_related');
   String get breaks => l10n.text('activity_breaks');
   String get crossTask => l10n.text('activity_cross_task');
+  String get crossTaskReview => l10n.text('activity_pending_cross_task');
   String get idle => l10n.text('activity_inactive');
+  String get inactiveReview => l10n.text('activity_pending_idle');
+  String get otherActivityReview => l10n.text('activity_pending_other');
   String get needsReview => l10n.text('activity_needs_review');
   String get totalObserved => l10n.text('activity_total_observed');
   String get active => l10n.text('activity_active');

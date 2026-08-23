@@ -95,6 +95,72 @@ String activityRuleIdFor({
   'rule/$scopeType/$scopeId',
 );
 
+const manualBreakActivitySourceType = 'manual_break';
+const breakActivityReviewReason = 'break_without_device_activity';
+const breakActivityClassifications = <String>{
+  'break_activity_reading',
+  'break_activity_sport',
+  'break_activity_relaxing',
+  'break_activity_drink',
+  'break_activity_other',
+};
+
+String manualBreakActivitySegmentIdFor({
+  required String userId,
+  required String sessionId,
+  required DateTime startedAt,
+}) => const Uuid().v5(
+  Namespace.url.value,
+  'https://taskmasterpro.app/account/$userId/session/$sessionId/'
+  'break/${startedAt.toUtc().microsecondsSinceEpoch}/manual-activity',
+);
+
+String manualBreakActivityReviewIdFor(String segmentId) => const Uuid().v5(
+  Namespace.url.value,
+  'https://taskmasterpro.app/activity-segment/$segmentId/break-review',
+);
+
+bool isManualBreakActivity(LocalActivitySegment segment) =>
+    segment.sourceType == manualBreakActivitySourceType;
+
+String? _sanitizeManualActivityLabel(String? value) {
+  final normalized = value?.trim().replaceAll(RegExp(r'\s+'), ' ');
+  if (normalized == null || normalized.isEmpty) return null;
+  return normalized.length <= 120 ? normalized : normalized.substring(0, 120);
+}
+
+/// A break prompt is only useful when capture found no real device usage.
+/// Technical idle rows, TaskMaster Pro itself and confirmed operating-system
+/// activity are collection noise rather than evidence that the user spent the
+/// break on a device.
+bool hasMeaningfulDeviceActivityDuringBreak({
+  required Iterable<LocalActivitySegment> segments,
+  required Iterable<LocalAttribution> attributions,
+  required DateTime startedAt,
+  required DateTime endedAt,
+}) {
+  final latest = latestActivityAttributionBySegment(attributions);
+  const systemClassifications = {'system_activity', 'possible_system_activity'};
+  final startUtc = startedAt.toUtc();
+  final endUtc = endedAt.toUtc();
+  return segments.any((segment) {
+    if (segment.deletedAt != null ||
+        isManualBreakActivity(segment) ||
+        isTaskMasterSelfActivity(segment) ||
+        !segment.endedAt.toUtc().isAfter(startUtc) ||
+        !segment.startedAt.toUtc().isBefore(endUtc)) {
+      return false;
+    }
+    final idleState = segment.idleState?.trim().toLowerCase();
+    if (isInactiveActivityState(idleState)) return false;
+    final classification = latest[segment.id]?.classification
+        .trim()
+        .toLowerCase();
+    return classification == null ||
+        !systemClassifications.contains(classification);
+  });
+}
+
 class ActivityReviewEntry {
   const ActivityReviewEntry({required this.review, required this.segment});
 
@@ -102,6 +168,130 @@ class ActivityReviewEntry {
   final LocalActivitySegment segment;
 
   Duration get duration => segment.endedAt.difference(segment.startedAt);
+}
+
+enum ActivityAttentionKind { crossTask, inactive, other }
+
+const _inactiveActivityStates = <String>{
+  'technical_idle',
+  'idle',
+  'confirmed_idle',
+  'inactive',
+  'unknown_idle',
+  'uncertain',
+};
+
+/// Whether an Activity capture is genuinely inactive or uncertain.
+///
+/// Capture also persists the explicit state `active`. Treating every non-null
+/// state as inactive made the dashboard count every unresolved application
+/// period as idle and produced ever-growing values such as 1036.
+bool isInactiveActivityState(String? value) {
+  final normalized = value?.trim().toLowerCase();
+  return normalized != null && _inactiveActivityStates.contains(normalized);
+}
+
+Map<String, Object?> _activityMetadata(LocalActivitySegment segment) {
+  try {
+    final decoded = jsonDecode(segment.rawMetadataJson);
+    return decoded is Map
+        ? Map<String, Object?>.from(decoded)
+        : const <String, Object?>{};
+  } catch (_) {
+    return const <String, Object?>{};
+  }
+}
+
+bool isCrossTaskActivityReview(ActivityReviewEntry entry) {
+  final reason = entry.review.reviewReason.trim().toLowerCase().replaceAll(
+    '-',
+    '_',
+  );
+  if (reason.contains('cross_task')) return true;
+  if (entry.review.suggestedTargetType != 'task_occurrence') return false;
+  final sourceTaskId =
+      _activityMetadata(entry.segment)['source_task_id'] as String?;
+  final suggestedTaskId = entry.review.suggestedTargetId;
+  return sourceTaskId != null &&
+      sourceTaskId.isNotEmpty &&
+      suggestedTaskId != null &&
+      suggestedTaskId.isNotEmpty &&
+      sourceTaskId != suggestedTaskId;
+}
+
+ActivityAttentionKind activityAttentionKind(ActivityReviewEntry entry) {
+  if (isCrossTaskActivityReview(entry)) {
+    return ActivityAttentionKind.crossTask;
+  }
+  if (entry.review.reviewReason.trim().toLowerCase() == 'idle' ||
+      isInactiveActivityState(entry.segment.idleState)) {
+    return ActivityAttentionKind.inactive;
+  }
+  return ActivityAttentionKind.other;
+}
+
+/// Stable visual group identity for dashboard review counts.
+///
+/// The review queue deliberately preserves every physical period, while the
+/// Activity screen presents those periods as one application/site/document
+/// group. Dashboard counts must use the same user-facing unit.
+String activityAttentionGroupKey(ActivityReviewEntry entry) {
+  final segment = entry.segment;
+  final domain = segment.domain?.trim().toLowerCase();
+  if (domain != null && domain.isNotEmpty) return 'domain:$domain';
+  final metadata = _activityMetadata(segment);
+  for (final key in const [
+    'package_name',
+    'application_identifier',
+    'document_path',
+    'resource_name',
+  ]) {
+    final value = (metadata[key] as String?)?.trim().toLowerCase();
+    if (value != null && value.isNotEmpty) return '$key:$value';
+  }
+  final process = segment.processName?.trim().toLowerCase();
+  if (process != null && process.isNotEmpty) {
+    final executable = process.split(RegExp(r'[\\/]')).last;
+    return 'application:$executable';
+  }
+  return 'source:${segment.sourceType.trim().toLowerCase()}';
+}
+
+class ActivityAttentionSummary {
+  const ActivityAttentionSummary({
+    required this.crossTaskGroups,
+    required this.inactiveGroups,
+    required this.otherGroups,
+  });
+
+  final int crossTaskGroups;
+  final int inactiveGroups;
+  final int otherGroups;
+
+  int get totalGroups => crossTaskGroups + inactiveGroups + otherGroups;
+}
+
+ActivityAttentionSummary summarizeActivityAttention(
+  Iterable<ActivityReviewEntry> entries,
+) {
+  final groups = <ActivityAttentionKind, Set<String>>{
+    for (final kind in ActivityAttentionKind.values) kind: <String>{},
+  };
+  for (final entry in entries) {
+    if (entry.review.status != 'pending' ||
+        entry.review.deletedAt != null ||
+        entry.segment.deletedAt != null ||
+        isTaskMasterSelfActivity(entry.segment)) {
+      continue;
+    }
+    final kind = activityAttentionKind(entry);
+    groups[kind]!.add(activityAttentionGroupKey(entry));
+  }
+  return ActivityAttentionSummary(
+    crossTaskGroups: groups[ActivityAttentionKind.crossTask]!.length,
+    inactiveGroups: groups[ActivityAttentionKind.inactive]!.length,
+    otherGroups: groups[ActivityAttentionKind.other]!.length,
+  );
 }
 
 class ActivityResolution {
@@ -115,6 +305,7 @@ class ActivityResolution {
     this.rememberRule = false,
     this.isAutomatic = false,
     this.taskAllocations = const [],
+    this.manualLabel,
   });
 
   final String status;
@@ -126,6 +317,7 @@ class ActivityResolution {
   final bool rememberRule;
   final bool isAutomatic;
   final List<ActivityTaskAllocation> taskAllocations;
+  final String? manualLabel;
 }
 
 class ActivityTaskAllocation {
@@ -559,6 +751,147 @@ class ActivityRepository {
     return query.get();
   }
 
+  /// Creates one durable, deterministic check-in for a break where capture
+  /// found no meaningful device activity. A pending response remains in the
+  /// Activity review queue when the user chooses "Not now"; a resolved break
+  /// is never prompted again after a restart or another device refresh.
+  Future<ActivityReviewEntry?> prepareBreakActivityReviewIfNeeded({
+    required String taskId,
+    required String sessionId,
+    required DateTime startedAt,
+    DateTime? endedAt,
+  }) async {
+    final startUtc = startedAt.toUtc();
+    final endUtc = (endedAt ?? DateTime.now()).toUtc();
+    if (!endUtc.isAfter(startUtc)) return null;
+    final settings = await (database.select(
+      database.localAppSettings,
+    )..where((row) => row.id.equals(settingsId))).getSingleOrNull();
+    if (settings?.detectBreakActivity == false) return null;
+
+    final overlapping =
+        await (database.select(database.localActivitySegments)..where(
+              (row) =>
+                  row.userId.equals(_userId) &
+                  row.deletedAt.isNull() &
+                  row.startedAt.isSmallerThanValue(endUtc) &
+                  row.endedAt.isBiggerThanValue(startUtc),
+            ))
+            .get();
+    final overlappingIds = overlapping.map((segment) => segment.id).toSet();
+    final attributions = overlappingIds.isEmpty
+        ? const <LocalAttribution>[]
+        : await (database.select(database.localAttributions)..where(
+                (row) =>
+                    row.userId.equals(_userId) &
+                    row.deletedAt.isNull() &
+                    row.activitySegmentId.isIn(overlappingIds),
+              ))
+              .get();
+    if (hasMeaningfulDeviceActivityDuringBreak(
+      segments: overlapping,
+      attributions: attributions,
+      startedAt: startUtc,
+      endedAt: endUtc,
+    )) {
+      return null;
+    }
+
+    final segmentId = manualBreakActivitySegmentIdFor(
+      userId: _userId,
+      sessionId: sessionId,
+      startedAt: startUtc,
+    );
+    final reviewId = manualBreakActivityReviewIdFor(segmentId);
+    final existingSegment =
+        await (database.select(database.localActivitySegments)..where(
+              (row) => row.userId.equals(_userId) & row.id.equals(segmentId),
+            ))
+            .getSingleOrNull();
+    final existingReview =
+        await (database.select(database.localActivityReviews)..where(
+              (row) => row.userId.equals(_userId) & row.id.equals(reviewId),
+            ))
+            .getSingleOrNull();
+    if (existingSegment != null && existingReview != null) {
+      if (existingReview.status != 'pending' ||
+          existingReview.deletedAt != null ||
+          existingSegment.deletedAt != null) {
+        return null;
+      }
+      return ActivityReviewEntry(
+        review: existingReview,
+        segment: existingSegment,
+      );
+    }
+
+    final now = DateTime.now().toUtc();
+    final deviceId = await DeviceIdentity.accountId(_userId);
+    final metadata = <String, Object?>{
+      'manual_break_check_in': true,
+      'prompt_version': 1,
+      'source_task_id': taskId,
+      'source_session_id': sessionId,
+      'source_runtime_state': 'break',
+    };
+    late LocalActivitySegment segment;
+    late LocalActivityReview review;
+    await database.transaction(() async {
+      segment =
+          existingSegment ??
+          LocalActivitySegment(
+            id: segmentId,
+            userId: _userId,
+            deviceId: deviceId,
+            deviceEventId:
+                '$deviceId:manual-break:$sessionId:'
+                '${startUtc.microsecondsSinceEpoch}',
+            startedAt: startUtc,
+            endedAt: endUtc,
+            sourceType: manualBreakActivitySourceType,
+            processName: null,
+            windowTitle: null,
+            domain: null,
+            url: null,
+            pageTitle: null,
+            idleState: 'uncertain',
+            captureConfidence: 1,
+            rawMetadataJson: jsonEncode(metadata),
+            revision: 1,
+            createdAt: now,
+            updatedAt: now,
+            deletedAt: null,
+          );
+      if (existingSegment == null) {
+        await database.into(database.localActivitySegments).insert(segment);
+      }
+      review =
+          existingReview ??
+          LocalActivityReview(
+            id: reviewId,
+            userId: _userId,
+            activitySegmentId: segmentId,
+            reviewReason: breakActivityReviewReason,
+            priority: 3,
+            suggestedTargetType: 'unassigned_activity',
+            suggestedTargetId: null,
+            suggestedTargetTitle: null,
+            suggestedClassification: 'requires_review',
+            confidence: 1,
+            status: 'pending',
+            reviewedAt: null,
+            revision: 1,
+            createdAt: now,
+            updatedAt: now,
+            deletedAt: null,
+          );
+      if (existingReview == null) {
+        await database.into(database.localActivityReviews).insert(review);
+      }
+    });
+    return ActivityReviewEntry(review: review, segment: segment);
+  }
+
   Future<List<Map<String, Object?>>> exportLocalActivity() async {
     final segments =
         await (database.select(database.localActivitySegments)
@@ -670,8 +1003,11 @@ class ActivityRepository {
             ),
           ])
           ..where(
-            database.localActivityReviews.deletedAt.isNull() &
-                database.localActivityReviews.status.equals('pending'),
+            database.localActivityReviews.userId.equals(_userId) &
+                database.localActivitySegments.userId.equals(_userId) &
+                database.localActivityReviews.deletedAt.isNull() &
+                database.localActivityReviews.status.equals('pending') &
+                database.localActivitySegments.deletedAt.isNull(),
           )
           ..orderBy([
             OrderingTerm.desc(database.localActivityReviews.priority),
@@ -780,6 +1116,7 @@ class ActivityRepository {
           ),
           rememberRule: rememberSingleTaskRule,
           isAutomatic: resolution.isAutomatic,
+          manualLabel: resolution.manualLabel,
         ),
       );
       for (final allocation in allocations.skip(1)) {
@@ -814,6 +1151,7 @@ class ActivityRepository {
       database.localAppSettings,
     )..where((row) => row.id.equals(settingsId))).getSingleOrNull();
     final privacyPolicy = await ActivityPrivacyPolicy.load(database, _userId);
+    final manualBreak = isManualBreakActivity(entry.segment);
     final synchronizeContributions = privacyPolicy
         .allowsApprovedContributionUpload(settings);
     final synchronizeRules = settings?.activityRuleSyncEnabled ?? true;
@@ -828,6 +1166,7 @@ class ActivityRepository {
     // concrete task contribution.  Otherwise its review remains local, while
     // an optional remembered rule is synchronized separately below.
     final synchronizeActivity =
+        manualBreak ||
         synchronizeDetailedActivity ||
         (synchronizeContributions && shouldCredit);
     if (await _resolutionAlreadyApplied(
@@ -876,6 +1215,24 @@ class ActivityRepository {
     final metadata = metadataValue is Map
         ? Map<String, Object?>.from(metadataValue)
         : <String, Object?>{};
+    final manualLabel = _sanitizeManualActivityLabel(resolution.manualLabel);
+    if (manualBreak) {
+      metadata['manual_break_check_in'] = true;
+      metadata['manual_break_category'] = resolution.classification;
+      if (manualLabel == null) {
+        metadata.remove('manual_break_label');
+      } else {
+        metadata['manual_break_label'] = manualLabel;
+      }
+      entry = ActivityReviewEntry(
+        review: entry.review,
+        segment: entry.segment.copyWith(
+          idleState: const Value('active'),
+          rawMetadataJson: jsonEncode(metadata),
+          updatedAt: now,
+        ),
+      );
+    }
     final sourceTaskId = metadata['source_task_id'] as String?;
     final sourceSessionId = metadata['source_session_id'] as String?;
     final physicalDurationMs = entry.duration.inMilliseconds;
@@ -893,6 +1250,17 @@ class ActivityRepository {
         : null;
 
     await database.transaction(() async {
+      if (manualBreak) {
+        await (database.update(
+          database.localActivitySegments,
+        )..where((row) => row.id.equals(entry.segment.id))).write(
+          LocalActivitySegmentsCompanion(
+            idleState: const Value('active'),
+            rawMetadataJson: Value(entry.segment.rawMetadataJson),
+            updatedAt: Value(now),
+          ),
+        );
+      }
       if (synchronizeActivity) {
         await _enqueueApprovedSegmentSync(
           segment: entry.segment,
@@ -1144,7 +1512,7 @@ class ActivityRepository {
         contributionId: contributionId!,
         contributionType: resolution.contributionType!,
         creditedDurationMs: creditedDurationMs,
-        synchronize: synchronizeContributions,
+        synchronize: synchronizeContributions || manualBreak,
       );
     }
   }
@@ -2818,6 +3186,12 @@ class ActivityRepository {
         'source_session_id': localMetadata['source_session_id'],
       if (localMetadata['source_runtime_state'] != null)
         'source_runtime_state': localMetadata['source_runtime_state'],
+      if (localMetadata['manual_break_check_in'] == true)
+        'manual_break_check_in': true,
+      if (localMetadata['manual_break_category'] != null)
+        'manual_break_category': localMetadata['manual_break_category'],
+      if (localMetadata['manual_break_label'] != null)
+        'manual_break_label': localMetadata['manual_break_label'],
     };
     return {
       'device_id': segment.deviceId,

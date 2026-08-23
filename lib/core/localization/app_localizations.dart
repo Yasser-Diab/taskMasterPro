@@ -13,8 +13,13 @@ class AppLocalizations {
         const AppLocalizations(Locale('en'));
   }
 
+  /// Returns an optional localized value without reporting a missing-key
+  /// defect. Use this only for intentionally optional platform metadata whose
+  /// caller has a complete localized fallback.
+  String? optionalText(String key) => _translations[locale.languageCode]?[key];
+
   String text(String key) {
-    final value = _translations[locale.languageCode]?[key];
+    final value = optionalText(key);
     if (value != null) return value;
     assert(() {
       debugPrint(
@@ -60,6 +65,7 @@ class AppLocalizations {
       'completed' => 'status_completed',
       'overdue' => 'status_overdue',
       'waiting_review' => 'status_waiting_review',
+      'skipped' => 'status_skipped',
       'interrupted' => 'status_interrupted',
       'scheduled' => 'status_scheduled',
       'cancelled' => 'status_cancelled',
@@ -487,6 +493,13 @@ class AppLocalizations {
     'status_completed': 'Completed',
     'status_overdue': 'Overdue',
     'status_waiting_review': 'Waiting for review',
+    'status_skipped': 'Skipped',
+    'stale_pause_title': 'Paused for over 12 hours',
+    'stale_pause_body':
+        'Paused time is not counted. Resume it, return it to your task list, or skip it.',
+    'stale_pause_needs_attention': 'Return to task list',
+    'stale_pause_skip': 'Skip this task',
+    'stale_pause_resolved': 'The paused task was updated.',
     'status_interrupted': 'Interrupted',
     'status_scheduled': 'Scheduled',
     'status_cancelled': 'Cancelled',
@@ -518,11 +531,15 @@ class AppLocalizations {
     'dashboard_no_ready_task': 'No ready task requires attention.',
     'dashboard_cross_task_review': 'Cross-task activity to review',
     'dashboard_inactive_review': 'Inactive time to review',
-    'dashboard_nothing_review': 'Nothing needs review',
-    'dashboard_items_review': '{count} items need review',
-    'dashboard_item_review': '1 item needs review',
-    'dashboard_items_review_zero': 'No items need review',
-    'dashboard_items_review_two': '2 items need review',
+    'dashboard_other_activity_review': 'Other activity to review',
+    'dashboard_nothing_review': 'Nothing needs review today',
+    'dashboard_items_review': '{count} groups need review today',
+    'dashboard_item_review': '1 group needs review today',
+    'dashboard_items_review_zero': 'No groups need review today',
+    'dashboard_items_review_two': '2 groups need review today',
+    'activity_pending_cross_task': 'Cross-task review',
+    'activity_pending_idle': 'Inactive review',
+    'activity_pending_other': 'Other review',
     'active_time': 'Active time',
     'planned_duration': '{mode} · planned {duration}',
     'add_interruption': 'Add interruption',
@@ -614,6 +631,9 @@ class AppLocalizations {
     'coaching_adaptive_focus_title': 'That focus pattern is working',
     'coaching_adaptive_focus_body':
         'You completed {count} focus cycles this week. Reuse a duration that felt sustainable and build on what already worked.',
+    'coaching_adaptive_sport_title': 'That active break was a real win',
+    'coaching_adaptive_sport_body':
+        'You recorded {duration} of sport or exercise during recent breaks. That movement supports your energy—keep choosing a form that feels good and sustainable.',
     'coaching_adaptive_session_body':
         'You completed {count} work sessions this week. Repeat the setup that helped you finish, without assuming every session needs a Pomodoro.',
     'coaching_adaptive_rest_title': 'Let today flex with your energy',
@@ -632,6 +652,8 @@ class AppLocalizations {
     'coaching_evidence_active_task': 'Task currently active',
     'coaching_evidence_paused': '{count} paused tasks',
     'coaching_evidence_focus_cycles': '{count} recent focus cycles',
+    'coaching_evidence_sport_activity':
+        '{duration} of sport during recent breaks',
     'coaching_evidence_completed_sessions':
         '{count} recently completed work sessions',
     'coaching_evidence_ready_tasks': '{count} scheduled tasks ready',
@@ -732,6 +754,22 @@ class AppLocalizations {
     'activity_learned_from_usage': 'Learned from your usage',
     'activity_suggested_by_taskmaster': 'Suggested by TaskMaster Pro',
     'activity_useful_reading': 'Useful reading',
+    'break_activity_title': 'What did you do during your break?',
+    'break_activity_prompt':
+        'No device activity was detected. You can optionally record reading, exercise, relaxing, a drink, or something else.',
+    'break_activity_reading': 'Reading',
+    'break_activity_sport': 'Exercise or sport',
+    'break_activity_relaxing': 'Relaxing or chilling',
+    'break_activity_drink': 'Drink or snack',
+    'break_activity_other': 'Something else',
+    'break_activity_other_label': 'Describe the activity',
+    'break_activity_other_required': 'Describe what you did.',
+    'break_activity_assign_task': 'Link to an existing task (optional)',
+    'break_activity_assign_task_help':
+        'Choose a task only when this activity should count toward it.',
+    'break_activity_no_task': 'Do not link a task',
+    'break_activity_saved': 'Break activity saved.',
+    'break_activity_save_failed': 'The break activity could not be saved.',
     'activity_supporting_work': 'Supporting work',
     'activity_mark_distraction': 'Mark as distraction',
     'activity_not_related': 'Not related to this task',
@@ -1005,7 +1043,7 @@ class AppLocalizations {
     'sync_items_failed': '{count} items could not be synchronized yet.',
     'syncing_latest': 'Syncing your latest changes…',
     'sync_auto_retry_message':
-        'Some changes are still waiting to synchronize. TaskMaster Pro will continue trying automatically.',
+        'Review the listed changes. Automatic retry is reserved for temporary connection failures.',
     'sync_diagnostics': 'Synchronization diagnostics',
     'sync_realtime_state': 'Realtime connection state',
     'sync_active_realtime_connections': 'Active Realtime connections',
@@ -1020,7 +1058,7 @@ class AppLocalizations {
         'Requests: {requests} · Downloaded: {downloaded} B · Uploaded: {uploaded} B · Realtime: {realtime} · Repeated: {repeated} · Largest: {largest} B',
     'sync_copy_diagnostics': 'Copy diagnostics',
     'sync_diagnostics_copied': 'Synchronization diagnostics copied.',
-    'sync_retry_failed_changes': 'Retry failed changes',
+    'sync_retry_failed_changes': 'Check synchronization again',
     'sync_conflicts_title': 'Synchronization decisions',
     'sync_resolve_automatically': 'Resolve automatically',
     'sync_dismiss_conflict': 'Dismiss conflict',
@@ -2517,6 +2555,13 @@ class AppLocalizations {
     'status_completed': 'مكتملة',
     'status_overdue': 'متأخرة',
     'status_waiting_review': 'بانتظار المراجعة',
+    'status_skipped': 'تم تخطيها',
+    'stale_pause_title': 'متوقفة مؤقتًا منذ أكثر من 12 ساعة',
+    'stale_pause_body':
+        'وقت التوقف غير محسوب. استأنفها أو أعدها إلى قائمة المهام أو تخطها.',
+    'stale_pause_needs_attention': 'إعادتها إلى قائمة المهام',
+    'stale_pause_skip': 'تخطي هذه المهمة',
+    'stale_pause_resolved': 'تم تحديث المهمة المتوقفة.',
     'status_interrupted': 'متوقفة بسبب مقاطعة',
     'status_scheduled': 'مجدولة',
     'status_cancelled': 'ملغاة',
@@ -2547,11 +2592,15 @@ class AppLocalizations {
     'dashboard_no_ready_task': 'لا توجد مهمة جاهزة تحتاج إلى اهتمامك.',
     'dashboard_cross_task_review': 'نشاط بين المهام يحتاج إلى مراجعة',
     'dashboard_inactive_review': 'فترات غير نشطة تحتاج إلى مراجعة',
-    'dashboard_nothing_review': 'لا شيء يحتاج إلى مراجعة',
-    'dashboard_items_review': '{count} عنصرًا يحتاج إلى مراجعة',
-    'dashboard_item_review': 'عنصر واحد يحتاج إلى مراجعة',
-    'dashboard_items_review_zero': 'لا توجد عناصر تحتاج إلى مراجعة',
-    'dashboard_items_review_two': 'عنصران يحتاجان إلى مراجعة',
+    'dashboard_other_activity_review': 'نشاط آخر يحتاج إلى مراجعة',
+    'dashboard_nothing_review': 'لا شيء يحتاج إلى مراجعة اليوم',
+    'dashboard_items_review': '{count} مجموعات تحتاج إلى مراجعة اليوم',
+    'dashboard_item_review': 'مجموعة واحدة تحتاج إلى مراجعة اليوم',
+    'dashboard_items_review_zero': 'لا توجد مجموعات تحتاج إلى مراجعة اليوم',
+    'dashboard_items_review_two': 'مجموعتان تحتاجان إلى مراجعة اليوم',
+    'activity_pending_cross_task': 'مراجعة بين المهام',
+    'activity_pending_idle': 'مراجعة الخمول',
+    'activity_pending_other': 'مراجعة أخرى',
     'active_time': 'الوقت النشط',
     'planned_duration': '{mode} · المخطط {duration}',
     'add_interruption': 'إضافة مقاطعة',
@@ -2636,6 +2685,9 @@ class AppLocalizations {
     'coaching_adaptive_focus_title': 'نمط التركيز هذا يعمل جيدًا',
     'coaching_adaptive_focus_body':
         'أكملت {count} دورات تركيز هذا الأسبوع. كرر مدة كانت مريحة وابنِ على ما نجح معك.',
+    'coaching_adaptive_sport_title': 'كانت استراحتك النشطة إنجازًا حقيقيًا',
+    'coaching_adaptive_sport_body':
+        'سجلت {duration} من الرياضة أو التمرين خلال استراحاتك الأخيرة. هذه الحركة تدعم طاقتك؛ واصل اختيار نشاط مريح يمكنك الاستمرار عليه.',
     'coaching_adaptive_session_body':
         'أكملت {count} جلسات عمل هذا الأسبوع. كرر الترتيب الذي ساعدك على الإكمال، من دون افتراض أن كل جلسة تحتاج إلى بومودورو.',
     'coaching_adaptive_rest_title': 'دع خطة اليوم تتكيف مع طاقتك',
@@ -2654,6 +2706,8 @@ class AppLocalizations {
     'coaching_evidence_active_task': 'مهمة نشطة الآن',
     'coaching_evidence_paused': '{count} مهام متوقفة مؤقتًا',
     'coaching_evidence_focus_cycles': '{count} دورات تركيز حديثة',
+    'coaching_evidence_sport_activity':
+        '{duration} من الرياضة خلال الاستراحات الأخيرة',
     'coaching_evidence_completed_sessions': '{count} جلسات عمل مكتملة حديثًا',
     'coaching_evidence_ready_tasks': '{count} مهام مجدولة جاهزة',
     'coaching_feedback': 'ملاحظات التدريب',
@@ -2748,6 +2802,22 @@ class AppLocalizations {
     'activity_learned_from_usage': 'تعلّمه من استخدامك',
     'activity_suggested_by_taskmaster': 'اقتراح من TaskMaster Pro',
     'activity_useful_reading': 'قراءة مفيدة',
+    'break_activity_title': 'ماذا فعلت خلال الاستراحة؟',
+    'break_activity_prompt':
+        'لم يتم رصد نشاط على الجهاز. يمكنك اختياريًا تسجيل القراءة أو الرياضة أو الاسترخاء أو تناول مشروب أو أي نشاط آخر.',
+    'break_activity_reading': 'قراءة',
+    'break_activity_sport': 'رياضة أو تمرين',
+    'break_activity_relaxing': 'استرخاء أو راحة',
+    'break_activity_drink': 'مشروب أو وجبة خفيفة',
+    'break_activity_other': 'نشاط آخر',
+    'break_activity_other_label': 'صِف النشاط',
+    'break_activity_other_required': 'اكتب ما الذي فعلته.',
+    'break_activity_assign_task': 'ربط بمهمة موجودة (اختياري)',
+    'break_activity_assign_task_help':
+        'اختر مهمة فقط إذا كان ينبغي احتساب هذا النشاط ضمنها.',
+    'break_activity_no_task': 'عدم ربطه بمهمة',
+    'break_activity_saved': 'تم حفظ نشاط الاستراحة.',
+    'break_activity_save_failed': 'تعذر حفظ نشاط الاستراحة.',
     'activity_supporting_work': 'عمل داعم',
     'activity_mark_distraction': 'تصنيفه كمشتت',
     'activity_not_related': 'غير مرتبط بهذه المهمة',
@@ -3017,7 +3087,7 @@ class AppLocalizations {
     'sync_items_failed': 'تعذر مزامنة {count} عنصر حتى الآن.',
     'syncing_latest': 'جارٍ مزامنة أحدث التغييرات…',
     'sync_auto_retry_message':
-        'لا تزال بعض التغييرات بانتظار المزامنة. سيواصل TaskMaster Pro المحاولة تلقائيًا.',
+        'راجع التغييرات المدرجة. تقتصر إعادة المحاولة التلقائية على أعطال الاتصال المؤقتة.',
     'sync_diagnostics': 'تشخيصات المزامنة',
     'sync_realtime_state': 'حالة الاتصال المباشر',
     'sync_active_realtime_connections': 'اتصالات المزامنة المباشرة النشطة',
@@ -3032,7 +3102,7 @@ class AppLocalizations {
         'الطلبات: {requests} · التنزيل: {downloaded} بايت · الرفع: {uploaded} بايت · الرسائل المباشرة: {realtime} · المكرر: {repeated} · الأكبر: {largest} بايت',
     'sync_copy_diagnostics': 'نسخ التشخيصات',
     'sync_diagnostics_copied': 'تم نسخ تشخيصات المزامنة.',
-    'sync_retry_failed_changes': 'إعادة محاولة التغييرات المتعثرة',
+    'sync_retry_failed_changes': 'التحقق من المزامنة مجددًا',
     'sync_conflicts_title': 'قرارات المزامنة',
     'sync_resolve_automatically': 'الحل تلقائيًا',
     'sync_dismiss_conflict': 'تجاهل التعارض',
@@ -4504,6 +4574,13 @@ class AppLocalizations {
     'status_completed': 'Erledigt',
     'status_overdue': 'Überfällig',
     'status_waiting_review': 'Wartet auf Prüfung',
+    'status_skipped': 'Übersprungen',
+    'stale_pause_title': 'Seit über 12 Stunden pausiert',
+    'stale_pause_body':
+        'Pausenzeit wird nicht gezählt. Fortsetzen, zur Aufgabenliste zurückgeben oder überspringen.',
+    'stale_pause_needs_attention': 'Zur Aufgabenliste',
+    'stale_pause_skip': 'Aufgabe überspringen',
+    'stale_pause_resolved': 'Die pausierte Aufgabe wurde aktualisiert.',
     'status_interrupted': 'Unterbrochen',
     'status_scheduled': 'Geplant',
     'status_cancelled': 'Abgebrochen',
@@ -4535,11 +4612,15 @@ class AppLocalizations {
     'dashboard_no_ready_task': 'Keine bereite Aufgabe benötigt Aufmerksamkeit.',
     'dashboard_cross_task_review': 'Aufgabenübergreifende Aktivität prüfen',
     'dashboard_inactive_review': 'Inaktive Zeit prüfen',
-    'dashboard_nothing_review': 'Nichts muss geprüft werden',
-    'dashboard_items_review': '{count} Elemente müssen geprüft werden',
-    'dashboard_item_review': '1 Element muss geprüft werden',
-    'dashboard_items_review_zero': 'Keine Elemente müssen geprüft werden',
-    'dashboard_items_review_two': '2 Elemente müssen geprüft werden',
+    'dashboard_other_activity_review': 'Sonstige Aktivität prüfen',
+    'dashboard_nothing_review': 'Heute muss nichts geprüft werden',
+    'dashboard_items_review': '{count} Gruppen müssen heute geprüft werden',
+    'dashboard_item_review': '1 Gruppe muss heute geprüft werden',
+    'dashboard_items_review_zero': 'Keine Gruppen müssen heute geprüft werden',
+    'dashboard_items_review_two': '2 Gruppen müssen heute geprüft werden',
+    'activity_pending_cross_task': 'Aufgabenübergreifend prüfen',
+    'activity_pending_idle': 'Inaktivität prüfen',
+    'activity_pending_other': 'Sonstiges prüfen',
     'active_time': 'Aktive Zeit',
     'planned_duration': '{mode} · geplant {duration}',
     'add_interruption': 'Unterbrechung hinzufügen',
@@ -4635,6 +4716,9 @@ class AppLocalizations {
     'coaching_adaptive_focus_title': 'Dieses Fokusmuster funktioniert',
     'coaching_adaptive_focus_body':
         'Du hast diese Woche {count} Fokuszyklen abgeschlossen. Wiederhole eine Dauer, die sich gut tragen ließ, und baue auf dem Erfolg auf.',
+    'coaching_adaptive_sport_title': 'Diese aktive Pause war ein echter Erfolg',
+    'coaching_adaptive_sport_body':
+        'Du hast in deinen letzten Pausen {duration} Sport oder Bewegung erfasst. Diese Bewegung unterstützt deine Energie—bleib bei einer Form, die sich gut und nachhaltig anfühlt.',
     'coaching_adaptive_session_body':
         'Du hast diese Woche {count} Arbeitssitzungen abgeschlossen. Wiederhole die Vorbereitung, die dir beim Abschluss geholfen hat, ohne jede Sitzung automatisch als Pomodoro zu behandeln.',
     'coaching_adaptive_rest_title':
@@ -4656,6 +4740,8 @@ class AppLocalizations {
     'coaching_evidence_active_task': 'Aufgabe ist derzeit aktiv',
     'coaching_evidence_paused': '{count} pausierte Aufgaben',
     'coaching_evidence_focus_cycles': '{count} aktuelle Fokuszyklen',
+    'coaching_evidence_sport_activity':
+        '{duration} Sport in den letzten Pausen',
     'coaching_evidence_completed_sessions':
         '{count} kürzlich abgeschlossene Arbeitssitzungen',
     'coaching_evidence_ready_tasks': '{count} geplante Aufgaben bereit',
@@ -4763,6 +4849,23 @@ class AppLocalizations {
     'activity_learned_from_usage': 'Aus deiner Nutzung gelernt',
     'activity_suggested_by_taskmaster': 'Von TaskMaster Pro vorgeschlagen',
     'activity_useful_reading': 'Nützliches Lesen',
+    'break_activity_title': 'Was hast du in deiner Pause gemacht?',
+    'break_activity_prompt':
+        'Es wurde keine Gerätenutzung erkannt. Du kannst optional Lesen, Sport, Entspannen, ein Getränk oder etwas anderes erfassen.',
+    'break_activity_reading': 'Lesen',
+    'break_activity_sport': 'Sport oder Bewegung',
+    'break_activity_relaxing': 'Entspannen oder Abschalten',
+    'break_activity_drink': 'Getränk oder Snack',
+    'break_activity_other': 'Etwas anderes',
+    'break_activity_other_label': 'Aktivität beschreiben',
+    'break_activity_other_required': 'Beschreibe, was du gemacht hast.',
+    'break_activity_assign_task': 'Mit einer Aufgabe verknüpfen (optional)',
+    'break_activity_assign_task_help':
+        'Wähle nur dann eine Aufgabe, wenn diese Aktivität dafür zählen soll.',
+    'break_activity_no_task': 'Keine Aufgabe verknüpfen',
+    'break_activity_saved': 'Pausenaktivität gespeichert.',
+    'break_activity_save_failed':
+        'Die Pausenaktivität konnte nicht gespeichert werden.',
     'activity_supporting_work': 'Unterstützende Arbeit',
     'activity_mark_distraction': 'Als Ablenkung markieren',
     'activity_not_related': 'Nicht mit dieser Aufgabe verbunden',
@@ -5047,7 +5150,7 @@ class AppLocalizations {
         '{count} Elemente konnten noch nicht synchronisiert werden.',
     'syncing_latest': 'Neueste Änderungen werden synchronisiert…',
     'sync_auto_retry_message':
-        'Einige Änderungen warten noch auf die Synchronisierung. TaskMaster Pro versucht es automatisch weiter.',
+        'Prüfe die aufgeführten Änderungen. Automatische Wiederholungen sind nur für vorübergehende Verbindungsfehler vorgesehen.',
     'sync_diagnostics': 'Synchronisierungsdiagnose',
     'sync_realtime_state': 'Status der Echtzeitverbindung',
     'sync_active_realtime_connections': 'Aktive Echtzeitverbindungen',
@@ -5063,7 +5166,7 @@ class AppLocalizations {
         'Anfragen: {requests} · Heruntergeladen: {downloaded} B · Hochgeladen: {uploaded} B · Echtzeit: {realtime} · Wiederholt: {repeated} · Größte Nutzlast: {largest} B',
     'sync_copy_diagnostics': 'Diagnose kopieren',
     'sync_diagnostics_copied': 'Synchronisierungsdiagnose kopiert.',
-    'sync_retry_failed_changes': 'Fehlgeschlagene Änderungen erneut versuchen',
+    'sync_retry_failed_changes': 'Synchronisierung erneut prüfen',
     'sync_conflicts_title': 'Synchronisierungsentscheidungen',
     'sync_resolve_automatically': 'Automatisch lösen',
     'sync_dismiss_conflict': 'Konflikt ausblenden',

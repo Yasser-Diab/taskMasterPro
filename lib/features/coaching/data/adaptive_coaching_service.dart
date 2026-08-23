@@ -6,6 +6,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../../core/data/entity_record_repository.dart';
 import '../../../core/database/app_database.dart';
+import '../../activity/data/activity_repository.dart';
 import '../../activity/domain/activity_reporting_policy.dart';
 import '../../tasks/domain/task_occurrence_policy.dart';
 
@@ -133,6 +134,7 @@ class AdaptiveCoachingEvidence {
     required this.focusCyclesLastWeek,
     required this.completedSessionsLastWeek,
     required this.pausesLastWeek,
+    required this.recentSportMinutes,
     this.overdueTaskIds = const [],
     this.pausedTaskId,
     this.pausedTaskTitle,
@@ -162,6 +164,7 @@ class AdaptiveCoachingEvidence {
   final int focusCyclesLastWeek;
   final int completedSessionsLastWeek;
   final int pausesLastWeek;
+  final int recentSportMinutes;
   final List<String> overdueTaskIds;
   final String? pausedTaskId;
   final String? pausedTaskTitle;
@@ -210,6 +213,7 @@ class AdaptiveCoachingDecision {
         'resume_paused' => CoachingExpression.unconvinced,
         'roadmap_next_step' => CoachingExpression.encouraging,
         'focus_momentum' => CoachingExpression.happy,
+        'active_recovery_momentum' => CoachingExpression.happy,
         'rest_plan' => CoachingExpression.quiet,
         'scheduled_next_step' => CoachingExpression.encouraging,
         'limited_evidence_plan' => CoachingExpression.confused,
@@ -245,7 +249,8 @@ class AdaptiveCoachingEngine {
         evidence.roadmapAtRisk ||
         evidence.focusCyclesLastWeek > 0 ||
         evidence.completedSessionsLastWeek > 0 ||
-        evidence.lateNightMinutes >= 15;
+        evidence.lateNightMinutes >= 15 ||
+        evidence.recentSportMinutes > 0;
     if (evidence.accountAgeDays < 1 && !hasActionableEvidence) {
       return AdaptiveCoachingDecision(
         cardKey: 'first_day_learning',
@@ -387,6 +392,22 @@ class AdaptiveCoachingEngine {
           assumptionTags: const {'roadmap_next_step_is_useful'},
           relatedTaskId: evidence.roadmapTaskId,
           score: 75,
+        ),
+      if (evidence.recentSportMinutes > 0)
+        AdaptiveCoachingDecision(
+          cardKey: 'active_recovery_momentum',
+          category: 'wellbeing',
+          mood: CoachingMood.celebrating,
+          titleKey: 'coaching_adaptive_sport_title',
+          bodyKey: 'coaching_adaptive_sport_body',
+          bodyValues: {'duration_ms': evidence.recentSportMinutes * 60 * 1000},
+          evidence: [
+            CoachingEvidenceLabel('coaching_evidence_sport_activity', {
+              'duration_ms': evidence.recentSportMinutes * 60 * 1000,
+            }),
+          ],
+          assumptionTags: const {'reported_sport_supports_wellbeing'},
+          score: 80,
         ),
       if (evidence.focusCyclesLastWeek > 0 ||
           evidence.completedSessionsLastWeek > 0)
@@ -584,17 +605,21 @@ class AdaptiveCoachingService {
                   row.status.isNotIn(const ['completed', 'cancelled']),
             ))
             .get();
+    final recentCapturedActivity =
+        await (database.select(database.localActivitySegments)..where(
+              (row) =>
+                  row.userId.equals(userId) &
+                  row.deletedAt.isNull() &
+                  row.endedAt.isBiggerThanValue(
+                    now.toUtc().subtract(const Duration(days: 7)),
+                  ),
+            ))
+            .get();
     final capturedActivity = settings?.phoneUsageAnalysisEnabled == true
-        ? await (database.select(database.localActivitySegments)..where(
-                (row) =>
-                    row.userId.equals(userId) &
-                    row.deletedAt.isNull() &
-                    row.endedAt.isBiggerThanValue(
-                      now.toUtc().subtract(const Duration(days: 2)),
-                    ),
-              ))
-              .get()
-        : const <LocalActivitySegment>[];
+        ? recentCapturedActivity
+        : recentCapturedActivity
+              .where(isManualBreakActivity)
+              .toList(growable: false);
     final capturedActivityIds = capturedActivity.map((item) => item.id).toSet();
     final activityAttributions = capturedActivityIds.isEmpty
         ? const <LocalAttribution>[]
@@ -620,6 +645,7 @@ class AdaptiveCoachingService {
       now: now,
       roadmaps: roadmaps,
       activity: activity,
+      activityAttributions: activityAttributions,
       health: health,
       cycles: cycles,
       sessionEvents: sessionEvents,
@@ -674,6 +700,7 @@ class AdaptiveCoachingService {
     required DateTime now,
     required List<LocalRoadmap> roadmaps,
     required List<LocalActivitySegment> activity,
+    required List<LocalAttribution> activityAttributions,
     required List<LocalEntityRecord> health,
     required List<LocalEntityRecord> cycles,
     required List<LocalEntityRecord> sessionEvents,
@@ -825,7 +852,51 @@ class AdaptiveCoachingService {
       // transport rows, so count each session once.
       completedSessionsLastWeek: completedSessionIds.length,
       pausesLastWeek: recentPauseCount,
+      recentSportMinutes: _recentSportMinutes(
+        activity,
+        activityAttributions,
+        now: now,
+      ),
     );
+  }
+
+  int _recentSportMinutes(
+    List<LocalActivitySegment> segments,
+    List<LocalAttribution> attributions, {
+    required DateTime now,
+  }) {
+    final latest = latestActivityAttributionBySegment(attributions);
+    final cutoff = now.toUtc().subtract(const Duration(days: 7));
+    final intervals = <({DateTime start, DateTime end})>[];
+    for (final segment in segments) {
+      if (!isManualBreakActivity(segment) ||
+          latest[segment.id]?.classification != 'break_activity_sport') {
+        continue;
+      }
+      final start = segment.startedAt.toUtc().isAfter(cutoff)
+          ? segment.startedAt.toUtc()
+          : cutoff;
+      final end = segment.endedAt.toUtc().isBefore(now.toUtc())
+          ? segment.endedAt.toUtc()
+          : now.toUtc();
+      if (end.isAfter(start)) intervals.add((start: start, end: end));
+    }
+    if (intervals.isEmpty) return 0;
+    intervals.sort((left, right) => left.start.compareTo(right.start));
+    var total = Duration.zero;
+    var currentStart = intervals.first.start;
+    var currentEnd = intervals.first.end;
+    for (final interval in intervals.skip(1)) {
+      if (!interval.start.isAfter(currentEnd)) {
+        if (interval.end.isAfter(currentEnd)) currentEnd = interval.end;
+      } else {
+        total += currentEnd.difference(currentStart);
+        currentStart = interval.start;
+        currentEnd = interval.end;
+      }
+    }
+    total += currentEnd.difference(currentStart);
+    return total.inMinutes;
   }
 
   Future<List<CoachingFeedbackSignal>> _loadFeedback() async {

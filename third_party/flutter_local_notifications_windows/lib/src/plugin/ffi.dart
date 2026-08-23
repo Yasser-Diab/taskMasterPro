@@ -167,7 +167,7 @@ class FlutterLocalNotificationsWindows extends WindowsNotificationsBase {
         final List<ActiveNotification> result = array.asActiveNotifications(
           length.value,
         );
-        _bindings.freeDetailsArray(array);
+        _bindings.freeDetailsArray(array, length.value);
         return result;
       });
 
@@ -185,7 +185,7 @@ class FlutterLocalNotificationsWindows extends WindowsNotificationsBase {
     final List<PendingNotificationRequest> result = array.asPendingRequests(
       length.value,
     );
-    _bindings.freeDetailsArray(array);
+    _bindings.freeDetailsArray(array, length.value);
     return result;
   });
 
@@ -334,12 +334,21 @@ class FlutterLocalNotificationsWindows extends WindowsNotificationsBase {
       notificationDetails: notificationDetails,
     );
     final int secondsSinceEpoch = scheduledDate.millisecondsSinceEpoch ~/ 1000;
-    _bindings.scheduleNotification(
+    final int result = _bindings.scheduleNotification(
       _plugin,
       id,
       xml.toNativeUtf8(allocator: arena),
       secondsSinceEpoch,
     );
+    if (result != 0) {
+      final String hresult = (result & 0xffffffff)
+          .toRadixString(16)
+          .padLeft(8, '0');
+      throw StateError(
+        'Flutter Local Notifications: Windows rejected scheduled notification '
+        '$id (HRESULT 0x$hresult)',
+      );
+    }
   });
 
   @override
@@ -360,12 +369,21 @@ class FlutterLocalNotificationsWindows extends WindowsNotificationsBase {
       );
     }
     final int secondsSinceEpoch = scheduledDate.millisecondsSinceEpoch ~/ 1000;
-    _bindings.scheduleNotification(
+    final int result = _bindings.scheduleNotification(
       _plugin,
       id,
       xml.toNativeUtf8(allocator: arena),
       secondsSinceEpoch,
     );
+    if (result != 0) {
+      final String hresult = (result & 0xffffffff)
+          .toRadixString(16)
+          .padLeft(8, '0');
+      throw StateError(
+        'Flutter Local Notifications: Windows rejected scheduled notification '
+        '$id (HRESULT 0x$hresult)',
+      );
+    }
   });
 
   @override

@@ -6,12 +6,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/database/app_database.dart';
 import '../../../core/localization/app_localizations.dart';
 import '../../../core/providers.dart';
+import '../../activity/presentation/break_activity_check_in.dart';
 import '../data/task_execution_commands.dart';
 import '../data/task_execution_providers.dart';
 import '../domain/pomodoro_execution_state.dart';
 import 'task_completion_flow.dart';
 import 'task_editor_dialog.dart';
 import 'task_start_flow.dart';
+import 'stale_paused_task_recovery.dart';
 import 'task_workspace_screen.dart';
 
 class TaskCard extends ConsumerWidget {
@@ -51,6 +53,9 @@ class TaskCard extends ConsumerWidget {
         : activeSessionState ?? task.status;
     final completed = effectiveStatus == 'completed';
     final note = task.description.trim();
+    final runtime = effectiveStatus == 'paused'
+        ? ref.watch(taskExecutionRuntimeProvider).value
+        : null;
     final estimatedDuration = Duration(
       milliseconds: task.estimatedDurationMs.clamp(0, 1 << 62),
     );
@@ -61,167 +66,188 @@ class TaskCard extends ConsumerWidget {
         onTap: () => TaskWorkspaceScreen.open(context, task),
         child: Padding(
           padding: EdgeInsets.all(compact ? 14 : 18),
-          child: Row(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Container(
-                width: 5,
-                height: compact ? 46 : 58,
-                decoration: BoxDecoration(
-                  color: _priorityColor(context, task.priority),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      task.title,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                        decoration: completed
-                            ? TextDecoration.lineThrough
-                            : null,
-                      ),
+              Row(
+                children: [
+                  Container(
+                    width: 5,
+                    height: compact ? 46 : 58,
+                    decoration: BoxDecoration(
+                      color: _priorityColor(context, task.priority),
+                      borderRadius: BorderRadius.circular(8),
                     ),
-                    if (note.isNotEmpty) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                        note,
-                        key: ValueKey('task-subheading-${task.id}'),
-                        maxLines: compact ? 1 : 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: colorScheme.onSurfaceVariant,
-                          height: 1.25,
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          task.title,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.titleMedium
+                              ?.copyWith(
+                                fontWeight: FontWeight.w700,
+                                decoration: completed
+                                    ? TextDecoration.lineThrough
+                                    : null,
+                              ),
+                        ),
+                        if (note.isNotEmpty) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            note,
+                            key: ValueKey('task-subheading-${task.id}'),
+                            maxLines: compact ? 1 : 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.bodyMedium
+                                ?.copyWith(
+                                  color: colorScheme.onSurfaceVariant,
+                                  height: 1.25,
+                                ),
+                          ),
+                        ],
+                        const SizedBox(height: 7),
+                        Wrap(
+                          spacing: 10,
+                          runSpacing: 5,
+                          children: [
+                            _Meta(
+                              icon: _modeIcon(task.executionMode),
+                              label: context.l10n.executionMode(
+                                task.executionMode,
+                              ),
+                            ),
+                            _Meta(
+                              icon: Icons.timer_outlined,
+                              label: context.l10n.duration(estimatedDuration),
+                            ),
+                            _StatusPill(
+                              status: effectiveStatus,
+                              activeSession: activeSessionState != null,
+                            ),
+                            if (domainLabel?.isNotEmpty == true)
+                              _Meta(
+                                icon: Icons.folder_outlined,
+                                label: domainLabel!,
+                              ),
+                            if (recurrenceLabel?.isNotEmpty == true)
+                              _Meta(
+                                icon: Icons.repeat_rounded,
+                                label: recurrenceLabel!,
+                              ),
+                            if (suggested) const _SuggestedPill(),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  if (!completed && !hideExecutionControl)
+                    _CanonicalTaskControl(task: task),
+                  PopupMenuButton<String>(
+                    tooltip: context.l10n.text('task_actions'),
+                    onSelected: (action) async {
+                      switch (action) {
+                        case 'open':
+                          await TaskWorkspaceScreen.open(context, task);
+                        case 'edit':
+                          await TaskEditorDialog.show(context, task: task);
+                        case 'duplicate':
+                          await _run(
+                            ref,
+                            () => ref
+                                .read(taskRepositoryProvider)
+                                .duplicate(task),
+                          );
+                        case 'complete':
+                          await completeTaskWithUndo(context, ref, task);
+                        case 'reopen':
+                          await reopenTask(context, ref, task);
+                        case 'delete':
+                          await _run(
+                            ref,
+                            () => ref
+                                .read(taskRepositoryProvider)
+                                .softDelete(task),
+                          );
+                      }
+                    },
+                    itemBuilder: (context) => [
+                      PopupMenuItem(
+                        value: 'open',
+                        child: ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: const Icon(Icons.open_in_new),
+                          title: Text(context.l10n.text('open_task_workspace')),
+                        ),
+                      ),
+                      PopupMenuItem(
+                        value: 'edit',
+                        child: ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: const Icon(Icons.edit_outlined),
+                          title: Text(context.l10n.text('edit_task')),
+                        ),
+                      ),
+                      PopupMenuItem(
+                        value: 'duplicate',
+                        child: ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: const Icon(Icons.copy_outlined),
+                          title: Text(context.l10n.text('duplicate')),
+                        ),
+                      ),
+                      if (!completed)
+                        PopupMenuItem(
+                          value: 'complete',
+                          child: ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            leading: Icon(
+                              Icons.check_circle_outline,
+                              color: colorScheme.primary,
+                            ),
+                            title: Text(context.l10n.text('complete')),
+                          ),
+                        ),
+                      if (completed)
+                        PopupMenuItem(
+                          value: 'reopen',
+                          child: ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            leading: Icon(
+                              Icons.restore,
+                              color: colorScheme.primary,
+                            ),
+                            title: Text(context.l10n.text('reopen_task')),
+                          ),
+                        ),
+                      PopupMenuItem(
+                        value: 'delete',
+                        child: ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: Icon(
+                            Icons.delete_outline,
+                            color: colorScheme.error,
+                          ),
+                          title: Text(context.l10n.text('delete')),
                         ),
                       ),
                     ],
-                    const SizedBox(height: 7),
-                    Wrap(
-                      spacing: 10,
-                      runSpacing: 5,
-                      children: [
-                        _Meta(
-                          icon: _modeIcon(task.executionMode),
-                          label: context.l10n.executionMode(task.executionMode),
-                        ),
-                        _Meta(
-                          icon: Icons.timer_outlined,
-                          label: context.l10n.duration(estimatedDuration),
-                        ),
-                        _StatusPill(
-                          status: effectiveStatus,
-                          activeSession: activeSessionState != null,
-                        ),
-                        if (domainLabel?.isNotEmpty == true)
-                          _Meta(
-                            icon: Icons.folder_outlined,
-                            label: domainLabel!,
-                          ),
-                        if (recurrenceLabel?.isNotEmpty == true)
-                          _Meta(
-                            icon: Icons.repeat_rounded,
-                            label: recurrenceLabel!,
-                          ),
-                        if (suggested) const _SuggestedPill(),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 10),
-              if (!completed && !hideExecutionControl)
-                _CanonicalTaskControl(task: task),
-              PopupMenuButton<String>(
-                tooltip: context.l10n.text('task_actions'),
-                onSelected: (action) async {
-                  switch (action) {
-                    case 'open':
-                      await TaskWorkspaceScreen.open(context, task);
-                    case 'edit':
-                      await TaskEditorDialog.show(context, task: task);
-                    case 'duplicate':
-                      await _run(
-                        ref,
-                        () => ref.read(taskRepositoryProvider).duplicate(task),
-                      );
-                    case 'complete':
-                      await completeTaskWithUndo(context, ref, task);
-                    case 'reopen':
-                      await reopenTask(context, ref, task);
-                    case 'delete':
-                      await _run(
-                        ref,
-                        () => ref.read(taskRepositoryProvider).softDelete(task),
-                      );
-                  }
-                },
-                itemBuilder: (context) => [
-                  PopupMenuItem(
-                    value: 'open',
-                    child: ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      leading: const Icon(Icons.open_in_new),
-                      title: Text(context.l10n.text('open_task_workspace')),
-                    ),
-                  ),
-                  PopupMenuItem(
-                    value: 'edit',
-                    child: ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      leading: const Icon(Icons.edit_outlined),
-                      title: Text(context.l10n.text('edit_task')),
-                    ),
-                  ),
-                  PopupMenuItem(
-                    value: 'duplicate',
-                    child: ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      leading: const Icon(Icons.copy_outlined),
-                      title: Text(context.l10n.text('duplicate')),
-                    ),
-                  ),
-                  if (!completed)
-                    PopupMenuItem(
-                      value: 'complete',
-                      child: ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        leading: Icon(
-                          Icons.check_circle_outline,
-                          color: colorScheme.primary,
-                        ),
-                        title: Text(context.l10n.text('complete')),
-                      ),
-                    ),
-                  if (completed)
-                    PopupMenuItem(
-                      value: 'reopen',
-                      child: ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        leading: Icon(
-                          Icons.restore,
-                          color: colorScheme.primary,
-                        ),
-                        title: Text(context.l10n.text('reopen_task')),
-                      ),
-                    ),
-                  PopupMenuItem(
-                    value: 'delete',
-                    child: ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      leading: Icon(
-                        Icons.delete_outline,
-                        color: colorScheme.error,
-                      ),
-                      title: Text(context.l10n.text('delete')),
-                    ),
                   ),
                 ],
               ),
+              if (effectiveStatus == 'paused') ...[
+                const SizedBox(height: 10),
+                StalePausedTaskRecovery(
+                  task: task,
+                  runtime: runtime,
+                  compact: compact,
+                ),
+              ],
             ],
           ),
         ),
@@ -292,7 +318,11 @@ class _CanonicalTaskControlState extends ConsumerState<_CanonicalTaskControl> {
                 widget.task,
               );
             case TaskExecutionPrimaryAction.startFocus:
-              await repository.finishBreak(widget.task);
+              await finishBreakWithOptionalActivityCheckIn(
+                context: context,
+                ref: ref,
+                task: widget.task,
+              );
           }
         },
         synchronize: () => ref.read(syncServiceProvider).drainOutbox(),

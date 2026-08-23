@@ -146,7 +146,7 @@ class NotificationsPluginBindings {
       >();
 
   /// Schedules the notification to be shown at the given time (as a [time_t]).
-  bool scheduleNotification(
+  int scheduleNotification(
     ffi.Pointer<NativePlugin> plugin,
     int id,
     ffi.Pointer<pkg_ffi.Utf8> xml,
@@ -158,7 +158,7 @@ class NotificationsPluginBindings {
   late final _scheduleNotificationPtr =
       _lookup<
         ffi.NativeFunction<
-          ffi.Bool Function(
+          ffi.Int32 Function(
             ffi.Pointer<NativePlugin>,
             ffi.Int,
             ffi.Pointer<pkg_ffi.Utf8>,
@@ -168,7 +168,7 @@ class NotificationsPluginBindings {
       >('scheduleNotification');
   late final _scheduleNotification = _scheduleNotificationPtr
       .asFunction<
-        bool Function(
+        int Function(
           ffi.Pointer<NativePlugin>,
           int,
           ffi.Pointer<pkg_ffi.Utf8>,
@@ -288,18 +288,18 @@ class NotificationsPluginBindings {
       >();
 
   /// Releases the memory associated with a [NativeNotificationDetails] array.
-  void freeDetailsArray(ffi.Pointer<NativeNotificationDetails> ptr) {
-    return _freeDetailsArray(ptr);
+  void freeDetailsArray(ffi.Pointer<NativeNotificationDetails> ptr, int size) {
+    return _freeDetailsArray(ptr, size);
   }
 
   late final _freeDetailsArrayPtr =
       _lookup<
         ffi.NativeFunction<
-          ffi.Void Function(ffi.Pointer<NativeNotificationDetails>)
+          ffi.Void Function(ffi.Pointer<NativeNotificationDetails>, ffi.Int)
         >
       >('freeDetailsArray');
   late final _freeDetailsArray = _freeDetailsArrayPtr
-      .asFunction<void Function(ffi.Pointer<NativeNotificationDetails>)>();
+      .asFunction<void Function(ffi.Pointer<NativeNotificationDetails>, int)>();
 
   /// Releases the memory associated with a [NativeLaunchDetails].
   void freeLaunchDetails(NativeLaunchDetails details) {
@@ -335,6 +335,9 @@ final class NativeStringMap extends ffi.Struct {
 final class NativeNotificationDetails extends ffi.Struct {
   @ffi.Int()
   external int id;
+
+  /// The launch payload stored in the toast XML.
+  external ffi.Pointer<pkg_ffi.Utf8> payload;
 }
 
 /// How the app was launched, either by pressing on the notification or an action within it.

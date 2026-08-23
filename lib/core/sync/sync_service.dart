@@ -17,7 +17,7 @@ import '../../features/tasks/data/installed_application_service.dart';
 import '../../features/tasks/data/task_repository.dart';
 import '../../features/tasks/domain/task_domain_catalog.dart';
 
-enum SyncHealth { offline, idle, syncing, attention }
+enum SyncHealth { offline, idle, syncing, waiting, attention }
 
 enum SyncDeliveryFailureKind { retryable, permanent, applicationCatalogAlias }
 
@@ -151,6 +151,7 @@ SyncDeliveryFailureKind classifySyncDeliveryFailure({
       code == '22P02' ||
       code == '42703' ||
       code == '42883' ||
+      code == 'PGRST202' ||
       message.contains('permission denied') ||
       message.contains('device_not_registered') ||
       message.contains('unsupported_entity_type') ||
@@ -470,6 +471,51 @@ bool shouldRunRemoteRecovery({
     realtimeGapExpired ||
     snapshotInvalidated ||
     explicitlyRequested;
+
+/// A successful Realtime rejoin closes the outage only after one final cursor
+/// pull. The rejoin callback may run while the recovery operation is still in
+/// flight; ReplayableSyncOperation safely queues that final pass.
+@visibleForTesting
+bool shouldRunFinalRealtimeCatchUp({
+  required bool recoveredFromGap,
+  required bool initialSyncComplete,
+  required int recoveredGeneration,
+  required int lastCatchUpGeneration,
+}) =>
+    recoveredFromGap &&
+    initialSyncComplete &&
+    recoveredGeneration != lastCatchUpGeneration;
+
+/// Maintenance commands are retained in technical diagnostics but do not
+/// represent user work waiting to synchronize.
+@visibleForTesting
+bool isUserVisiblePendingSyncCommand(String entityType) =>
+    entityType != 'execution_runtime_start_cleanup';
+
+const supersededStartCleanupRpcRepairVersion = 1;
+const _supersededStartCleanupRpcName =
+    'retire_superseded_execution_start_v0033_command';
+
+/// Reopens only the terminal maintenance failures produced while v0033 was
+/// absent. The payload repair marker makes this a one-time upgrade action, so
+/// an accidentally missing backend cannot recreate the old infinite retry.
+@visibleForTesting
+bool shouldRepairMissingSupersededStartCleanupRpc({
+  required String entityType,
+  required String status,
+  required Map<String, dynamic> payload,
+  required Map<String, dynamic> error,
+}) {
+  final completedRepair =
+      (payload['cleanup_rpc_repair_version'] as num?)?.toInt() ?? 0;
+  final errorCode = (error['code'] as String?)?.trim().toUpperCase();
+  final errorMessage = (error['message'] as String? ?? '').toLowerCase();
+  return entityType == 'execution_runtime_start_cleanup' &&
+      status == 'conflict' &&
+      completedRepair < supersededStartCleanupRpcRepairVersion &&
+      errorCode == 'PGRST202' &&
+      errorMessage.contains(_supersededStartCleanupRpcName);
+}
 
 @visibleForTesting
 int duplicateRealtimeHandlerCount({
@@ -942,9 +988,26 @@ String canonicalActivitySegmentSyncId({
 }
 
 @visibleForTesting
-bool shouldDeferCanonicalRuntimeApply(Iterable<String> pendingEntityTypes) {
-  return pendingEntityTypes.any(
-    const {'execution_runtime', 'execution_runtime_switch'}.contains,
+bool pendingCommandOwnsCanonicalRuntime({
+  required String entityType,
+  required Map<String, dynamic> payload,
+}) =>
+    const {
+      'execution_runtime',
+      'execution_runtime_switch',
+    }.contains(entityType) ||
+    (entityType == 'execution_runtime_stale_pause' &&
+        payload['expected_runtime_revision'] != null);
+
+@visibleForTesting
+bool shouldDeferCanonicalRuntimeApply(
+  Iterable<({String entityType, Map<String, dynamic> payload})> pendingCommands,
+) {
+  return pendingCommands.any(
+    (command) => pendingCommandOwnsCanonicalRuntime(
+      entityType: command.entityType,
+      payload: command.payload,
+    ),
   );
 }
 
@@ -1155,6 +1218,30 @@ bool shouldApplyAcknowledgedCanonicalRuntime({
           incomingCommandId == acknowledgedCommandId);
 }
 
+/// Applies an acknowledgement aggregate only while it still owns the local
+/// optimistic row. A later queued edit always wins. Canonical-only responses
+/// may roll back the exact command being acknowledged, but never a different
+/// command that landed while the RPC was in flight.
+@visibleForTesting
+bool shouldApplyAcknowledgedCanonicalAggregate({
+  required int? localRevision,
+  required String? localCommandId,
+  required int incomingRevision,
+  required String? incomingCommandId,
+  required String acknowledgedCommandId,
+  required bool hasPendingProjection,
+  bool allowAcknowledgedRollback = false,
+}) {
+  if (hasPendingProjection) return false;
+  if (localRevision == null || incomingRevision > localRevision) return true;
+  if (incomingRevision == localRevision &&
+      incomingCommandId != null &&
+      incomingCommandId == localCommandId) {
+    return true;
+  }
+  return allowAcknowledgedRollback && localCommandId == acknowledgedCommandId;
+}
+
 /// A revision-guarded runtime command can be accepted as a durable duplicate
 /// while its requested transition is superseded.  That is not a user-facing
 /// conflict: the response already includes the state which won the race.
@@ -1170,6 +1257,7 @@ bool isCanonicalOnlyRuntimeResponse({
   if (!const {
     'execution_runtime',
     'execution_runtime_switch',
+    'execution_runtime_stale_pause',
   }.contains(entityType)) {
     return false;
   }
@@ -1204,14 +1292,15 @@ SyncHealth deriveSyncHealth({
   required bool recoveryConnectionAvailable,
 }) {
   if (!online) return SyncHealth.offline;
-  if (operationInFlight || canonicalSnapshotIncomplete) {
-    return SyncHealth.syncing;
-  }
+  if (operationInFlight) return SyncHealth.syncing;
   if (failedChanges > 0 || conflicts > 0) {
     return SyncHealth.attention;
   }
-  if (pendingChanges > 0) return SyncHealth.syncing;
-  if (!recoveryConnectionAvailable) return SyncHealth.syncing;
+  if (canonicalSnapshotIncomplete ||
+      pendingChanges > 0 ||
+      !recoveryConnectionAvailable) {
+    return SyncHealth.waiting;
+  }
   return SyncHealth.idle;
 }
 
@@ -1251,16 +1340,22 @@ bool pendingCommandProjectsCanonicalRow({
   if (!const {
     'execution_runtime',
     'execution_runtime_switch',
+    'execution_runtime_stale_pause',
   }.contains(commandEntityType)) {
     return false;
   }
   return switch (canonicalEntityType) {
-    'user_runtime_state' => true,
+    'user_runtime_state' => pendingCommandOwnsCanonicalRuntime(
+      entityType: commandEntityType,
+      payload: payload,
+    ),
     'execution_sessions' =>
       commandEntityId == canonicalEntityId ||
-          payload['expected_active_session_id'] == canonicalEntityId,
+          payload['expected_active_session_id'] == canonicalEntityId ||
+          payload['session_id'] == canonicalEntityId,
     'task_occurrences' =>
-      payload['task_occurrence_id'] == canonicalEntityId ||
+      commandEntityId == canonicalEntityId ||
+          payload['task_occurrence_id'] == canonicalEntityId ||
           payload['expected_active_task_id'] == canonicalEntityId,
     _ => false,
   };
@@ -1505,8 +1600,8 @@ class SyncService {
   SyncHealth _currentHealth = SyncHealth.syncing;
   bool _liveConnectionAvailable = false;
   bool _fallbackCheckAvailable = false;
-  Future<void>? _pullFuture;
   Future<void>? _snapshotFuture;
+  final ReplayableSyncOperation _pullOperation = ReplayableSyncOperation();
   final ReplayableSyncOperation _drainOperation = ReplayableSyncOperation();
   final ReplayableSyncOperation _synchronizeOperation =
       ReplayableSyncOperation();
@@ -1525,7 +1620,6 @@ class SyncService {
   bool _connectivityWasOffline = false;
   bool _realtimeGapObserved = false;
   int _realtimeOutageGeneration = 0;
-  int _realtimeFallbackGeneration = -1;
   int _realtimeCatchUpGeneration = -1;
   int _realtimeReconnectAttempts = 0;
   int _snapshotRetryAttempts = 0;
@@ -1620,11 +1714,12 @@ class SyncService {
     // Invalidate first. Any remote response that arrives while workers are
     // being cancelled is prevented from writing to the local account cache.
     _accountGeneration += 1;
+    _pullOperation.cancelReplay();
     _drainOperation.cancelReplay();
     _synchronizeOperation.cancelReplay();
     final operations = <Future<void>?>[
       _synchronizeOperation.inFlight,
-      _pullFuture,
+      _pullOperation.inFlight,
       _drainOperation.inFlight,
       _snapshotFuture,
     ];
@@ -1660,7 +1755,6 @@ class SyncService {
     _connectivityWasOffline = false;
     _realtimeGapObserved = false;
     _realtimeOutageGeneration = 0;
-    _realtimeFallbackGeneration = -1;
     _realtimeCatchUpGeneration = -1;
     _realtimeReconnectAttempts = 0;
     _pendingConnectivityRecovery = false;
@@ -1690,7 +1784,7 @@ class SyncService {
     final generation = _accountGeneration;
     final delay = canonicalSnapshotRetryDelay(_snapshotRetryAttempts);
     _snapshotRetryAttempts += 1;
-    _setHealth(SyncHealth.syncing);
+    _setHealth(SyncHealth.waiting);
     _snapshotRetryTimer = Timer(delay, () {
       _snapshotRetryTimer = null;
       if (!_snapshotRetryRequired || !_isCurrentOperation(generation, userId)) {
@@ -1817,7 +1911,7 @@ class SyncService {
       return;
     }
     if (!_liveConnectionAvailable) {
-      _setHealth(SyncHealth.syncing);
+      _setHealth(SyncHealth.waiting);
       _scheduleRealtimeRecovery();
     }
   }
@@ -1827,7 +1921,9 @@ class SyncService {
       await action();
     } on _StaleSyncOperation {
       // Account invalidation is expected during sign-out or namespace switch.
-    } catch (error) {
+    } catch (error, stackTrace) {
+      debugPrint('TaskMaster Pro sync recovery failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
       final errorCode = error is PostgrestException ? error.code : null;
       if (isPermanentSyncInfrastructureFailure(
         errorCode: errorCode,
@@ -2289,10 +2385,12 @@ class SyncService {
             final recoveredGeneration = _realtimeOutageGeneration;
             _realtimeGapObserved = false;
             _realtimeReconnectAttempts = 0;
-            if (recoveredFromGap &&
-                _initialSyncComplete &&
-                _realtimeCatchUpGeneration != recoveredGeneration &&
-                _synchronizeOperation.inFlight == null) {
+            if (shouldRunFinalRealtimeCatchUp(
+              recoveredFromGap: recoveredFromGap,
+              initialSyncComplete: _initialSyncComplete,
+              recoveredGeneration: recoveredGeneration,
+              lastCatchUpGeneration: _realtimeCatchUpGeneration,
+            )) {
               _realtimeCatchUpGeneration = recoveredGeneration;
               unawaited(_synchronizeNow(realtimeRecovered: true));
             }
@@ -2304,7 +2402,7 @@ class SyncService {
             }
             _fallbackCheckAvailable = false;
             if (_currentHealth != SyncHealth.offline) {
-              _setHealth(SyncHealth.syncing);
+              _setHealth(SyncHealth.waiting);
             }
             if (_initialSyncComplete) _scheduleRealtimeRecovery();
           }
@@ -2320,16 +2418,12 @@ class SyncService {
       _realtimeRecoveryTimer = null;
       if (!_liveConnectionAvailable && _startedForUserId != null) {
         _realtimeReconnectAttempts += 1;
-        final outageGeneration = _realtimeOutageGeneration;
-        final firstFallbackForOutage =
-            _realtimeFallbackGeneration != outageGeneration;
-        if (firstFallbackForOutage) {
-          _realtimeFallbackGeneration = outageGeneration;
-          _realtimeCatchUpGeneration = outageGeneration;
-        }
+        // Every bounded reconnect attempt also advances the durable cursor.
+        // A failed Realtime join must not leave another device's task change
+        // invisible until the next lifecycle event.
         unawaited(
           _synchronizeNow(
-            realtimeGapExpired: firstFallbackForOutage,
+            realtimeGapExpired: true,
             forceRealtimeResubscribe: true,
           ),
         );
@@ -2345,18 +2439,24 @@ class SyncService {
     bool realtimeGapExpired = false,
     bool explicitlyRequested = false,
     bool forceRealtimeResubscribe = false,
-  }) {
+  }) async {
     final userId = _startedForUserId;
-    if (userId == null) return Future<void>.value();
+    if (userId == null) return;
     _pendingConnectivityRecovery |= connectivityRestored;
     _pendingRealtimeRecovery |= realtimeRecovered;
     _pendingRealtimeGapRecovery |= realtimeGapExpired;
     _pendingExplicitRecovery |= explicitlyRequested;
     _pendingRealtimeResubscribe |= forceRealtimeResubscribe;
     final generation = _accountGeneration;
-    return _synchronizeOperation.run(
+    await _synchronizeOperation.run(
       () => _synchronizeNowInternal(generation, userId),
     );
+    // ReplayableSyncOperation clears its in-flight marker before completing.
+    // Settle afterward so a completed recovery cannot leave the shell on the
+    // temporary spinning state merely because its own marker was observed.
+    if (_isCurrentOperation(generation, userId)) {
+      await _settleHealth();
+    }
   }
 
   Future<void> _synchronizeNowInternal(int generation, String userId) async {
@@ -2433,7 +2533,10 @@ class SyncService {
                 (row) =>
                     row.userId.equals(user.id) &
                     row.status.equals('conflict') &
-                    row.entityType.equals('sync_conflict_decisions').not(),
+                    row.entityType.equals('sync_conflict_decisions').not() &
+                    row.entityType
+                        .equals('execution_runtime_start_cleanup')
+                        .not(),
               )
               ..orderBy([(row) => OrderingTerm.asc(row.createdAt)]))
             .get();
@@ -2827,13 +2930,16 @@ class SyncService {
   Future<void> repairResolvedConflictsForTesting(String userId) =>
       _supersedeResolvedConflicts(userId);
 
-  Future<void> drainOutbox() {
+  Future<void> drainOutbox() async {
     final userId = _startedForUserId;
-    if (userId == null) return Future<void>.value();
+    if (userId == null) return;
     _drainTimer?.cancel();
     _drainTimer = null;
     final generation = _accountGeneration;
-    return _drainOperation.run(() => _drainOutboxTracked(generation, userId));
+    await _drainOperation.run(() => _drainOutboxTracked(generation, userId));
+    if (_isCurrentOperation(generation, userId)) {
+      await _settleHealth();
+    }
   }
 
   void _watchPendingOutbox({required int generation, required String userId}) {
@@ -2945,6 +3051,10 @@ class SyncService {
     await _runBestEffort(() => _retryClassifierPrivilegeConflicts(user.id));
     _ensureCurrentOperation(generation, userId);
     await _runBestEffort(_supersedeCanonicalConflicts);
+    _ensureCurrentOperation(generation, userId);
+    await _runBestEffort(
+      () => _repairMissingSupersededStartCleanupRpcConflicts(user.id),
+    );
     _ensureCurrentOperation(generation, userId);
     await _runBestEffort(() => _restoreMissingParentCommands(user.id));
     _ensureCurrentOperation(generation, userId);
@@ -3075,6 +3185,22 @@ class SyncService {
                       payload['session_create_command_id'],
                   'p_session_id': command.entityId,
                   'p_task_occurrence_id': payload['task_occurrence_id'],
+                },
+              )
+            : command.entityType == 'execution_runtime_stale_pause'
+            ? await client.rpc<Object?>(
+                'resolve_stale_paused_task_v0034_command',
+                params: {
+                  'p_command_id': command.commandId,
+                  'p_device_id': command.deviceId,
+                  'p_device_sequence': command.deviceSequence,
+                  'p_task_occurrence_id': command.entityId,
+                  'p_session_id': payload['session_id'],
+                  'p_decision': payload['decision'],
+                  'p_expected_task_revision': command.baseRevision,
+                  'p_expected_runtime_revision':
+                      payload['expected_runtime_revision'],
+                  'p_resolved_at': payload['resolved_at'],
                 },
               )
             : command.entityType == 'vacation_periods'
@@ -3548,7 +3674,9 @@ class SyncService {
       'user_application_overrides' ||
       'task_application_links' => 58,
       'execution_sessions' || 'pomodoro_cycles' => 60,
-      'execution_runtime' || 'execution_runtime_switch' => 62,
+      'execution_runtime' ||
+      'execution_runtime_switch' ||
+      'execution_runtime_stale_pause' => 62,
       'execution_runtime_start_cleanup' => 63,
       'session_events' || 'interruptions' => 65,
       'checklist_items' ||
@@ -5562,6 +5690,97 @@ class SyncService {
       await _applySupersededStartCleanupResult(command, result);
       return;
     }
+    if (command.entityType == 'execution_runtime_stale_pause') {
+      final payload = _payloadMap(command.payloadJson);
+      final userId = command.userId;
+      final taskId = command.entityId;
+      final sessionId = payload['session_id'] as String?;
+      final allowAcknowledgedRollback =
+          result['canonical_only'] == true || result['superseded'] == true;
+      final canonicalTaskValue = result['canonical_task'];
+      final canonicalSessionValue = result['canonical_session'];
+      final canonicalRuntime = result['canonical_runtime'];
+      final canonicalTask = canonicalTaskValue is Map
+          ? Map<String, dynamic>.from(canonicalTaskValue)
+          : null;
+      final canonicalSession = canonicalSessionValue is Map
+          ? Map<String, dynamic>.from(canonicalSessionValue)
+          : null;
+      // Re-read local ownership and pending projections in one transaction.
+      // A task edit or another execution decision queued while the RPC was in
+      // flight must remain visible instead of being replaced by its response.
+      await database.transaction(() async {
+        if (canonicalTask != null &&
+            canonicalTask['user_id'] == userId &&
+            canonicalTask['id'] == taskId) {
+          final localTask = await (database.select(
+            database.localTasks,
+          )..where((task) => task.id.equals(taskId))).getSingleOrNull();
+          final pendingTask = await _hasPendingCommand(
+            'task_occurrences',
+            taskId,
+            userId: userId,
+            excludingCommandId: command.commandId,
+          );
+          final incomingRevision = (canonicalTask['revision'] as num?)?.toInt();
+          if ((localTask == null || localTask.userId == userId) &&
+              incomingRevision != null &&
+              shouldApplyAcknowledgedCanonicalAggregate(
+                localRevision: localTask?.revision,
+                localCommandId: localTask?.lastCommandId,
+                incomingRevision: incomingRevision,
+                incomingCommandId: canonicalTask['last_command_id'] as String?,
+                acknowledgedCommandId: command.commandId,
+                hasPendingProjection: pendingTask,
+                allowAcknowledgedRollback: allowAcknowledgedRollback,
+              )) {
+            await _applyTask(canonicalTask);
+          }
+        }
+        if (canonicalSession != null &&
+            sessionId != null &&
+            canonicalSession['user_id'] == userId &&
+            canonicalSession['id'] == sessionId) {
+          final localSession =
+              await (database.select(database.localEntityRecords)..where(
+                    (row) =>
+                        row.id.equals(sessionId) &
+                        row.entityType.equals('execution_sessions'),
+                  ))
+                  .getSingleOrNull();
+          final pendingSession = await _hasPendingCommand(
+            'execution_sessions',
+            sessionId,
+            userId: userId,
+            excludingCommandId: command.commandId,
+          );
+          final incomingRevision = (canonicalSession['revision'] as num?)
+              ?.toInt();
+          if ((localSession == null || localSession.userId == userId) &&
+              incomingRevision != null &&
+              shouldApplyAcknowledgedCanonicalAggregate(
+                localRevision: localSession?.revision,
+                localCommandId: localSession?.lastCommandId,
+                incomingRevision: incomingRevision,
+                incomingCommandId:
+                    canonicalSession['last_command_id'] as String?,
+                acknowledgedCommandId: command.commandId,
+                hasPendingProjection: pendingSession,
+                allowAcknowledgedRollback: allowAcknowledgedRollback,
+              )) {
+            await _applyGeneric('execution_sessions', canonicalSession);
+          }
+        }
+      });
+      if (canonicalRuntime is Map) {
+        await _applyRemoteRuntime(
+          Map<String, dynamic>.from(canonicalRuntime),
+          acknowledgedCommandId: command.commandId,
+          allowAcknowledgedRollback: allowAcknowledgedRollback,
+        );
+      }
+      return;
+    }
     if (const {
           'execution_runtime',
           'execution_runtime_switch',
@@ -5762,9 +5981,63 @@ class SyncService {
     }
   }
 
+  Future<void> _repairMissingSupersededStartCleanupRpcConflicts(
+    String userId,
+  ) async {
+    final conflicts =
+        await (database.select(database.localOutboxCommands)..where(
+              (command) =>
+                  command.userId.equals(userId) &
+                  command.entityType.equals('execution_runtime_start_cleanup') &
+                  command.status.equals('conflict'),
+            ))
+            .get();
+    if (conflicts.isEmpty) return;
+    final now = DateTime.now().toUtc();
+    await database.transaction(() async {
+      for (final command in conflicts) {
+        final payload = _payloadMap(command.payloadJson);
+        final error = _payloadMap(command.lastError ?? '');
+        if (!shouldRepairMissingSupersededStartCleanupRpc(
+          entityType: command.entityType,
+          status: command.status,
+          payload: payload,
+          error: error,
+        )) {
+          continue;
+        }
+        await (database.update(database.localOutboxCommands)..where(
+              (row) =>
+                  row.commandId.equals(command.commandId) &
+                  row.status.equals('conflict'),
+            ))
+            .write(
+              LocalOutboxCommandsCompanion(
+                payloadJson: Value(
+                  jsonEncode({
+                    ...payload,
+                    'cleanup_rpc_repair_version':
+                        supersededStartCleanupRpcRepairVersion,
+                  }),
+                ),
+                status: const Value('pending'),
+                attemptCount: const Value(0),
+                nextAttemptAt: Value(now),
+                lastError: const Value(null),
+              ),
+            );
+      }
+    });
+  }
+
   @visibleForTesting
   Future<void> repairSupersededStartCleanupCommandsForTesting(String userId) =>
       _repairSupersededStartCleanupCommands(userId);
+
+  @visibleForTesting
+  Future<void> repairMissingSupersededStartCleanupRpcConflictsForTesting(
+    String userId,
+  ) => _repairMissingSupersededStartCleanupRpcConflicts(userId);
 
   Future<void> _applySupersededStartCleanupResult(
     LocalOutboxCommand cleanupCommand,
@@ -6859,20 +7132,17 @@ class SyncService {
     return needsAttention;
   }
 
-  Future<void> pullChanges() {
-    final existing = _pullFuture;
-    if (existing != null) return existing;
+  Future<void> pullChanges() async {
     final userId = _startedForUserId;
-    if (userId == null) return Future<void>.value();
+    if (userId == null) return;
     final generation = _accountGeneration;
-    late final Future<void> operation;
-    operation = _pullChangesTracked(generation, userId).whenComplete(() {
-      if (identical(_pullFuture, operation)) {
-        _pullFuture = null;
-      }
-    });
-    _pullFuture = operation;
-    return operation;
+    await _pullOperation.run(() => _pullChangesTracked(generation, userId));
+    // ReplayableSyncOperation clears its in-flight marker before completing.
+    // Settle afterward so an acknowledged command cannot leave the shell on
+    // the temporary syncing state after its required cursor replay.
+    if (_isCurrentOperation(generation, userId)) {
+      await _settleHealth();
+    }
   }
 
   Future<void> _pullChangesTracked(int generation, String userId) async {
@@ -6904,6 +7174,10 @@ class SyncService {
       if (_isCurrentOperation(generation, userId)) {
         _setHealth(SyncHealth.attention);
       }
+    } catch (error, stackTrace) {
+      debugPrint('TaskMaster Pro incremental pull failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      rethrow;
     }
   }
 
@@ -6929,7 +7203,11 @@ class SyncService {
             'change_sequence,entity_type,entity_id,operation,entity_revision',
           )
           .gt('change_sequence', sequence)
-          .order('change_sequence')
+          // PostgREST Dart defaults `order` to descending. A durable cursor
+          // must consume the change log oldest-first; otherwise every pull
+          // downloads the newest page again and advances by only its oldest
+          // row, recreating the repeated full-entity traffic loop.
+          .order('change_sequence', ascending: true)
           .limit(250);
       _recordTraffic(
         'table:sync_change_log',
@@ -6957,6 +7235,12 @@ class SyncService {
         generation: generation,
         userId: userId,
       );
+      if (kDebugMode) {
+        debugPrint(
+          'TaskMaster Pro incremental page: after=$sequence '
+          'last=$pageLastSequence deferred=$firstDeferredSequence',
+        );
+      }
       sequence = incrementalCursorAfterPage(
         pageLastSequence: pageLastSequence,
         firstDeferredSequence: firstDeferredSequence,
@@ -8570,9 +8854,11 @@ class SyncService {
     final online = connectivity.any(
       (result) => result != ConnectivityResult.none,
     );
-    final pendingExpression = database.localOutboxCommands.status.equals(
-      'pending',
-    );
+    final pendingExpression =
+        database.localOutboxCommands.status.equals('pending') &
+        database.localOutboxCommands.entityType
+            .equals('execution_runtime_start_cleanup')
+            .not();
     // A retryable pending command is durable work, not failed user data.
     // Temporary network/server interruptions stay in the normal synchronizing
     // state. Only a deterministic server conflict requires attention.
@@ -8651,7 +8937,7 @@ class SyncService {
       online: online,
       operationInFlight:
           _synchronizeOperation.inFlight != null ||
-          _pullFuture != null ||
+          _pullOperation.inFlight != null ||
           _drainOperation.inFlight != null ||
           _snapshotFuture != null,
       canonicalSnapshotIncomplete: _snapshotRetryRequired,
@@ -8750,6 +9036,7 @@ class SyncService {
     String entityType,
     String entityId, {
     String? userId,
+    String? excludingCommandId,
   }) async {
     final scopedUserId = userId ?? client.auth.currentUser?.id;
     if (scopedUserId == null) return false;
@@ -8766,6 +9053,7 @@ class SyncService {
       localTypes.addAll(const [
         'execution_runtime',
         'execution_runtime_switch',
+        'execution_runtime_stale_pause',
       ]);
     }
     final commands =
@@ -8776,15 +9064,24 @@ class SyncService {
                   row.status.equals('pending'),
             ))
             .get();
-    return commands.any(
-      (command) => pendingCommandProjectsCanonicalRow(
-        canonicalEntityType: canonicalEntityType,
-        canonicalEntityId: entityId,
-        commandEntityType: command.entityType,
-        commandEntityId: command.entityId,
-        payload: _payloadMap(command.payloadJson),
-      ),
+    final owner = commands.firstWhereOrNull(
+      (command) =>
+          command.commandId != excludingCommandId &&
+          pendingCommandProjectsCanonicalRow(
+            canonicalEntityType: canonicalEntityType,
+            canonicalEntityId: entityId,
+            commandEntityType: command.entityType,
+            commandEntityId: command.entityId,
+            payload: _payloadMap(command.payloadJson),
+          ),
     );
+    if (kDebugMode && owner != null) {
+      debugPrint(
+        'TaskMaster Pro deferred $canonicalEntityType/$entityId behind '
+        '${owner.entityType}/${owner.commandId}',
+      );
+    }
+    return owner != null;
   }
 
   Future<void> _pullEntity(String entityType, String entityId) async {
@@ -9400,24 +9697,30 @@ class SyncService {
     final userId = row['user_id'] as String?;
     if (userId == null || userId != client.auth.currentUser?.id) return;
     final pending =
-        await (database.select(database.localOutboxCommands)
-              ..where(
-                (command) =>
-                    command.userId.equals(userId) &
-                    command.entityType.isIn(const [
-                      'execution_runtime',
-                      'execution_runtime_switch',
-                    ]) &
-                    command.status.equals('pending'),
-              )
-              ..limit(1))
-            .get();
+        (await (database.select(database.localOutboxCommands)..where(
+                  (command) =>
+                      command.userId.equals(userId) &
+                      command.entityType.isIn(const [
+                        'execution_runtime',
+                        'execution_runtime_switch',
+                        'execution_runtime_stale_pause',
+                      ]) &
+                      command.status.equals('pending'),
+                ))
+                .get())
+            .where((command) => command.commandId != acknowledgedCommandId)
+            .toList(growable: false);
     // Keep instant local start/pause/resume feedback until the corresponding
     // durable command is acknowledged. A stale remote broadcast must not
     // make the initiating device jump backwards.
     if (!force &&
         shouldDeferCanonicalRuntimeApply(
-          pending.map((command) => command.entityType),
+          pending.map(
+            (command) => (
+              entityType: command.entityType,
+              payload: _payloadMap(command.payloadJson),
+            ),
+          ),
         )) {
       return;
     }

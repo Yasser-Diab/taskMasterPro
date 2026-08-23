@@ -66,8 +66,8 @@ bool showNotification(NativePlugin* plugin, int id, char* xml, NativeStringMap b
   }
 }
 
-bool scheduleNotification(NativePlugin* plugin, int id, char* xml, int time) {
-  if (!plugin->isReady) return false;
+int32_t scheduleNotification(NativePlugin* plugin, int id, char* xml, int time) {
+  if (!plugin->isReady) return E_UNEXPECTED;
   try {
     XmlDocument doc;
     doc.LoadXml(winrt::to_hstring(xml));
@@ -89,14 +89,14 @@ bool scheduleNotification(NativePlugin* plugin, int id, char* xml, int time) {
     }
 
     plugin->notifier.value().AddToSchedule(notification);
-    return true;
-  } catch (const winrt::hresult_error&) {
+    return S_OK;
+  } catch (const winrt::hresult_error& error) {
     // In particular, AddToSchedule throws 0x80070718 when the schedule is in
-    // the past or Windows' toast quota is exhausted. Returning false keeps the
-    // host process alive and lets Dart retry after reconciliation.
-    return false;
+    // the past or Windows' toast quota is exhausted. Returning the HRESULT
+    // keeps the host process alive and lets Dart diagnose and retry safely.
+    return error.code().value;
   } catch (...) {
-    return false;
+    return E_FAIL;
   }
 }
 
@@ -171,7 +171,11 @@ NativeNotificationDetails* getActiveNotifications(NativePlugin* plugin, int* siz
     const auto tag = notification.Tag();
     const auto tagStr = winrt::to_string(tag);
     const auto tagInt = std::stoi(tagStr);
-    result[index++].id = tagInt;
+    result[index].id = tagInt;
+    const auto launch =
+      notification.Content().DocumentElement().GetAttribute(L"launch");
+    result[index].payload = toNativeString(winrt::to_string(launch));
+    index++;
   }
   return result;
 }
@@ -192,7 +196,11 @@ NativeNotificationDetails* getPendingNotifications(NativePlugin* plugin, int* si
       const auto tag = notification.Tag();
       const auto tagStr = winrt::to_string(tag);
       const auto tagInt = std::stoi(tagStr);
-      result[index++].id = tagInt;
+      result[index].id = tagInt;
+      const auto launch =
+        notification.Content().DocumentElement().GetAttribute(L"launch");
+      result[index].payload = toNativeString(winrt::to_string(launch));
+      index++;
     }
     return result;
   } catch (const winrt::hresult_error&) {
@@ -204,7 +212,13 @@ NativeNotificationDetails* getPendingNotifications(NativePlugin* plugin, int* si
   }
 }
 
-void freeDetailsArray(NativeNotificationDetails* ptr) { delete[] ptr; }
+void freeDetailsArray(NativeNotificationDetails* ptr, int size) {
+  if (ptr == nullptr) return;
+  for (int index = 0; index < size; index++) {
+    if (ptr[index].payload != nullptr) delete[] ptr[index].payload;
+  }
+  delete[] ptr;
+}
 
 void freeLaunchDetails(NativeLaunchDetails details) {
   if (details.payload != nullptr) delete[] details.payload;

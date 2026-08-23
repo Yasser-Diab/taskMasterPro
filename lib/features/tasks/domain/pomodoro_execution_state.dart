@@ -6,6 +6,26 @@ import '../../../core/database/app_database.dart';
 const pomodoroFocusIntervalBaseKey = 'focus_interval_active_base_ms';
 const pomodoroCompletedFocusesKey = 'pomodoro_completed_focuses';
 
+/// A pause is deliberately inert, but after this interval the app asks the
+/// user to make an explicit decision instead of leaving forgotten work in an
+/// ambiguous paused state forever.
+const stalePausedTaskThreshold = Duration(hours: 12);
+
+/// Returns whether [task] has been continuously paused long enough to need a
+/// decision. The canonical runtime timestamp wins while it owns the task;
+/// otherwise the task's last synchronized pause projection is the boundary.
+bool isStalePausedTask({
+  required LocalTask task,
+  required LocalRuntime? runtime,
+  required DateTime now,
+}) {
+  final ownsPausedRuntime =
+      runtime?.activeTaskId == task.id && runtime?.state == 'paused';
+  if (!ownsPausedRuntime && task.status != 'paused') return false;
+  final pausedAt = ownsPausedRuntime ? runtime!.updatedAt : task.updatedAt;
+  return !now.toUtc().isBefore(pausedAt.toUtc().add(stalePausedTaskThreshold));
+}
+
 Map<String, Object?> pomodoroRuntimeMetadata(LocalRuntime? runtime) {
   if (runtime == null) return const <String, Object?>{};
   try {

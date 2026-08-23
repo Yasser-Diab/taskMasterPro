@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 
 import 'package:drift/drift.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -75,6 +76,11 @@ class TaskDraft {
 /// operations.  A caller must ask the user before changing the account-wide
 /// active task.
 enum ActiveTaskSwitchAction { pauseCurrent, finishCurrent }
+
+/// Explicit recovery choices for a task which has remained paused for twelve
+/// hours. Both choices stop the old execution session without adding pause
+/// wall time to recorded work.
+enum StalePausedTaskDecision { needsAttention, skip }
 
 class TaskStartResult {
   const TaskStartResult._(this.requiresSwitch, this.activeTaskId);
@@ -1475,6 +1481,205 @@ class TaskRepository {
 
   Future<void> resume(LocalTask task) =>
       _serializeExecutionTransition(() => _resume(task));
+
+  /// Resolves an abandoned pause as one guarded local-first transaction.
+  ///
+  /// The task, its old execution session, and the canonical runtime (only when
+  /// it still owns this task) move together. A different running task is never
+  /// interrupted. The matching server command repeats the same ownership,
+  /// revision, and twelve-hour guards before accepting the projection.
+  Future<bool> resolveStalePausedTask(
+    LocalTask task,
+    StalePausedTaskDecision decision,
+  ) => _serializeExecutionTransition(
+    () => _resolveStalePausedTask(task, decision),
+  );
+
+  Future<bool> _resolveStalePausedTask(
+    LocalTask task,
+    StalePausedTaskDecision decision,
+  ) async {
+    return database.transaction(() async {
+      final latest = await getTask(task.id);
+      if (latest == null) return false;
+      final now = _clock();
+      final storedRuntime = await _storedRuntime();
+      if (!isStalePausedTask(task: latest, runtime: storedRuntime, now: now)) {
+        return false;
+      }
+
+      final ownsPausedRuntime =
+          storedRuntime?.activeTaskId == latest.id &&
+          storedRuntime?.sessionId != null &&
+          storedRuntime?.state == 'paused';
+      final ownedRuntime = ownsPausedRuntime ? storedRuntime! : null;
+      final runtimeSessionId = ownedRuntime?.sessionId;
+      final session = runtimeSessionId == null
+          ? await (database.select(database.localEntityRecords)
+                  ..where(
+                    (row) =>
+                        row.userId.equals(_userId) &
+                        row.entityType.equals('execution_sessions') &
+                        row.parentId.equals(latest.id) &
+                        row.status.equals('paused') &
+                        row.deletedAt.isNull(),
+                  )
+                  ..orderBy([(row) => OrderingTerm.desc(row.updatedAt)])
+                  ..limit(1))
+                .getSingleOrNull()
+          : await entities.get(runtimeSessionId);
+      final command = await _newRuntimeCommandIdentity();
+      final dueAt = latest.dueAt?.toUtc();
+      final targetStatus = decision == StalePausedTaskDecision.skip
+          ? 'skipped'
+          : dueAt != null && !dueAt.isAfter(now)
+          ? 'overdue'
+          : 'waiting_review';
+      final taskData = <String, Object?>{
+        ..._configuration(latest),
+        if (decision == StalePausedTaskDecision.skip)
+          'occurrence_state': 'skipped',
+        'stale_pause_resolution': <String, Object?>{
+          'decision': decision == StalePausedTaskDecision.skip
+              ? 'skip'
+              : 'needs_attention',
+          'resolved_at': now.toIso8601String(),
+          'paused_since': (ownedRuntime?.updatedAt ?? latest.updatedAt)
+              .toUtc()
+              .toIso8601String(),
+        },
+      };
+      final sessionActiveMs = session == null
+          ? 0
+          : math.max(
+              0,
+              (entities.decode(session)['accumulated_active_ms'] as num?)
+                      ?.toInt() ??
+                  0,
+            );
+      final preservedActiveMs = math.max(
+        math.max(
+          latest.activeDurationMs,
+          ownedRuntime?.accumulatedActiveMs ?? 0,
+        ),
+        sessionActiveMs,
+      );
+
+      final taskChanged =
+          await (database.update(database.localTasks)..where(
+                (row) =>
+                    row.id.equals(latest.id) &
+                    row.userId.equals(_userId) &
+                    row.status.equals('paused') &
+                    row.revision.equals(latest.revision),
+              ))
+              .write(
+                LocalTasksCompanion(
+                  status: Value(targetStatus),
+                  activeDurationMs: Value(preservedActiveMs),
+                  actualFinish: decision == StalePausedTaskDecision.skip
+                      ? Value(now)
+                      : const Value.absent(),
+                  dataJson: Value(jsonEncode(taskData)),
+                  revision: Value(latest.revision + 1),
+                  updatedAt: Value(now),
+                  updatedByDeviceId: Value(command.deviceId),
+                  lastCommandId: Value(command.commandId),
+                ),
+              );
+      if (taskChanged != 1) return false;
+
+      if (session != null && session.status == 'paused') {
+        final sessionData = entities.decode(session)
+          ..['state'] = 'cancelled'
+          ..['active_segment_started_at'] = null
+          ..['finished_at'] = now.toIso8601String()
+          ..['stale_pause_resolution'] =
+              decision == StalePausedTaskDecision.skip
+              ? 'skip'
+              : 'needs_attention';
+        final sessionChanged =
+            await (database.update(database.localEntityRecords)..where(
+                  (row) =>
+                      row.id.equals(session.id) &
+                      row.userId.equals(_userId) &
+                      row.entityType.equals('execution_sessions') &
+                      row.status.equals('paused') &
+                      row.revision.equals(session.revision),
+                ))
+                .write(
+                  LocalEntityRecordsCompanion(
+                    status: const Value('cancelled'),
+                    dataJson: Value(jsonEncode(sessionData)),
+                    revision: Value(session.revision + 1),
+                    updatedAt: Value(now),
+                    updatedByDeviceId: Value(command.deviceId),
+                    lastCommandId: Value(command.commandId),
+                  ),
+                );
+        if (sessionChanged != 1) {
+          throw StateError('Stale paused session lost its revision guard.');
+        }
+      }
+
+      if (ownedRuntime != null) {
+        final runtimeChanged =
+            await (database.update(database.localRuntimeStates)..where(
+                  (row) =>
+                      row.id.equals(_runtimeId) &
+                      row.userId.equals(_userId) &
+                      row.activeTaskId.equals(latest.id) &
+                      row.sessionId.equals(ownedRuntime.sessionId!) &
+                      row.state.equals('paused') &
+                      row.revision.equals(ownedRuntime.revision),
+                ))
+                .write(
+                  LocalRuntimeStatesCompanion(
+                    activeTaskId: const Value(null),
+                    sessionId: const Value(null),
+                    state: const Value('idle'),
+                    segmentStartedAt: const Value(null),
+                    accumulatedActiveMs: Value(preservedActiveMs),
+                    revision: Value(ownedRuntime.revision + 1),
+                    updatedAt: Value(now),
+                    lastCommandId: Value(command.commandId),
+                  ),
+                );
+        if (runtimeChanged != 1) {
+          throw StateError('Stale paused runtime lost its revision guard.');
+        }
+      }
+
+      await database
+          .into(database.localOutboxCommands)
+          .insert(
+            LocalOutboxCommandsCompanion.insert(
+              commandId: command.commandId,
+              userId: _userId,
+              deviceId: command.deviceId,
+              deviceSequence: command.deviceSequence,
+              entityType: 'execution_runtime_stale_pause',
+              entityId: latest.id,
+              commandType: decision == StalePausedTaskDecision.skip
+                  ? 'skip'
+                  : 'needs_attention',
+              baseRevision: latest.revision,
+              payloadJson: jsonEncode({
+                'decision': decision == StalePausedTaskDecision.skip
+                    ? 'skip'
+                    : 'needs_attention',
+                'session_id': session?.id,
+                'expected_task_revision': latest.revision,
+                'expected_runtime_revision': ownedRuntime?.revision,
+                'resolved_at': now.toIso8601String(),
+              }),
+              clientTimestamp: now,
+              createdAt: now,
+            ),
+          );
+      return true;
+    });
+  }
 
   Future<void> _resume(LocalTask task) async {
     await database.transaction(() async {

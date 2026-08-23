@@ -65,7 +65,7 @@ class WindowsTrayState {
       'addNoteLabel': l10n.text('add_note'),
       'syncNowLabel': l10n.text('sync_now'),
       'whatsNewLabel': l10n.format('tray_whats_new_version', {
-        'version': '0.0.28',
+        'version': '0.0.30',
       }),
       'settingsLabel': l10n.text('settings'),
       'updateLabel': l10n.text(

@@ -6,25 +6,25 @@ String _read(String relativePath) =>
     File('${Directory.current.path}/$relativePath').readAsStringSync();
 
 void main() {
-  test('release-facing version metadata is aligned to v0.0.28', () {
-    expect(_read('pubspec.yaml'), contains('version: 0.0.28+41'));
-    expect(_read('package.json'), contains('"version": "0.0.28"'));
-    expect(_read('package-lock.json'), contains('"version": "0.0.28"'));
+  test('release-facing version metadata is aligned to v0.0.30', () {
+    expect(_read('pubspec.yaml'), contains('version: 0.0.30+44'));
+    expect(_read('package.json'), contains('"version": "0.0.30"'));
+    expect(_read('package-lock.json'), contains('"version": "0.0.30"'));
     expect(
       _read('installer/taskmaster-pro.iss'),
-      contains('#define MyAppVersion "0.0.28"'),
+      contains('#define MyAppVersion "0.0.30"'),
     );
     expect(
       _read('lib/core/platform/windows_shell_service.dart'),
-      contains("'version': '0.0.28'"),
+      contains("'version': '0.0.30'"),
     );
     expect(
       _read('windows/runner/flutter_window.h'),
-      contains('What\'s new in v0.0.28'),
+      contains('What\'s new in v0.0.30'),
     );
     expect(
       _read('lib/features/settings/presentation/settings_screen.dart'),
-      contains("String _version = '0.0.28';"),
+      contains("String _version = '0.0.30';"),
     );
   });
 

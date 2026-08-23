@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:timezone/timezone.dart' as tz;
 
 import '../../../core/data/entity_record_repository.dart';
 import '../../../core/database/app_database.dart';
@@ -11,6 +12,7 @@ import '../../../core/localization/app_localizations.dart';
 import '../../../core/providers.dart';
 import '../../activity/data/activity_repository.dart';
 import '../../activity/presentation/activity_review_screen.dart';
+import '../../activity/presentation/break_activity_check_in.dart';
 import '../../coaching/data/adaptive_coaching_service.dart';
 import '../../coaching/presentation/coaching_expression_visual.dart';
 import '../../tasks/data/task_execution_commands.dart';
@@ -23,6 +25,7 @@ import '../../tasks/presentation/task_editor_dialog.dart';
 import '../../tasks/presentation/interruption_editor_dialog.dart';
 import '../../tasks/presentation/standalone_pomodoro_screen.dart';
 import '../../tasks/presentation/task_start_flow.dart';
+import '../../tasks/presentation/stale_paused_task_recovery.dart';
 import '../../tasks/presentation/task_workspace_screen.dart';
 import '../../tasks/domain/daily_planned_time.dart';
 import 'today_recorded_sessions_screen.dart';
@@ -401,7 +404,11 @@ class _ActiveTaskPanelState extends ConsumerState<_ActiveTaskPanel> {
             widget.task,
           );
         case TaskExecutionPrimaryAction.startFocus:
-          await repository.finishBreak(widget.task);
+          await finishBreakWithOptionalActivityCheckIn(
+            context: context,
+            ref: ref,
+            task: widget.task,
+          );
       }
     });
   }
@@ -477,6 +484,14 @@ class _ActiveTaskPanelState extends ConsumerState<_ActiveTaskPanel> {
                     state: runtime.state,
                     breakCompleted: breakCompleted,
                   ),
+                  if (runtime.state == 'paused') ...[
+                    const SizedBox(height: 10),
+                    StalePausedTaskRecovery(
+                      task: task,
+                      runtime: runtime,
+                      compact: true,
+                    ),
+                  ],
                   const SizedBox(height: 8),
                   Text(
                     context.l10n.format('planned_duration', {
@@ -987,20 +1002,46 @@ class _AttentionCard extends ConsumerWidget {
     final reviews =
         ref.watch(activityReviewProvider).value ??
         const <ActivityReviewEntry>[];
-    final crossTask = reviews
-        .where(
-          (entry) =>
-              entry.review.reviewReason.contains('cross') ||
-              entry.review.suggestedTargetType == 'task_occurrence',
-        )
-        .length;
-    final idle = reviews
-        .where(
-          (entry) =>
-              entry.review.reviewReason.contains('idle') ||
-              entry.segment.idleState != null,
-        )
-        .length;
+    final settings = ref.watch(appSettingsProvider).value;
+    tz.Location location;
+    try {
+      location = tz.getLocation(settings?.timeZone ?? 'UTC');
+    } catch (_) {
+      location = tz.UTC;
+    }
+    final now = tz.TZDateTime.now(location);
+    final start = tz.TZDateTime(location, now.year, now.month, now.day).toUtc();
+    final end = now.toUtc();
+    final todayReviews = reviews.where(
+      (entry) =>
+          entry.segment.endedAt.toUtc().isAfter(start) &&
+          entry.segment.startedAt.toUtc().isBefore(end),
+    );
+    final summary = summarizeActivityAttention(todayReviews);
+    final attentionItems =
+        <({IconData icon, String titleKey, String filter, int count})>[
+          if (summary.crossTaskGroups > 0)
+            (
+              icon: Icons.compare_arrows,
+              titleKey: 'dashboard_cross_task_review',
+              filter: 'pending_cross_task',
+              count: summary.crossTaskGroups,
+            ),
+          if (summary.inactiveGroups > 0)
+            (
+              icon: Icons.hourglass_empty,
+              titleKey: 'dashboard_inactive_review',
+              filter: 'pending_idle',
+              count: summary.inactiveGroups,
+            ),
+          if (summary.otherGroups > 0)
+            (
+              icon: Icons.fact_check_outlined,
+              titleKey: 'dashboard_other_activity_review',
+              filter: 'pending_other',
+              count: summary.otherGroups,
+            ),
+        ];
     void openReview(String filter) {
       if (onOpenFilter != null) {
         onOpenFilter!(filter);
@@ -1022,39 +1063,37 @@ class _AttentionCard extends ConsumerWidget {
         ),
         const SizedBox(height: 10),
         Card(
-          child: Column(
-            children: [
-              ListTile(
-                onTap: () => openReview('cross_task'),
-                leading: const Icon(Icons.compare_arrows),
-                title: Text(context.l10n.text('dashboard_cross_task_review')),
-                subtitle: Text(
-                  context.l10n.count(
-                    'dashboard_item_review',
-                    'dashboard_items_review',
-                    crossTask,
-                  ),
-                ),
-                trailing: const Icon(Icons.chevron_right),
-              ),
-              const Divider(height: 1),
-              ListTile(
-                onTap: () => openReview('idle'),
-                leading: const Icon(Icons.hourglass_empty),
-                title: Text(context.l10n.text('dashboard_inactive_review')),
-                subtitle: Text(
-                  idle == 0
-                      ? context.l10n.text('dashboard_nothing_review')
-                      : context.l10n.count(
-                          'dashboard_item_review',
-                          'dashboard_items_review',
-                          idle,
+          child: attentionItems.isEmpty
+              ? ListTile(
+                  leading: const Icon(Icons.fact_check_outlined),
+                  title: Text(context.l10n.text('dashboard_nothing_review')),
+                )
+              : Column(
+                  children: [
+                    for (
+                      var index = 0;
+                      index < attentionItems.length;
+                      index++
+                    ) ...[
+                      if (index > 0) const Divider(height: 1),
+                      ListTile(
+                        onTap: () => openReview(attentionItems[index].filter),
+                        leading: Icon(attentionItems[index].icon),
+                        title: Text(
+                          context.l10n.text(attentionItems[index].titleKey),
                         ),
+                        subtitle: Text(
+                          context.l10n.count(
+                            'dashboard_item_review',
+                            'dashboard_items_review',
+                            attentionItems[index].count,
+                          ),
+                        ),
+                        trailing: const Icon(Icons.chevron_right),
+                      ),
+                    ],
+                  ],
                 ),
-                trailing: const Icon(Icons.chevron_right),
-              ),
-            ],
-          ),
         ),
       ],
     );

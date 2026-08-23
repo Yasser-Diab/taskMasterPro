@@ -39,6 +39,7 @@ class StoredNotificationResponse {
 }
 
 const _windowsActionEnvelopeVersion = 1;
+const _windowsCompactExecutionEnvelopeVersion = 2;
 
 /// Windows toast activation returns the action `arguments` as both the
 /// response payload and action id.  Keep the canonical notification payload in
@@ -48,11 +49,54 @@ const _windowsActionEnvelopeVersion = 1;
 String windowsNotificationActionArguments({
   required String actionId,
   required String payload,
-}) => jsonEncode(<String, Object?>{
-  'taskmaster_action_version': _windowsActionEnvelopeVersion,
-  'action_id': actionId,
-  'payload': payload,
-});
+}) {
+  final owned = LocalNotificationService.decodeOwnedPayload(payload);
+  final taskId = owned.taskId;
+  final ownerId = owned.ownerId;
+  final eventType = owned.eventType;
+  final boundaryAtUtc = owned.boundaryAtUtc;
+  final sessionId = owned.sessionId;
+  final runtimeRevision = owned.runtimeRevision;
+  final intervalId = owned.intervalId;
+  if (taskId != null &&
+      ownerId != null &&
+      eventType != null &&
+      boundaryAtUtc != null &&
+      sessionId != null &&
+      runtimeRevision != null &&
+      intervalId != null) {
+    final canonicalIdentity =
+        LocalNotificationService.executionNotificationIdentity(
+          taskId: taskId,
+          sessionId: sessionId,
+          runtimeRevision: runtimeRevision,
+          intervalId: intervalId,
+          boundaryAtUtc: boundaryAtUtc,
+        );
+    if (owned.notificationId == canonicalIdentity) {
+      // Scheduled Windows toasts have a strict XML size ceiling. Repeating the
+      // full payload in every action exceeded it for execution boundaries.
+      // These compact keys retain every revision guard; normalization below
+      // reconstructs the canonical owned payload before a command can run.
+      return jsonEncode(<String, Object?>{
+        'v': _windowsCompactExecutionEnvelopeVersion,
+        'a': actionId,
+        't': taskId,
+        'o': ownerId,
+        'e': eventType,
+        'b': boundaryAtUtc.toUtc().toIso8601String(),
+        's': sessionId,
+        'r': runtimeRevision,
+        'i': intervalId,
+      });
+    }
+  }
+  return jsonEncode(<String, Object?>{
+    'taskmaster_action_version': _windowsActionEnvelopeVersion,
+    'action_id': actionId,
+    'payload': payload,
+  });
+}
 
 /// Normalizes the platform-specific response shape before any route or
 /// execution-ledger validation runs.
@@ -76,6 +120,47 @@ StoredNotificationResponse normalizeNotificationResponse(
           payload: decoded['payload'] as String,
           actionId: decoded['action_id'] as String,
         );
+      }
+      if (decoded is Map &&
+          decoded['v'] == _windowsCompactExecutionEnvelopeVersion &&
+          decoded['a'] is String &&
+          decoded['t'] is String &&
+          decoded['o'] is String &&
+          decoded['e'] is String &&
+          decoded['b'] is String &&
+          decoded['s'] is String &&
+          decoded['r'] is num &&
+          decoded['i'] is String) {
+        final boundaryAtUtc = DateTime.tryParse(
+          decoded['b'] as String,
+        )?.toUtc();
+        if (boundaryAtUtc != null) {
+          final taskId = decoded['t'] as String;
+          final sessionId = decoded['s'] as String;
+          final runtimeRevision = (decoded['r'] as num).toInt();
+          final intervalId = decoded['i'] as String;
+          final notificationId =
+              LocalNotificationService.executionNotificationIdentity(
+                taskId: taskId,
+                sessionId: sessionId,
+                runtimeRevision: runtimeRevision,
+                intervalId: intervalId,
+                boundaryAtUtc: boundaryAtUtc,
+              );
+          return StoredNotificationResponse(
+            payload: LocalNotificationService.ownedPayloadForOwner(
+              ownerId: decoded['o'] as String,
+              route: 'task/$taskId',
+              eventType: decoded['e'] as String,
+              boundaryAtUtc: boundaryAtUtc,
+              notificationId: notificationId,
+              sessionId: sessionId,
+              runtimeRevision: runtimeRevision,
+              intervalId: intervalId,
+            ),
+            actionId: decoded['a'] as String,
+          );
+        }
       }
 
       // The Windows implementation reports a click on the toast body as an
@@ -213,7 +298,7 @@ bool executionLedgerTransitionAllowed({
 }) {
   if (existing == null || notificationId == null) return true;
   if (existing['notification_id'] == notificationId) return true;
-  return requestedState == 'scheduled' &&
+  return const {'scheduled', 'failed'}.contains(requestedState) &&
       const {
         'cancelled',
         'superseded',
@@ -579,8 +664,11 @@ class NotificationSoundVerification {
 abstract final class NotificationSchedulePolicy {
   static const minimumLeadTime = Duration(seconds: 2);
   static const windowsRepairPreferenceKey =
-      'taskmaster.windows_notification_schedule_repair.v0026.2';
-  static const maxTaskReminders = 64;
+      'taskmaster.windows_notification_schedule_repair.v0030.2';
+
+  // Leave room in Windows' scheduled-toast queue for the live execution
+  // boundary, standalone timer, sleep reminder, and short retry overlap.
+  static const maxTaskReminders = 48;
 
   static bool canSchedule(DateTime scheduledAtUtc, {DateTime? nowUtc}) {
     final now = (nowUtc ?? DateTime.now()).toUtc();
@@ -611,8 +699,31 @@ class LocalNotificationService {
   Future<void> _notificationMutationQueue = Future<void>.value();
   NotificationResponse? _launchResponse;
 
+  static const _notificationHashMask = 0x0fffffff;
+  static const _taskReminderNamespace = 0x10000000;
+  static const _activityReviewNamespace = 0x20000000;
+  static const _coachingNamespace = 0x30000000;
+  static const _executionStatusNamespace = 0x50000000;
+  static const _executionBoundaryNamespace = 0x60000000;
+
+  static int _namespacedNotificationId(String identity, int namespace) {
+    final bytes = sha256.convert(utf8.encode(identity)).bytes;
+    final hash =
+        (bytes[0] << 24) | (bytes[1] << 16) | (bytes[2] << 8) | bytes[3];
+    return namespace | (hash & _notificationHashMask);
+  }
+
+  static int taskReminderNotificationId(String reminderId) =>
+      _namespacedNotificationId(reminderId, _taskReminderNamespace);
+
+  static int activityReviewNotificationId(String taskId) =>
+      _namespacedNotificationId(taskId, _activityReviewNamespace);
+
+  static int coachingNotificationId(String identity) =>
+      _namespacedNotificationId(identity, _coachingNamespace);
+
   static int executionNotificationId(String taskId) =>
-      'execution:$taskId'.hashCode & 0x7fffffff;
+      _namespacedNotificationId(taskId, _executionBoundaryNamespace);
   static const standalonePomodoroNotificationId = 820028;
   static const _sleepReminderNotificationId = 820026;
 
@@ -622,7 +733,28 @@ class LocalNotificationService {
   /// separate slot means browsing inside TaskMaster cannot silently erase the
   /// audible focus/break boundary.
   static int executionStatusNotificationId(String taskId) =>
-      executionNotificationId(taskId) ^ 0x40000000;
+      _namespacedNotificationId(taskId, _executionStatusNamespace);
+
+  @visibleForTesting
+  static bool pendingExecutionNotificationMatches({
+    required PendingNotificationRequest request,
+    required int id,
+    required String taskId,
+    required String? notificationIdentity,
+    required String? sessionId,
+    required int? runtimeRevision,
+    required String? intervalId,
+    required DateTime boundaryAtUtc,
+  }) {
+    if (request.id != id || notificationIdentity == null) return false;
+    final payload = decodeOwnedPayload(request.payload);
+    return payload.taskId == taskId &&
+        payload.notificationId == notificationIdentity &&
+        payload.sessionId == sessionId &&
+        payload.runtimeRevision == runtimeRevision &&
+        payload.intervalId == intervalId &&
+        payload.boundaryAtUtc?.toUtc() == boundaryAtUtc.toUtc();
+  }
 
   /// A plugin notification ID can be reused to replace an OS alarm. This
   /// identity cannot: it names the exact interval/revision represented by
@@ -697,8 +829,7 @@ class LocalNotificationService {
   String _channelDescription(AppLocalizations l10n, String category) {
     final canonicalCategory = NotificationSounds.canonicalCategory(category);
     final key = 'notification_category_${canonicalCategory}_description';
-    final value = l10n.text(key);
-    return value == key ? _channelName(l10n, canonicalCategory) : value;
+    return l10n.optionalText(key) ?? _channelName(l10n, canonicalCategory);
   }
 
   AndroidNotificationDetails _androidDetails({
@@ -884,15 +1015,6 @@ class LocalNotificationService {
           ),
         ),
         payload: payload,
-      );
-      await _setExecutionLedgerState(
-        taskId: taskId,
-        state: 'scheduled',
-        notificationId: notificationIdentity,
-        sessionId: sessionId,
-        runtimeRevision: runtimeRevision,
-        intervalId: intervalId,
-        boundaryAtUtc: boundaryAtUtc,
       );
     });
   }
@@ -1825,82 +1947,116 @@ class LocalNotificationService {
       runtimeRevision: runtimeRevision,
       intervalId: intervalId,
     );
-    return _serializeNotificationMutation(() async {
-      await _plugin.cancel(id: id);
-      if (!NotificationSchedulePolicy.canSchedule(scheduledAtUtc)) {
+    try {
+      return await _serializeNotificationMutation(() async {
+        await _plugin.cancel(id: id);
+        if (!NotificationSchedulePolicy.canSchedule(scheduledAtUtc)) {
+          await _setExecutionLedgerState(
+            taskId: taskId,
+            state: 'expired',
+            notificationId: notificationIdentity,
+            sessionId: sessionId,
+            runtimeRevision: runtimeRevision,
+            intervalId: intervalId,
+            boundaryAtUtc: scheduledAtUtc,
+          );
+          return ExecutionAlarmScheduleResult.expired;
+        }
+        await _plugin.zonedSchedule(
+          id: id,
+          title: title,
+          body: body,
+          scheduledDate: tz.TZDateTime.from(scheduledAtUtc.toUtc(), tz.UTC),
+          androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+          notificationDetails: NotificationDetails(
+            android: _androidDetails(
+              l10n: l10n,
+              category: effectiveCategory,
+              sound: sound,
+              vibration: vibration,
+              title: title,
+              body: body,
+              notificationTag: 'execution:$taskId:$effectiveCategory',
+              actions: [
+                for (final action in androidActions.take(4))
+                  AndroidNotificationAction(
+                    action.$1,
+                    l10n.text(action.$2),
+                    showsUserInterface: executionNotificationActionDelivery(
+                      action.$1,
+                    ).showsUserInterface,
+                    cancelNotification: executionNotificationActionDelivery(
+                      action.$1,
+                    ).cancelNotification,
+                  ),
+              ],
+            ),
+            windows: WindowsNotificationDetails(
+              audio: _windowsAudio(sound),
+              scenario: isPomodoro || isBreak
+                  ? WindowsNotificationScenario.alarm
+                  : null,
+              actions: [
+                for (final action in actions.take(5))
+                  WindowsAction(
+                    content: l10n.text(
+                      windowsExecutionActionLabelKey(action.$1, action.$2),
+                    ),
+                    arguments: windowsNotificationActionArguments(
+                      actionId: action.$1,
+                      payload: payload,
+                    ),
+                    activationBehavior: windowsExecutionActionBehavior(
+                      action.$1,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          payload: payload,
+        );
+        if (defaultTargetPlatform == TargetPlatform.windows) {
+          final pending = await _plugin.pendingNotificationRequests();
+          if (!pending.any(
+            (request) => pendingExecutionNotificationMatches(
+              request: request,
+              id: id,
+              taskId: taskId,
+              notificationIdentity: notificationIdentity,
+              sessionId: sessionId,
+              runtimeRevision: runtimeRevision,
+              intervalId: intervalId,
+              boundaryAtUtc: scheduledAtUtc,
+            ),
+          )) {
+            throw StateError(
+              'Windows did not retain execution notification $id',
+            );
+          }
+        }
         await _setExecutionLedgerState(
           taskId: taskId,
-          state: 'expired',
+          state: 'scheduled',
           notificationId: notificationIdentity,
           sessionId: sessionId,
           runtimeRevision: runtimeRevision,
           intervalId: intervalId,
           boundaryAtUtc: scheduledAtUtc,
         );
-        return ExecutionAlarmScheduleResult.expired;
-      }
-      await _plugin.zonedSchedule(
-        id: id,
-        title: title,
-        body: body,
-        scheduledDate: tz.TZDateTime.from(scheduledAtUtc.toUtc(), tz.UTC),
-        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-        notificationDetails: NotificationDetails(
-          android: _androidDetails(
-            l10n: l10n,
-            category: effectiveCategory,
-            sound: sound,
-            vibration: vibration,
-            title: title,
-            body: body,
-            notificationTag: 'execution:$taskId:$effectiveCategory',
-            actions: [
-              for (final action in androidActions.take(4))
-                AndroidNotificationAction(
-                  action.$1,
-                  l10n.text(action.$2),
-                  showsUserInterface: executionNotificationActionDelivery(
-                    action.$1,
-                  ).showsUserInterface,
-                  cancelNotification: executionNotificationActionDelivery(
-                    action.$1,
-                  ).cancelNotification,
-                ),
-            ],
-          ),
-          windows: WindowsNotificationDetails(
-            audio: _windowsAudio(sound),
-            scenario: isPomodoro || isBreak
-                ? WindowsNotificationScenario.alarm
-                : null,
-            actions: [
-              for (final action in actions.take(5))
-                WindowsAction(
-                  content: l10n.text(
-                    windowsExecutionActionLabelKey(action.$1, action.$2),
-                  ),
-                  arguments: windowsNotificationActionArguments(
-                    actionId: action.$1,
-                    payload: payload,
-                  ),
-                  activationBehavior: windowsExecutionActionBehavior(action.$1),
-                ),
-            ],
-          ),
-        ),
-        payload: payload,
-      );
+        return ExecutionAlarmScheduleResult.scheduled;
+      });
+    } catch (_) {
       await _setExecutionLedgerState(
         taskId: taskId,
-        state: 'scheduled',
+        state: 'failed',
         notificationId: notificationIdentity,
         sessionId: sessionId,
         runtimeRevision: runtimeRevision,
         intervalId: intervalId,
         boundaryAtUtc: scheduledAtUtc,
       );
-      return ExecutionAlarmScheduleResult.scheduled;
-    });
+      rethrow;
+    }
   }
 
   /// Schedules the device-local standalone Pomodoro boundary. Unlike a task
@@ -2198,7 +2354,7 @@ class LocalNotificationService {
     final body = l10n.text('activity_review_over_half');
     final payload = ownedPayload('activity/$taskId');
     await _plugin.show(
-      id: 'activity-review:$taskId'.hashCode & 0x7fffffff,
+      id: activityReviewNotificationId(taskId),
       title: title,
       body: body,
       notificationDetails: NotificationDetails(

@@ -70,6 +70,13 @@ extension NativeNotificationDetailsUtils on Pointer<NativeNotificationDetails> {
   List<PendingNotificationRequest> asPendingRequests(int length) =>
       <PendingNotificationRequest>[
         for (int index = 0; index < length; index++)
-          PendingNotificationRequest(this[index].id, null, null, null),
+          PendingNotificationRequest(
+            this[index].id,
+            null,
+            null,
+            this[index].payload == nullptr
+                ? null
+                : this[index].payload.toDartString(),
+          ),
       ];
 }

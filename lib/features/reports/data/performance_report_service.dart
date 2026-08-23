@@ -17,6 +17,7 @@ import '../../activity/domain/activity_reporting_policy.dart';
 import '../../tasks/data/installed_application_service.dart';
 import '../../../core/time/time_zone_service.dart';
 import '../../tasks/domain/daily_planned_time.dart';
+import '../../tasks/domain/pomodoro_execution_state.dart';
 import '../../tasks/domain/task_domain_catalog.dart';
 import '../../tasks/domain/task_occurrence_policy.dart';
 
@@ -983,6 +984,47 @@ class PerformanceReportService {
       _websiteLabel(segment) ??
       applicationLabel(segment, unavailableLabel: unavailableLabel);
 
+  static int _liveRuntimeSegmentMs({
+    required LocalTask task,
+    required LocalRuntime runtime,
+    required DateTime effectiveNow,
+  }) {
+    final segmentStartedAt = runtime.segmentStartedAt?.toUtc();
+    if (runtime.state != 'running' || segmentStartedAt == null) return 0;
+
+    final rawElapsedMs = math.max(
+      0,
+      effectiveNow.difference(segmentStartedAt).inMilliseconds,
+    );
+    if (task.executionMode.trim().toLowerCase() != 'pomodoro') {
+      return rawElapsedMs;
+    }
+
+    final pomodoro = PomodoroExecutionSnapshot.fromTask(
+      task: task,
+      runtime: runtime,
+      now: effectiveNow,
+    );
+    final persistedActiveMs = math.max(0, runtime.accumulatedActiveMs);
+    final boundedLiveFocusMs = math.max(
+      0,
+      pomodoro.focusedMs - persistedActiveMs,
+    );
+    return math.min(rawElapsedMs, boundedLiveFocusMs);
+  }
+
+  static int _runtimeRecordedActiveMs({
+    required LocalTask task,
+    required LocalRuntime runtime,
+    required DateTime effectiveNow,
+  }) =>
+      math.max(0, runtime.accumulatedActiveMs) +
+      _liveRuntimeSegmentMs(
+        task: task,
+        runtime: runtime,
+        effectiveNow: effectiveNow,
+      );
+
   static List<_ReportInterval> _productiveIntervals({
     required PerformanceReportSnapshot snapshot,
     required Map<String, LocalTask> tasksById,
@@ -1036,17 +1078,23 @@ class PerformanceReportService {
     final runtimeTask = runtime?.activeTaskId == null
         ? null
         : tasksById[runtime!.activeTaskId!];
-    if (runtimeTask != null &&
-        runtime?.state == 'running' &&
-        runtime?.segmentStartedAt != null) {
-      result.add(
-        _ReportInterval(
-          start: runtime!.segmentStartedAt!.toUtc(),
-          end: effectiveNow,
-          taskId: runtimeTask.id,
-          executionMode: runtimeTask.executionMode,
-        ),
+    if (runtimeTask != null && runtime != null) {
+      final liveSegmentMs = _liveRuntimeSegmentMs(
+        task: runtimeTask,
+        runtime: runtime,
+        effectiveNow: effectiveNow,
       );
+      final segmentStartedAt = runtime.segmentStartedAt?.toUtc();
+      if (liveSegmentMs > 0 && segmentStartedAt != null) {
+        result.add(
+          _ReportInterval(
+            start: segmentStartedAt,
+            end: segmentStartedAt.add(Duration(milliseconds: liveSegmentMs)),
+            taskId: runtimeTask.id,
+            executionMode: runtimeTask.executionMode,
+          ),
+        );
+      }
     }
     return result.where((interval) => interval.isPositive).toList();
   }
@@ -1150,15 +1198,11 @@ class PerformanceReportService {
       );
     }
     if (runtime?.sessionId == session.id && runtime?.activeTaskId == task.id) {
-      var runtimeActiveMs = runtime!.accumulatedActiveMs;
-      if (runtime.state == 'running' && runtime.segmentStartedAt != null) {
-        runtimeActiveMs += math.max(
-          0,
-          effectiveNow
-              .difference(runtime.segmentStartedAt!.toUtc())
-              .inMilliseconds,
-        );
-      }
+      final runtimeActiveMs = _runtimeRecordedActiveMs(
+        task: task,
+        runtime: runtime!,
+        effectiveNow: effectiveNow,
+      );
       reportedActiveMs = math.max(reportedActiveMs, runtimeActiveMs);
     }
     final physicalMs = sessionEnd.difference(sessionStart).inMilliseconds;

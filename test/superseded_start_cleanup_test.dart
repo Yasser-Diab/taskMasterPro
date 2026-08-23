@@ -131,6 +131,98 @@ void main() {
     });
   });
 
+  test('missing v0033 RPC conflict is reopened exactly once', () async {
+    final database = AppDatabase(NativeDatabase.memory());
+    final service = SyncService(
+      database: database,
+      client: SupabaseClient(
+        'https://example.supabase.co',
+        'sb_publishable_test_key',
+      ),
+    );
+    addTearDown(() async {
+      await service.dispose();
+      await database.close();
+    });
+
+    const cleanupId = 'd66759c9-dd35-5132-bd18-dc16e8ae3a4e';
+    await database
+        .into(database.localOutboxCommands)
+        .insert(
+          LocalOutboxCommandsCompanion.insert(
+            commandId: cleanupId,
+            userId: _userId,
+            deviceId: _deviceId,
+            deviceSequence: 63,
+            entityType: 'execution_runtime_start_cleanup',
+            entityId: _sessionId,
+            commandType: 'retire',
+            baseRevision: 0,
+            payloadJson: jsonEncode({
+              'runtime_command_id': _runtimeId,
+              'session_create_command_id': _createId,
+              'task_occurrence_id': _taskId,
+            }),
+            clientTimestamp: _now,
+            createdAt: _now,
+            status: const drift.Value('conflict'),
+            attemptCount: const drift.Value(95),
+            lastError: drift.Value(
+              jsonEncode({
+                'reason': 'server_rejected_command',
+                'code': 'PGRST202',
+                'message':
+                    'Could not find the function public.retire_superseded_execution_start_v0033_command in the schema cache',
+              }),
+            ),
+          ),
+        );
+
+    await service.repairMissingSupersededStartCleanupRpcConflictsForTesting(
+      _userId,
+    );
+    await service.repairMissingSupersededStartCleanupRpcConflictsForTesting(
+      _userId,
+    );
+
+    final repaired = await (database.select(
+      database.localOutboxCommands,
+    )..where((row) => row.commandId.equals(cleanupId))).getSingle();
+    expect(repaired.status, 'pending');
+    expect(repaired.attemptCount, 0);
+    expect(repaired.nextAttemptAt, isNotNull);
+    expect(repaired.lastError, isNull);
+    expect(
+      jsonDecode(repaired.payloadJson)['cleanup_rpc_repair_version'],
+      supersededStartCleanupRpcRepairVersion,
+    );
+  });
+
+  test('cleanup RPC repair ignores unrelated permanent failures', () {
+    expect(
+      shouldRepairMissingSupersededStartCleanupRpc(
+        entityType: 'execution_runtime_start_cleanup',
+        status: 'conflict',
+        payload: const {},
+        error: const {'code': '42501', 'message': 'permission denied'},
+      ),
+      isFalse,
+    );
+    expect(
+      shouldRepairMissingSupersededStartCleanupRpc(
+        entityType: 'execution_runtime_start_cleanup',
+        status: 'conflict',
+        payload: const {'cleanup_rpc_repair_version': 1},
+        error: const {
+          'code': 'PGRST202',
+          'message':
+              'retire_superseded_execution_start_v0033_command is missing',
+        },
+      ),
+      isFalse,
+    );
+  });
+
   test('newer or pending session state blocks cleanup rollback', () {
     LocalEntityRecord session({
       String lastCommandId = _runtimeId,

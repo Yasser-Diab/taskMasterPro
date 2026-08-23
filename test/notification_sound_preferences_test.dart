@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -105,7 +106,7 @@ void main() {
       ),
       isTrue,
     );
-    expect(NotificationSchedulePolicy.maxTaskReminders, 64);
+    expect(NotificationSchedulePolicy.maxTaskReminders, 48);
   });
 
   test('execution notification actions require the exact ledger interval', () {
@@ -163,12 +164,20 @@ void main() {
   });
 
   test('Windows action envelope preserves command and owned task payload', () {
+    final boundary = DateTime.utc(2026, 8, 15, 12, 25);
+    final identity = LocalNotificationService.executionNotificationIdentity(
+      taskId: 'task-1',
+      sessionId: 'session-1',
+      runtimeRevision: 8,
+      intervalId: 'session-1:running:focus',
+      boundaryAtUtc: boundary,
+    );
     final payload = LocalNotificationService.ownedPayloadForOwner(
       ownerId: 'owner-1',
       route: 'task/task-1',
       eventType: 'focus_completed',
-      boundaryAtUtc: DateTime.utc(2026, 8, 15, 12, 25),
-      notificationId: 'notification-1',
+      boundaryAtUtc: boundary,
+      notificationId: identity,
       sessionId: 'session-1',
       runtimeRevision: 8,
       intervalId: 'session-1:running:focus',
@@ -189,6 +198,8 @@ void main() {
 
     expect(normalized.actionId, 'start_break');
     expect(normalized.payload, payload);
+    expect(activation.length, lessThan(350));
+    expect(jsonDecode(activation), containsPair('v', 2));
     final decoded = LocalNotificationService.decodeOwnedPayload(
       normalized.payload,
     );
@@ -370,9 +381,116 @@ void main() {
     final shellSource = File(
       'lib/features/shell/presentation/home_shell.dart',
     ).readAsStringSync();
+    final notificationSource = File(
+      'lib/core/notifications/notification_sounds.dart',
+    ).readAsStringSync();
+    final statusBody = notificationSource.substring(
+      notificationSource.indexOf('Future<void> showExecutionStatus'),
+      notificationSource.indexOf(
+        'Importance _notificationImportance',
+        notificationSource.indexOf('Future<void> showExecutionStatus'),
+      ),
+    );
 
     expect(status, isNot(boundary));
     expect(shellSource, contains('executionStatusNotificationId(task.id)'));
+    expect(statusBody, isNot(contains('_setExecutionLedgerState')));
+  });
+
+  test(
+    'notification kinds use deterministic non-overlapping ID namespaces',
+    () {
+      final ids = <int>{
+        LocalNotificationService.taskReminderNotificationId('same-id'),
+        LocalNotificationService.activityReviewNotificationId('same-id'),
+        LocalNotificationService.coachingNotificationId('same-id'),
+        LocalNotificationService.executionStatusNotificationId('same-id'),
+        LocalNotificationService.executionNotificationId('same-id'),
+      };
+
+      expect(ids, hasLength(5));
+      expect(
+        LocalNotificationService.taskReminderNotificationId('same-id') &
+            0x70000000,
+        0x10000000,
+      );
+      expect(
+        LocalNotificationService.executionStatusNotificationId('same-id') &
+            0x70000000,
+        0x50000000,
+      );
+      expect(
+        LocalNotificationService.executionNotificationId('same-id') &
+            0x70000000,
+        0x60000000,
+      );
+      expect(
+        LocalNotificationService.taskReminderNotificationId('same-id'),
+        LocalNotificationService.taskReminderNotificationId('same-id'),
+      );
+    },
+  );
+
+  test('Windows execution retention requires the exact interval payload', () {
+    final boundary = DateTime.utc(2026, 8, 23, 10, 29);
+    const taskId = 'task-1';
+    const sessionId = 'session-1';
+    const intervalId = 'session-1:running:focus';
+    const revision = 70;
+    final id = LocalNotificationService.executionNotificationId(taskId);
+    final identity = LocalNotificationService.executionNotificationIdentity(
+      taskId: taskId,
+      sessionId: sessionId,
+      runtimeRevision: revision,
+      intervalId: intervalId,
+      boundaryAtUtc: boundary,
+    );
+    final payload = LocalNotificationService.ownedPayloadForOwner(
+      ownerId: 'owner-1',
+      route: 'task/$taskId',
+      eventType: 'focus_completed',
+      boundaryAtUtc: boundary,
+      notificationId: identity,
+      sessionId: sessionId,
+      runtimeRevision: revision,
+      intervalId: intervalId,
+    );
+
+    expect(
+      LocalNotificationService.pendingExecutionNotificationMatches(
+        request: PendingNotificationRequest(id, null, null, payload),
+        id: id,
+        taskId: taskId,
+        notificationIdentity: identity,
+        sessionId: sessionId,
+        runtimeRevision: revision,
+        intervalId: intervalId,
+        boundaryAtUtc: boundary,
+      ),
+      isTrue,
+    );
+    expect(
+      LocalNotificationService.pendingExecutionNotificationMatches(
+        request: PendingNotificationRequest(
+          id,
+          null,
+          null,
+          LocalNotificationService.ownedPayloadForOwner(
+            ownerId: 'owner-1',
+            route: 'task/$taskId',
+            reminderId: id.toString(),
+          ),
+        ),
+        id: id,
+        taskId: taskId,
+        notificationIdentity: identity,
+        sessionId: sessionId,
+        runtimeRevision: revision,
+        intervalId: intervalId,
+        boundaryAtUtc: boundary,
+      ),
+      isFalse,
+    );
   });
 
   test(
@@ -711,7 +829,7 @@ void main() {
         'third_party/flutter_local_notifications_windows/src/ffi_api.cpp',
       ).readAsStringSync();
       final scheduleBody = source.substring(
-        source.indexOf('bool scheduleNotification'),
+        source.indexOf('int32_t scheduleNotification'),
         source.indexOf('NativeUpdateResult updateNotification'),
       );
 
@@ -721,9 +839,52 @@ void main() {
         scheduleBody.indexOf('RemoveFromSchedule(existing)'),
         lessThan(scheduleBody.indexOf('AddToSchedule(notification)')),
       );
-      expect(scheduleBody, contains('catch (const winrt::hresult_error&)'));
+      expect(
+        scheduleBody,
+        contains('catch (const winrt::hresult_error& error)'),
+      );
+      expect(source, contains('GetAttribute(L"launch")'));
+      expect(source, contains('delete[] ptr[index].payload'));
     },
   );
+
+  test('Windows schedule rejection cannot be recorded as accepted', () {
+    final ffi = File(
+      'third_party/flutter_local_notifications_windows/lib/src/plugin/ffi.dart',
+    ).readAsStringSync();
+    final service = File(
+      'lib/core/notifications/notification_sounds.dart',
+    ).readAsStringSync();
+    final executionBody = service.substring(
+      service.indexOf(
+        'Future<ExecutionAlarmScheduleResult> scheduleExecutionCompletion',
+      ),
+      service.indexOf('Future<void> scheduleStandalonePomodoroCompletion'),
+    );
+
+    expect(
+      RegExp(
+        r'final int result = _bindings\.scheduleNotification\(',
+      ).allMatches(ffi),
+      hasLength(2),
+    );
+    expect(ffi, contains('Windows rejected scheduled notification'));
+    expect(ffi, contains(r'HRESULT 0x$hresult'));
+    expect(
+      service,
+      contains('taskmaster.windows_notification_schedule_repair.v0030.2'),
+    );
+    expect(executionBody, contains('pendingNotificationRequests()'));
+    expect(executionBody, contains('pendingExecutionNotificationMatches'));
+    expect(
+      executionBody,
+      contains('Windows did not retain execution notification'),
+    );
+    expect(
+      executionBody.indexOf('pendingNotificationRequests()'),
+      lessThan(executionBody.indexOf("state: 'scheduled'")),
+    );
+  });
 
   test('Android LED styling always includes a complete blink cycle', () {
     final source = File(

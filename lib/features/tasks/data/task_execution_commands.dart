@@ -113,6 +113,8 @@ abstract final class TaskExecutionCommands {
     DateTime? now,
     DateTime? expectedBoundaryAt,
     Future<void> Function()? beforeTransition,
+    Future<void> Function(LocalTask task, LocalRuntime runtime)?
+    beforeFinishBreak,
   }) async {
     final runtime = await repository.getRuntime();
     final task = await repository.getTask(requestedTask.id);
@@ -137,6 +139,7 @@ abstract final class TaskExecutionCommands {
       return false;
     }
     if (beforeTransition != null) await beforeTransition();
+    if (beforeFinishBreak != null) await beforeFinishBreak(task, runtime);
     final currentRuntime = await repository.getRuntime();
     if (!_sameRuntimeBoundary(runtime, currentRuntime)) return false;
     await repository.finishBreak(task);
@@ -150,6 +153,8 @@ abstract final class TaskExecutionCommands {
     required TaskRepository repository,
     required LocalTask requestedTask,
     DateTime? now,
+    Future<void> Function(LocalTask task, LocalRuntime runtime)?
+    beforeFinishBreak,
   }) async {
     final runtime = await repository.getRuntime();
     final task = await repository.getTask(requestedTask.id);
@@ -167,6 +172,9 @@ abstract final class TaskExecutionCommands {
     if (!pomodoro.isWaiting) return false;
     if (pomodoro.isBreak) {
       if (!pomodoro.autoStartFocus) return false;
+      if (beforeFinishBreak != null) await beforeFinishBreak(task, runtime);
+      final currentRuntime = await repository.getRuntime();
+      if (!_sameRuntimeBoundary(runtime, currentRuntime)) return false;
       await repository.finishBreak(task);
       final updated = await repository.getRuntime();
       return updated?.activeTaskId == task.id && updated?.state == 'running';

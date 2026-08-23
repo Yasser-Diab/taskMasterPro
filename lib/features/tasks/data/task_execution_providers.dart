@@ -29,3 +29,15 @@ final taskExecutionClockProvider = StreamProvider.autoDispose<DateTime>((ref) {
     (_) => DateTime.now().toUtc(),
   );
 });
+
+/// Low-frequency clock used only by paused-task recovery prompts. Paused work
+/// never subscribes to the one-second execution clock and never accumulates
+/// elapsed time, while the prompt can still appear when twelve hours pass.
+final stalePausedTaskClockProvider = StreamProvider.autoDispose<DateTime>((
+  ref,
+) {
+  return Stream<DateTime>.periodic(
+    const Duration(minutes: 1),
+    (_) => DateTime.now().toUtc(),
+  );
+});

@@ -32,6 +32,7 @@ void main() {
     DateTime? actualStart,
     DateTime? actualFinish,
     int activeMs = 0,
+    String dataJson = '{}',
   }) => LocalTask(
     id: id,
     userId: 'user-1',
@@ -51,7 +52,7 @@ void main() {
     pausedDurationMs: 0,
     idleDurationMs: 0,
     progress: 0,
-    dataJson: '{}',
+    dataJson: dataJson,
     revision: 1,
     createdAt: actualStart ?? DateTime.utc(2026, 7, 1),
     updatedAt: actualFinish ?? actualStart ?? DateTime.utc(2026, 7, 1),
@@ -648,6 +649,225 @@ void main() {
 
     expect(facts.productiveMs, const Duration(minutes: 10).inMilliseconds);
     expect(facts.focusMs, facts.productiveMs);
+  });
+
+  test('caps a live Pomodoro segment at its current focus boundary', () {
+    final now = DateTime.utc(2026, 7, 10, 15);
+    final sessionStart = DateTime.utc(2026, 7, 10, 10, 40);
+    final firstPause = sessionStart.add(const Duration(minutes: 10));
+    final resumedAt = DateTime.utc(2026, 7, 10, 11);
+    final accumulatedMs = const Duration(minutes: 10).inMilliseconds;
+    final runningTask = task(
+      id: 'bounded-running-pomodoro',
+      mode: 'pomodoro',
+      status: 'running',
+      actualStart: sessionStart,
+      dataJson: jsonEncode({
+        'pomodoro_focus_ms': const Duration(minutes: 25).inMilliseconds,
+      }),
+    );
+    final runningSession = LocalEntityRecord(
+      id: 'bounded-running-session',
+      userId: 'user-1',
+      entityType: 'execution_sessions',
+      parentId: runningTask.id,
+      title: 'Session',
+      status: 'running',
+      position: 0,
+      dataJson: jsonEncode({
+        'task_occurrence_id': runningTask.id,
+        'started_at': sessionStart.toIso8601String(),
+        'finished_at': null,
+        'active_segment_started_at': resumedAt.toIso8601String(),
+        'accumulated_active_ms': accumulatedMs,
+        'state': 'running',
+      }),
+      revision: 1,
+      createdAt: sessionStart,
+      updatedAt: resumedAt,
+    );
+    final data = snapshot(
+      tasks: [runningTask],
+      sessions: [runningSession],
+      events: [
+        event(
+          id: 'bounded-start',
+          sessionId: runningSession.id,
+          type: 'start',
+          at: sessionStart,
+        ),
+        event(
+          id: 'bounded-pause',
+          sessionId: runningSession.id,
+          type: 'pause',
+          at: firstPause,
+          durationMs: accumulatedMs,
+        ),
+        event(
+          id: 'bounded-resume',
+          sessionId: runningSession.id,
+          type: 'resume',
+          at: resumedAt,
+          durationMs: accumulatedMs,
+        ),
+      ],
+      runtime: LocalRuntime(
+        id: 'runtime:user-1',
+        userId: 'user-1',
+        activeTaskId: runningTask.id,
+        sessionId: runningSession.id,
+        state: 'running',
+        segmentStartedAt: resumedAt,
+        accumulatedActiveMs: accumulatedMs,
+        accumulatedPausedMs: resumedAt.difference(firstPause).inMilliseconds,
+        dataJson: jsonEncode({'focus_interval_active_base_ms': 0}),
+        revision: 1,
+        updatedAt: now,
+      ),
+    );
+
+    final facts = PerformanceReportService.factsForSnapshot(
+      data,
+      options(),
+      l10n,
+      now: now,
+    );
+
+    expect(facts.productiveMs, const Duration(minutes: 25).inMilliseconds);
+    expect(facts.focusMs, facts.productiveMs);
+  });
+
+  test('a paused Pomodoro adds no paused wall time to productive work', () {
+    final sessionStart = DateTime.utc(2026, 7, 10, 8);
+    final pausedAt = sessionStart.add(const Duration(minutes: 10));
+    final now = pausedAt.add(const Duration(hours: 14));
+    final accumulatedMs = const Duration(minutes: 10).inMilliseconds;
+    final pausedTask = task(
+      id: 'paused-pomodoro',
+      mode: 'pomodoro',
+      status: 'paused',
+      actualStart: sessionStart,
+    );
+    final pausedSession = LocalEntityRecord(
+      id: 'paused-session',
+      userId: 'user-1',
+      entityType: 'execution_sessions',
+      parentId: pausedTask.id,
+      title: 'Session',
+      status: 'paused',
+      position: 0,
+      dataJson: jsonEncode({
+        'task_occurrence_id': pausedTask.id,
+        'started_at': sessionStart.toIso8601String(),
+        'finished_at': null,
+        'active_segment_started_at': null,
+        'accumulated_active_ms': accumulatedMs,
+        'state': 'paused',
+      }),
+      revision: 1,
+      createdAt: sessionStart,
+      updatedAt: pausedAt,
+    );
+    final data = snapshot(
+      tasks: [pausedTask],
+      sessions: [pausedSession],
+      events: [
+        event(
+          id: 'paused-start',
+          sessionId: pausedSession.id,
+          type: 'start',
+          at: sessionStart,
+        ),
+        event(
+          id: 'paused-boundary',
+          sessionId: pausedSession.id,
+          type: 'pause',
+          at: pausedAt,
+          durationMs: accumulatedMs,
+        ),
+      ],
+      runtime: LocalRuntime(
+        id: 'runtime:user-1',
+        userId: 'user-1',
+        activeTaskId: pausedTask.id,
+        sessionId: pausedSession.id,
+        state: 'paused',
+        segmentStartedAt: pausedAt,
+        accumulatedActiveMs: accumulatedMs,
+        accumulatedPausedMs: now.difference(pausedAt).inMilliseconds,
+        dataJson: jsonEncode({'focus_interval_active_base_ms': 0}),
+        revision: 1,
+        updatedAt: now,
+      ),
+    );
+
+    final facts = PerformanceReportService.factsForSnapshot(
+      data,
+      options(),
+      l10n,
+      now: now,
+    );
+
+    expect(facts.productiveMs, accumulatedMs);
+    expect(facts.focusMs, accumulatedMs);
+  });
+
+  test('keeps uncapped live elapsed time for a continuous timer', () {
+    final now = DateTime.utc(2026, 7, 10, 15);
+    final start = now.subtract(const Duration(hours: 4));
+    final runningTask = task(
+      id: 'running-continuous',
+      mode: 'continuous',
+      status: 'running',
+      actualStart: start,
+    );
+    final runningSession = LocalEntityRecord(
+      id: 'running-continuous-session',
+      userId: 'user-1',
+      entityType: 'execution_sessions',
+      parentId: runningTask.id,
+      title: 'Session',
+      status: 'running',
+      position: 0,
+      dataJson: jsonEncode({
+        'task_occurrence_id': runningTask.id,
+        'started_at': start.toIso8601String(),
+        'finished_at': null,
+        'active_segment_started_at': start.toIso8601String(),
+        'accumulated_active_ms': 0,
+        'state': 'running',
+      }),
+      revision: 1,
+      createdAt: start,
+      updatedAt: start,
+    );
+    final data = snapshot(
+      tasks: [runningTask],
+      sessions: [runningSession],
+      runtime: LocalRuntime(
+        id: 'runtime:user-1',
+        userId: 'user-1',
+        activeTaskId: runningTask.id,
+        sessionId: runningSession.id,
+        state: 'running',
+        segmentStartedAt: start,
+        accumulatedActiveMs: 0,
+        accumulatedPausedMs: 0,
+        dataJson: '{}',
+        revision: 1,
+        updatedAt: now,
+      ),
+    );
+
+    final facts = PerformanceReportService.factsForSnapshot(
+      data,
+      options(),
+      l10n,
+      now: now,
+    );
+
+    expect(facts.productiveMs, const Duration(hours: 4).inMilliseconds);
+    expect(facts.continuousMs, facts.productiveMs);
   });
 
   test(

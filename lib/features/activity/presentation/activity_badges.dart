@@ -21,6 +21,8 @@ ActivityBadgeTone activityBadgeTone(String classification) {
     'research' ||
     'learning' ||
     'reading' ||
+    'break_activity_reading' ||
+    'break_activity_sport' ||
     'passive_useful_activity' => ActivityBadgeTone.research,
     'communication' => ActivityBadgeTone.communication,
     'unclassified' ||
@@ -45,6 +47,11 @@ String activityClassificationLabel(
     'learning' => l10n.text('classification_learning'),
     'reading' ||
     'passive_useful_activity' => l10n.text('activity_useful_reading'),
+    'break_activity_reading' => l10n.text('break_activity_reading'),
+    'break_activity_sport' => l10n.text('break_activity_sport'),
+    'break_activity_relaxing' => l10n.text('break_activity_relaxing'),
+    'break_activity_drink' => l10n.text('break_activity_drink'),
+    'break_activity_other' => l10n.text('break_activity_other'),
     'distraction' => l10n.text('activity_mark_distraction'),
     'unrelated' => l10n.text('classification_not_related'),
     'generally_unrelated' => l10n.text('activity_generally_unrelated'),

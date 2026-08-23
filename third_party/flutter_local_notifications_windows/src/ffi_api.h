@@ -20,6 +20,7 @@ extern "C" {
 #endif
 
 #include <stdbool.h>
+#include <stdint.h>
 
 /// A fake type to represent the C++ class that will own the Windows API handles.
 typedef struct NativePlugin NativePlugin;
@@ -39,6 +40,8 @@ typedef struct NativeStringMap {
 /// Details about a notification.
 typedef struct NativeNotificationDetails {
   int id;
+  /// The launch payload stored in the toast XML, when available.
+  const char* payload;
 } NativeNotificationDetails;
 
 /// How the app was launched, either by pressing on the notification or an action within it.
@@ -99,7 +102,11 @@ FFI_PLUGIN_EXPORT bool showNotification(
 );
 
 /// Schedules the notification to be shown at the given time (as a [time_t]).
-FFI_PLUGIN_EXPORT bool scheduleNotification(NativePlugin* plugin, int id, char* xml, int time);
+/// Returns S_OK (zero) when Windows retained the schedule, otherwise the
+/// HRESULT explaining why it was rejected.
+FFI_PLUGIN_EXPORT int32_t scheduleNotification(
+  NativePlugin* plugin, int id, char* xml, int time
+);
 
 /// Updates a notification with the provided bindings after it's been shown.
 ///
@@ -131,7 +138,9 @@ FFI_PLUGIN_EXPORT NativeNotificationDetails* getPendingNotifications(
 );
 
 /// Releases the memory associated with a [NativeNotificationDetails] array.
-FFI_PLUGIN_EXPORT void freeDetailsArray(NativeNotificationDetails* ptr);
+FFI_PLUGIN_EXPORT void freeDetailsArray(
+  NativeNotificationDetails* ptr, int size
+);
 
 /// Releases the memory associated with a [NativeLaunchDetails].
 FFI_PLUGIN_EXPORT void freeLaunchDetails(NativeLaunchDetails details);

@@ -13,6 +13,25 @@ void main() {
     expect(activityBadgeTone('unclassified'), ActivityBadgeTone.needsReview);
   });
 
+  test('dashboard Activity attention copy names grouped today scope', () {
+    const english = AppLocalizations(Locale('en'));
+    const arabic = AppLocalizations(Locale('ar'));
+    const german = AppLocalizations(Locale('de'));
+
+    expect(
+      english.count('dashboard_item_review', 'dashboard_items_review', 3),
+      '3 groups need review today',
+    );
+    expect(
+      arabic.text('dashboard_other_activity_review'),
+      'نشاط آخر يحتاج إلى مراجعة',
+    );
+    expect(
+      german.text('dashboard_nothing_review'),
+      'Heute muss nichts geprüft werden',
+    );
+  });
+
   test(
     'Activity classification labels are localized without backend enums',
     () {
@@ -59,7 +78,11 @@ void main() {
     );
     expect(
       shellSyncVisualState(SyncHealth.syncing),
-      ShellSyncVisualState.pending,
+      ShellSyncVisualState.syncing,
+    );
+    expect(
+      shellSyncVisualState(SyncHealth.waiting),
+      ShellSyncVisualState.waiting,
     );
     expect(shellSyncVisualState(SyncHealth.idle), ShellSyncVisualState.synced);
     expect(

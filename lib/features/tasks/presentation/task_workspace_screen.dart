@@ -17,6 +17,7 @@ import '../../../core/providers.dart';
 import '../../health/presentation/task_health_evidence_strip.dart';
 import '../../roadmaps/presentation/roadmaps_screen.dart';
 import '../../activity/presentation/task_activity_panel.dart';
+import '../../activity/presentation/break_activity_check_in.dart';
 import '../data/installed_application_service.dart';
 import '../data/task_execution_commands.dart';
 import '../data/task_execution_providers.dart';
@@ -31,6 +32,7 @@ import 'task_editor_dialog.dart';
 import 'installed_application_picker_dialog.dart';
 import 'interruption_editor_dialog.dart';
 import 'task_start_flow.dart';
+import 'stale_paused_task_recovery.dart';
 
 class TaskWorkspaceScreen extends ConsumerStatefulWidget {
   const TaskWorkspaceScreen({
@@ -626,6 +628,13 @@ class _TaskExecutionPanelState extends ConsumerState<_TaskExecutionPanel> {
     return ListView(
       padding: EdgeInsets.all(compact ? 12 : 24),
       children: [
+        StalePausedTaskRecovery(task: widget.task, runtime: runtime),
+        if (isStalePausedTask(
+          task: widget.task,
+          runtime: runtime,
+          now: DateTime.now().toUtc(),
+        ))
+          const SizedBox(height: 12),
         Center(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 1180),
@@ -690,7 +699,11 @@ class _TaskExecutionPanelState extends ConsumerState<_TaskExecutionPanel> {
             widget.task,
           );
         case TaskExecutionPrimaryAction.startFocus:
-          await repository.finishBreak(widget.task);
+          await finishBreakWithOptionalActivityCheckIn(
+            context: context,
+            ref: ref,
+            task: widget.task,
+          );
       }
     });
   }
@@ -4448,7 +4461,7 @@ Future<void> _addReminder(
   };
   await localNotificationService.requestPermission();
   await localNotificationService.scheduleTaskReminder(
-    id: reminderId.hashCode & 0x7fffffff,
+    id: LocalNotificationService.taskReminderNotificationId(reminderId),
     taskId: task.id,
     taskTitle: task.title,
     reminderType: type,

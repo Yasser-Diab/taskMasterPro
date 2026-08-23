@@ -25,6 +25,7 @@ void main() {
     int pausedCount = 0,
     String? pausedTaskId,
     String? pausedTaskTitle,
+    int recentSportMinutes = 0,
   }) {
     return AdaptiveCoachingEvidence(
       now: now,
@@ -53,6 +54,7 @@ void main() {
       overdueTaskIds: overdueTaskIds,
       pausedTaskId: pausedTaskId,
       pausedTaskTitle: pausedTaskTitle,
+      recentSportMinutes: recentSportMinutes,
     );
   }
 
@@ -155,6 +157,18 @@ void main() {
     final decision = engine.select(evidence(focusCyclesLastWeek: 4), const []);
     expect(decision.cardKey, 'focus_momentum');
     expect(decision.mood, CoachingMood.celebrating);
+  });
+
+  test('reported sport during a break receives encouraging coaching', () {
+    final decision = engine.select(evidence(recentSportMinutes: 28), const []);
+    expect(decision.cardKey, 'active_recovery_momentum');
+    expect(decision.category, 'wellbeing');
+    expect(decision.mood, CoachingMood.celebrating);
+    expect(decision.expression, CoachingExpression.happy);
+    expect(
+      decision.bodyValues['duration_ms'],
+      const Duration(minutes: 28).inMilliseconds,
+    );
   });
 
   test('completed non-Pomodoro sessions are not called focus cycles', () {

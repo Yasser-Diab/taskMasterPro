@@ -11,6 +11,7 @@ import '../../../core/localization/app_localizations.dart';
 import '../../../core/providers.dart';
 import '../../vault/data/vault_repository.dart';
 import '../../vault/presentation/password_vault_screen.dart';
+import '../../activity/presentation/break_activity_check_in.dart';
 import '../data/task_execution_commands.dart';
 import '../data/task_execution_providers.dart';
 import '../data/website_rule_service.dart';
@@ -1842,7 +1843,11 @@ class _BrowserTaskControlPillState
             case TaskExecutionPrimaryAction.startBreak:
               await TaskExecutionCommands.startOfferedBreak(repository, task);
             case TaskExecutionPrimaryAction.startFocus:
-              await repository.finishBreak(task);
+              await finishBreakWithOptionalActivityCheckIn(
+                context: context,
+                ref: ref,
+                task: task,
+              );
           }
         },
         synchronize: () => ref.read(syncServiceProvider).drainOutbox(),

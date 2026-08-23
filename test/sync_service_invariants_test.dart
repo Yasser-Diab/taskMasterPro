@@ -78,6 +78,49 @@ void main() {
       ),
       isTrue,
     );
+    const stalePausePayload = <String, dynamic>{
+      'session_id': 'session-stale',
+      'decision': 'require_again',
+      'expected_runtime_revision': 14,
+    };
+    for (final canonicalRow in const [
+      ('task_occurrences', 'task-stale'),
+      ('execution_sessions', 'session-stale'),
+      ('user_runtime_state', 'runtime-owner'),
+    ]) {
+      expect(
+        pendingCommandProjectsCanonicalRow(
+          canonicalEntityType: canonicalRow.$1,
+          canonicalEntityId: canonicalRow.$2,
+          commandEntityType: 'execution_runtime_stale_pause',
+          commandEntityId: 'task-stale',
+          payload: stalePausePayload,
+        ),
+        isTrue,
+        reason:
+            'The stale-pause command owns its task, session, and runtime projection.',
+      );
+    }
+    expect(
+      pendingCommandProjectsCanonicalRow(
+        canonicalEntityType: 'execution_sessions',
+        canonicalEntityId: 'unrelated-session',
+        commandEntityType: 'execution_runtime_stale_pause',
+        commandEntityId: 'task-stale',
+        payload: stalePausePayload,
+      ),
+      isFalse,
+    );
+    expect(
+      pendingCommandProjectsCanonicalRow(
+        canonicalEntityType: 'task_occurrences',
+        canonicalEntityId: 'unrelated-task',
+        commandEntityType: 'execution_runtime_stale_pause',
+        commandEntityId: 'task-stale',
+        payload: stalePausePayload,
+      ),
+      isFalse,
+    );
     expect(
       pendingCommandProjectsCanonicalRow(
         canonicalEntityType: 'execution_sessions',
@@ -1783,6 +1826,15 @@ void main() {
         ),
         SyncDeliveryFailureKind.permanent,
       );
+      expect(
+        classifySyncDeliveryFailure(
+          entityType: 'execution_runtime_start_cleanup',
+          commandType: 'retire',
+          errorCode: 'PGRST202',
+          errorMessage: 'RPC was not found in the schema cache',
+        ),
+        SyncDeliveryFailureKind.permanent,
+      );
       expect(syncRetryDelay(1), const Duration(seconds: 5));
       expect(syncRetryDelay(6), const Duration(seconds: 160));
       expect(syncRetryDelay(20), const Duration(seconds: 160));
@@ -1931,19 +1983,102 @@ void main() {
 
   test('canonical runtime waits for transitions and cross-task switches', () {
     expect(
-      shouldDeferCanonicalRuntimeApply(const ['execution_runtime']),
+      shouldDeferCanonicalRuntimeApply(const [
+        (entityType: 'execution_runtime', payload: <String, dynamic>{}),
+      ]),
       isTrue,
     );
     expect(
-      shouldDeferCanonicalRuntimeApply(const ['execution_runtime_switch']),
+      shouldDeferCanonicalRuntimeApply(const [
+        (entityType: 'execution_runtime_switch', payload: <String, dynamic>{}),
+      ]),
       isTrue,
     );
     expect(
-      shouldDeferCanonicalRuntimeApply(const ['task_occurrences']),
+      shouldDeferCanonicalRuntimeApply(const [
+        (entityType: 'task_occurrences', payload: <String, dynamic>{}),
+      ]),
       isFalse,
     );
     expect(shouldDeferCanonicalRuntimeApply(const []), isFalse);
+    expect(
+      shouldDeferCanonicalRuntimeApply(const [
+        (
+          entityType: 'execution_runtime_stale_pause',
+          payload: <String, dynamic>{'expected_runtime_revision': 8},
+        ),
+      ]),
+      isTrue,
+      reason: 'A stale-pause command only owns the runtime it actually paused.',
+    );
+    expect(
+      shouldDeferCanonicalRuntimeApply(const [
+        (
+          entityType: 'execution_runtime_stale_pause',
+          payload: <String, dynamic>{'expected_runtime_revision': null},
+        ),
+      ]),
+      isFalse,
+      reason:
+          'Resolving an old paused task must not block a newer running task.',
+    );
   });
+
+  test(
+    'stale-pause acknowledgements never overwrite later optimistic work',
+    () {
+      expect(
+        shouldApplyAcknowledgedCanonicalAggregate(
+          localRevision: 4,
+          localCommandId: 'stale-pause-command',
+          incomingRevision: 5,
+          incomingCommandId: 'stale-pause-command',
+          acknowledgedCommandId: 'stale-pause-command',
+          hasPendingProjection: false,
+        ),
+        isTrue,
+      );
+      expect(
+        shouldApplyAcknowledgedCanonicalAggregate(
+          localRevision: 6,
+          localCommandId: 'later-edit',
+          incomingRevision: 5,
+          incomingCommandId: 'stale-pause-command',
+          acknowledgedCommandId: 'stale-pause-command',
+          hasPendingProjection: true,
+          allowAcknowledgedRollback: true,
+        ),
+        isFalse,
+        reason: 'A later queued edit owns the visible projection.',
+      );
+      expect(
+        shouldApplyAcknowledgedCanonicalAggregate(
+          localRevision: 6,
+          localCommandId: 'later-edit',
+          incomingRevision: 5,
+          incomingCommandId: 'stale-pause-command',
+          acknowledgedCommandId: 'stale-pause-command',
+          hasPendingProjection: false,
+          allowAcknowledgedRollback: true,
+        ),
+        isFalse,
+        reason: 'A delayed acknowledgement cannot roll back another command.',
+      );
+      expect(
+        shouldApplyAcknowledgedCanonicalAggregate(
+          localRevision: 6,
+          localCommandId: 'stale-pause-command',
+          incomingRevision: 5,
+          incomingCommandId: 'previous-server-command',
+          acknowledgedCommandId: 'stale-pause-command',
+          hasPendingProjection: false,
+          allowAcknowledgedRollback: true,
+        ),
+        isTrue,
+        reason: 'A canonical-only result may roll back its own optimistic row.',
+      );
+    },
+  );
 
   test('canonical runtime applies only forward revisions', () {
     expect(
@@ -2074,6 +2209,21 @@ void main() {
       );
       expect(
         isCanonicalOnlyRuntimeResponse(
+          entityType: 'execution_runtime_stale_pause',
+          result: const {
+            'status': 'accepted',
+            'canonical_only': true,
+            'canonical_task': {'revision': 9},
+            'canonical_session': {'revision': 6},
+            'canonical_runtime': {'revision': 15},
+          },
+        ),
+        isTrue,
+        reason:
+            'A revision-losing stale-pause decision already carries the canonical aggregate.',
+      );
+      expect(
+        isCanonicalOnlyRuntimeResponse(
           entityType: 'task_occurrences',
           result: const {
             'status': 'accepted',
@@ -2094,6 +2244,59 @@ void main() {
       );
     },
   );
+
+  test('stale-pause RPC and canonical aggregate application stay complete', () {
+    final source = File('lib/core/sync/sync_service.dart').readAsStringSync();
+    final rpcMatch = RegExp(
+      r": command\.entityType == 'execution_runtime_stale_pause'"
+      r'(?<body>[\s\S]*?)'
+      r": command\.entityType == 'vacation_periods'",
+    ).firstMatch(source);
+    expect(rpcMatch, isNotNull);
+    final rpc = rpcMatch!.namedGroup('body')!;
+    expect(rpc, contains("'resolve_stale_paused_task_v0034_command'"));
+    for (final parameter in const [
+      "'p_command_id': command.commandId",
+      "'p_device_id': command.deviceId",
+      "'p_device_sequence': command.deviceSequence",
+      "'p_task_occurrence_id': command.entityId",
+      "'p_session_id': payload['session_id']",
+      "'p_decision': payload['decision']",
+      "'p_expected_task_revision': command.baseRevision",
+      "'p_expected_runtime_revision':",
+      "payload['expected_runtime_revision']",
+      "'p_resolved_at': payload['resolved_at']",
+    ]) {
+      expect(rpc, contains(parameter), reason: 'Missing RPC input: $parameter');
+    }
+
+    final applyMatch = RegExp(
+      r"if \(command\.entityType == 'execution_runtime_stale_pause'\) \{"
+      r'(?<body>[\s\S]*?)'
+      r'\n    \}\n    if \(const \{',
+    ).firstMatch(source);
+    expect(applyMatch, isNotNull);
+    final apply = applyMatch!.namedGroup('body')!;
+    final taskIndex = apply.indexOf('if (canonicalTask != null');
+    final sessionIndex = apply.indexOf('if (canonicalSession != null');
+    final runtimeIndex = apply.indexOf('if (canonicalRuntime is Map)');
+    expect(taskIndex, greaterThanOrEqualTo(0));
+    expect(sessionIndex, greaterThan(taskIndex));
+    expect(runtimeIndex, greaterThan(sessionIndex));
+    expect(apply, contains('await _applyTask('));
+    expect(apply, contains("'execution_sessions'"));
+    expect(apply, contains('await _applyGeneric('));
+    expect(apply, contains('await _applyRemoteRuntime('));
+    expect(apply, contains('acknowledgedCommandId: command.commandId'));
+    expect(apply, contains('excludingCommandId: command.commandId'));
+    expect(apply, contains('shouldApplyAcknowledgedCanonicalAggregate('));
+    expect(
+      apply,
+      contains(
+        "result['canonical_only'] == true || result['superseded'] == true",
+      ),
+    );
+  });
 
   test('healthy idle Realtime performs no timer-driven remote recovery', () {
     for (var resume = 0; resume < 22; resume++) {
@@ -2159,7 +2362,13 @@ void main() {
       source,
       contains('const _deviceAuthorizationTtl = Duration(minutes: 30)'),
     );
-    expect(source, contains('realtimeGapExpired: firstFallbackForOutage'));
+    expect(source, contains('realtimeGapExpired: true'));
+    expect(
+      source,
+      isNot(contains('_synchronizeOperation.inFlight == null')),
+      reason:
+          'A successful join during recovery must replay one final cursor catch-up.',
+    );
     expect(source, isNot(contains('_realtimeRecoveryAttemptedForGap')));
     expect(realtimeReconnectDelay(0), const Duration(seconds: 20));
     expect(realtimeReconnectDelay(1), const Duration(seconds: 40));
@@ -2225,7 +2434,108 @@ void main() {
     expect(operation.inFlight, isNull);
   });
 
-  test('an active recovery is syncing, not false attention', () {
+  test('Realtime recovery finishes with one cursor catch-up per outage', () {
+    expect(
+      shouldRunFinalRealtimeCatchUp(
+        recoveredFromGap: true,
+        initialSyncComplete: true,
+        recoveredGeneration: 8,
+        lastCatchUpGeneration: 7,
+      ),
+      isTrue,
+    );
+    expect(
+      shouldRunFinalRealtimeCatchUp(
+        recoveredFromGap: true,
+        initialSyncComplete: true,
+        recoveredGeneration: 8,
+        lastCatchUpGeneration: 8,
+      ),
+      isFalse,
+    );
+    expect(
+      shouldRunFinalRealtimeCatchUp(
+        recoveredFromGap: false,
+        initialSyncComplete: true,
+        recoveredGeneration: 8,
+        lastCatchUpGeneration: 7,
+      ),
+      isFalse,
+    );
+  });
+
+  test('internal cleanup remains diagnostic but not user-pending work', () {
+    expect(
+      isUserVisiblePendingSyncCommand('execution_runtime_start_cleanup'),
+      isFalse,
+    );
+    expect(isUserVisiblePendingSyncCommand('task_occurrences'), isTrue);
+
+    final source = File('lib/core/sync/sync_service.dart').readAsStringSync();
+    expect(
+      source,
+      contains(".equals('execution_runtime_start_cleanup')"),
+      reason: 'The visible pending count must exclude maintenance cleanup.',
+    );
+    expect(
+      source,
+      contains("row.status.isIn(const ['pending', 'conflict'])"),
+      reason: 'Technical diagnostics must retain internal cleanup failures.',
+    );
+    expect(
+      RegExp(
+        r"row\.entityType\s*\.equals\('execution_runtime_start_cleanup'\)\s*\.not\(\)",
+      ).allMatches(source).length,
+      greaterThanOrEqualTo(1),
+      reason: 'Maintenance cleanup must not create user conflict cards.',
+    );
+  });
+
+  test('incremental cursor consumes change pages oldest first', () {
+    final source = File('lib/core/sync/sync_service.dart').readAsStringSync();
+    expect(
+      source,
+      contains(".order('change_sequence', ascending: true)"),
+      reason:
+          'PostgREST order defaults to descending; cursor pages must opt in to ascending order.',
+    );
+    expect(
+      source,
+      contains(
+        'await _pullOperation.run(() => _pullChangesTracked(generation, userId))',
+      ),
+      reason:
+          'A pull requested during an in-flight pass must replay after an optimistic command settles.',
+    );
+  });
+
+  test('sync health settles only after operation markers clear', () {
+    final source = File('lib/core/sync/sync_service.dart').readAsStringSync();
+    expect(
+      RegExp(
+        r'await _synchronizeOperation\.run\([\s\S]*?'
+        r'if \(_isCurrentOperation\(generation, userId\)\) \{\s*'
+        r'await _settleHealth\(\);',
+      ).hasMatch(source),
+      isTrue,
+    );
+    expect(
+      RegExp(
+        r'await _drainOperation\.run\([\s\S]*?'
+        r'if \(_isCurrentOperation\(generation, userId\)\) \{\s*'
+        r'await _settleHealth\(\);',
+      ).hasMatch(source),
+      isTrue,
+    );
+    expect(
+      RegExp(
+        r'await _pullOperation\.run\([\s\S]*?await _settleHealth\(\);',
+      ).hasMatch(source),
+      isTrue,
+    );
+  });
+
+  test('only active work spins while queued recovery waits', () {
     expect(
       deriveSyncHealth(
         online: true,
@@ -2236,7 +2546,7 @@ void main() {
         conflicts: 0,
         recoveryConnectionAvailable: true,
       ),
-      SyncHealth.syncing,
+      SyncHealth.waiting,
     );
     expect(
       deriveSyncHealth(
@@ -2258,7 +2568,7 @@ void main() {
         conflicts: 0,
         recoveryConnectionAvailable: false,
       ),
-      SyncHealth.syncing,
+      SyncHealth.waiting,
     );
     expect(
       deriveSyncHealth(
@@ -2269,7 +2579,7 @@ void main() {
         conflicts: 0,
         recoveryConnectionAvailable: false,
       ),
-      SyncHealth.syncing,
+      SyncHealth.waiting,
     );
     expect(
       deriveSyncHealth(

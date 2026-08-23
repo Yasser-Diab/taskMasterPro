@@ -21,7 +21,9 @@ import '../../../core/updates/app_update_service.dart';
 import '../../../core/updates/update_prompt.dart';
 import '../../account/data/account_deletion_service.dart';
 import '../../account/presentation/account_deletion_screen.dart';
+import '../../activity/data/activity_repository.dart';
 import '../../activity/presentation/activity_review_screen.dart';
+import '../../activity/presentation/break_activity_check_in.dart';
 import '../../calendar/presentation/planning_calendar_screen.dart';
 import '../../dashboard/presentation/dashboard_screen.dart';
 import '../../roadmaps/presentation/roadmaps_screen.dart';
@@ -83,13 +85,14 @@ Stream<SyncHealth> synchronizedSyncHealthStream({
 /// switching to an icon-first navigation bar before labels start wrapping.
 bool usesCompactBottomNavigation(double maxWidth) => maxWidth < 600;
 
-enum ShellSyncVisualState { offline, pending, synced, attention }
+enum ShellSyncVisualState { offline, syncing, waiting, synced, attention }
 
 @visibleForTesting
 ShellSyncVisualState shellSyncVisualState(SyncHealth health) {
   return switch (health) {
     SyncHealth.offline => ShellSyncVisualState.offline,
-    SyncHealth.syncing => ShellSyncVisualState.pending,
+    SyncHealth.syncing => ShellSyncVisualState.syncing,
+    SyncHealth.waiting => ShellSyncVisualState.waiting,
     SyncHealth.idle => ShellSyncVisualState.synced,
     SyncHealth.attention => ShellSyncVisualState.attention,
   };
@@ -104,10 +107,15 @@ shellSyncIndicatorPresentation(SyncHealth health) {
       labelKey: 'sync_offline_compact',
       animate: false,
     ),
-    ShellSyncVisualState.pending => (
+    ShellSyncVisualState.syncing => (
       icon: Icons.sync_rounded,
       labelKey: 'sync_latest',
       animate: true,
+    ),
+    ShellSyncVisualState.waiting => (
+      icon: Icons.cloud_upload_outlined,
+      labelKey: 'sync_waiting_changes',
+      animate: false,
     ),
     ShellSyncVisualState.attention => (
       icon: Icons.sync_problem_rounded,
@@ -489,6 +497,8 @@ class _HomeShellState extends ConsumerState<HomeShell> with RouteAware {
             ? l10n.text('sync_you_offline')
             : sync.failedChanges > 0
             ? l10n.text('sync_needs_attention')
+            : sync.health == SyncHealth.waiting
+            ? l10n.text('sync_waiting_changes')
             : l10n.text('sync_latest'),
         syncAttention: sync.failedChanges > 0 || sync.conflicts > 0,
         localeCode: localeCode,
@@ -514,11 +524,28 @@ class _HomeShellState extends ConsumerState<HomeShell> with RouteAware {
       if (!mounted || task == null || task.executionMode != 'pomodoro') {
         return;
       }
+      ActivityReviewEntry? breakActivityEntry;
       final advanced = await TaskExecutionCommands.advanceAutomaticBoundary(
         repository: repository,
         requestedTask: task,
+        beforeFinishBreak: (task, runtime) async {
+          breakActivityEntry = await prepareBreakActivityCheckIn(
+            ref: ref,
+            task: task,
+            runtime: runtime,
+          );
+        },
       );
       if (!advanced) return;
+      if (breakActivityEntry != null && mounted) {
+        unawaited(
+          promptAndResolveBreakActivityCheckIn(
+            context: context,
+            ref: ref,
+            entry: breakActivityEntry!,
+          ),
+        );
+      }
       unawaited(ref.read(syncServiceProvider).drainOutbox());
       unawaited(_refreshTray());
     } catch (_) {
@@ -712,7 +739,8 @@ class _HomeShellState extends ConsumerState<HomeShell> with RouteAware {
               ),
               localeCode: settings?.localeCode ?? 'en',
             );
-      } catch (_) {
+      } catch (error) {
+        debugPrint('Execution alarm scheduling failed: $error');
         transientScheduleFailure = true;
       }
       if (scheduleResult == ExecutionAlarmScheduleResult.scheduled) {
@@ -962,7 +990,8 @@ class _HomeShellState extends ConsumerState<HomeShell> with RouteAware {
           })
         >[];
     for (final record in records) {
-      final notificationId = record.id.hashCode & 0x7fffffff;
+      final notificationId =
+          LocalNotificationService.taskReminderNotificationId(record.id);
       final data = entities.decode(record);
       final nested = data['data'] is Map
           ? Map<String, Object?>.from(data['data'] as Map)
@@ -1003,7 +1032,10 @@ class _HomeShellState extends ConsumerState<HomeShell> with RouteAware {
     for (final candidate in candidates.skip(
       NotificationSchedulePolicy.maxTaskReminders,
     )) {
-      final notificationId = candidate.record.id.hashCode & 0x7fffffff;
+      final notificationId =
+          LocalNotificationService.taskReminderNotificationId(
+            candidate.record.id,
+          );
       if (pendingNotificationIds.contains(notificationId) ||
           _scheduledReminderFingerprints.containsKey(notificationId)) {
         await localNotificationService.cancel(notificationId);
@@ -1016,7 +1048,8 @@ class _HomeShellState extends ConsumerState<HomeShell> with RouteAware {
       NotificationSchedulePolicy.maxTaskReminders,
     )) {
       final record = candidate.record;
-      final notificationId = record.id.hashCode & 0x7fffffff;
+      final notificationId =
+          LocalNotificationService.taskReminderNotificationId(record.id);
       final data = candidate.data;
       final nested = candidate.nested;
       Object? field(String key) => data[key] ?? nested[key];
@@ -1145,7 +1178,13 @@ class _HomeShellState extends ConsumerState<HomeShell> with RouteAware {
           await TaskExecutionCommands.startOfferedBreak(repository, activeTask);
         }
       case 'finishBreak':
-        if (activeTask != null) await repository.finishBreak(activeTask);
+        if (activeTask != null) {
+          await finishBreakWithOptionalActivityCheckIn(
+            context: context,
+            ref: ref,
+            task: activeTask,
+          );
+        }
       case 'startNextTask':
         final tasks = await repository.watchTodayTasks(DateTime.now()).first;
         final next = tasks
@@ -1464,12 +1503,30 @@ class _HomeShellState extends ConsumerState<HomeShell> with RouteAware {
         }
       case 'start_focus':
         if (isBreakBoundary) {
+          ActivityReviewEntry? breakActivityEntry;
           transitionAccepted =
               await TaskExecutionCommands.startFocusFromCompletedBreak(
                 repository,
                 task,
                 expectedBoundaryAt: expectedBoundaryAt,
+                beforeFinishBreak: (task, runtime) async {
+                  breakActivityEntry = await prepareBreakActivityCheckIn(
+                    ref: ref,
+                    task: task,
+                    runtime: runtime,
+                    endedAt: expectedBoundaryAt,
+                  );
+                },
               );
+          if (transitionAccepted && breakActivityEntry != null && mounted) {
+            unawaited(
+              promptAndResolveBreakActivityCheckIn(
+                context: context,
+                ref: ref,
+                entry: breakActivityEntry!,
+              ),
+            );
+          }
         } else {
           transitionAccepted = false;
         }
@@ -1528,7 +1585,9 @@ class _HomeShellState extends ConsumerState<HomeShell> with RouteAware {
         final snoozePreferences =
             snoozeSettings?.notificationPreferencesJson ?? '{}';
         await localNotificationService.scheduleTaskReminder(
-          id: '${task.id}:snooze'.hashCode & 0x7fffffff,
+          id: LocalNotificationService.taskReminderNotificationId(
+            '${task.id}:snooze',
+          ),
           taskId: task.id,
           taskTitle: task.title,
           reminderType: 'snooze',
@@ -1831,19 +1890,23 @@ class _HomeShellState extends ConsumerState<HomeShell> with RouteAware {
                       ),
                       Padding(
                         padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-                        child: ListTile(
-                          key: const ValueKey<String>(
-                            'sidebar-standalone-pomodoro-destination',
-                          ),
-                          dense: true,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          leading: const Icon(Icons.timer_outlined),
-                          title: Text(l10n.text('standalone_pomodoro')),
-                          onTap: () => Navigator.of(context).push(
-                            MaterialPageRoute<void>(
-                              builder: (_) => const StandalonePomodoroScreen(),
+                        child: Material(
+                          color: Colors.transparent,
+                          child: ListTile(
+                            key: const ValueKey<String>(
+                              'sidebar-standalone-pomodoro-destination',
+                            ),
+                            dense: true,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            leading: const Icon(Icons.timer_outlined),
+                            title: Text(l10n.text('standalone_pomodoro')),
+                            onTap: () => Navigator.of(context).push(
+                              MaterialPageRoute<void>(
+                                builder: (_) =>
+                                    const StandalonePomodoroScreen(),
+                              ),
                             ),
                           ),
                         ),
@@ -2073,7 +2136,7 @@ class _SyncFooterState extends ConsumerState<_SyncFooter>
         Theme.of(context).colorScheme.onSurfaceVariant,
         Theme.of(context).colorScheme.surfaceContainerHighest,
       ),
-      ShellSyncVisualState.pending => (
+      ShellSyncVisualState.syncing || ShellSyncVisualState.waiting => (
         Theme.of(context).colorScheme.primary,
         Theme.of(context).colorScheme.primary,
       ),
@@ -2377,7 +2440,11 @@ class _CompactExecutionControlState
                 widget.task,
               );
             case TaskExecutionPrimaryAction.startFocus:
-              await repository.finishBreak(widget.task);
+              await finishBreakWithOptionalActivityCheckIn(
+                context: context,
+                ref: ref,
+                task: widget.task,
+              );
           }
         },
         synchronize: () => ref.read(syncServiceProvider).drainOutbox(),

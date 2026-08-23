@@ -45,6 +45,8 @@ void main() {
     'coaching_adaptive_roadmap_body',
     'coaching_adaptive_focus_title',
     'coaching_adaptive_focus_body',
+    'coaching_adaptive_sport_title',
+    'coaching_adaptive_sport_body',
     'coaching_adaptive_session_body',
     'coaching_adaptive_rest_title',
     'coaching_adaptive_rest_body',
@@ -53,6 +55,7 @@ void main() {
     'coaching_adaptive_baseline_title',
     'coaching_adaptive_baseline_body',
     'coaching_evidence_completed_sessions',
+    'coaching_evidence_sport_activity',
   ];
 
   test('every coaching mood has a lightweight registered SVG reaction', () {
