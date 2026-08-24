@@ -100,6 +100,119 @@
     sections.forEach((section) => navObserver.observe(section))
   }
 
+  const widgetDemo = document.querySelector('[data-widget-demo]')
+  if (widgetDemo) {
+    const widgetCard = widgetDemo.querySelector('[data-widget-card]')
+    const widgetCountdown = widgetDemo.querySelector('[data-widget-countdown]')
+    const widgetProgress = widgetDemo.querySelector('[data-widget-progress]')
+    const widgetLabel = widgetDemo.querySelector('[data-widget-label]')
+    const widgetTask = widgetDemo.querySelector('[data-widget-task]')
+    const widgetPauseLabel = widgetDemo.querySelector(
+      '[data-widget-pause-label]',
+    )
+    const widgetBreakLabel = widgetDemo.querySelector(
+      '[data-widget-break-label]',
+    )
+    const widgetPauseIcon = widgetDemo.querySelector(
+      '[data-widget-action="pause"] .material-symbols-rounded',
+    )
+    const widgetDurations = { focus: 25 * 60, break: 5 * 60 }
+    let widgetMode = 'focus'
+    let widgetRemaining = widgetDurations.focus
+    let widgetRunning = true
+    let widgetDeadline = Date.now() + widgetRemaining * 1000
+
+    const widgetTimeText = (seconds) => {
+      const minutes = Math.floor(seconds / 60)
+      return `${String(minutes).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`
+    }
+
+    const widgetDurationValue = (seconds) =>
+      `PT${Math.floor(seconds / 60)}M${seconds % 60}S`
+
+    const renderWidgetDemo = () => {
+      const total = widgetDurations[widgetMode]
+      if (widgetCountdown) {
+        widgetCountdown.textContent = widgetTimeText(widgetRemaining)
+        widgetCountdown.setAttribute(
+          'datetime',
+          widgetDurationValue(widgetRemaining),
+        )
+      }
+      if (widgetProgress) {
+        widgetProgress.style.width = `${Math.max(0, Math.min(100, (widgetRemaining / total) * 100))}%`
+      }
+      if (widgetCard) widgetCard.dataset.mode = widgetMode
+      if (widgetLabel) {
+        widgetLabel.textContent =
+          widgetMode === 'focus' ? 'Focus session' : 'Recovery break'
+      }
+      if (widgetTask) {
+        widgetTask.textContent =
+          widgetMode === 'focus' ? 'Deep work session' : 'Time to recharge'
+      }
+      if (widgetPauseLabel) {
+        widgetPauseLabel.textContent = widgetRunning ? 'Pause' : 'Resume'
+      }
+      if (widgetPauseIcon) {
+        widgetPauseIcon.textContent = widgetRunning ? 'pause' : 'play_arrow'
+      }
+      if (widgetBreakLabel) {
+        widgetBreakLabel.textContent = widgetMode === 'focus' ? 'Break' : 'Focus'
+      }
+    }
+
+    const startWidgetMode = (mode) => {
+      widgetMode = mode
+      widgetRemaining = widgetDurations[mode]
+      widgetRunning = true
+      widgetDeadline = Date.now() + widgetRemaining * 1000
+      renderWidgetDemo()
+    }
+
+    widgetDemo.querySelectorAll('[data-widget-action]').forEach((control) => {
+      control.addEventListener('click', () => {
+        const action = control.getAttribute('data-widget-action')
+        if (action === 'pause') {
+          if (widgetRunning) {
+            widgetRemaining = Math.max(
+              0,
+              Math.ceil((widgetDeadline - Date.now()) / 1000),
+            )
+            widgetRunning = false
+          } else {
+            widgetRunning = true
+            widgetDeadline = Date.now() + widgetRemaining * 1000
+          }
+        } else if (action === 'break') {
+          startWidgetMode(widgetMode === 'focus' ? 'break' : 'focus')
+          return
+        } else if (action === 'finish') {
+          startWidgetMode('focus')
+          return
+        }
+        renderWidgetDemo()
+      })
+    })
+
+    window.setInterval(() => {
+      if (!widgetRunning) return
+      const nextRemaining = Math.max(
+        0,
+        Math.ceil((widgetDeadline - Date.now()) / 1000),
+      )
+      if (nextRemaining === widgetRemaining) return
+      widgetRemaining = nextRemaining
+      if (widgetRemaining === 0) {
+        startWidgetMode(widgetMode === 'focus' ? 'break' : 'focus')
+        return
+      }
+      renderWidgetDemo()
+    }, 250)
+
+    renderWidgetDemo()
+  }
+
   const userAgent = navigator.userAgent.toLowerCase()
   const likelyPlatform = userAgent.includes('android')
     ? 'android'

@@ -1,0 +1,322 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#07111f" />
+  <meta name="description"
+    content="A free, adjustable Pomodoro timer from TaskMaster Pro that remembers the current session and settings locally in your browser." />
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="TaskMaster Pro" />
+  <meta property="og:title" content="Free Pomodoro Timer from TaskMaster Pro" />
+  <meta property="og:description"
+    content="Run an adjustable focus timer that resumes where you left off, with an accessible guide to the Pomodoro Technique." />
+  <title>Free Pomodoro Timer from TaskMaster Pro</title>
+  <link rel="icon" type="image/svg+xml" href="../assets/images/taskmaster-hourglass.svg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Alexandria:wght@500;600;700;800&family=Manrope:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@500;600;700;800&family=Tajawal:wght@400;500;700;800&family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,400,0,0&display=swap"
+    rel="stylesheet" />
+  <link rel="stylesheet" href="../styles.css?v=20260824d" />
+  <link rel="stylesheet" href="pomodoro.css?v=20260824d" />
+  <script src="../i18n.js?v=20260824d" defer></script>
+  <script src="pomodoro.js?v=20260824d" defer></script>
+</head>
+
+<body class="pomodoro-page">
+  <a class="skip-link" href="#pomodoro-main">Skip to timer</a>
+
+  <header class="pomodoro-site-header">
+    <div class="container pomodoro-header-inner">
+      <a class="brand" href="../" aria-label="TaskMaster Pro home">
+        <img src="../assets/images/taskmaster-hourglass.svg" alt="" class="brand-logo" width="44" height="44" />
+        <span class="brand-name">TaskMaster Pro</span>
+      </a>
+      <nav class="pomodoro-nav" aria-label="Pomodoro page navigation">
+        <a href="#timer">Timer</a>
+        <a href="#how-to-use">How to use it</a>
+        <a href="../#widget">Android widget</a>
+        <a class="button button-small button-primary" href="../#download">Download app</a>
+      </nav>
+      <button type="button" class="language-toggle" data-language-toggle aria-label="Show this page in German">
+        <span class="material-symbols-rounded" aria-hidden="true">translate</span>
+        <span data-language-label>DE</span>
+      </button>
+    </div>
+  </header>
+
+  <main id="pomodoro-main">
+    <section class="pomodoro-hero" id="timer">
+      <div class="pomodoro-hero-glow" aria-hidden="true"></div>
+      <div class="container pomodoro-hero-grid">
+        <div class="pomodoro-intro">
+          <div class="eyebrow">
+            <span class="eyebrow-dot" aria-hidden="true"></span>
+            Free, private and ready without an account
+          </div>
+          <h1>Make the next <span class="accent-text">25 minutes</span> count.</h1>
+          <p class="pomodoro-intro-lead">
+            Pick one meaningful task, focus for a bounded interval and take a real
+            break. This timer remembers your session in this browser, even when you
+            close the tab.
+          </p>
+          <div class="pomodoro-trust-list" aria-label="Timer capabilities">
+            <span><i class="material-symbols-rounded" aria-hidden="true">lock</i>Remembers your timer on this device</span>
+            <span><i class="material-symbols-rounded" aria-hidden="true">tune</i>Adjustable intervals</span>
+            <span><i class="material-symbols-rounded" aria-hidden="true">devices</i>Responsive everywhere</span>
+          </div>
+          <button type="button" class="pomodoro-info-trigger" data-info-open aria-haspopup="dialog"
+            aria-controls="pomodoro-information">
+            <span class="info-symbol" aria-hidden="true">!</span>
+            <span>
+              <strong>What is the Pomodoro Technique?</strong>
+              <small>History, practical guidance and research context</small>
+            </span>
+            <i class="material-symbols-rounded" aria-hidden="true">arrow_forward</i>
+          </button>
+        </div>
+
+        <section class="pomodoro-app" data-pomodoro-app aria-labelledby="timer-title">
+          <header class="pomodoro-app-header">
+            <div>
+              <span class="section-kicker">Your focus space</span>
+              <h2 id="timer-title">Browser Pomodoro</h2>
+            </div>
+            <span class="local-save-badge" title="Saved only in this browser">
+              <span class="material-symbols-rounded" aria-hidden="true">database</span>
+              <span data-save-status>Saved locally</span>
+            </span>
+          </header>
+
+          <label class="task-label" for="pomodoro-task">
+            <span>What are you moving forward?</span>
+            <input id="pomodoro-task" type="text" maxlength="120" autocomplete="off"
+              placeholder="e.g. Review chapter 4" data-task-input />
+          </label>
+
+          <div class="phase-switcher" role="group" aria-label="Choose timer phase">
+            <button type="button" data-phase-button="focus" aria-pressed="true">Focus</button>
+            <button type="button" data-phase-button="shortBreak" aria-pressed="false">Short break</button>
+            <button type="button" data-phase-button="longBreak" aria-pressed="false">Long break</button>
+          </div>
+
+          <div class="timer-stage" data-timer-stage style="--timer-progress: 0deg">
+            <div class="timer-orbit" aria-hidden="true"><i></i><i></i><i></i></div>
+            <div class="timer-face">
+              <span class="timer-phase" data-phase-label>Focus</span>
+              <time class="timer-value" data-timer-value datetime="PT25M">25:00</time>
+              <span class="timer-round" data-round-label>Focus 1 of 4</span>
+            </div>
+          </div>
+
+          <div class="timer-controls" aria-label="Pomodoro controls">
+            <button type="button" class="timer-secondary" data-action="reset">
+              <span class="material-symbols-rounded" aria-hidden="true">restart_alt</span>
+              Reset
+            </button>
+            <button type="button" class="timer-primary" data-action="start">
+              <span class="material-symbols-rounded" aria-hidden="true" data-start-icon>play_arrow</span>
+              <span data-start-label>Start focus</span>
+            </button>
+            <button type="button" class="timer-secondary" data-action="skip">
+              <span class="material-symbols-rounded" aria-hidden="true">skip_next</span>
+              Skip
+            </button>
+          </div>
+
+          <p class="timer-status" data-timer-status aria-live="polite">
+            Ready when you are. Your progress stays on this device.
+          </p>
+
+          <details class="timer-settings" data-settings>
+            <summary>
+              <span><i class="material-symbols-rounded" aria-hidden="true">tune</i>Adjust timer</span>
+              <span class="settings-summary" data-settings-summary>25 min focus, 5 min short break, 15 min long break</span>
+            </summary>
+            <div class="settings-panel">
+              <div class="duration-grid">
+                <label>
+                  <span>Focus minutes</span>
+                  <input type="number" min="1" max="120" step="1" inputmode="numeric"
+                    value="25" data-setting="focusMinutes" />
+                </label>
+                <label>
+                  <span>Short break</span>
+                  <input type="number" min="1" max="60" step="1" inputmode="numeric"
+                    value="5" data-setting="shortBreakMinutes" />
+                </label>
+                <label>
+                  <span>Long break</span>
+                  <input type="number" min="1" max="90" step="1" inputmode="numeric"
+                    value="15" data-setting="longBreakMinutes" />
+                </label>
+                <label>
+                  <span>Focuses per round</span>
+                  <input type="number" min="1" max="12" step="1" inputmode="numeric"
+                    value="4" data-setting="focusesPerRound" />
+                </label>
+              </div>
+              <div class="setting-toggles">
+                <label>
+                  <input type="checkbox" data-setting="autoStartBreaks" />
+                  <span>Start breaks automatically</span>
+                </label>
+                <label>
+                  <input type="checkbox" data-setting="autoStartFocus" />
+                  <span>Start the next focus automatically</span>
+                </label>
+                <label>
+                  <input type="checkbox" checked data-setting="soundEnabled" />
+                  <span>Play a gentle completion tone</span>
+                </label>
+              </div>
+              <button type="button" class="settings-reset" data-action="restore-defaults">
+                Restore recommended times
+              </button>
+            </div>
+          </details>
+
+          <p class="local-privacy-note">
+            <span class="material-symbols-rounded" aria-hidden="true">shield_lock</span>
+            Your timer stays on this device and is ready when you return. Nothing is sent to TaskMaster Pro.
+          </p>
+        </section>
+      </div>
+    </section>
+
+    <section class="section section-elevated" id="how-to-use">
+      <div class="container pomodoro-guide-grid">
+        <div class="section-heading">
+          <span class="section-kicker">A gentle starting ritual</span>
+          <h2>Use the interval to protect attention, not to race the clock</h2>
+          <p>
+            The familiar 25-minute timer is a useful entry point. The complete
+            technique also includes planning, handling interruptions, recording
+            effort and learning from each cycle.
+          </p>
+        </div>
+        <ol class="pomodoro-steps">
+          <li><span>01</span><div><strong>Choose one clear outcome</strong><p>Write a task small enough to move during one focused interval.</p></div></li>
+          <li><span>02</span><div><strong>Start and protect the interval</strong><p>Put avoidable distractions aside; note interruptions instead of chasing them.</p></div></li>
+          <li><span>03</span><div><strong>Stop when the timer ends</strong><p>Take the break seriously. Stand, breathe, drink water or let your attention reset.</p></div></li>
+          <li><span>04</span><div><strong>Review, then begin again</strong><p>After several focuses, take a longer break and adjust the durations to fit your work.</p></div></li>
+        </ol>
+      </div>
+    </section>
+
+    <section class="section pomodoro-book-section">
+      <div class="container book-recommendation">
+        <div class="book-mark" aria-hidden="true">
+          <span class="material-symbols-rounded">menu_book</span>
+        </div>
+        <div>
+          <span class="section-kicker">Go deeper into learning</span>
+          <h2>A useful companion: <em>A Mind for Numbers</em></h2>
+          <p>
+            Barbara Oakley’s book explains practical approaches to learning difficult
+            material, overcoming procrastination and moving between focused and more
+            diffuse modes of thinking. Its strategies apply beyond mathematics and science.
+          </p>
+          <a class="button button-secondary" href="https://barbaraoakley.com/books/a-mind-for-numbers/"
+            target="_blank" rel="noopener noreferrer">
+            Read about the book
+            <span class="material-symbols-rounded" aria-hidden="true">open_in_new</span>
+          </a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer pomodoro-footer">
+    <div class="container footer-copyright">
+      <span>© <span id="current-year">2026</span> Y. A. Diab, TaskMaster Pro</span>
+      <a href="../">Product website</a>
+      <a href="../privacy-policy/">Privacy</a>
+      <a href="../terms/">Terms</a>
+    </div>
+  </footer>
+
+  <div class="pomodoro-info-modal" id="pomodoro-information" data-info-modal hidden>
+    <div class="pomodoro-info-backdrop" data-info-close aria-hidden="true"></div>
+    <section class="pomodoro-info-panel" role="dialog" aria-modal="true"
+      aria-labelledby="pomodoro-information-title" tabindex="-1" data-info-panel>
+      <header>
+        <div>
+          <span class="section-kicker">A practical introduction</span>
+          <h2 id="pomodoro-information-title">The idea behind the Pomodoro Technique</h2>
+        </div>
+        <button type="button" class="info-close" aria-label="Close Pomodoro information" data-info-close>
+          <span class="material-symbols-rounded" aria-hidden="true">close</span>
+        </button>
+      </header>
+      <div class="pomodoro-info-content">
+        <section>
+          <h3>Who created it?</h3>
+          <p>
+            Francesco Cirillo created the technique while he was a university student
+            in the late 1980s, using a tomato-shaped kitchen timer. The name comes from
+            the Italian word for tomato. Cirillo emphasizes that the timer is only one
+            part of a broader system for planning, managing interruptions, estimating
+            effort and improving how you work.
+          </p>
+        </section>
+        <section>
+          <h3>How can a timer help?</h3>
+          <p>
+            A bounded interval can lower the barrier to starting, make interruptions
+            visible and create a deliberate stopping point. Research by Atsunori Ariga
+            and Alejandro Lleras found that brief, rare breaks helped prevent a decline
+            in performance during a sustained-attention task. That does not make one
+            duration perfect for everyone. Adjust the timer to the work and to your needs.
+          </p>
+        </section>
+        <section>
+          <h3>A simple first cycle</h3>
+          <ol>
+            <li>Choose one task and define what “moved forward” will mean.</li>
+            <li>Focus for 25 minutes, recording interruptions instead of following them.</li>
+            <li>Stop and take a short break when the interval ends.</li>
+            <li>After four focus intervals, take a longer break and review the pattern.</li>
+          </ol>
+        </section>
+        <aside class="information-caution">
+          <span class="material-symbols-rounded" aria-hidden="true">lightbulb</span>
+          <p>
+            The timer is a tool, not a score. Even the creator cautions against reducing
+            the full technique to collecting as many 25-minute intervals as possible.
+          </p>
+        </aside>
+        <section class="information-sources">
+          <h3>Sources and further reading</h3>
+          <a href="https://www.pomodorotechnique.com/francesco-cirillo/" target="_blank" rel="noopener noreferrer">
+            <span class="source-label">Francesco Cirillo: creator’s account and philosophy</span>
+            <span class="material-symbols-rounded" aria-hidden="true">open_in_new</span>
+          </a>
+          <a href="https://www.pomodorotechnique.com/" target="_blank" rel="noopener noreferrer">
+            <span class="source-label">Official Pomodoro Technique overview</span>
+            <span class="material-symbols-rounded" aria-hidden="true">open_in_new</span>
+          </a>
+          <a href="https://doi.org/10.1016/j.cognition.2010.12.007" target="_blank" rel="noopener noreferrer">
+            <span class="source-label">Ariga &amp; Lleras (2011), <em>Cognition</em>: brief mental breaks and vigilance</span>
+            <span class="material-symbols-rounded" aria-hidden="true">open_in_new</span>
+          </a>
+          <a href="https://barbaraoakley.com/books/a-mind-for-numbers/" target="_blank" rel="noopener noreferrer">
+            <span class="source-label">Barbara Oakley: <em>A Mind for Numbers</em></span>
+            <span class="material-symbols-rounded" aria-hidden="true">open_in_new</span>
+          </a>
+        </section>
+        <p class="trademark-note">
+          Pomodoro® is a registered trademark of Francesco Cirillo. This independent
+          educational timer is not affiliated with or endorsed by Francesco Cirillo.
+        </p>
+      </div>
+      <footer>
+        <button type="button" class="button button-primary" data-info-close>Start a focus interval</button>
+      </footer>
+    </section>
+  </div>
+</body>
+
+</html>
