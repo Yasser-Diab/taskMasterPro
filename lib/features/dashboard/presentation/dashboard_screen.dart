@@ -198,7 +198,7 @@ class DashboardScreen extends ConsumerWidget {
                       _NoActiveTask(
                         onAdd: () => TaskEditorDialog.show(context),
                       ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 12),
                     Align(
                       alignment: AlignmentDirectional.centerEnd,
                       child: ActionChip(
@@ -214,7 +214,7 @@ class DashboardScreen extends ConsumerWidget {
                         ),
                       ),
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 20),
                     LayoutBuilder(
                       builder: (context, constraints) {
                         final wide = constraints.maxWidth >= 900;
@@ -226,7 +226,7 @@ class DashboardScreen extends ConsumerWidget {
                           return Column(
                             children: [
                               next,
-                              const SizedBox(height: 16),
+                              const SizedBox(height: 20),
                               attention,
                             ],
                           );
@@ -235,13 +235,13 @@ class DashboardScreen extends ConsumerWidget {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Expanded(flex: 3, child: next),
-                            const SizedBox(width: 16),
+                            const SizedBox(width: 20),
                             Expanded(flex: 2, child: attention),
                           ],
                         );
                       },
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 20),
                     _PerformanceGrid(
                       plannedMs: plannedMs,
                       recordedWork: recordedWork,
@@ -250,13 +250,13 @@ class DashboardScreen extends ConsumerWidget {
                       overdue: overdue,
                       onOpenTasksFilter: onOpenTasksFilter,
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 20),
                     _TodaySchedule(
                       entries: schedule,
                       activeTaskId: runtime?.activeTaskId,
                       activeSessionState: runtime?.state,
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 20),
                     _AdaptiveCoachingCard(
                       userName: displayName,
                       age: age,
@@ -514,8 +514,16 @@ class _ActiveTaskPanelState extends ConsumerState<_ActiveTaskPanel> {
                 runtime: runtime,
                 pomodoro: pomodoro,
               );
+              final actionButtonStyle = ButtonStyle(
+                minimumSize: const WidgetStatePropertyAll(Size(0, 48)),
+                padding: const WidgetStatePropertyAll(
+                  EdgeInsets.symmetric(horizontal: 17, vertical: 12),
+                ),
+                visualDensity: VisualDensity.standard,
+              );
               final primaryActions = <Widget>[
                 FilledButton.icon(
+                  style: actionButtonStyle,
                   onPressed: _busy ? null : () => _runPrimary(controls.primary),
                   icon: _busy
                       ? const SizedBox.square(
@@ -544,6 +552,7 @@ class _ActiveTaskPanelState extends ConsumerState<_ActiveTaskPanel> {
                 ),
                 if (controls.canStartBreakEarly)
                   OutlinedButton.icon(
+                    style: actionButtonStyle,
                     onPressed: _busy
                         ? null
                         : () => _runBusy(
@@ -556,17 +565,20 @@ class _ActiveTaskPanelState extends ConsumerState<_ActiveTaskPanel> {
                   ),
                 if (controls.canSkipBreak)
                   OutlinedButton.icon(
+                    style: actionButtonStyle,
                     onPressed: _busy ? null : _skipBreak,
                     icon: const Icon(Icons.skip_next_rounded),
                     label: Text(context.l10n.text('pomodoro_skip_break')),
                   ),
                 if (controls.canExtendBreak)
                   OutlinedButton.icon(
+                    style: actionButtonStyle,
                     onPressed: _busy ? null : _extendBreak,
                     icon: const Icon(Icons.more_time),
                     label: Text(context.l10n.text('notification_extend_break')),
                   ),
                 OutlinedButton.icon(
+                  style: actionButtonStyle,
                   onPressed: _busy
                       ? null
                       : () => _runBusy(
@@ -578,11 +590,19 @@ class _ActiveTaskPanelState extends ConsumerState<_ActiveTaskPanel> {
               ];
               final utilityActions = <Widget>[
                 IconButton.outlined(
+                  style: IconButton.styleFrom(
+                    minimumSize: const Size.square(48),
+                    maximumSize: const Size.square(48),
+                  ),
                   tooltip: context.l10n.text('add_interruption'),
                   onPressed: () => _addInterruption(context, ref),
                   icon: const Icon(Icons.flash_on_outlined),
                 ),
                 IconButton.outlined(
+                  style: IconButton.styleFrom(
+                    minimumSize: const Size.square(48),
+                    maximumSize: const Size.square(48),
+                  ),
                   tooltip: context.l10n.text('add_note'),
                   onPressed: () => _addNote(context, ref),
                   icon: const Icon(Icons.note_add_outlined),
@@ -1619,11 +1639,6 @@ class _AdaptiveCoachingCardState extends ConsumerState<_AdaptiveCoachingCard> {
     final details = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _CoachMoodBadge(
-          label: context.l10n.text(decision.mood.labelKey),
-          palette: palette,
-        ),
-        const SizedBox(height: 12),
         Text(
           title,
           style: TextStyle(
@@ -1673,26 +1688,12 @@ class _AdaptiveCoachingCardState extends ConsumerState<_AdaptiveCoachingCard> {
             ],
           ),
         ],
-        const SizedBox(height: 12),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          crossAxisAlignment: WrapCrossAlignment.center,
-          children: [
-            Chip(
-              backgroundColor: palette.chipBackground,
-              side: BorderSide(color: palette.border.withValues(alpha: 0.65)),
-              avatar: Icon(Icons.tune_rounded, size: 16, color: palette.accent),
-              label: Text(
-                context.l10n.text(
-                  'coaching_tone_${widget.settings?.coachingTone ?? 'balanced'}',
-                ),
-                style: TextStyle(
-                  color: palette.foreground.withValues(alpha: 0.86),
-                ),
-              ),
-            ),
-            if (relatedTask != null)
+        if (navigableTasks.isNotEmpty) ...[
+          const SizedBox(height: 14),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
               ActionChip(
                 backgroundColor: palette.actionBackground,
                 side: BorderSide(color: palette.accent.withValues(alpha: 0.6)),
@@ -1701,31 +1702,25 @@ class _AdaptiveCoachingCardState extends ConsumerState<_AdaptiveCoachingCard> {
                   size: 16,
                   color: palette.accent,
                 ),
-                label: Text(relatedTask.title, overflow: TextOverflow.ellipsis),
-                onPressed: () => TaskWorkspaceScreen.open(context, relatedTask),
-              ),
-            if (relatedTasks.isNotEmpty)
-              ActionChip(
-                backgroundColor: palette.actionBackground,
-                side: BorderSide(color: palette.accent.withValues(alpha: 0.6)),
-                avatar: Icon(
-                  Icons.view_list_rounded,
-                  size: 16,
-                  color: palette.accent,
-                ),
                 label: Text(
-                  decision.evidence.isEmpty
+                  navigableTasks.length == 1
+                      ? navigableTasks.single.title
+                      : decision.evidence.isEmpty
                       ? context.l10n.text('overdue')
                       : context.l10n.format(
                           decision.evidence.first.key,
-                          decision.evidence.first.values,
+                          _coachingDisplayValues(
+                            context.l10n,
+                            decision.evidence.first.values,
+                          ),
                         ),
+                  overflow: TextOverflow.ellipsis,
                 ),
                 onPressed: openRelatedTasks,
               ),
-            _CoachSuggestedBadge(palette: palette),
-          ],
-        ),
+            ],
+          ),
+        ],
       ],
     );
     final illustration = AnimatedSwitcher(
@@ -1747,7 +1742,7 @@ class _AdaptiveCoachingCardState extends ConsumerState<_AdaptiveCoachingCard> {
             decision.expression.semanticLabelKey,
           ),
           accent: palette.accent,
-          size: decision.compact ? 142 : 184,
+          size: decision.compact ? 48 : 56,
           background: palette.illustrationBackground,
           border: palette.border,
         ),
@@ -1820,40 +1815,37 @@ class _AdaptiveCoachingCardState extends ConsumerState<_AdaptiveCoachingCard> {
                 ),
               ),
               Padding(
-                padding: EdgeInsets.all(decision.compact ? 18 : 22),
-                child: LayoutBuilder(
-                  builder: (context, constraints) {
-                    if (constraints.maxWidth < 620) {
-                      return Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Align(
-                            alignment: Alignment.center,
-                            child: illustration,
-                          ),
-                          const SizedBox(height: 16),
-                          details,
-                          Align(
-                            alignment: AlignmentDirectional.centerEnd,
-                            child: _CoachFeedbackButton(
-                              palette: palette,
-                              child: feedback,
-                            ),
-                          ),
-                        ],
-                      );
-                    }
-                    return Row(
-                      crossAxisAlignment: CrossAxisAlignment.center,
+                padding: EdgeInsets.all(decision.compact ? 18 : 20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
                       children: [
                         illustration,
-                        const SizedBox(width: 24),
-                        Expanded(child: details),
-                        const SizedBox(width: 10),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            children: [
+                              _CoachMoodBadge(
+                                label: context.l10n.text(
+                                  decision.mood.labelKey,
+                                ),
+                                palette: palette,
+                              ),
+                              _CoachSuggestedBadge(palette: palette),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 8),
                         _CoachFeedbackButton(palette: palette, child: feedback),
                       ],
-                    );
-                  },
+                    ),
+                    const SizedBox(height: 14),
+                    details,
+                  ],
                 ),
               ),
             ],
@@ -1964,44 +1956,41 @@ class _CoachMoodBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Align(
-      alignment: AlignmentDirectional.centerStart,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
-        decoration: BoxDecoration(
-          color: palette.actionBackground,
-          borderRadius: BorderRadius.circular(999),
-          border: Border.all(color: palette.accent.withValues(alpha: 0.52)),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 7,
-              height: 7,
-              decoration: BoxDecoration(
-                color: palette.accent,
-                shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(
-                    color: palette.accent.withValues(alpha: 0.55),
-                    blurRadius: 8,
-                  ),
-                ],
-              ),
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
+      decoration: BoxDecoration(
+        color: palette.actionBackground,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: palette.accent.withValues(alpha: 0.52)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 7,
+            height: 7,
+            decoration: BoxDecoration(
+              color: palette.accent,
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: palette.accent.withValues(alpha: 0.55),
+                  blurRadius: 8,
+                ),
+              ],
             ),
-            const SizedBox(width: 7),
-            Text(
-              label,
-              style: TextStyle(
-                color: palette.foreground,
-                fontWeight: FontWeight.w800,
-                fontSize: 12,
-                letterSpacing: 0.15,
-              ),
+          ),
+          const SizedBox(width: 7),
+          Text(
+            label,
+            style: TextStyle(
+              color: palette.foreground,
+              fontWeight: FontWeight.w800,
+              fontSize: 12,
+              letterSpacing: 0.15,
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

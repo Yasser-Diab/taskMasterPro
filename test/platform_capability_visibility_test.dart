@@ -41,6 +41,100 @@ void main() {
       );
     });
 
+    test('Health Connect refreshes terminate and expose access settings', () {
+      final screen = File(
+        'lib/features/health/presentation/health_connect_screen.dart',
+      ).readAsStringSync();
+      final activity = File(
+        'android/app/src/main/kotlin/pro/taskmaster/taskmaster_pro/MainActivity.kt',
+      ).readAsStringSync();
+
+      expect(screen, contains('_healthRefreshDeadline'));
+      expect(screen, contains('.timeout(_healthReadTimeout)'));
+      expect(screen, contains("'health_operation_timed_out'"));
+      expect(screen, contains("'openHealthConnectSettings'"));
+      expect(activity, contains('healthConnectStepTrackingAvailable'));
+      expect(
+        activity,
+        contains('android.health.connect.action.HEALTH_HOME_SETTINGS'),
+      );
+      expect(
+        activity,
+        contains('androidx.health.ACTION_HEALTH_CONNECT_SETTINGS'),
+      );
+    });
+
+    test('Health Connect recovery guidance is localized', () {
+      const keys = [
+        'health_manage_access',
+        'health_operation_timed_out',
+        'health_no_recent_records_explanation',
+        'health_no_records_today_explanation',
+        'health_on_device_steps_waiting',
+      ];
+
+      for (final locale in AppLocalizations.supportedLocales) {
+        final l10n = AppLocalizations(locale);
+        for (final key in keys) {
+          expect(l10n.text(key), isNot(contains('⟦$key⟧')));
+          expect(l10n.text(key).trim(), isNotEmpty);
+        }
+      }
+    });
+
+    test('Health dashboard is mobile-first and lists connected watches only', () {
+      final screen = File(
+        'lib/features/health/presentation/health_connect_screen.dart',
+      ).readAsStringSync();
+
+      expect(screen, contains('body: RefreshIndicator('));
+      expect(screen, contains('onRefresh: _refreshDashboard'));
+      expect(screen, contains('AlwaysScrollableScrollPhysics'));
+      expect(
+        screen,
+        contains("PageStorageKey<String>('health-connect-scroll')"),
+        reason: 'The list offset must have its own PageStorage identity.',
+      );
+      expect(
+        screen,
+        contains("PageStorageKey<String>('health-sources-expansion')"),
+        reason:
+            'Expansion state must not read the list scroll offset as a bool.',
+      );
+      expect(screen, contains('class _WeeklyStepsPainter'));
+      expect(
+        screen,
+        contains('.where((wearable) => wearable.isConnected)'),
+        reason: 'Disconnected paired watches must not be rendered as sources.',
+      );
+      expect(
+        screen,
+        isNot(
+          contains(
+            "label: Text(\n                            context.l10n.text('health_wearables_refresh')",
+          ),
+        ),
+        reason:
+            'Refresh belongs to the pull gesture, not a desktop-style button.',
+      );
+
+      const keys = [
+        'health_weekly_steps',
+        'health_weekly_steps_detail',
+        'health_pull_to_refresh',
+        'health_connected_watches',
+        'health_connected_watches_detail',
+        'health_wearables_none_connected',
+      ];
+      for (final locale in AppLocalizations.supportedLocales) {
+        final l10n = AppLocalizations(locale);
+        for (final key in keys) {
+          expect(l10n.text(key), isNot(contains('⟦$key⟧')));
+          expect(l10n.text(key).trim(), isNotEmpty);
+        }
+      }
+    });
+
     test('usage access and Android sound entry points remain Android-gated', () {
       final settings = File(
         'lib/features/settings/presentation/settings_screen.dart',

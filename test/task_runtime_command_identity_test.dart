@@ -7,6 +7,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:taskmaster_pro/core/database/app_database.dart';
+import 'package:taskmaster_pro/core/platform/android_home_widget_projection.dart';
+import 'package:taskmaster_pro/core/platform/android_home_widget_service.dart';
 import 'package:taskmaster_pro/features/tasks/data/task_repository.dart';
 import 'package:taskmaster_pro/features/tasks/domain/pomodoro_execution_state.dart';
 
@@ -223,6 +225,31 @@ void main() {
       );
     },
   );
+
+  test('completion publishes a revisioned idle widget snapshot', () async {
+    final taskId = await repository.createTask(
+      const TaskDraft(title: 'Duolingo German'),
+    );
+    await repository.start((await repository.getTask(taskId))!);
+    final running = (await repository.getRuntime())!;
+
+    await repository.complete((await repository.getTask(taskId))!);
+
+    expect(await repository.getRuntime(), isNull);
+    final idle = await repository.getRuntimeIncludingIdle();
+    expect(idle?.state, 'idle');
+    expect(idle?.revision, running.revision + 1);
+    final widget = await AndroidHomeWidgetProjection.build(
+      repository: repository,
+      ownerId: 'local',
+      localeCode: 'en',
+    );
+    expect(widget.mode, AndroidHomeWidgetMode.idle);
+    expect(widget.taskId, isNull);
+    expect(widget.sessionId, isNull);
+    expect(widget.runtimeRevision, idle?.revision);
+    expect(widget.runtimeUpdatedAt, idle?.updatedAt);
+  });
 
   test('active-task switch persists the switch command identity', () async {
     final firstId = await repository.createTask(

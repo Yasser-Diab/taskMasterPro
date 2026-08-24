@@ -383,15 +383,9 @@ bool executionLedgerTransitionAllowed({
       }.contains(existing['state']);
 }
 
-/// Android must route every execution-changing action through the foreground
-/// application isolate. The background notification isolate has no account
-/// database or canonical runtime repository; letting it own Pause/Resume/etc.
-/// would only dismiss a card while leaving the task unchanged.
-///
-/// Keep the card until the canonical transition succeeds. HomeShell's runtime
-/// observer then cancels or replaces it with the card for the accepted
-/// revision. Only an explicit non-mutating dismiss is allowed to remove the
-/// notification directly.
+/// Mutation buttons use TaskMaster's explicit headless receiver. The card is
+/// retained until the revision-guarded local command succeeds; navigation-only
+/// actions may still open the visible application.
 class AndroidNotificationActionDelivery {
   const AndroidNotificationActionDelivery({
     required this.showsUserInterface,
@@ -412,7 +406,7 @@ AndroidNotificationActionDelivery reminderNotificationActionDelivery(
     'snooze',
   }.contains(actionId);
   return AndroidNotificationActionDelivery(
-    showsUserInterface: mutatesReminder,
+    showsUserInterface: !mutatesReminder && actionId != 'dismiss',
     cancelNotification: !mutatesReminder,
   );
 }
@@ -422,8 +416,17 @@ AndroidNotificationActionDelivery executionNotificationActionDelivery(
   String actionId,
 ) {
   final dismissesOnly = actionId == 'dismiss';
+  final mutatesExecution = const {
+    'pause',
+    'resume',
+    'start_break',
+    'start_focus',
+    'continue_working',
+    'extend_break',
+    'finish_task',
+  }.contains(actionId);
   return AndroidNotificationActionDelivery(
-    showsUserInterface: !dismissesOnly,
+    showsUserInterface: !dismissesOnly && !mutatesExecution,
     cancelNotification: dismissesOnly,
   );
 }
@@ -439,6 +442,19 @@ bool isExecutionNotificationTag(String? tag) {
     'task_reminders',
   }.contains(category);
 }
+
+@visibleForTesting
+bool isExecutionNotificationTagForTask(String? tag, String taskId) =>
+    isExecutionNotificationTag(tag) && tag!.startsWith('execution:$taskId:');
+
+@visibleForTesting
+bool isOrphanedExecutionNotificationTag(
+  String? tag, {
+  required String? activeTaskId,
+}) =>
+    isExecutionNotificationTag(tag) &&
+    (activeTaskId == null ||
+        !isExecutionNotificationTagForTask(tag, activeTaskId));
 
 /// Selects only TaskMaster task notifications which cannot belong to the
 /// current canonical account/session after startup.
@@ -1091,6 +1107,21 @@ class LocalNotificationService {
           ),
         ),
         payload: payload,
+      );
+      // The quiet status card is itself an actionable execution surface. A
+      // paused runtime has no future boundary alarm, so without claiming the
+      // current identity here its Resume action is rejected against the
+      // retired pre-pause ledger row. Running and break cards deliberately use
+      // the same identity as their boundary alarm, making this update
+      // idempotent when both surfaces exist.
+      await _setExecutionLedgerState(
+        taskId: taskId,
+        state: boundaryReached ? 'expired' : 'scheduled',
+        notificationId: notificationIdentity,
+        sessionId: sessionId,
+        runtimeRevision: runtimeRevision,
+        intervalId: intervalId,
+        boundaryAtUtc: boundaryAtUtc,
       );
     });
   }
@@ -2266,6 +2297,58 @@ class LocalNotificationService {
     await cancelExecutionCompletionWithState(taskId);
   }
 
+  /// Removes execution alarms and delivered cards which cannot belong to the
+  /// current canonical runtime. Android notification tags are part of the OS
+  /// identity, so cancelling only the numeric slot cannot retire a card left
+  /// behind by a task hand-off or an older application build.
+  Future<void> cancelOrphanedExecutionNotifications({
+    required String? activeTaskId,
+  }) async {
+    await initialize();
+    await _serializeNotificationMutation(() async {
+      try {
+        final pending = await _plugin.pendingNotificationRequests();
+        for (final request in pending) {
+          final payload = decodeOwnedPayload(request.payload);
+          final taskId = payload.taskId;
+          final isExecution =
+              payload.executionSurface != null || payload.hasExecutionIdentity;
+          if (!isExecution ||
+              taskId == null ||
+              (activeTaskId != null && taskId == activeTaskId)) {
+            continue;
+          }
+          await _plugin.cancel(id: request.id);
+        }
+      } on PlatformException {
+        // Delivered-card cleanup below is still useful when a vendor cannot
+        // enumerate scheduled requests.
+      }
+
+      if (defaultTargetPlatform != TargetPlatform.android) return;
+      try {
+        final active = await _plugin.getActiveNotifications();
+        for (final notification in active) {
+          final id = notification.id;
+          final tag = notification.tag;
+          if (id == null ||
+              !isOrphanedExecutionNotificationTag(
+                tag,
+                activeTaskId: activeTaskId,
+              )) {
+            continue;
+          }
+          await _plugin.cancel(id: id, tag: tag);
+        }
+      } on UnimplementedError {
+        // Active notification enumeration is Android-only and optional on
+        // vendor builds. Canonical reconciliation repeats this bounded pass.
+      } on PlatformException {
+        // A later canonical runtime update retries the cleanup.
+      }
+    });
+  }
+
   /// Retires the single execution-toast slot while preserving the reason in
   /// the identity ledger. Rejected/superseded Windows pending-update actions
   /// use `superseded`; ordinary runtime reconciliation uses `cancelled`.
@@ -2273,8 +2356,39 @@ class LocalNotificationService {
     String taskId, {
     String ledgerState = 'cancelled',
   }) async {
-    await cancel(executionNotificationId(taskId));
-    await cancel(executionStatusNotificationId(taskId));
+    await initialize();
+    final executionIds = <int>{
+      executionNotificationId(taskId),
+      executionStatusNotificationId(taskId),
+    };
+    await _serializeNotificationMutation(() async {
+      // Scheduled alarms use their numeric ID, while delivered Android cards
+      // use the category tag as part of their identity. Cancelling only by ID
+      // leaves a tagged card alive and produces one notification per task
+      // after a hand-off. Retire both identities atomically.
+      for (final id in executionIds) {
+        await _plugin.cancel(id: id);
+      }
+      if (defaultTargetPlatform != TargetPlatform.android) return;
+      try {
+        final active = await _plugin.getActiveNotifications();
+        for (final notification in active) {
+          final id = notification.id;
+          final tag = notification.tag;
+          if (id == null ||
+              !executionIds.contains(id) ||
+              !isExecutionNotificationTagForTask(tag, taskId)) {
+            continue;
+          }
+          await _plugin.cancel(id: id, tag: tag);
+        }
+      } on UnimplementedError {
+        // Active notification enumeration is Android-only and vendor builds
+        // can omit it. The numeric alarm slot was still retired above.
+      } on PlatformException {
+        // A later canonical reconciliation repeats this bounded cancellation.
+      }
+    });
     await _setExecutionLedgerState(taskId: taskId, state: ledgerState);
   }
 

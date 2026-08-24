@@ -55,7 +55,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   bool _notificationReady = false;
   bool _checkingUpdate = false;
   bool _showAllSettings = false;
-  String _version = '0.0.30';
+  String _version = '0.0.28';
   final _profileSectionKey = GlobalKey();
   final _appearanceSectionKey = GlobalKey();
   final _helpSectionKey = GlobalKey();
@@ -1702,7 +1702,7 @@ class _AboutLegalCategory extends StatefulWidget {
 
 class _AboutLegalCategoryState extends State<_AboutLegalCategory> {
   final _updates = AppUpdateService();
-  String _version = '0.0.30';
+  String _version = '0.0.28';
   bool _checking = false;
 
   @override

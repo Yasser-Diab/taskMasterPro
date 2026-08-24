@@ -3496,14 +3496,22 @@ class _WorkspaceShortcut extends StatelessWidget {
   }
 }
 
-class _ExecutionModeExplanation extends StatelessWidget {
+class _ExecutionModeExplanation extends StatefulWidget {
   const _ExecutionModeExplanation({required this.mode});
 
   final String mode;
 
   @override
+  State<_ExecutionModeExplanation> createState() =>
+      _ExecutionModeExplanationState();
+}
+
+class _ExecutionModeExplanationState extends State<_ExecutionModeExplanation> {
+  bool _expanded = false;
+
+  @override
   Widget build(BuildContext context) {
-    final content = context.l10n.text(switch (mode) {
+    final content = context.l10n.text(switch (widget.mode) {
       'pomodoro' => 'mode_pomodoro_detail',
       'continuous' => 'mode_continuous_detail',
       'checklist' => 'mode_checklist_detail',
@@ -3513,15 +3521,99 @@ class _ExecutionModeExplanation extends StatelessWidget {
       'hybrid' => 'mode_hybrid_detail',
       _ => 'mode_manual_detail',
     });
-    return Card(
-      child: ListTile(
-        leading: const Icon(Icons.info_outline),
-        title: Text(
-          context.l10n.format('mode_execution_title', {
-            'mode': context.l10n.executionMode(mode),
-          }),
+    final title = context.l10n.format('mode_execution_title', {
+      'mode': context.l10n.executionMode(widget.mode),
+    });
+    final scheme = Theme.of(context).colorScheme;
+    return Align(
+      alignment: AlignmentDirectional.centerStart,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 760),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Semantics(
+              button: true,
+              expanded: _expanded,
+              label: title,
+              child: Material(
+                color: scheme.primaryContainer.withValues(alpha: 0.34),
+                shape: StadiumBorder(
+                  side: BorderSide(
+                    color: scheme.primary.withValues(alpha: 0.32),
+                  ),
+                ),
+                child: InkWell(
+                  customBorder: const StadiumBorder(),
+                  onTap: () => setState(() => _expanded = !_expanded),
+                  child: Padding(
+                    padding: const EdgeInsetsDirectional.fromSTEB(8, 6, 12, 6),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: 30,
+                          height: 30,
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: scheme.primary,
+                          ),
+                          child: Text(
+                            '!',
+                            style: TextStyle(
+                              color: scheme.onPrimary,
+                              fontWeight: FontWeight.w900,
+                              fontSize: 17,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 9),
+                        Flexible(
+                          child: Text(
+                            title,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontWeight: FontWeight.w700),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        AnimatedRotation(
+                          turns: _expanded ? 0.5 : 0,
+                          duration: const Duration(milliseconds: 180),
+                          child: const Icon(Icons.keyboard_arrow_down_rounded),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            AnimatedSize(
+              duration: const Duration(milliseconds: 220),
+              curve: Curves.easeOutCubic,
+              child: _expanded
+                  ? Container(
+                      margin: const EdgeInsets.only(top: 10),
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: scheme.surfaceContainerLow,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: scheme.outlineVariant.withValues(alpha: 0.7),
+                        ),
+                      ),
+                      child: Text(
+                        content,
+                        style: TextStyle(
+                          color: scheme.onSurfaceVariant,
+                          height: 1.48,
+                        ),
+                      ),
+                    )
+                  : const SizedBox.shrink(),
+            ),
+          ],
         ),
-        subtitle: Text(content),
       ),
     );
   }

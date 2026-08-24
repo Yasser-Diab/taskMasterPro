@@ -664,6 +664,16 @@ bool shouldRetryMissingApprovedActivityClassification({
     currentVersion < 1 &&
     hasCompleteApprovedLocalAggregate;
 
+/// A short-lived server deployment ran the owner-checked task/application
+/// endpoints with caller privileges. Commands rejected at that boundary are
+/// safe to retry once after the endpoint privilege repair is installed.
+/// Every other authorization failure remains visible to the user.
+@visibleForTesting
+bool shouldRetryTaskApplicationLinkPermissionConflict({
+  required String? reason,
+  required int currentVersion,
+}) => reason == 'permission_denied' && currentVersion < 1;
+
 @visibleForTesting
 bool shouldMigrateLegacyActivityConflict({
   required String status,
@@ -1365,6 +1375,116 @@ String remoteEntityTypeForCommand(String localEntityType) =>
     localEntityType == 'task_health_summaries'
     ? 'health_summaries'
     : localEntityType;
+
+const _remoteDailyHealthSummaryColumns = <String>{
+  'summary_date',
+  'source',
+  'summary_type',
+  'value',
+  'unit',
+  'record_count',
+  'source_applications',
+  'source_record_counts',
+  'last_updated_at',
+  'window_start_at',
+  'window_end_at',
+  'raw_record_count',
+  'discarded_overlap_count',
+  'estimated',
+  'provenance',
+  'height_cm',
+  'stride_factor',
+  'encrypted_details',
+};
+
+/// Keeps device-only Health provenance out of the generic Supabase command.
+///
+/// Health Connect retains richer timestamps locally (for example one latest
+/// timestamp per source application). The canonical server table deliberately
+/// stores only the privacy-safe aggregate columns declared here. A previous
+/// build forwarded `source_latest_record_at`, so every refresh was rejected by
+/// `apply_entity_command` and accumulated another user-facing conflict.
+@visibleForTesting
+Map<String, dynamic> canonicalHealthSummaryPayload(
+  Map<String, dynamic> payload, {
+  required bool taskScoped,
+}) {
+  if (!taskScoped) {
+    return <String, dynamic>{
+      for (final entry in payload.entries)
+        if (_remoteDailyHealthSummaryColumns.contains(entry.key))
+          entry.key: entry.value,
+    };
+  }
+
+  final sourceApplications = payload['source_applications'];
+  final source =
+      payload['source'] ??
+      (sourceApplications is List
+          ? sourceApplications.whereType<String>().join(', ')
+          : '');
+  final startValue = payload['interval_start_at'] ?? payload['window_start_at'];
+  final start = startValue is DateTime
+      ? startValue
+      : startValue is String
+      ? DateTime.tryParse(startValue)
+      : null;
+  return <String, dynamic>{
+    'summary_date':
+        payload['summary_date'] ??
+        (start ?? DateTime.now().toUtc()).toIso8601String().split('T').first,
+    'source': source,
+    'summary_type': payload['summary_type'] ?? payload['metric_type'],
+    'value': payload['value'],
+    'unit': payload['unit'],
+    'record_count': payload['record_count'] ?? 0,
+    'source_applications': sourceApplications ?? const <String>[],
+    'source_record_counts':
+        payload['source_record_counts'] ?? const <String, int>{},
+    'last_updated_at': payload['last_updated_at'],
+    'window_start_at':
+        payload['window_start_at'] ?? payload['interval_start_at'],
+    'window_end_at': payload['window_end_at'] ?? payload['interval_end_at'],
+    'raw_record_count':
+        payload['raw_record_count'] ?? payload['record_count'] ?? 0,
+    'discarded_overlap_count': payload['discarded_overlap_count'] ?? 0,
+    'task_occurrence_id': payload['task_occurrence_id'],
+    'execution_session_id': payload['execution_session_id'],
+    'interval_start_at': payload['interval_start_at'],
+    'interval_end_at': payload['interval_end_at'],
+    'allocation_method': payload['allocation_method'],
+    'estimated': payload['estimated'] == true,
+    'provenance': payload['provenance'],
+    'overlap_fraction': payload['overlap_fraction'],
+    'height_cm': payload['height_cm'],
+    'stride_factor': payload['stride_factor'],
+  };
+}
+
+DateTime? _healthSummaryFreshness(Map<String, dynamic> value) {
+  for (final key in const ['last_updated_at', 'window_end_at', 'updated_at']) {
+    final raw = value[key];
+    if (raw is DateTime) return raw.toUtc();
+    if (raw is String) {
+      final parsed = DateTime.tryParse(raw);
+      if (parsed != null) return parsed.toUtc();
+    }
+  }
+  return null;
+}
+
+/// Sensor aggregates are merged by their source-record freshness, never by
+/// device arrival order. Equal or unprovable freshness keeps the canonical
+/// server row, preventing two devices from endlessly rebasing each other.
+@visibleForTesting
+bool localHealthSummaryIsNewer({
+  required Map<String, dynamic> localPayload,
+  required Map<String, dynamic> serverRow,
+}) {
+  final local = _healthSummaryFreshness(localPayload);
+  final server = _healthSummaryFreshness(serverRow);
+  return local != null && (server == null || local.isAfter(server));
+}
 
 /// Whether one pending local command owns an optimistic projection of a
 /// canonical row. Atomic runtime commands update the runtime, task, and
@@ -3081,6 +3201,11 @@ class SyncService {
   Future<void> repairResolvedConflictsForTesting(String userId) =>
       _supersedeResolvedConflicts(userId);
 
+  @visibleForTesting
+  Future<void> repairInvalidHealthSummaryWireConflictsForTesting(
+    String userId,
+  ) => _repairInvalidHealthSummaryWireConflicts(userId);
+
   Future<void> drainOutbox() async {
     final userId = _startedForUserId;
     if (userId == null) return;
@@ -3201,6 +3326,10 @@ class SyncService {
     _ensureCurrentOperation(generation, userId);
     await _runBestEffort(() => _retryClassifierPrivilegeConflicts(user.id));
     _ensureCurrentOperation(generation, userId);
+    await _runBestEffort(
+      () => _retryTaskApplicationLinkPermissionConflicts(user.id),
+    );
+    _ensureCurrentOperation(generation, userId);
     await _runBestEffort(_supersedeCanonicalConflicts);
     _ensureCurrentOperation(generation, userId);
     await _runBestEffort(
@@ -3214,6 +3343,15 @@ class SyncService {
     await _runBestEffort(() => _restoreMissingParentCommands(user.id));
     _ensureCurrentOperation(generation, userId);
     await _runBestEffort(() => _compactLegacyOutbox(user.id));
+    _ensureCurrentOperation(generation, userId);
+    await _runBestEffort(
+      () => _repairInvalidHealthSummaryWireConflicts(user.id),
+    );
+    _ensureCurrentOperation(generation, userId);
+    await _runBestEffort(
+      () =>
+          _retryHealthSummaryRevisionConflicts(user.id, generation: generation),
+    );
     _ensureCurrentOperation(generation, userId);
     await _runBestEffort(() => _retireInvalidHealthSummaryCommands(user.id));
     _ensureCurrentOperation(generation, userId);
@@ -3699,6 +3837,16 @@ class SyncService {
           // row is positively readable. Resolve it in this delivery pass so
           // an ordinary duplicate starter Area never spends even one refresh
           // in the user-facing synchronization queue.
+        } else if (await _recoverHealthSummaryRevisionMismatch(
+          command,
+          result,
+          generation: generation,
+          userId: userId,
+        )) {
+          // Health summaries contain derived sensor aggregates rather than an
+          // independent user edit. Source-record freshness provides a complete
+          // deterministic merge policy, so another phone's import never turns
+          // into a manual synchronization decision.
         } else if (await _recoverOnlineCanonicalMismatch(
           command,
           result,
@@ -4442,6 +4590,133 @@ class SyncService {
           lastError: Value(null),
         ),
       );
+    }
+  }
+
+  bool _isInvalidHealthSummaryWireConflict(LocalOutboxCommand command) {
+    if (command.status != 'conflict' ||
+        !const {
+          'health_summaries',
+          'task_health_summaries',
+        }.contains(command.entityType)) {
+      return false;
+    }
+    final error = _payloadMap(command.lastError ?? '');
+    final reason = error['reason']?.toString();
+    final message = error['message']?.toString().toLowerCase() ?? '';
+    return const {
+          'invalid_command_contract',
+          'server_rejected_command',
+        }.contains(reason) &&
+        message.contains('invalid_payload_columns') &&
+        message.contains('source_latest_record_at');
+  }
+
+  /// Rebuilds only the Health commands rejected by the proven v0.0.28 wire
+  /// defect. All local summaries remain intact; repeated failed revisions for
+  /// one summary are collapsed into one latest-state command based on the
+  /// earliest unaccepted server revision.
+  Future<void> _repairInvalidHealthSummaryWireConflicts(String userId) async {
+    final commands =
+        await (database.select(database.localOutboxCommands)
+              ..where(
+                (row) =>
+                    row.userId.equals(userId) &
+                    row.entityType.isIn(const [
+                      'health_summaries',
+                      'task_health_summaries',
+                    ]) &
+                    row.status.isIn(const ['pending', 'conflict']),
+              )
+              ..orderBy([(row) => OrderingTerm.asc(row.deviceSequence)]))
+            .get();
+    final affectedEntityIds = commands
+        .where(_isInvalidHealthSummaryWireConflict)
+        .map((command) => command.entityId)
+        .toSet();
+    if (affectedEntityIds.isEmpty) return;
+
+    final now = DateTime.now().toUtc();
+    for (final entityId in affectedEntityIds) {
+      final related = commands
+          .where(
+            (command) =>
+                command.entityId == entityId &&
+                (command.status == 'pending' ||
+                    _isInvalidHealthSummaryWireConflict(command)),
+          )
+          .toList(growable: false);
+      final rejected = related
+          .where(_isInvalidHealthSummaryWireConflict)
+          .toList(growable: false);
+      if (rejected.isEmpty) continue;
+      final anchor = rejected.first;
+      final latest = related.last;
+      final localRecord =
+          await (database.select(database.localEntityRecords)..where(
+                (row) =>
+                    row.userId.equals(userId) &
+                    row.id.equals(entityId) &
+                    row.entityType.equals(anchor.entityType),
+              ))
+              .getSingleOrNull();
+      // Without the local aggregate there is no authoritative intended state
+      // from which to rebuild a failed upload. Leave that exceptional conflict
+      // visible instead of guessing or deleting it.
+      if (localRecord == null) continue;
+
+      final localWasDeleted = localRecord.deletedAt != null;
+      final neverReachedServer = anchor.commandType == 'create';
+      if (localWasDeleted && neverReachedServer) {
+        await database.transaction(() async {
+          await _supersedeCommands(related);
+        });
+        continue;
+      }
+
+      final nextCommandType = localWasDeleted
+          ? 'delete'
+          : neverReachedServer
+          ? 'create'
+          : 'update';
+      final nextPayload = nextCommandType == 'delete'
+          ? const <String, dynamic>{}
+          : canonicalHealthSummaryPayload(
+              _payloadMap(latest.payloadJson),
+              taskScoped: anchor.entityType == 'task_health_summaries',
+            );
+
+      await database.transaction(() async {
+        await _supersedeCommands(
+          related.where((command) => command.commandId != anchor.commandId),
+        );
+        await (database.update(
+          database.localOutboxCommands,
+        )..where((row) => row.commandId.equals(anchor.commandId))).write(
+          LocalOutboxCommandsCompanion(
+            commandType: Value(nextCommandType),
+            baseRevision: Value(anchor.baseRevision),
+            payloadJson: Value(jsonEncode(nextPayload)),
+            status: const Value('pending'),
+            attemptCount: const Value(0),
+            nextAttemptAt: Value(now),
+            lastError: const Value(null),
+            clientTimestamp: Value(now),
+          ),
+        );
+        await (database.update(database.localEntityRecords)..where(
+              (row) =>
+                  row.userId.equals(userId) &
+                  row.id.equals(entityId) &
+                  row.entityType.equals(anchor.entityType),
+            ))
+            .write(
+              LocalEntityRecordsCompanion(
+                revision: Value(anchor.baseRevision + 1),
+                lastCommandId: Value(anchor.commandId),
+              ),
+            );
+      });
     }
   }
 
@@ -5781,6 +6056,59 @@ class SyncService {
   /// The marker prevents a bad deployment from becoming another infinite
   /// retry loop. A fresh command ID is used because processed command results
   /// are immutable.
+  Future<void> _retryTaskApplicationLinkPermissionConflicts(
+    String userId,
+  ) async {
+    final conflicts =
+        await (database.select(database.localOutboxCommands)..where(
+              (row) =>
+                  row.userId.equals(userId) &
+                  row.status.equals('conflict') &
+                  row.entityType.equals('task_application_links') &
+                  row.commandType.isIn(const ['create', 'delete']),
+            ))
+            .get();
+    if (conflicts.isEmpty) return;
+
+    final now = DateTime.now().toUtc();
+    await database.transaction(() async {
+      for (final command in conflicts) {
+        final error = _payloadMap(command.lastError ?? '');
+        final payload = _payloadMap(command.payloadJson);
+        final repairVersion =
+            (payload['task_application_link_permission_repair_version'] as num?)
+                ?.toInt() ??
+            0;
+        if (!shouldRetryTaskApplicationLinkPermissionConflict(
+          reason: error['reason'] as String?,
+          currentVersion: repairVersion,
+        )) {
+          continue;
+        }
+
+        await (database.update(database.localOutboxCommands)..where(
+              (row) =>
+                  row.commandId.equals(command.commandId) &
+                  row.status.equals('conflict'),
+            ))
+            .write(
+              LocalOutboxCommandsCompanion(
+                payloadJson: Value(
+                  jsonEncode({
+                    ...payload,
+                    'task_application_link_permission_repair_version': 1,
+                  }),
+                ),
+                status: const Value('pending'),
+                attemptCount: const Value(0),
+                nextAttemptAt: Value(now),
+                lastError: const Value(null),
+              ),
+            );
+      }
+    });
+  }
+
   Future<void> _retryClassifierPrivilegeConflicts(String userId) async {
     final conflicts =
         await (database.select(database.localOutboxCommands)..where(
@@ -7014,6 +7342,162 @@ class SyncService {
     }
   }
 
+  Future<void> _retryHealthSummaryRevisionConflicts(
+    String userId, {
+    required int generation,
+  }) async {
+    final conflicts =
+        await (database.select(database.localOutboxCommands)
+              ..where(
+                (row) =>
+                    row.userId.equals(userId) &
+                    row.entityType.isIn(const [
+                      'health_summaries',
+                      'task_health_summaries',
+                    ]) &
+                    row.status.equals('conflict'),
+              )
+              ..orderBy([(row) => OrderingTerm.asc(row.deviceSequence)]))
+            .get();
+    final grouped = <String, List<LocalOutboxCommand>>{};
+    for (final command in conflicts) {
+      final result = _payloadMap(command.lastError ?? '');
+      if (result['reason'] != 'revision_mismatch') continue;
+      grouped.putIfAbsent(command.entityId, () => []).add(command);
+    }
+    for (final group in grouped.values) {
+      final latest = group.last;
+      final recovered = await _recoverHealthSummaryRevisionMismatch(
+        latest,
+        _payloadMap(latest.lastError ?? ''),
+        generation: generation,
+        userId: userId,
+      );
+      if (recovered && group.length > 1) {
+        await _supersedeCommands(group.take(group.length - 1));
+      }
+    }
+  }
+
+  Future<bool> _recoverHealthSummaryRevisionMismatch(
+    LocalOutboxCommand command,
+    Map<String, dynamic> result, {
+    required int generation,
+    required String userId,
+  }) async {
+    if (!const {
+          'health_summaries',
+          'task_health_summaries',
+        }.contains(command.entityType) ||
+        result['reason'] != 'revision_mismatch') {
+      return false;
+    }
+    try {
+      _ensureCurrentOperation(generation, userId);
+      final remote = await client
+          .from('health_summaries')
+          .select()
+          .eq('id', command.entityId)
+          .maybeSingle();
+      _ensureCurrentOperation(generation, userId);
+      if (remote == null) return false;
+      final canonical = Map<String, dynamic>.from(remote);
+      final serverRevision = (canonical['revision'] as num?)?.toInt();
+      if (canonical['user_id'] != userId || serverRevision == null) {
+        return false;
+      }
+
+      final localPayload = canonicalHealthSummaryPayload(
+        _payloadMap(command.payloadJson),
+        taskScoped: command.entityType == 'task_health_summaries',
+      );
+      final preserveLocalIntent =
+          command.commandType == 'delete' ||
+          localHealthSummaryIsNewer(
+            localPayload: localPayload,
+            serverRow: canonical,
+          );
+      if (!preserveLocalIntent) {
+        await (database.update(
+          database.localOutboxCommands,
+        )..where((row) => row.commandId.equals(command.commandId))).write(
+          const LocalOutboxCommandsCompanion(
+            status: Value('superseded'),
+            nextAttemptAt: Value(null),
+            lastError: Value(null),
+          ),
+        );
+        await _applyEntity('health_summaries', canonical);
+        await _markRemoteConflictResolved(
+          command,
+          strategy: 'health_summary_server_source_is_newer',
+        );
+        return true;
+      }
+
+      final replacementId = _uuid.v4();
+      final replacementSequence = await DeviceIdentity.nextSequence(userId);
+      final now = DateTime.now().toUtc();
+      final replacementOperation = command.commandType == 'delete'
+          ? 'delete'
+          : 'update';
+      await database.transaction(() async {
+        await (database.update(
+          database.localOutboxCommands,
+        )..where((row) => row.commandId.equals(command.commandId))).write(
+          const LocalOutboxCommandsCompanion(
+            status: Value('superseded'),
+            nextAttemptAt: Value(null),
+            lastError: Value(null),
+          ),
+        );
+        await database
+            .into(database.localOutboxCommands)
+            .insert(
+              LocalOutboxCommandsCompanion.insert(
+                commandId: replacementId,
+                userId: userId,
+                deviceId: command.deviceId,
+                deviceSequence: replacementSequence,
+                entityType: command.entityType,
+                entityId: command.entityId,
+                commandType: replacementOperation,
+                baseRevision: serverRevision,
+                payloadJson: jsonEncode(
+                  replacementOperation == 'delete'
+                      ? const <String, dynamic>{}
+                      : localPayload,
+                ),
+                clientTimestamp: now,
+                createdAt: now,
+              ),
+            );
+        await (database.update(database.localEntityRecords)..where(
+              (row) =>
+                  row.userId.equals(userId) &
+                  row.id.equals(command.entityId) &
+                  row.entityType.equals(command.entityType),
+            ))
+            .write(
+              LocalEntityRecordsCompanion(
+                revision: Value(serverRevision + 1),
+                lastCommandId: Value(replacementId),
+              ),
+            );
+      });
+      await _markRemoteConflictResolved(
+        command,
+        strategy: 'health_summary_local_source_is_newer',
+      );
+      unawaited(drainOutbox());
+      return true;
+    } on _StaleSyncOperation {
+      rethrow;
+    } catch (_) {
+      return false;
+    }
+  }
+
   /// Runtime transitions represent one canonical machine state, so an online
   /// mismatch can safely converge to the accepted runtime. Ordinary writes
   /// may contain independent user intent and must remain real conflicts until
@@ -7799,49 +8283,14 @@ class SyncService {
     LocalOutboxCommand command,
     Map<String, dynamic> payload,
   ) {
-    if (command.entityType == 'task_health_summaries') {
-      final sourceApplications = payload['source_applications'];
-      final source =
-          payload['source'] ??
-          (sourceApplications is List
-              ? sourceApplications.whereType<String>().join(', ')
-              : '');
-      final start = _instant(
-        payload['interval_start_at'] ?? payload['window_start_at'],
+    if (const {
+      'health_summaries',
+      'task_health_summaries',
+    }.contains(command.entityType)) {
+      return canonicalHealthSummaryPayload(
+        payload,
+        taskScoped: command.entityType == 'task_health_summaries',
       );
-      return <String, dynamic>{
-        'summary_date':
-            payload['summary_date'] ??
-            (start ?? DateTime.now().toUtc())
-                .toIso8601String()
-                .split('T')
-                .first,
-        'source': source,
-        'summary_type': payload['summary_type'] ?? payload['metric_type'],
-        'value': payload['value'],
-        'unit': payload['unit'],
-        'record_count': payload['record_count'] ?? 0,
-        'source_applications': sourceApplications ?? const <String>[],
-        'source_record_counts':
-            payload['source_record_counts'] ?? const <String, int>{},
-        'last_updated_at': payload['last_updated_at'],
-        'window_start_at':
-            payload['window_start_at'] ?? payload['interval_start_at'],
-        'window_end_at': payload['window_end_at'] ?? payload['interval_end_at'],
-        'raw_record_count':
-            payload['raw_record_count'] ?? payload['record_count'] ?? 0,
-        'discarded_overlap_count': payload['discarded_overlap_count'] ?? 0,
-        'task_occurrence_id': payload['task_occurrence_id'],
-        'execution_session_id': payload['execution_session_id'],
-        'interval_start_at': payload['interval_start_at'],
-        'interval_end_at': payload['interval_end_at'],
-        'allocation_method': payload['allocation_method'],
-        'estimated': payload['estimated'] == true,
-        'provenance': payload['provenance'],
-        'overlap_fraction': payload['overlap_fraction'],
-        'height_cm': payload['height_cm'],
-        'stride_factor': payload['stride_factor'],
-      };
     }
     if (command.entityType == 'checklist_items' &&
         payload.containsKey('required') &&

@@ -1,7 +1,7 @@
 {
   "name": "taskmaster-pro-release-tools",
   "private": true,
-  "version": "0.0.30",
+  "version": "0.0.28",
   "scripts": {
     "package:release": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/package-release.ps1"
   }

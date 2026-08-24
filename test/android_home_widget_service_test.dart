@@ -1,5 +1,7 @@
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:taskmaster_pro/core/database/app_database.dart';
+import 'package:taskmaster_pro/core/platform/android_home_widget_projection.dart';
 import 'package:taskmaster_pro/core/platform/android_home_widget_service.dart';
 
 void main() {
@@ -10,6 +12,37 @@ void main() {
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
 
   tearDown(() => messenger.setMockMethodCallHandler(channel, null));
+
+  LocalRuntime runtime({
+    String taskId = 'task-1',
+    String sessionId = 'session-1',
+    String state = 'running',
+    int revision = 7,
+  }) => LocalRuntime(
+    id: 'runtime-1',
+    userId: 'owner-1',
+    activeTaskId: taskId,
+    sessionId: sessionId,
+    state: state,
+    accumulatedActiveMs: 0,
+    accumulatedPausedMs: 0,
+    dataJson: '{}',
+    revision: revision,
+    updatedAt: DateTime.utc(2026, 8, 23),
+  );
+
+  test('widget runtime snapshots reject stale and conflicting identities', () {
+    final current = runtime();
+    expect(sameWidgetRuntimeProjection(current, runtime()), isTrue);
+    expect(sameWidgetRuntimeProjection(current, runtime(revision: 8)), isFalse);
+    expect(
+      sameWidgetRuntimeProjection(
+        current,
+        runtime(taskId: 'task-2', sessionId: 'session-2'),
+      ),
+      isFalse,
+    );
+  });
 
   test('widget state clamps progress and limits suggestions to three', () {
     final boundary = DateTime.parse('2026-08-23T15:30:00+03:00');
@@ -25,9 +58,11 @@ void main() {
       progress: 1.4,
       actionLabel: 'فتح المهمة',
       completionLabel: 'اكتملت الاستراحة',
+      ownerId: 'owner-1',
       taskId: 'task-1',
       sessionId: 'session-1',
       runtimeRevision: 7,
+      runtimeUpdatedAt: DateTime.utc(2026, 8, 23, 12, 30),
       suggestions: const [
         AndroidHomeWidgetSuggestion(id: '1', title: 'One'),
         AndroidHomeWidgetSuggestion(id: '2', title: 'Two'),
@@ -54,8 +89,13 @@ void main() {
     expect(payload['suggestions'], hasLength(3));
     expect(payload['controls'], hasLength(3));
     expect(payload['taskId'], 'task-1');
+    expect(payload['ownerId'], 'owner-1');
     expect(payload['sessionId'], 'session-1');
     expect(payload['runtimeRevision'], 7);
+    expect(
+      payload['runtimeUpdatedAtEpochMs'],
+      DateTime.utc(2026, 8, 23, 12, 30).millisecondsSinceEpoch,
+    );
   });
 
   test('service sends state and reports native widget result', () async {
@@ -127,6 +167,7 @@ void main() {
       return takeCalls == 1
           ? <String, Object?>{
               'id': 'pause',
+              'ownerId': 'owner-1',
               'taskId': 'task-1',
               'sessionId': 'session-1',
               'runtimeRevision': 9,
@@ -142,6 +183,7 @@ void main() {
     final second = await service.takeLaunchAction();
 
     expect(first?.id, 'pause');
+    expect(first?.ownerId, 'owner-1');
     expect(first?.taskId, 'task-1');
     expect(first?.sessionId, 'session-1');
     expect(first?.runtimeRevision, 9);

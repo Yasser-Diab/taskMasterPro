@@ -5,7 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:taskmaster_pro/features/shell/presentation/home_shell.dart';
 
 void main() {
-  test('compact navigation begins before six destination labels collide', () {
+  test('compact navigation begins before destination labels collide', () {
     expect(usesCompactBottomNavigation(320), isTrue);
     expect(usesCompactBottomNavigation(599), isTrue);
     expect(usesCompactBottomNavigation(600), isFalse);
@@ -24,6 +24,7 @@ void main() {
       (Icons.calendar_month_outlined, Icons.calendar_month, 'Calendar'),
       (Icons.route_outlined, Icons.route, 'Roadmaps'),
       (Icons.insights_outlined, Icons.insights, 'Activity'),
+      (Icons.favorite_border_rounded, Icons.favorite_rounded, 'Health'),
       (Icons.settings_outlined, Icons.settings, 'Settings'),
     ];
 
@@ -39,9 +40,17 @@ void main() {
       ),
     );
 
-    expect(find.byType(Tooltip), findsNWidgets(6));
+    expect(find.byType(Tooltip), findsNWidgets(7));
+    expect(find.byType(SingleChildScrollView), findsOneWidget);
     await tester.tap(find.bySemanticsLabel('Roadmaps'));
     expect(selected, 3);
+    await tester.drag(
+      find.byType(SingleChildScrollView),
+      const Offset(-260, 0),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.bySemanticsLabel('Health'));
+    expect(selected, 5);
     expect(tester.takeException(), isNull);
   });
 

@@ -227,6 +227,109 @@ void main() {
     );
   });
 
+  test('sleep sessions subtract awake time instead of disappearing', () {
+    final start = DateTime.utc(2026, 8, 24, 0, 27);
+    final end = DateTime.utc(2026, 8, 24, 11, 31);
+    final normalized = normalizeHealthConnectSleepRecords([
+      _point(
+        uuid: 'night-session',
+        value: 664,
+        from: start,
+        to: end,
+        sourceId: 'com.nothing.smartcenter',
+        sourceName: 'Nothing X',
+        type: HealthDataType.SLEEP_SESSION,
+        unit: HealthDataUnit.MINUTE,
+      ),
+      _point(
+        uuid: 'night-session',
+        value: 43,
+        from: DateTime.utc(2026, 8, 24, 10, 48),
+        to: end,
+        sourceId: 'com.nothing.smartcenter',
+        sourceName: 'Nothing X',
+        type: HealthDataType.SLEEP_AWAKE,
+        unit: HealthDataUnit.MINUTE,
+      ),
+    ]);
+
+    final summary = HealthSummary.fromPoints(normalized);
+
+    expect(summary.sleepMinutes, 621);
+    expect(summary.metricRecordCounts[HealthDataType.SLEEP_ASLEEP], 1);
+    expect(summary.metricSources[HealthDataType.SLEEP_ASLEEP], {'Nothing X'});
+  });
+
+  test('sleep sessions are not double counted with detailed stages', () {
+    final start = DateTime.utc(2026, 8, 24);
+    final end = start.add(const Duration(hours: 8));
+    final normalized = normalizeHealthConnectSleepRecords([
+      _point(
+        uuid: 'session-with-stages',
+        value: 480,
+        from: start,
+        to: end,
+        sourceId: 'watch.sleep',
+        sourceName: 'Watch Sleep',
+        type: HealthDataType.SLEEP_SESSION,
+        unit: HealthDataUnit.MINUTE,
+      ),
+      _point(
+        uuid: 'session-with-stages',
+        value: 180,
+        from: start,
+        to: start.add(const Duration(hours: 3)),
+        sourceId: 'watch.sleep',
+        sourceName: 'Watch Sleep',
+        type: HealthDataType.SLEEP_DEEP,
+        unit: HealthDataUnit.MINUTE,
+      ),
+      _point(
+        uuid: 'session-with-stages',
+        value: 30,
+        from: start.add(const Duration(hours: 7, minutes: 30)),
+        to: end,
+        sourceId: 'watch.sleep',
+        sourceName: 'Watch Sleep',
+        type: HealthDataType.SLEEP_AWAKE_IN_BED,
+        unit: HealthDataUnit.MINUTE,
+      ),
+    ]);
+
+    expect(HealthSummary.fromPoints(normalized).sleepMinutes, 450);
+  });
+
+  test('multiple stage records sharing a parent UUID remain distinct', () {
+    final start = DateTime.utc(2026, 8, 24);
+    final normalized = normalizeHealthConnectSleepRecords([
+      _point(
+        uuid: 'shared-parent',
+        value: 30,
+        from: start,
+        to: start.add(const Duration(minutes: 30)),
+        sourceId: 'watch.sleep',
+        sourceName: 'Watch Sleep',
+        type: HealthDataType.SLEEP_LIGHT,
+        unit: HealthDataUnit.MINUTE,
+      ),
+      _point(
+        uuid: 'shared-parent',
+        value: 45,
+        from: start.add(const Duration(minutes: 30)),
+        to: start.add(const Duration(minutes: 75)),
+        sourceId: 'watch.sleep',
+        sourceName: 'Watch Sleep',
+        type: HealthDataType.SLEEP_REM,
+        unit: HealthDataUnit.MINUTE,
+      ),
+    ]);
+
+    final summary = HealthSummary.fromPoints(normalized);
+
+    expect(summary.sleepMinutes, 75);
+    expect(summary.metricRecordCounts[HealthDataType.SLEEP_ASLEEP], 2);
+  });
+
   test('task summaries use only real execution overlap', () {
     final start = DateTime.utc(2026, 7, 28, 10);
     final window = HealthInterval(

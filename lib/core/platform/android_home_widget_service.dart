@@ -35,23 +35,29 @@ class AndroidHomeWidgetControl {
 class AndroidHomeWidgetAction {
   const AndroidHomeWidgetAction({
     required this.id,
+    required this.ownerId,
     required this.taskId,
     required this.sessionId,
     required this.runtimeRevision,
+    this.deliveryId,
   });
 
   final String id;
+  final String ownerId;
   final String taskId;
   final String sessionId;
   final int runtimeRevision;
+  final String? deliveryId;
 
   static AndroidHomeWidgetAction? fromMap(Map<Object?, Object?>? values) {
     if (values == null) return null;
     final id = values['id']?.toString().trim() ?? '';
+    final ownerId = values['ownerId']?.toString().trim() ?? '';
     final taskId = values['taskId']?.toString().trim() ?? '';
     final sessionId = values['sessionId']?.toString().trim() ?? '';
     final runtimeRevision = (values['runtimeRevision'] as num?)?.toInt();
     if (!_supportedAndroidHomeWidgetActions.contains(id) ||
+        ownerId.isEmpty ||
         taskId.isEmpty ||
         sessionId.isEmpty ||
         runtimeRevision == null ||
@@ -60,9 +66,11 @@ class AndroidHomeWidgetAction {
     }
     return AndroidHomeWidgetAction(
       id: id,
+      ownerId: ownerId,
       taskId: taskId,
       sessionId: sessionId,
       runtimeRevision: runtimeRevision,
+      deliveryId: values['deliveryId']?.toString().trim(),
     );
   }
 }
@@ -89,9 +97,11 @@ class AndroidHomeWidgetState {
     required this.timerMode,
     required this.actionLabel,
     required this.completionLabel,
+    this.ownerId,
     this.taskId,
     this.sessionId,
     this.runtimeRevision,
+    this.runtimeUpdatedAt,
     this.timerBoundary,
     this.progress = 0,
     List<AndroidHomeWidgetSuggestion> suggestions = const [],
@@ -118,9 +128,11 @@ class AndroidHomeWidgetState {
   final AndroidHomeWidgetTimerMode timerMode;
   final String actionLabel;
   final String completionLabel;
+  final String? ownerId;
   final String? taskId;
   final String? sessionId;
   final int? runtimeRevision;
+  final DateTime? runtimeUpdatedAt;
   final DateTime? timerBoundary;
   final double progress;
   final List<AndroidHomeWidgetSuggestion> suggestions;
@@ -141,9 +153,11 @@ class AndroidHomeWidgetState {
     'progressPercent': (progress.clamp(0.0, 1.0) * 100).round(),
     'actionLabel': actionLabel,
     'completionLabel': completionLabel,
+    'ownerId': ownerId,
     'taskId': taskId,
     'sessionId': sessionId,
     'runtimeRevision': runtimeRevision,
+    'runtimeUpdatedAtEpochMs': runtimeUpdatedAt?.toUtc().millisecondsSinceEpoch,
     'suggestions': suggestions.map((item) => item.toMap()).toList(),
     'controls': controls.map((item) => item.toMap()).toList(),
     'requestPinIfMissing': requestPinIfMissing,
@@ -202,6 +216,18 @@ class AndroidHomeWidgetService {
       'takeAction',
     );
     return AndroidHomeWidgetAction.fromMap(response);
+  }
+
+  Future<void> completeBackgroundAction(
+    AndroidHomeWidgetAction action, {
+    required bool handled,
+  }) async {
+    final deliveryId = action.deliveryId;
+    if (!_supportedPlatform || deliveryId == null || deliveryId.isEmpty) return;
+    await _channel.invokeMethod<void>('completeAction', {
+      'deliveryId': deliveryId,
+      'handled': handled,
+    });
   }
 
   Future<AndroidHomeWidgetUpdateResult> update(

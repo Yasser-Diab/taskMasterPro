@@ -15,6 +15,7 @@ import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.content.res.AssetFileDescriptor;
 import android.graphics.Bitmap;
@@ -330,7 +331,7 @@ public class FlutterLocalNotificationsPlugin
           actionIntent = getLaunchIntent(context);
           actionIntent.setAction(SELECT_FOREGROUND_NOTIFICATION_ACTION);
         } else {
-          actionIntent = new Intent(context, ActionBroadcastReceiver.class);
+          actionIntent = getBackgroundActionIntent(context);
           actionIntent.setAction(ActionBroadcastReceiver.ACTION_TAPPED);
         }
 
@@ -469,6 +470,31 @@ public class FlutterLocalNotificationsPlugin
       }
     }
     return notification;
+  }
+
+  /**
+   * Apps may opt into their own explicit, non-UI action receiver. This keeps
+   * the upstream background callback as the default while allowing an audited
+   * host to execute durable controls in its own headless command service.
+   */
+  private static Intent getBackgroundActionIntent(Context context) {
+    try {
+      ApplicationInfo applicationInfo =
+          context
+              .getPackageManager()
+              .getApplicationInfo(context.getPackageName(), PackageManager.GET_META_DATA);
+      Bundle metadata = applicationInfo.metaData;
+      String receiverClass =
+          metadata == null
+              ? null
+              : metadata.getString("com.dexterous.flutterlocalnotifications.ACTION_RECEIVER");
+      if (!TextUtils.isEmpty(receiverClass)) {
+        return new Intent().setClassName(context, receiverClass);
+      }
+    } catch (PackageManager.NameNotFoundException exception) {
+      Log.w(TAG, "Unable to resolve the configured background action receiver", exception);
+    }
+    return new Intent(context, ActionBroadcastReceiver.class);
   }
 
   private static Boolean canCreateNotificationChannel(

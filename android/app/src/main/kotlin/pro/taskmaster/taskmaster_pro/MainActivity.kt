@@ -25,6 +25,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.Process
+import android.os.ext.SdkExtensions
 import android.provider.Settings
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.biometric.BiometricPrompt
@@ -138,9 +139,17 @@ class MainActivity : FlutterFragmentActivity() {
     private var pendingGattResult: MethodChannel.Result? = null
     private var inspectedGattAddress: String? = null
     private var inspectedGatt: BluetoothGatt? = null
+    private var inspectedGattCapabilities: List<String> = emptyList()
+    private var inspectedGattServiceUuids: List<String> = emptyList()
     private val stopGattInspection = Runnable {
         finishGattInspection(
-            state = "unknown",
+            state = if (inspectedGattCapabilities.isEmpty()) {
+                "unknown"
+            } else {
+                "direct_supported"
+            },
+            capabilities = inspectedGattCapabilities,
+            discoveredServiceUuids = inspectedGattServiceUuids,
             errorCode = "inspection_timeout",
         )
     }
@@ -265,6 +274,22 @@ class MainActivity : FlutterFragmentActivity() {
                     add("pulse_oximetry")
                 }
             }
+            val discoveredServiceUuids = services
+                .map { it.uuid.toString().lowercase() }
+                .distinct()
+            inspectedGattCapabilities = capabilities
+            inspectedGattServiceUuids = discoveredServiceUuids
+            val canReadBattery =
+                batteryLevel != null &&
+                    batteryLevel.properties and
+                    BluetoothGattCharacteristic.PROPERTY_READ != 0
+            if (canReadBattery) {
+                @Suppress("DEPRECATION")
+                val readStarted = runCatching {
+                    gatt.readCharacteristic(batteryLevel)
+                }.getOrDefault(false)
+                if (readStarted) return
+            }
             finishGattInspection(
                 state = if (capabilities.isNotEmpty()) {
                     "direct_supported"
@@ -272,11 +297,61 @@ class MainActivity : FlutterFragmentActivity() {
                     "no_direct_health_service"
                 },
                 capabilities = capabilities,
-                discoveredServiceUuids = services
-                    .map { it.uuid.toString().lowercase() }
-                    .distinct(),
+                discoveredServiceUuids = discoveredServiceUuids,
             )
         }
+
+        @Deprecated("Deprecated in Java")
+        override fun onCharacteristicRead(
+            gatt: BluetoothGatt,
+            characteristic: BluetoothGattCharacteristic,
+            status: Int,
+        ) {
+            if (gatt !== inspectedGatt) return
+            @Suppress("DEPRECATION")
+            finishGattCharacteristicRead(characteristic.uuid, characteristic.value, status)
+        }
+
+        override fun onCharacteristicRead(
+            gatt: BluetoothGatt,
+            characteristic: BluetoothGattCharacteristic,
+            value: ByteArray,
+            status: Int,
+        ) {
+            if (gatt !== inspectedGatt) return
+            finishGattCharacteristicRead(characteristic.uuid, value, status)
+        }
+    }
+
+    private fun finishGattCharacteristicRead(
+        characteristicUuid: UUID,
+        value: ByteArray?,
+        status: Int,
+    ) {
+        val readings = mutableMapOf<String, Any>()
+        val firstByte = value?.firstOrNull()
+        if (
+            status == BluetoothGatt.GATT_SUCCESS &&
+                characteristicUuid == batteryLevelUuid &&
+                firstByte != null
+        ) {
+            readings["batteryPercent"] = firstByte.toInt() and 0xff
+        }
+        finishGattInspection(
+            state = if (inspectedGattCapabilities.isNotEmpty()) {
+                "direct_supported"
+            } else {
+                "no_direct_health_service"
+            },
+            capabilities = inspectedGattCapabilities,
+            discoveredServiceUuids = inspectedGattServiceUuids,
+            directReadings = readings,
+            errorCode = if (status == BluetoothGatt.GATT_SUCCESS) {
+                null
+            } else {
+                "direct_read_failed"
+            },
+        )
     }
 
     private fun supportsGattUpdates(
@@ -418,8 +493,13 @@ class MainActivity : FlutterFragmentActivity() {
                             null,
                         )
                     } else {
-                        TaskMasterWidgetStore.save(applicationContext, arguments)
-                        TaskMasterWidgetProvider.updateAll(applicationContext)
+                        val accepted = TaskMasterWidgetStore.save(
+                            applicationContext,
+                            arguments,
+                        )
+                        if (accepted) {
+                            TaskMasterWidgetProvider.updateAll(applicationContext)
+                        }
                         val pinRequested =
                             arguments["requestPinIfMissing"] == true &&
                                 TaskMasterWidgetProvider.requestPin(
@@ -432,6 +512,7 @@ class MainActivity : FlutterFragmentActivity() {
                                     applicationContext,
                                 ),
                                 "pinRequested" to pinRequested,
+                                "accepted" to accepted,
                             ),
                         )
                     }
@@ -700,6 +781,7 @@ class MainActivity : FlutterFragmentActivity() {
                     startActivity(Intent(Settings.ACTION_BLUETOOTH_SETTINGS))
                     result.success(null)
                 }
+                "openHealthConnectSettings" -> openHealthConnectSettings(result)
                 "pairedHealthDevices" -> listPairedHealthDevices(result)
                 "inspectPairedHealthDevice" -> inspectPairedHealthDevice(
                     address = call.argument<String>("address"),
@@ -1397,11 +1479,22 @@ class MainActivity : FlutterFragmentActivity() {
     }
 
     private fun bluetoothState(): Map<String, Any?> {
+        val healthConnectStepTrackingAvailable =
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE &&
+                SdkExtensions.getExtensionVersion(
+                    Build.VERSION_CODES.UPSIDE_DOWN_CAKE,
+                ) >= 20
         val supported = packageManager.hasSystemFeature(
             PackageManager.FEATURE_BLUETOOTH_LE,
         )
         if (!supported) {
-            return mapOf("supported" to false, "enabled" to false)
+            return mapOf(
+                "supported" to false,
+                "enabled" to false,
+                "androidSdkInt" to Build.VERSION.SDK_INT,
+                "healthConnectStepTrackingAvailable" to
+                    healthConnectStepTrackingAvailable,
+            )
         }
         return try {
             val manager = getSystemService(Context.BLUETOOTH_SERVICE)
@@ -1409,14 +1502,39 @@ class MainActivity : FlutterFragmentActivity() {
             mapOf(
                 "supported" to true,
                 "enabled" to (manager.adapter?.isEnabled == true),
+                "androidSdkInt" to Build.VERSION.SDK_INT,
+                "healthConnectStepTrackingAvailable" to
+                    healthConnectStepTrackingAvailable,
             )
         } catch (_: SecurityException) {
             mapOf(
                 "supported" to true,
                 "enabled" to false,
                 "permissionRequired" to true,
+                "androidSdkInt" to Build.VERSION.SDK_INT,
+                "healthConnectStepTrackingAvailable" to
+                    healthConnectStepTrackingAvailable,
             )
         }
+    }
+
+    private fun openHealthConnectSettings(result: MethodChannel.Result) {
+        val action = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            "android.health.connect.action.HEALTH_HOME_SETTINGS"
+        } else {
+            "androidx.health.ACTION_HEALTH_CONNECT_SETTINGS"
+        }
+        val intent = Intent(action)
+        if (intent.resolveActivity(packageManager) == null) {
+            result.error(
+                "health_connect_unavailable",
+                "Health Connect settings are unavailable",
+                null,
+            )
+            return
+        }
+        startActivity(intent)
+        result.success(null)
     }
 
     private fun hasBluetoothConnectPermission(): Boolean =
@@ -1585,6 +1703,8 @@ class MainActivity : FlutterFragmentActivity() {
         }
         pendingGattResult = result
         inspectedGattAddress = address
+        inspectedGattCapabilities = emptyList()
+        inspectedGattServiceUuids = emptyList()
         mainHandler.removeCallbacks(stopGattInspection)
         mainHandler.postDelayed(stopGattInspection, timeoutMillis)
         try {
@@ -1617,6 +1737,7 @@ class MainActivity : FlutterFragmentActivity() {
         state: String,
         capabilities: List<String> = emptyList(),
         discoveredServiceUuids: List<String> = emptyList(),
+        directReadings: Map<String, Any> = emptyMap(),
         errorCode: String? = null,
     ) {
         if (Looper.myLooper() != Looper.getMainLooper()) {
@@ -1625,6 +1746,7 @@ class MainActivity : FlutterFragmentActivity() {
                     state = state,
                     capabilities = capabilities,
                     discoveredServiceUuids = discoveredServiceUuids,
+                    directReadings = directReadings,
                     errorCode = errorCode,
                 )
             }
@@ -1636,6 +1758,8 @@ class MainActivity : FlutterFragmentActivity() {
         pendingGattResult = null
         inspectedGattAddress = null
         inspectedGatt = null
+        inspectedGattCapabilities = emptyList()
+        inspectedGattServiceUuids = emptyList()
         mainHandler.removeCallbacks(stopGattInspection)
         runCatching {
             gatt?.disconnect()
@@ -1647,6 +1771,7 @@ class MainActivity : FlutterFragmentActivity() {
                 "capabilityState" to state,
                 "capabilities" to capabilities,
                 "discoveredServiceUuids" to discoveredServiceUuids,
+                "directReadings" to directReadings,
                 "inspectionError" to errorCode,
             ),
         )

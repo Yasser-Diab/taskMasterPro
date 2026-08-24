@@ -1,4 +1,4 @@
--- TaskMaster Pro v0.0.30: allow an explicitly entered, privacy-safe break
+-- TaskMaster Pro v0.0.28: allow an explicitly entered, privacy-safe break
 -- check-in to synchronize even when detailed device Activity remains local.
 -- Manual entries contain no process, window, domain, URL or page-title data.
 

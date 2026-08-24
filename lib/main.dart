@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' show DartPluginRegistrant;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -10,6 +11,7 @@ import 'core/config/backend_target_cutover.dart';
 import 'core/config/supabase_config.dart';
 import 'core/notifications/notification_sounds.dart';
 import 'core/platform/android_home_widget_service.dart';
+import 'core/platform/background_execution_action_service.dart';
 import 'core/platform/windows_shell_service.dart';
 import 'core/sync/sync_service.dart';
 import 'features/auth/presentation/password_recovery_controller.dart';
@@ -61,4 +63,14 @@ Future<void> main() async {
   WindowsShellService.instance;
 
   runApp(const ProviderScope(child: TaskMasterApp()));
+}
+
+/// Android starts this entrypoint in a service-owned FlutterEngine after a
+/// widget or notification control is pressed. It intentionally does not call
+/// runApp and therefore cannot open or foreground TaskMaster Pro.
+@pragma('vm:entry-point')
+Future<void> taskMasterBackgroundActionMain() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  DartPluginRegistrant.ensureInitialized();
+  await BackgroundExecutionActionService.runPendingAndroidAction();
 }

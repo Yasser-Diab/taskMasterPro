@@ -31,6 +31,9 @@ void main() {
       expect(source, isNot(contains('bluetoothLeScanner')));
       expect(source, isNot(contains('ScanCallback')));
       expect(source, contains('discoverServices()'));
+      expect(source, contains('gatt.readCharacteristic(batteryLevel)'));
+      expect(source, contains('"batteryPercent"'));
+      expect(source, contains('"directReadings" to directReadings'));
       expect(source, contains('"capabilityState" to "not_checked"'));
       expect(source, contains('"direct_supported"'));
       expect(source, contains('"no_direct_health_service"'));

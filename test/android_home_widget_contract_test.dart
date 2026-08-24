@@ -30,9 +30,72 @@ void main() {
       expect(nativeProvider, contains('taskmaster_widget_expanded'));
       expect(nativeProvider, contains('setChronometerCountDown'));
       expect(nativeProvider, contains('TaskMasterWidgetIntent.commandAction'));
+      expect(
+        nativeProvider,
+        contains('TaskMasterWidgetActionReceiver::class.java'),
+      );
+      expect(nativeProvider, contains('PendingIntent.getBroadcast'));
+      expect(nativeProvider, contains('commandIdentityUri'));
+      expect(nativeProvider, contains('FLAG_CANCEL_CURRENT'));
       expect(nativeProvider, contains('runtimeRevision'));
+      expect(nativeProvider, contains('runtimeUpdatedAtEpochMs'));
+      expect(
+        nativeProvider,
+        contains('incomingRuntimeRevision < storedRuntimeRevision'),
+      );
+      expect(
+        nativeProvider,
+        contains('incomingRuntimeRevision == storedRuntimeRevision'),
+      );
+      expect(
+        nativeProvider,
+        contains('incomingRuntimeUpdatedAt <= storedRuntimeUpdatedAt'),
+      );
+      expect(nativeProvider, contains('return false'));
+      expect(
+        nativeProvider,
+        contains('TaskMasterExecutionNotificationCleaner'),
+      );
+      expect(nativeProvider, contains('manager.activeNotifications'));
+      expect(nativeProvider, contains('manager.cancel(notification.tag'));
+
+      final controls = nativeProvider.substring(
+        nativeProvider.indexOf('private fun renderControls('),
+        nativeProvider.indexOf('private fun renderTimer('),
+      );
+      expect(controls, isNot(contains('PendingIntent.getActivity')));
+      expect(manifest, contains('.TaskMasterWidgetActionReceiver'));
+      expect(manifest, contains('.TaskMasterBackgroundActionService'));
+      expect(
+        manifest,
+        contains('android:foregroundServiceType="shortService"'),
+      );
     },
   );
+
+  test('notification mutations use the explicit headless receiver', () {
+    final manifest = File(
+      'android/app/src/main/AndroidManifest.xml',
+    ).readAsStringSync();
+    final plugin = File(
+      'third_party/flutter_local_notifications/android/src/main/java/com/'
+      'dexterous/flutterlocalnotifications/FlutterLocalNotificationsPlugin.java',
+    ).readAsStringSync();
+    final service = File(
+      'android/app/src/main/kotlin/pro/taskmaster/taskmaster_pro/'
+      'TaskMasterWidgetActionService.kt',
+    ).readAsStringSync();
+
+    expect(
+      manifest,
+      contains('com.dexterous.flutterlocalnotifications.ACTION_RECEIVER'),
+    );
+    expect(manifest, contains('.TaskMasterNotificationActionReceiver'));
+    expect(plugin, contains('getBackgroundActionIntent(context)'));
+    expect(service, contains('taskMasterBackgroundActionMain'));
+    expect(service, contains('kind = "notification"'));
+    expect(service, contains('if (accepted)'));
+  });
 
   test('all responsive layouts expose the shared rendering contract', () {
     const layouts = [

@@ -1,6 +1,7 @@
 package pro.taskmaster.taskmaster_pro
 
 import android.app.AlarmManager
+import android.app.NotificationManager
 import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider
@@ -8,6 +9,7 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.graphics.Color
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.SystemClock
@@ -36,9 +38,11 @@ internal data class TaskMasterWidgetState(
     val progressPercent: Int,
     val actionLabel: String,
     val completionLabel: String,
+    val ownerId: String?,
     val taskId: String?,
     val sessionId: String?,
     val runtimeRevision: Int?,
+    val runtimeUpdatedAtEpochMs: Long?,
     val suggestions: List<TaskMasterWidgetSuggestion>,
     val controls: List<TaskMasterWidgetControl>,
 )
@@ -46,6 +50,7 @@ internal data class TaskMasterWidgetState(
 internal object TaskMasterWidgetIntent {
     const val commandAction = "pro.taskmaster.app.action.WIDGET_COMMAND"
     const val actionIdExtra = "taskmaster_widget_action"
+    const val ownerIdExtra = "taskmaster_widget_owner_id"
     const val taskIdExtra = "taskmaster_widget_task_id"
     const val sessionIdExtra = "taskmaster_widget_session_id"
     const val runtimeRevisionExtra = "taskmaster_widget_runtime_revision"
@@ -67,10 +72,79 @@ internal object TaskMasterWidgetStore {
     private fun preferences(context: Context) =
         context.getSharedPreferences(preferencesName, Context.MODE_PRIVATE)
 
-    fun save(context: Context, arguments: Map<*, *>) {
+    @Synchronized
+    fun save(context: Context, arguments: Map<*, *>): Boolean {
         val mode = arguments["mode"]?.toString().orEmpty()
             .takeIf { it in setOf("idle", "running", "paused", "break") }
             ?: "idle"
+        val values = preferences(context)
+        val incomingOwnerId = bounded(arguments["ownerId"], 80)
+        val incomingTaskId = bounded(arguments["taskId"], 80)
+        val incomingSessionId = bounded(arguments["sessionId"], 80)
+        val incomingRuntimeRevision = (arguments["runtimeRevision"] as? Number)
+            ?.toInt()
+            ?.takeIf { it >= 0 }
+        val incomingRuntimeUpdatedAt =
+            (arguments["runtimeUpdatedAtEpochMs"] as? Number)
+                ?.toLong()
+                ?.takeIf { it >= 0L }
+        val storedOwnerId = values.getString("owner_id", null).orEmpty()
+        val storedRuntimeRevision = if (values.contains("runtime_revision")) {
+            values.getInt("runtime_revision", -1).takeIf { it >= 0 }
+        } else {
+            null
+        }
+        val storedRuntimeUpdatedAt = if (values.contains("runtime_updated_at_epoch_ms")) {
+            values.getLong("runtime_updated_at_epoch_ms", -1L).takeIf { it >= 0L }
+        } else {
+            null
+        }
+        if (storedOwnerId.isNotBlank() && incomingOwnerId.isBlank()) {
+            return false
+        }
+
+        // MainActivity, a headless notification action and a launcher refresh
+        // can finish in any order. Canonical revision is the primary ordering
+        // key. A strictly newer runtime update time is the tie-breaker for a
+        // same-revision local repair (for example deleting an active task).
+        if (storedOwnerId.isNotBlank() && storedOwnerId == incomingOwnerId) {
+            if (storedRuntimeRevision != null && incomingRuntimeRevision == null) {
+                return false
+            }
+            if (
+                storedRuntimeRevision != null &&
+                incomingRuntimeRevision != null &&
+                incomingRuntimeRevision < storedRuntimeRevision
+            ) {
+                return false
+            }
+            if (
+                storedRuntimeRevision != null &&
+                incomingRuntimeRevision == storedRuntimeRevision &&
+                storedRuntimeUpdatedAt != null &&
+                incomingRuntimeUpdatedAt != null &&
+                incomingRuntimeUpdatedAt < storedRuntimeUpdatedAt
+            ) {
+                return false
+            }
+            val runtimeIdentityChanged =
+                values.getString("task_id", null).orEmpty() != incomingTaskId ||
+                    values.getString("session_id", null).orEmpty() != incomingSessionId
+            if (
+                storedRuntimeRevision != null &&
+                incomingRuntimeRevision == storedRuntimeRevision &&
+                runtimeIdentityChanged &&
+                (
+                    incomingRuntimeUpdatedAt == null ||
+                        (
+                            storedRuntimeUpdatedAt != null &&
+                                incomingRuntimeUpdatedAt <= storedRuntimeUpdatedAt
+                        )
+                )
+            ) {
+                return false
+            }
+        }
         val suggestions = (arguments["suggestions"] as? List<*>)
             .orEmpty()
             .mapNotNull { raw ->
@@ -92,7 +166,7 @@ internal object TaskMasterWidgetStore {
             }
             .take(3)
 
-        preferences(context).edit().apply {
+        values.edit().apply {
             putString("mode", mode)
             putString("locale_code", bounded(arguments["localeCode"], 12, "en"))
             putString("status_label", bounded(arguments["statusLabel"], 50))
@@ -115,13 +189,18 @@ internal object TaskMasterWidgetStore {
             )
             putString("action_label", bounded(arguments["actionLabel"], 40))
             putString("completion_label", bounded(arguments["completionLabel"], 140))
-            putNullableString("task_id", bounded(arguments["taskId"], 80))
-            putNullableString("session_id", bounded(arguments["sessionId"], 80))
-            val runtimeRevision = (arguments["runtimeRevision"] as? Number)?.toInt()
-            if (runtimeRevision == null || runtimeRevision < 0) {
+            putNullableString("owner_id", incomingOwnerId)
+            putNullableString("task_id", incomingTaskId)
+            putNullableString("session_id", incomingSessionId)
+            if (incomingRuntimeRevision == null) {
                 remove("runtime_revision")
             } else {
-                putInt("runtime_revision", runtimeRevision)
+                putInt("runtime_revision", incomingRuntimeRevision)
+            }
+            if (incomingRuntimeUpdatedAt == null) {
+                remove("runtime_updated_at_epoch_ms")
+            } else {
+                putLong("runtime_updated_at_epoch_ms", incomingRuntimeUpdatedAt)
             }
             putInt("suggestion_count", suggestions.size)
             repeat(3) { index ->
@@ -146,7 +225,8 @@ internal object TaskMasterWidgetStore {
                 }
             }
             putLong("updated_at_epoch_ms", System.currentTimeMillis())
-        }.apply()
+        }.commit()
+        return true
     }
 
     fun read(context: Context): TaskMasterWidgetState {
@@ -199,10 +279,16 @@ internal object TaskMasterWidgetStore {
                 "completion_label",
                 context.getString(R.string.widget_default_completion),
             ) ?: context.getString(R.string.widget_default_completion),
+            ownerId = values.getString("owner_id", null),
             taskId = values.getString("task_id", null),
             sessionId = values.getString("session_id", null),
             runtimeRevision = if (values.contains("runtime_revision")) {
                 values.getInt("runtime_revision", -1).takeIf { it >= 0 }
+            } else {
+                null
+            },
+            runtimeUpdatedAtEpochMs = if (values.contains("runtime_updated_at_epoch_ms")) {
+                values.getLong("runtime_updated_at_epoch_ms", -1L).takeIf { it >= 0L }
             } else {
                 null
             },
@@ -237,12 +323,53 @@ internal object TaskMasterWidgetStore {
     }
 }
 
+/**
+ * Android includes the notification tag in the active-card identity. A stale
+ * task card therefore survives a numeric-ID cancellation. The widget store is
+ * the native mirror of the latest accepted canonical runtime, so every native
+ * projection also retires execution cards belonging to any other task.
+ */
+internal object TaskMasterExecutionNotificationCleaner {
+    private val executionCategories = setOf(
+        "focus_completed",
+        "short_break_completed",
+        "long_break_completed",
+        "task_reminders",
+    )
+
+    fun reconcile(context: Context, state: TaskMasterWidgetState) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return
+        val activeTaskId = state.taskId?.takeIf {
+            it.isNotBlank() && state.mode in setOf("running", "paused", "break")
+        }
+        val manager = context.getSystemService(NotificationManager::class.java)
+        manager.activeNotifications.forEach { notification ->
+            val parts = notification.tag?.split(':', limit = 3) ?: return@forEach
+            if (
+                parts.size != 3 ||
+                parts[0] != "execution" ||
+                parts[1].isBlank() ||
+                parts[2] !in executionCategories
+            ) {
+                return@forEach
+            }
+            if (activeTaskId == null || parts[1] != activeTaskId) {
+                manager.cancel(notification.tag, notification.id)
+            }
+        }
+    }
+}
+
 class TaskMasterWidgetProvider : AppWidgetProvider() {
     override fun onUpdate(
         context: Context,
         appWidgetManager: AppWidgetManager,
         appWidgetIds: IntArray,
     ) {
+        TaskMasterExecutionNotificationCleaner.reconcile(
+            context,
+            TaskMasterWidgetStore.read(context),
+        )
         appWidgetIds.forEach { updateWidget(context, appWidgetManager, it) }
         scheduleBoundaryRefresh(context, TaskMasterWidgetStore.read(context))
     }
@@ -275,7 +402,6 @@ class TaskMasterWidgetProvider : AppWidgetProvider() {
             "pro.taskmaster.app.action.WIDGET_TIMER_BOUNDARY"
         private const val boundaryRequestCode = 8401
         private const val openAppRequestCode = 8402
-        private const val controlRequestCodeBase = 8500
 
         fun widgetCount(context: Context): Int =
             AppWidgetManager.getInstance(context)
@@ -283,12 +409,14 @@ class TaskMasterWidgetProvider : AppWidgetProvider() {
                 .size
 
         fun updateAll(context: Context) {
+            val state = TaskMasterWidgetStore.read(context)
+            TaskMasterExecutionNotificationCleaner.reconcile(context, state)
             val manager = AppWidgetManager.getInstance(context)
             val component = ComponentName(context, TaskMasterWidgetProvider::class.java)
             manager.getAppWidgetIds(component).forEach { id ->
                 updateWidget(context, manager, id)
             }
-            scheduleBoundaryRefresh(context, TaskMasterWidgetStore.read(context))
+            scheduleBoundaryRefresh(context, state)
         }
 
         fun requestPin(context: Context, automatic: Boolean): Boolean {
@@ -408,7 +536,8 @@ class TaskMasterWidgetProvider : AppWidgetProvider() {
             state: TaskMasterWidgetState,
         ) {
             val hasIdentity =
-                !state.taskId.isNullOrBlank() &&
+                !state.ownerId.isNullOrBlank() &&
+                    !state.taskId.isNullOrBlank() &&
                     !state.sessionId.isNullOrBlank() &&
                     state.runtimeRevision != null
             val controls = if (hasIdentity && state.mode != "idle") {
@@ -453,12 +582,29 @@ class TaskMasterWidgetProvider : AppWidgetProvider() {
                 )
                 views.setOnClickPendingIntent(
                     viewId,
-                    PendingIntent.getActivity(
+                    PendingIntent.getBroadcast(
                         context,
-                        controlRequestCodeBase + index,
-                        Intent(context, MainActivity::class.java).apply {
+                        commandRequestCode(
+                            ownerId = state.ownerId.orEmpty(),
+                            actionId = control.id,
+                            taskId = state.taskId.orEmpty(),
+                            sessionId = state.sessionId.orEmpty(),
+                            runtimeRevision = state.runtimeRevision ?: -1,
+                        ),
+                        Intent(context, TaskMasterWidgetActionReceiver::class.java).apply {
                             action = TaskMasterWidgetIntent.commandAction
+                            data = commandIdentityUri(
+                                ownerId = state.ownerId.orEmpty(),
+                                actionId = control.id,
+                                taskId = state.taskId.orEmpty(),
+                                sessionId = state.sessionId.orEmpty(),
+                                runtimeRevision = state.runtimeRevision ?: -1,
+                            )
                             putExtra(TaskMasterWidgetIntent.actionIdExtra, control.id)
+                            putExtra(
+                                TaskMasterWidgetIntent.ownerIdExtra,
+                                state.ownerId.orEmpty(),
+                            )
                             putExtra(TaskMasterWidgetIntent.taskIdExtra, state.taskId.orEmpty())
                             putExtra(
                                 TaskMasterWidgetIntent.sessionIdExtra,
@@ -468,16 +614,47 @@ class TaskMasterWidgetProvider : AppWidgetProvider() {
                                 TaskMasterWidgetIntent.runtimeRevisionExtra,
                                 state.runtimeRevision ?: -1,
                             )
-                            addFlags(
-                                Intent.FLAG_ACTIVITY_CLEAR_TOP or
-                                    Intent.FLAG_ACTIVITY_SINGLE_TOP,
-                            )
                         },
-                        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+                        PendingIntent.FLAG_CANCEL_CURRENT or PendingIntent.FLAG_IMMUTABLE,
                     ),
                 )
             }
         }
+
+        /**
+         * PendingIntent identity ignores extras. Use the canonical command
+         * identity as both URI data and request code so a launcher can never
+         * reuse a previous Finish intent for a later Continue button.
+         */
+        private fun commandIdentityUri(
+            ownerId: String,
+            actionId: String,
+            taskId: String,
+            sessionId: String,
+            runtimeRevision: Int,
+        ): Uri = Uri.Builder()
+            .scheme("taskmaster")
+            .authority("widget-command")
+            .appendPath(ownerId)
+            .appendPath(taskId)
+            .appendPath(sessionId)
+            .appendPath(runtimeRevision.toString())
+            .appendPath(actionId)
+            .build()
+
+        private fun commandRequestCode(
+            ownerId: String,
+            actionId: String,
+            taskId: String,
+            sessionId: String,
+            runtimeRevision: Int,
+        ): Int = listOf(
+            ownerId,
+            actionId,
+            taskId,
+            sessionId,
+            runtimeRevision.toString(),
+        ).joinToString("|").hashCode() and Int.MAX_VALUE
 
         private fun renderTimer(views: RemoteViews, state: TaskMasterWidgetState) {
             val boundary = state.timerBoundaryEpochMs

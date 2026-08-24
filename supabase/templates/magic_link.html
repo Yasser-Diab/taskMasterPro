@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Your TaskMaster Pro sign-in link</title>
+  </head>
+  <body style="margin:0;background:#07111f;color:#e7eef9;font-family:Arial,Helvetica,sans-serif">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#07111f;padding:28px 12px"><tr><td align="center">
+      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:560px;background:#111d2c;border:1px solid #26364a;border-radius:22px"><tr><td style="padding:32px">
+        <div style="color:#93c5fd;font-size:14px;font-weight:800;letter-spacing:.08em;text-transform:uppercase">TaskMaster Pro</div>
+        <h1 style="margin:18px 0 10px;font-size:30px;line-height:1.2;color:#ffffff">Your sign-in link</h1>
+        <p style="margin:0 0 24px;color:#bac7d8;font-size:16px;line-height:1.65">Use this one-time link to sign in as <strong style="color:#ffffff">{{ .Email }}</strong>.</p>
+        <a href="{{ .ConfirmationURL }}" style="display:inline-block;background:#93c5fd;color:#09203a;text-decoration:none;font-weight:800;padding:14px 22px;border-radius:12px">Sign in to TaskMaster Pro</a>
+        <p style="margin:26px 0 8px;color:#8fa1b8;font-size:13px;line-height:1.55">If the button does not open, copy this link:</p>
+        <p style="margin:0;word-break:break-all"><a href="{{ .ConfirmationURL }}" style="color:#93c5fd;font-size:13px">{{ .ConfirmationURL }}</a></p>
+        <p style="margin:28px 0 0;color:#74869c;font-size:12px;line-height:1.55">If you did not request this message, ignore it. Do not forward this link.</p>
+      </td></tr></table>
+    </td></tr></table>
+  </body>
+</html>

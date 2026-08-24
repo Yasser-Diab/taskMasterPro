@@ -77,7 +77,7 @@ class FlutterWindow : public Win32Window {
   std::wstring tray_add_interruption_label_ = L"Add interruption";
   std::wstring tray_add_note_label_ = L"Add note";
   std::wstring tray_sync_now_label_ = L"Sync now";
-  std::wstring tray_whats_new_label_ = L"What's new in v0.0.30";
+  std::wstring tray_whats_new_label_ = L"What's new in v0.0.28";
   std::wstring tray_settings_label_ = L"Settings";
   std::wstring tray_update_label_ = L"Check for updates";
   std::wstring tray_exit_label_ = L"Exit TaskMaster Pro";

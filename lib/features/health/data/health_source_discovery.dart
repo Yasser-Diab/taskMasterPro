@@ -14,6 +14,7 @@ class PairedHealthWearable {
     required this.capabilityState,
     required this.capabilities,
     this.inspectionError,
+    this.directReadings = const {},
   });
 
   final String bridgeId;
@@ -22,6 +23,14 @@ class PairedHealthWearable {
   final String capabilityState;
   final List<String> capabilities;
   final String? inspectionError;
+  final Map<String, Object?> directReadings;
+
+  int? get batteryPercent {
+    final value = directReadings['batteryPercent'];
+    if (value is! num) return null;
+    final percent = value.round();
+    return percent >= 0 && percent <= 100 ? percent : null;
+  }
 
   PairedHealthWearable copyWithPlatformInspection(
     Map<String, Object?> inspection,
@@ -29,6 +38,9 @@ class PairedHealthWearable {
     final nextCapabilities =
         (inspection['capabilities'] as List?)?.whereType<String>().toList() ??
         capabilities;
+    final nextReadings = inspection['directReadings'] is Map
+        ? Map<String, Object?>.from(inspection['directReadings']! as Map)
+        : directReadings;
     return PairedHealthWearable(
       bridgeId: bridgeId,
       displayName: displayName,
@@ -37,6 +49,7 @@ class PairedHealthWearable {
           inspection['capabilityState'] as String? ?? capabilityState,
       capabilities: List.unmodifiable(nextCapabilities),
       inspectionError: inspection['inspectionError'] as String?,
+      directReadings: Map.unmodifiable(nextReadings),
     );
   }
 
@@ -70,6 +83,11 @@ class PairedHealthWearable {
           capabilityState: (map['capabilityState'] as String?) ?? 'not_checked',
           capabilities: List.unmodifiable(capabilities),
           inspectionError: map['inspectionError'] as String?,
+          directReadings: map['directReadings'] is Map
+              ? Map<String, Object?>.unmodifiable(
+                  Map<String, Object?>.from(map['directReadings']! as Map),
+                )
+              : const {},
         ),
       );
     }

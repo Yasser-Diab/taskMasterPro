@@ -230,6 +230,10 @@ class _RuntimeRecoveryFixture {
     expect(sanitized.sessionId, isNull);
     expect(sanitized.revision, 45);
     expect(sanitized.lastCommandId, _commandId);
+    final widgetRuntime = await repository.getRuntimeIncludingIdle();
+    expect(widgetRuntime?.state, 'idle');
+    expect(widgetRuntime?.revision, 45);
+    expect(widgetRuntime?.updatedAt, sanitized.updatedAt);
     final data = jsonDecode(sanitized.dataJson) as Map<String, dynamic>;
     expect(data[localRuntimeReferenceRepairMarkerKey], isA<Map>());
   }

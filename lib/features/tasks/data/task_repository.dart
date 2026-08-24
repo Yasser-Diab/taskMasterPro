@@ -243,6 +243,23 @@ class TaskRepository {
     return _validatedRuntime(await _runtimeQuery().getSingleOrNull());
   }
 
+  /// Reads the persisted account runtime even when its canonical state is
+  /// idle. Launcher projections need the idle row's revision and update time
+  /// so completion can supersede the previously published active snapshot.
+  /// Normal app surfaces should continue to use [getRuntime], which exposes
+  /// only a live, fully referenced execution.
+  Future<LocalRuntime?> getRuntimeIncludingIdle() async {
+    final stored = await _storedRuntime();
+    if (stored == null ||
+        stored.state == 'idle' ||
+        stored.activeTaskId == null ||
+        stored.sessionId == null) {
+      return stored;
+    }
+    final validated = await _validatedRuntime(stored);
+    return validated ?? await _storedRuntime();
+  }
+
   SimpleSelectStatement<$LocalRuntimeStatesTable, LocalRuntime>
   _runtimeQuery() {
     return database.select(database.localRuntimeStates)..where(

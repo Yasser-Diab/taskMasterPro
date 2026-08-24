@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -26,11 +27,14 @@ class HealthConnectScreen extends ConsumerStatefulWidget {
 
 class _HealthConnectScreenState extends ConsumerState<HealthConnectScreen> {
   static const _healthSourcesChannel = MethodChannel('taskmasterpro/ble');
+  static const _platformCallTimeout = Duration(seconds: 10);
+  static const _healthReadTimeout = Duration(seconds: 10);
+  static const _healthRefreshDeadline = Duration(seconds: 30);
   static const _types = [
     HealthDataType.STEPS,
     HealthDataType.DISTANCE_DELTA,
     HealthDataType.HEART_RATE,
-    HealthDataType.SLEEP_ASLEEP,
+    ...healthConnectSleepReadTypes,
     HealthDataType.ACTIVE_ENERGY_BURNED,
     HealthDataType.WORKOUT,
   ];
@@ -40,6 +44,7 @@ class _HealthConnectScreenState extends ConsumerState<HealthConnectScreen> {
   bool _available = false;
   bool _authorized = false;
   bool _loading = false;
+  bool _pullRefreshing = false;
   String? _message;
   Map<String, Object?> _bluetoothState = const {};
   List<PairedHealthWearable> _pairedWearables = const [];
@@ -49,10 +54,13 @@ class _HealthConnectScreenState extends ConsumerState<HealthConnectScreen> {
   Set<String> _providerSources = const {};
   Map<String, DateTime> _providerLastRecordAt = const {};
   bool _hasActualRecords = false;
+  DateTime? _latestRecordAt;
   bool _readFailed = false;
   double? _profileHeightCm;
   HealthSummary _summary = const HealthSummary();
+  List<_HealthDaySnapshot> _weeklySummaries = const [];
   Timer? _dayBoundaryTimer;
+  int _refreshGeneration = 0;
 
   @override
   void initState() {
@@ -75,7 +83,10 @@ class _HealthConnectScreenState extends ConsumerState<HealthConnectScreen> {
       nextDay.difference(now) + const Duration(seconds: 1),
       () {
         if (!mounted) return;
-        setState(() => _summary = const HealthSummary());
+        setState(() {
+          _summary = const HealthSummary();
+          _weeklySummaries = const [];
+        });
         if (_authorized) unawaited(_refresh());
         _scheduleDayBoundaryReset();
       },
@@ -93,16 +104,20 @@ class _HealthConnectScreenState extends ConsumerState<HealthConnectScreen> {
     try {
       await _loadBluetoothState();
       unawaited(_loadPairedHealthWearables());
-      await _health.configure();
-      final available = await _health.isHealthConnectAvailable();
+      await _health.configure().timeout(_platformCallTimeout);
+      final available = await _health.isHealthConnectAvailable().timeout(
+        _platformCallTimeout,
+      );
       final permission = available
-          ? await _health.hasPermissions(
-                  _types,
-                  permissions: List.filled(
-                    _types.length,
-                    HealthDataAccess.READ,
-                  ),
-                ) ??
+          ? await _health
+                    .hasPermissions(
+                      _types,
+                      permissions: List.filled(
+                        _types.length,
+                        HealthDataAccess.READ,
+                      ),
+                    )
+                    .timeout(_platformCallTimeout) ??
                 false
           : false;
       if (!mounted) return;
@@ -126,7 +141,8 @@ class _HealthConnectScreenState extends ConsumerState<HealthConnectScreen> {
     if (!Platform.isAndroid) return;
     try {
       final state = await _healthSourcesChannel
-          .invokeMapMethod<String, Object?>('state');
+          .invokeMapMethod<String, Object?>('state')
+          .timeout(_platformCallTimeout);
       if (!mounted || state == null) return;
       setState(() => _bluetoothState = Map<String, Object?>.from(state));
     } catch (_) {
@@ -164,19 +180,45 @@ class _HealthConnectScreenState extends ConsumerState<HealthConnectScreen> {
         );
         return;
       }
-      final values = await _healthSourcesChannel.invokeListMethod<Object?>(
-        'pairedHealthDevices',
-      );
-      final wearables = PairedHealthWearable.fromPlatformValues(
+      final values = await _healthSourcesChannel
+          .invokeListMethod<Object?>('pairedHealthDevices')
+          .timeout(_platformCallTimeout);
+      final discovered = PairedHealthWearable.fromPlatformValues(
         values ?? const <Object?>[],
       );
+      final previousById = {
+        for (final wearable in _pairedWearables) wearable.bridgeId: wearable,
+      };
+      final wearables = discovered
+          .map((wearable) {
+            final previous = previousById[wearable.bridgeId];
+            if (!wearable.isConnected ||
+                previous == null ||
+                previous.capabilityState == 'inspecting') {
+              return wearable;
+            }
+            return PairedHealthWearable(
+              bridgeId: wearable.bridgeId,
+              displayName: wearable.displayName,
+              isConnected: true,
+              capabilityState: previous.capabilityState,
+              capabilities: previous.capabilities,
+              inspectionError: previous.inspectionError,
+              directReadings: previous.directReadings,
+            );
+          })
+          .toList(growable: false);
+      final connected = wearables
+          .where((wearable) => wearable.isConnected)
+          .toList(growable: false);
       if (!mounted) return;
       setState(() {
         _pairedWearables = wearables;
-        _wearablesMessage = wearables.isEmpty
-            ? context.l10n.text('health_wearables_none')
+        _wearablesMessage = connected.isEmpty
+            ? context.l10n.text('health_wearables_none_connected')
             : null;
       });
+      unawaited(_inspectConnectedHealthWearables(connected));
     } on PlatformException catch (error) {
       if (!mounted) return;
       setState(() {
@@ -200,6 +242,59 @@ class _HealthConnectScreenState extends ConsumerState<HealthConnectScreen> {
     }
   }
 
+  Future<void> _inspectConnectedHealthWearables(
+    List<PairedHealthWearable> wearables,
+  ) async {
+    for (final wearable in wearables) {
+      if (!mounted) return;
+      if (wearable.capabilityState == 'direct_supported' ||
+          wearable.capabilityState == 'no_direct_health_service') {
+        continue;
+      }
+      await _inspectPairedHealthWearable(wearable.bridgeId);
+    }
+  }
+
+  Future<void> _refreshDashboard() async {
+    if (mounted) setState(() => _pullRefreshing = true);
+    try {
+      final healthRefresh = _authorized ? _refresh() : Future<void>.value();
+      final wearableRefresh = Platform.isAndroid
+          ? _loadPairedHealthWearables()
+          : Future<void>.value();
+      await Future.wait([healthRefresh, wearableRefresh]);
+    } finally {
+      if (mounted) setState(() => _pullRefreshing = false);
+    }
+  }
+
+  void _showDataReceivedNotice() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final messenger = ScaffoldMessenger.of(context);
+      messenger
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 2),
+            content: Row(
+              children: [
+                const Icon(Icons.check_circle_rounded, color: Colors.white),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    context.l10n.text('health_data_received_popup'),
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+    });
+  }
+
   Future<void> _inspectPairedHealthWearable(String bridgeId) async {
     final index = _pairedWearables.indexWhere(
       (wearable) => wearable.bridgeId == bridgeId,
@@ -214,6 +309,7 @@ class _HealthConnectScreenState extends ConsumerState<HealthConnectScreen> {
         isConnected: wearable.isConnected,
         capabilityState: 'inspecting',
         capabilities: wearable.capabilities,
+        directReadings: wearable.directReadings,
       );
       _pairedWearables = List.unmodifiable(updated);
     });
@@ -222,7 +318,8 @@ class _HealthConnectScreenState extends ConsumerState<HealthConnectScreen> {
           .invokeMapMethod<String, Object?>('inspectPairedHealthDevice', {
             'address': bridgeId,
             'timeoutMillis': 12000,
-          });
+          })
+          .timeout(const Duration(seconds: 16));
       if (!mounted || inspected == null) return;
       final currentIndex = _pairedWearables.indexWhere(
         (wearable) => wearable.bridgeId == bridgeId,
@@ -250,6 +347,7 @@ class _HealthConnectScreenState extends ConsumerState<HealthConnectScreen> {
           capabilityState: 'unknown',
           capabilities: wearable.capabilities,
           inspectionError: 'inspection_failed',
+          directReadings: wearable.directReadings,
         );
         _pairedWearables = List.unmodifiable(updated);
       });
@@ -257,8 +355,24 @@ class _HealthConnectScreenState extends ConsumerState<HealthConnectScreen> {
   }
 
   Future<void> _openBluetoothSettings() async {
-    await _healthSourcesChannel.invokeMethod<void>('openSettings');
+    await _healthSourcesChannel
+        .invokeMethod<void>('openSettings')
+        .timeout(_platformCallTimeout);
     await _loadBluetoothState();
+  }
+
+  Future<void> _openHealthConnectSettings() async {
+    try {
+      await _healthSourcesChannel
+          .invokeMethod<void>('openHealthConnectSettings')
+          .timeout(_platformCallTimeout);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _readFailed = true;
+        _message = context.l10n.text('health_check_failed');
+      });
+    }
   }
 
   Future<void> _connect() async {
@@ -298,6 +412,16 @@ class _HealthConnectScreenState extends ConsumerState<HealthConnectScreen> {
   }
 
   Future<void> _refresh() async {
+    final refreshGeneration = ++_refreshGeneration;
+    final deadline = Timer(_healthRefreshDeadline, () {
+      if (!mounted || refreshGeneration != _refreshGeneration) return;
+      _refreshGeneration++;
+      setState(() {
+        _loading = false;
+        _readFailed = true;
+        _message = context.l10n.text('health_operation_timed_out');
+      });
+    });
     setState(() {
       _loading = true;
       _message = null;
@@ -315,20 +439,32 @@ class _HealthConnectScreenState extends ConsumerState<HealthConnectScreen> {
       final refreshWindow = HealthInterval(start, end);
       final points = <HealthDataPoint>[];
       _unavailableTypes.clear();
-      for (final type in _types) {
-        try {
-          points.addAll(
-            await _health.getHealthDataFromTypes(
-              startTime: start,
-              endTime: end,
-              types: [type],
-            ),
-          );
-        } catch (_) {
-          _unavailableTypes.add(type);
-        }
+      final typeReads = await Future.wait(
+        _types.map((type) async {
+          try {
+            final values = await _health
+                .getHealthDataFromTypes(
+                  startTime: start,
+                  endTime: end,
+                  types: [type],
+                )
+                .timeout(_healthReadTimeout);
+            return (type: type, points: values, failed: false);
+          } catch (_) {
+            return (
+              type: type,
+              points: const <HealthDataPoint>[],
+              failed: true,
+            );
+          }
+        }),
+      );
+      for (final read in typeReads) {
+        points.addAll(read.points);
+        if (read.failed) _unavailableTypes.add(read.type);
       }
-      final reconciliation = HealthRecordReconciler.reconcile(points);
+      final normalizedPoints = normalizeHealthConnectSleepRecords(points);
+      final reconciliation = HealthRecordReconciler.reconcile(normalizedPoints);
       final userId = ref.read(supabaseClientProvider).auth.currentUser?.id;
       final profile = userId == null
           ? null
@@ -336,26 +472,40 @@ class _HealthConnectScreenState extends ConsumerState<HealthConnectScreen> {
       final heightCm = profile?.heightCm;
       final dailySummaries = <HealthSummary>[];
       final summariesByDay = <String, HealthSummary>{};
+      final canonicalStepsByDay = <String, int?>{};
+      if (!_unavailableTypes.contains(HealthDataType.STEPS)) {
+        final totals = await Future.wait(
+          List.generate(7, (index) async {
+            final dayStart = firstLocalDay.add(Duration(days: index));
+            final rawDayEnd = dayStart.add(const Duration(days: 1));
+            final dayEnd = rawDayEnd.isAfter(localNow) ? localNow : rawDayEnd;
+            if (!dayStart.isBefore(dayEnd)) {
+              return (day: healthLocalDayKey(dayStart), steps: null);
+            }
+            try {
+              final steps = await _health
+                  .getTotalStepsInInterval(dayStart, dayEnd)
+                  .timeout(_healthReadTimeout);
+              return (day: healthLocalDayKey(dayStart), steps: steps);
+            } catch (_) {
+              return (day: healthLocalDayKey(dayStart), steps: null);
+            }
+          }),
+        );
+        canonicalStepsByDay.addEntries(
+          totals.map((total) => MapEntry(total.day, total.steps)),
+        );
+      }
       for (var index = 0; index < 7; index++) {
         final dayStart = firstLocalDay.add(Duration(days: index));
         final rawDayEnd = dayStart.add(const Duration(days: 1));
         final dayEnd = rawDayEnd.isAfter(localNow) ? localNow : rawDayEnd;
         if (!dayStart.isBefore(dayEnd)) continue;
-        int? canonicalSteps;
-        if (!_unavailableTypes.contains(HealthDataType.STEPS)) {
-          try {
-            canonicalSteps = await _health.getTotalStepsInInterval(
-              dayStart,
-              dayEnd,
-            );
-          } catch (_) {
-            canonicalSteps = null;
-          }
-        }
+        final canonicalSteps = canonicalStepsByDay[healthLocalDayKey(dayStart)];
         final dailyWindow = HealthInterval(dayStart.toUtc(), dayEnd.toUtc());
         final dailySummary = HealthSummary.fromReconciliation(
           reconciliation,
-          rawPoints: points,
+          rawPoints: normalizedPoints,
           window: dailyWindow,
           canonicalSteps: canonicalSteps,
           heightCm: heightCm,
@@ -371,11 +521,19 @@ class _HealthConnectScreenState extends ConsumerState<HealthConnectScreen> {
           windowEnd: dailyWindow.end,
         );
       }
+      final weeklySummaries = List<_HealthDaySnapshot>.generate(7, (index) {
+        final day = firstLocalDay.add(Duration(days: index));
+        return _HealthDaySnapshot(
+          day: day,
+          summary:
+              summariesByDay[healthLocalDayKey(day)] ?? const HealthSummary(),
+        );
+      }, growable: false);
       if (dailySummaries.isEmpty) {
         await _removeInvalidEmptySummary(localNow);
       }
       final taskSummaries = await _buildTaskHealthSummaries(
-        points: points,
+        points: normalizedPoints,
         refreshWindow: refreshWindow,
         importedAt: importedAt,
         heightCm: heightCm,
@@ -386,7 +544,14 @@ class _HealthConnectScreenState extends ConsumerState<HealthConnectScreen> {
       );
       final providerSources = <String>{};
       final providerLastRecordAt = <String, DateTime>{};
+      DateTime? latestRecordAt;
       for (final dailySummary in dailySummaries) {
+        final latestSummaryRecordAt = dailySummary.latestRecordAt;
+        if (latestSummaryRecordAt != null &&
+            (latestRecordAt == null ||
+                latestSummaryRecordAt.isAfter(latestRecordAt))) {
+          latestRecordAt = latestSummaryRecordAt;
+        }
         providerSources.addAll(
           observedHealthApplicationSources(dailySummary.sources),
         );
@@ -402,33 +567,51 @@ class _HealthConnectScreenState extends ConsumerState<HealthConnectScreen> {
       final hasActualRecords = dailySummaries.any(
         (summary) => summary.recordCount > 0,
       );
+      final hasRecentRecords =
+          latestRecordAt != null &&
+          importedAt.difference(latestRecordAt.toUtc()) <=
+              const Duration(days: 2);
       // Headline metrics are always the current local calendar day. The last
       // record from yesterday must not remain visible after midnight while
       // waiting for today's first Health Connect record.
       final summary = healthSummaryForLocalDay(summariesByDay, localNow);
-      if (!mounted) return;
+      if (!mounted || refreshGeneration != _refreshGeneration) return;
       setState(() {
         _summary = summary;
+        _weeklySummaries = List.unmodifiable(weeklySummaries);
         _providerSources = Set.unmodifiable(providerSources);
         _providerLastRecordAt = Map.unmodifiable(providerLastRecordAt);
         _hasActualRecords = hasActualRecords;
+        _latestRecordAt = latestRecordAt;
         _readFailed = false;
         _profileHeightCm = heightCm;
         _message = !hasActualRecords
-            ? context.l10n.text('health_no_records_explanation')
+            ? context.l10n.text(
+                _bluetoothState['healthConnectStepTrackingAvailable'] == true
+                    ? 'health_on_device_steps_waiting'
+                    : 'health_no_records_explanation',
+              )
+            : !hasRecentRecords
+            ? context.l10n.text('health_no_recent_records_explanation')
+            : summary.recordCount == 0
+            ? context.l10n.text('health_no_records_today_explanation')
             : _unavailableTypes.isNotEmpty
             ? context.l10n.text('health_partial_import')
             : null;
       });
+      if (hasActualRecords) _showDataReceivedNotice();
     } catch (_) {
-      if (mounted) {
+      if (mounted && refreshGeneration == _refreshGeneration) {
         setState(() {
           _readFailed = true;
           _message = context.l10n.text('health_read_failed');
         });
       }
     } finally {
-      if (mounted) setState(() => _loading = false);
+      deadline.cancel();
+      if (mounted && refreshGeneration == _refreshGeneration) {
+        setState(() => _loading = false);
+      }
     }
   }
 
@@ -737,7 +920,6 @@ class _HealthConnectScreenState extends ConsumerState<HealthConnectScreen> {
         'record_count': data['record_count'],
         'source_applications': data['source_applications'],
         'source_record_counts': data['source_record_counts'],
-        'source_latest_record_at': data['source_latest_record_at'],
         'last_updated_at': data['last_updated_at'],
         'window_start_at': data['window_start_at'],
         'window_end_at': data['window_end_at'],
@@ -795,9 +977,11 @@ class _HealthConnectScreenState extends ConsumerState<HealthConnectScreen> {
         setState(() {
           _authorized = false;
           _summary = const HealthSummary();
+          _weeklySummaries = const [];
           _providerSources = const {};
           _providerLastRecordAt = const {};
           _hasActualRecords = false;
+          _latestRecordAt = null;
           _readFailed = false;
         });
       }
@@ -815,9 +999,11 @@ class _HealthConnectScreenState extends ConsumerState<HealthConnectScreen> {
     if (mounted) {
       setState(() {
         _summary = const HealthSummary();
+        _weeklySummaries = const [];
         _providerSources = const {};
         _providerLastRecordAt = const {};
         _hasActualRecords = false;
+        _latestRecordAt = null;
         _readFailed = false;
         _message = context.l10n.text('health_summaries_removed');
       });
@@ -838,7 +1024,7 @@ class _HealthConnectScreenState extends ConsumerState<HealthConnectScreen> {
     final connectionState = resolveHealthConnectionState(
       authorized: _authorized,
       hasActualRecords: _hasActualRecords,
-      latestRecordAt: _summary.latestRecordAt,
+      latestRecordAt: _latestRecordAt,
       now: DateTime.now(),
       readFailed: _readFailed,
     );
@@ -864,359 +1050,1141 @@ class _HealthConnectScreenState extends ConsumerState<HealthConnectScreen> {
       HealthConnectionState.needsAttention =>
         'health_connection_needs_attention_detail',
     });
+    final connectedWearables = _pairedWearables
+        .where((wearable) => wearable.isConnected)
+        .toList(growable: false);
+    final providerNames = _providerSources.toList()..sort();
+    final stepsAvailable = hasMetric(HealthDataType.STEPS);
+    final weeklyPeakSteps = _weeklySummaries.fold<int>(
+      0,
+      (highest, day) => math.max(highest, day.summary.steps),
+    );
+    final todayComparedWithWeek = weeklyPeakSteps == 0
+        ? 0.0
+        : (_summary.steps / weeklyPeakSteps).clamp(0.0, 1.0);
+    final colorScheme = Theme.of(context).colorScheme;
     return Scaffold(
-      appBar: AppBar(title: Text(context.l10n.text('health_connect'))),
-      body: ListView(
-        padding: const EdgeInsets.all(20),
-        children: [
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Icon(
-                        Icons.health_and_safety_outlined,
-                        size: 34,
-                        color: Theme.of(context).colorScheme.primary,
+      appBar: AppBar(
+        title: Text(context.l10n.text('health_connect')),
+        actions: [
+          PopupMenuButton<String>(
+            tooltip: MaterialLocalizations.of(context).moreButtonTooltip,
+            onSelected: (value) {
+              switch (value) {
+                case 'access':
+                  unawaited(_openHealthConnectSettings());
+                case 'bluetooth':
+                  unawaited(_openBluetoothSettings());
+                case 'delete':
+                  unawaited(_removeImportedSummaries());
+                case 'disconnect':
+                  unawaited(_disconnect());
+              }
+            },
+            itemBuilder: (context) => [
+              if (_available)
+                PopupMenuItem(
+                  value: 'access',
+                  child: _HealthMenuRow(
+                    icon: Icons.manage_accounts_outlined,
+                    label: context.l10n.text('health_manage_access'),
+                  ),
+                ),
+              if (Platform.isAndroid)
+                PopupMenuItem(
+                  value: 'bluetooth',
+                  child: _HealthMenuRow(
+                    icon: Icons.bluetooth_outlined,
+                    label: context.l10n.text('health_wearables_settings'),
+                  ),
+                ),
+              if (_authorized && _hasActualRecords)
+                PopupMenuItem(
+                  value: 'delete',
+                  child: _HealthMenuRow(
+                    icon: Icons.delete_outline,
+                    label: context.l10n.text('health_delete_summaries'),
+                  ),
+                ),
+              if (_authorized)
+                PopupMenuItem(
+                  value: 'disconnect',
+                  child: _HealthMenuRow(
+                    icon: Icons.link_off_outlined,
+                    label: context.l10n.text('health_disconnect'),
+                  ),
+                ),
+            ],
+          ),
+        ],
+      ),
+      body: RefreshIndicator(
+        onRefresh: _refreshDashboard,
+        child: ListView(
+          key: const PageStorageKey<String>('health-connect-scroll'),
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: EdgeInsets.fromLTRB(
+            MediaQuery.sizeOf(context).width < 600 ? 16 : 24,
+            10,
+            MediaQuery.sizeOf(context).width < 600 ? 16 : 24,
+            32 + MediaQuery.paddingOf(context).bottom,
+          ),
+          children: [
+            if (_pullRefreshing) const SizedBox(height: 52),
+            Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 880),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _HealthStatusCard(
+                      state: connectionState,
+                      title: connectionTitle,
+                      detail: connectionDetail,
+                      message: _message,
+                      busy: _checking || (_loading && !_pullRefreshing),
+                      authorized: _authorized,
+                      available: _available,
+                      onConnect: _connect,
+                    ),
+                    if (_authorized) ...[
+                      const SizedBox(height: 14),
+                      _TodayHealthCard(
+                        title: context.l10n.text('health_recent_context'),
+                        stepsLabel: context.l10n.text('health_steps'),
+                        steps: stepsAvailable
+                            ? NumberFormat.decimalPattern(
+                                locale,
+                              ).format(_summary.steps)
+                            : '—',
+                        relativeProgress: todayComparedWithWeek,
+                        distanceLabel: context.l10n.text(
+                          _summary.distanceEstimated
+                              ? 'health_distance_estimated'
+                              : 'health_distance',
+                        ),
+                        distance: distanceValue,
+                        energyLabel: context.l10n.text('health_active_energy'),
+                        energy: hasMetric(HealthDataType.ACTIVE_ENERGY_BURNED)
+                            ? '${NumberFormat('0', locale).format(_summary.activeCalories)} kcal'
+                            : '—',
+                        workoutsLabel: context.l10n.text('health_workouts'),
+                        workouts: hasMetric(HealthDataType.WORKOUT)
+                            ? NumberFormat.decimalPattern(
+                                locale,
+                              ).format(_summary.workoutCount)
+                            : '—',
                       ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              connectionTitle,
-                              style: Theme.of(context).textTheme.titleLarge
-                                  ?.copyWith(fontWeight: FontWeight.w800),
-                            ),
-                            Text(connectionDetail),
-                          ],
+                      const SizedBox(height: 14),
+                      _WeeklyStepsCard(
+                        snapshots: _weeklySummaries,
+                        locale: locale,
+                        title: context.l10n.text('health_weekly_steps'),
+                        detail: context.l10n.text('health_weekly_steps_detail'),
+                        stepsLabel: context.l10n.text('health_steps'),
+                      ),
+                      const SizedBox(height: 14),
+                      LayoutBuilder(
+                        builder: (context, constraints) {
+                          const gap = 10.0;
+                          final columns = constraints.maxWidth >= 760 ? 3 : 2;
+                          final width =
+                              (constraints.maxWidth - gap * (columns - 1)) /
+                              columns;
+                          return Wrap(
+                            spacing: gap,
+                            runSpacing: gap,
+                            children: [
+                              SizedBox(
+                                width: width,
+                                child: _HealthMetric(
+                                  icon: Icons.favorite_rounded,
+                                  accent: Colors.redAccent,
+                                  label: context.l10n.text(
+                                    'health_average_heart_rate',
+                                  ),
+                                  value: _summary.averageHeartRate == null
+                                      ? '—'
+                                      : '${_summary.averageHeartRate!.round()} bpm',
+                                ),
+                              ),
+                              SizedBox(
+                                width: width,
+                                child: _HealthMetric(
+                                  icon: Icons.bedtime_rounded,
+                                  accent: Colors.deepPurpleAccent,
+                                  label: context.l10n.text('health_sleep'),
+                                  value: hasMetric(HealthDataType.SLEEP_ASLEEP)
+                                      ? context.l10n.duration(
+                                          Duration(
+                                            minutes: _summary.sleepMinutes
+                                                .round(),
+                                          ),
+                                        )
+                                      : '—',
+                                ),
+                              ),
+                              SizedBox(
+                                width: width,
+                                child: _HealthMetric(
+                                  icon: Icons.update_rounded,
+                                  accent: colorScheme.primary,
+                                  label: context.l10n.text(
+                                    'health_latest_record',
+                                  ),
+                                  value: _latestRecordAt == null
+                                      ? '—'
+                                      : DateFormat.Hm(
+                                          locale,
+                                        ).format(_latestRecordAt!.toLocal()),
+                                ),
+                              ),
+                            ],
+                          );
+                        },
+                      ),
+                    ],
+                    if (!_authorized) ...[
+                      const SizedBox(height: 14),
+                      _HealthPermissionCard(
+                        title: context.l10n.text('health_connect_context'),
+                        detail: context.l10n.text('health_permission_detail'),
+                      ),
+                    ],
+                    const SizedBox(height: 14),
+                    _HealthSourcesCard(
+                      title: context.l10n.text('health_sources'),
+                      healthConnectLabel: context.l10n.text('health_connect'),
+                      healthConnectStatus: context.l10n.text(
+                        _authorized
+                            ? 'health_connected'
+                            : 'health_permission_required_state',
+                      ),
+                      healthConnectConnected: _authorized,
+                      applicationLabel: context.l10n.text(
+                        'health_source_applications',
+                      ),
+                      emptyApplicationsLabel: context.l10n.text(
+                        'health_source_applications_empty',
+                      ),
+                      latestRecordLabel: context.l10n.text(
+                        'health_latest_record',
+                      ),
+                      latestRecordAt: _latestRecordAt,
+                      providerNames: providerNames,
+                      providerLastRecordAt: _providerLastRecordAt,
+                      locale: locale,
+                      estimatedDistanceDetail:
+                          _authorized && _summary.distanceEstimated
+                          ? context.l10n
+                                .format('health_distance_estimate_provenance', {
+                                  'height': NumberFormat(
+                                    '0.#',
+                                    locale,
+                                  ).format(_summary.heightCm),
+                                })
+                          : null,
+                      showWearables: Platform.isAndroid,
+                      wearablesTitle: context.l10n.text(
+                        'health_connected_watches',
+                      ),
+                      wearablesDetail: context.l10n.text(
+                        'health_connected_watches_detail',
+                      ),
+                      wearablesHistoryNotice: context.l10n.text(
+                        'health_wearables_history_notice',
+                      ),
+                      wearablesMessage: _wearablesMessage,
+                      wearablesLoading: _wearablesLoading,
+                      wearables: connectedWearables,
+                      onInspectWearable: _inspectPairedHealthWearable,
+                      onBluetoothSettings: _openBluetoothSettings,
+                    ),
+                    if (Platform.isAndroid) ...[
+                      if (!distanceAvailable &&
+                          stepsAvailable &&
+                          !isValidHealthHeight(_profileHeightCm)) ...[
+                        const SizedBox(height: 10),
+                        _HealthInlineNotice(
+                          icon: Icons.height_outlined,
+                          text: context.l10n.text('height_required'),
+                        ),
+                      ],
+                    ],
+                    const SizedBox(height: 8),
+                    Text(
+                      context.l10n.text('health_pull_to_refresh'),
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _HealthDaySnapshot {
+  const _HealthDaySnapshot({required this.day, required this.summary});
+
+  final DateTime day;
+  final HealthSummary summary;
+}
+
+class _HealthMenuRow extends StatelessWidget {
+  const _HealthMenuRow({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(icon, size: 20),
+        const SizedBox(width: 12),
+        Flexible(child: Text(label)),
+      ],
+    );
+  }
+}
+
+class _HealthStatusCard extends StatelessWidget {
+  const _HealthStatusCard({
+    required this.state,
+    required this.title,
+    required this.detail,
+    required this.busy,
+    required this.authorized,
+    required this.available,
+    required this.onConnect,
+    this.message,
+  });
+
+  final HealthConnectionState state;
+  final String title;
+  final String detail;
+  final String? message;
+  final bool busy;
+  final bool authorized;
+  final bool available;
+  final VoidCallback onConnect;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final accent = switch (state) {
+      HealthConnectionState.connectedDataReceived => const Color(0xFF22A06B),
+      HealthConnectionState.permissionGrantedWaitingForData => colors.tertiary,
+      HealthConnectionState.connectedNoRecentRecords => const Color(0xFFE59A24),
+      HealthConnectionState.needsAttention => colors.error,
+      HealthConnectionState.permissionRequired => colors.primary,
+    };
+    final icon = switch (state) {
+      HealthConnectionState.connectedDataReceived => Icons.favorite_rounded,
+      HealthConnectionState.permissionGrantedWaitingForData =>
+        Icons.hourglass_top_rounded,
+      HealthConnectionState.connectedNoRecentRecords => Icons.history_rounded,
+      HealthConnectionState.needsAttention => Icons.error_outline_rounded,
+      HealthConnectionState.permissionRequired =>
+        Icons.health_and_safety_outlined,
+    };
+    return Material(
+      color: Color.alphaBlend(accent.withValues(alpha: 0.09), colors.surface),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(24),
+        side: BorderSide(color: accent.withValues(alpha: 0.22)),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 15, 16, 14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: accent.withValues(alpha: 0.14),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(icon, color: accent, size: 23),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: Theme.of(context).textTheme.titleMedium
+                            ?.copyWith(fontWeight: FontWeight.w800),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        detail,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: colors.onSurfaceVariant,
+                          height: 1.35,
                         ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 16),
-                  Text(context.l10n.text('health_permission_detail')),
-                  const SizedBox(height: 16),
-                  if (_checking || _loading)
-                    const LinearProgressIndicator()
-                  else if (!_authorized)
-                    FilledButton.icon(
-                      onPressed: _connect,
-                      icon: Icon(
-                        _available
-                            ? Icons.lock_open_outlined
-                            : Icons.download_outlined,
-                      ),
-                      label: Text(
-                        _available
-                            ? context.l10n.text('health_continue_permissions')
-                            : context.l10n.text('health_install_connect'),
-                      ),
-                    )
-                  else
-                    Wrap(
-                      spacing: 10,
-                      runSpacing: 10,
-                      children: [
-                        FilledButton.icon(
-                          onPressed: _refresh,
-                          icon: const Icon(Icons.refresh),
-                          label: Text(
-                            context.l10n.text('health_refresh_seven_days'),
-                          ),
-                        ),
-                        OutlinedButton.icon(
-                          onPressed: _disconnect,
-                          icon: const Icon(Icons.link_off),
-                          label: Text(context.l10n.text('health_disconnect')),
-                        ),
-                      ],
-                    ),
-                  if (_message != null) ...[
-                    const SizedBox(height: 12),
-                    Text(
-                      _message!,
-                      style: TextStyle(
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-          if (!_authorized)
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(14),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      leading: const Icon(Icons.source_outlined),
-                      title: Text(context.l10n.text('health_sources')),
-                      subtitle: Text(
-                        context.l10n.text('health_sources_detail'),
-                      ),
-                    ),
-                    _HealthPlatformSourceTile(
-                      title: context.l10n.text('health_connect'),
-                      isConnected: false,
-                    ),
-                    const Divider(),
-                    ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      leading: const Icon(Icons.apps_outlined),
-                      title: Text(
-                        context.l10n.text('health_source_applications'),
-                      ),
-                      subtitle: Text(
-                        context.l10n.text('health_source_applications_empty'),
-                      ),
-                    ),
-                  ],
                 ),
-              ),
-            ),
-          if (!_authorized) const SizedBox(height: 16),
-          if (_authorized) ...[
-            Text(
-              context.l10n.text('health_recent_context'),
-              style: Theme.of(
-                context,
-              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
-            ),
-            const SizedBox(height: 10),
-            GridView.count(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              crossAxisCount: MediaQuery.sizeOf(context).width >= 760 ? 3 : 2,
-              mainAxisSpacing: 10,
-              crossAxisSpacing: 10,
-              childAspectRatio: 1.55,
-              children: [
-                _HealthMetric(
-                  icon: Icons.directions_walk,
-                  label: context.l10n.text('health_steps'),
-                  value: hasMetric(HealthDataType.STEPS)
-                      ? NumberFormat.compact(
-                          locale: locale,
-                        ).format(_summary.steps)
-                      : '—',
-                ),
-                _HealthMetric(
-                  icon: Icons.route_outlined,
-                  label: context.l10n.text(
-                    _summary.distanceEstimated
-                        ? 'health_distance_estimated'
-                        : 'health_distance',
+                if (!authorized && !busy) ...[
+                  const SizedBox(width: 10),
+                  IconButton.filled(
+                    tooltip: available
+                        ? context.l10n.text('health_continue_permissions')
+                        : context.l10n.text('health_install_connect'),
+                    onPressed: onConnect,
+                    icon: Icon(
+                      available
+                          ? Icons.arrow_forward_rounded
+                          : Icons.download_rounded,
+                    ),
                   ),
-                  value: distanceValue,
+                ],
+              ],
+            ),
+            if (busy) ...[
+              const SizedBox(height: 12),
+              LinearProgressIndicator(
+                minHeight: 3,
+                borderRadius: BorderRadius.circular(99),
+                color: accent,
+                backgroundColor: accent.withValues(alpha: 0.12),
+              ),
+            ],
+            if (message != null) ...[
+              const SizedBox(height: 10),
+              Text(
+                message!,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: colors.onSurfaceVariant,
+                  height: 1.35,
                 ),
-                _HealthMetric(
-                  icon: Icons.favorite_border,
-                  label: context.l10n.text('health_average_heart_rate'),
-                  value: _summary.averageHeartRate == null
-                      ? '—'
-                      : '${_summary.averageHeartRate!.round()} bpm',
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _HealthPermissionCard extends StatelessWidget {
+  const _HealthPermissionCard({required this.title, required this.detail});
+
+  final String title;
+  final String detail;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: colors.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.lock_outline_rounded, color: colors.primary),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
                 ),
-                _HealthMetric(
-                  icon: Icons.bedtime_outlined,
-                  label: context.l10n.text('health_sleep'),
-                  value: hasMetric(HealthDataType.SLEEP_ASLEEP)
-                      ? context.l10n.duration(
-                          Duration(minutes: _summary.sleepMinutes.round()),
-                        )
-                      : '—',
-                ),
-                _HealthMetric(
-                  icon: Icons.local_fire_department_outlined,
-                  label: context.l10n.text('health_active_energy'),
-                  value: hasMetric(HealthDataType.ACTIVE_ENERGY_BURNED)
-                      ? '${NumberFormat('0', locale).format(_summary.activeCalories)} kcal'
-                      : '—',
-                ),
-                _HealthMetric(
-                  icon: Icons.fitness_center_outlined,
-                  label: context.l10n.text('health_workouts'),
-                  value: hasMetric(HealthDataType.WORKOUT)
-                      ? NumberFormat.decimalPattern(
-                          locale,
-                        ).format(_summary.workoutCount)
-                      : '—',
+                const SizedBox(height: 4),
+                Text(
+                  detail,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: colors.onSurfaceVariant,
+                    height: 1.4,
+                  ),
                 ),
               ],
             ),
-            const SizedBox(height: 16),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(14),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      leading: const Icon(Icons.source_outlined),
-                      title: Text(context.l10n.text('health_sources')),
-                      subtitle: Text(
-                        context.l10n.text('health_sources_detail'),
-                      ),
-                    ),
-                    _HealthPlatformSourceTile(
-                      title: context.l10n.text('health_connect'),
-                      isConnected: _authorized,
-                      latestRecordAt: _summary.latestRecordAt,
-                    ),
-                    const Divider(),
-                    ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      leading: const Icon(Icons.apps_outlined),
-                      title: Text(
-                        context.l10n.text('health_source_applications'),
-                      ),
-                      subtitle: Text(
-                        _providerSources.isEmpty
-                            ? context.l10n.text(
-                                'health_source_applications_empty',
-                              )
-                            : (_providerSources.toList()..sort()).join(', '),
-                      ),
-                    ),
-                    if (_summary.latestRecordAt != null)
-                      ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        leading: const Icon(Icons.update_outlined),
-                        title: Text(context.l10n.text('health_latest_record')),
-                        subtitle: Text(
-                          DateFormat.yMMMd(
-                            context.l10n.locale.toLanguageTag(),
-                          ).add_jm().format(_summary.latestRecordAt!.toLocal()),
-                        ),
-                      ),
-                    if (_summary.importedAt != null && _hasActualRecords)
-                      ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        leading: const Icon(Icons.cloud_download_outlined),
-                        title: Text(
-                          context.l10n.text('health_last_successful_import'),
-                        ),
-                        subtitle: Text(
-                          DateFormat.yMMMd(
-                            context.l10n.locale.toLanguageTag(),
-                          ).add_jm().format(_summary.importedAt!.toLocal()),
-                        ),
-                      ),
-                    for (final source in _providerSources.toList()..sort())
-                      _HealthSourceTile(
-                        name: source,
-                        latestRecordAt: _providerLastRecordAt[source],
-                      ),
-                    if (_summary.distanceEstimated)
-                      ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        leading: const Icon(Icons.straighten_outlined),
-                        title: Text(
-                          context.l10n.text('health_distance_estimated'),
-                        ),
-                        subtitle: Text(
-                          context.l10n
-                              .format('health_distance_estimate_provenance', {
-                                'height': NumberFormat(
-                                  '0.#',
-                                  context.l10n.locale.toLanguageTag(),
-                                ).format(_summary.heightCm),
-                              }),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            OutlinedButton.icon(
-              onPressed: _removeImportedSummaries,
-              icon: const Icon(Icons.delete_outline),
-              label: Text(context.l10n.text('health_delete_summaries')),
-            ),
-          ],
-          if (Platform.isAndroid) ...[
-            const SizedBox(height: 16),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      leading: const Icon(Icons.watch_outlined),
-                      title: Text(context.l10n.text('health_wearables')),
-                      subtitle: Text(
-                        context.l10n.text('health_wearables_detail'),
-                      ),
-                    ),
-                    if (_wearablesLoading) const LinearProgressIndicator(),
-                    if (_wearablesMessage != null) ...[
-                      const SizedBox(height: 8),
-                      Text(_wearablesMessage!),
-                    ],
-                    for (final wearable in _pairedWearables)
-                      _PairedHealthWearableTile(
-                        wearable: wearable,
-                        onInspect: _inspectPairedHealthWearable,
-                      ),
-                    const SizedBox(height: 10),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TodayHealthCard extends StatelessWidget {
+  const _TodayHealthCard({
+    required this.title,
+    required this.stepsLabel,
+    required this.steps,
+    required this.relativeProgress,
+    required this.distanceLabel,
+    required this.distance,
+    required this.energyLabel,
+    required this.energy,
+    required this.workoutsLabel,
+    required this.workouts,
+  });
+
+  final String title;
+  final String stepsLabel;
+  final String steps;
+  final double relativeProgress;
+  final String distanceLabel;
+  final String distance;
+  final String energyLabel;
+  final String energy;
+  final String workoutsLabel;
+  final String workouts;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Material(
+      color: colors.primaryContainer.withValues(alpha: 0.58),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(26)),
+      clipBehavior: Clip.antiAlias,
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final compact = constraints.maxWidth < 540;
+            final dial = SizedBox.square(
+              dimension: compact ? 126 : 142,
+              child: Stack(
+                fit: StackFit.expand,
+                alignment: Alignment.center,
+                children: [
+                  CircularProgressIndicator(
+                    value: relativeProgress,
+                    strokeWidth: 10,
+                    strokeCap: StrokeCap.round,
+                    color: colors.primary,
+                    backgroundColor: colors.primary.withValues(alpha: 0.13),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.all(18),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        FilledButton.tonalIcon(
-                          onPressed:
-                              _wearablesLoading ||
-                                  _bluetoothState['supported'] == false
-                              ? null
-                              : () => _loadPairedHealthWearables(
-                                  requestBluetoothPermission: true,
-                                ),
-                          icon: const Icon(Icons.refresh),
-                          label: Text(
-                            context.l10n.text('health_wearables_refresh'),
+                        Icon(
+                          Icons.directions_walk_rounded,
+                          size: 24,
+                          color: colors.primary,
+                        ),
+                        const SizedBox(height: 3),
+                        FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(
+                            steps,
+                            style: Theme.of(context).textTheme.headlineSmall
+                                ?.copyWith(fontWeight: FontWeight.w900),
                           ),
                         ),
-                        OutlinedButton.icon(
-                          onPressed: _openBluetoothSettings,
-                          icon: const Icon(Icons.bluetooth_outlined),
-                          label: Text(
-                            context.l10n.text('health_wearables_settings'),
-                          ),
+                        Text(
+                          stepsLabel,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.labelMedium,
                         ),
                       ],
                     ),
-                    const SizedBox(height: 10),
+                  ),
+                ],
+              ),
+            );
+            final details = Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  title,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
+                ),
+                const SizedBox(height: 14),
+                _HealthMiniValue(
+                  icon: Icons.route_rounded,
+                  label: distanceLabel,
+                  value: distance,
+                ),
+                const SizedBox(height: 10),
+                _HealthMiniValue(
+                  icon: Icons.local_fire_department_rounded,
+                  label: energyLabel,
+                  value: energy,
+                ),
+                const SizedBox(height: 10),
+                _HealthMiniValue(
+                  icon: Icons.fitness_center_rounded,
+                  label: workoutsLabel,
+                  value: workouts,
+                ),
+              ],
+            );
+            if (compact) {
+              return Column(
+                children: [
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      title,
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  dial,
+                  const SizedBox(height: 18),
+                  _HealthMiniValue(
+                    icon: Icons.route_rounded,
+                    label: distanceLabel,
+                    value: distance,
+                  ),
+                  const SizedBox(height: 10),
+                  _HealthMiniValue(
+                    icon: Icons.local_fire_department_rounded,
+                    label: energyLabel,
+                    value: energy,
+                  ),
+                  const SizedBox(height: 10),
+                  _HealthMiniValue(
+                    icon: Icons.fitness_center_rounded,
+                    label: workoutsLabel,
+                    value: workouts,
+                  ),
+                ],
+              );
+            }
+            return Row(
+              children: [
+                dial,
+                const SizedBox(width: 24),
+                Expanded(child: details),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class _HealthMiniValue extends StatelessWidget {
+  const _HealthMiniValue({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: colors.surface.withValues(alpha: 0.64),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, size: 20, color: colors.primary),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            value,
+            style: Theme.of(
+              context,
+            ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _WeeklyStepsCard extends StatelessWidget {
+  const _WeeklyStepsCard({
+    required this.snapshots,
+    required this.locale,
+    required this.title,
+    required this.detail,
+    required this.stepsLabel,
+  });
+
+  final List<_HealthDaySnapshot> snapshots;
+  final String locale;
+  final String title;
+  final String detail;
+  final String stepsLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final total = snapshots.fold<int>(
+      0,
+      (sum, snapshot) => sum + snapshot.summary.steps,
+    );
+    return Card(
+      margin: EdgeInsets.zero,
+      elevation: 0,
+      color: colors.surfaceContainerLow,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: Theme.of(context).textTheme.titleMedium
+                            ?.copyWith(fontWeight: FontWeight.w900),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        detail,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: colors.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
                     Text(
-                      context.l10n.text('health_wearables_history_notice'),
-                      style: Theme.of(context).textTheme.bodySmall,
+                      NumberFormat.compact(locale: locale).format(total),
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.w900,
+                        color: colors.primary,
+                      ),
+                    ),
+                    Text(
+                      stepsLabel,
+                      style: Theme.of(context).textTheme.labelSmall,
                     ),
                   ],
                 ),
+              ],
+            ),
+            const SizedBox(height: 18),
+            SizedBox(
+              height: 116,
+              child: CustomPaint(
+                painter: _WeeklyStepsPainter(
+                  snapshots: snapshots,
+                  barColor: colors.primary,
+                  todayColor: colors.tertiary,
+                  gridColor: colors.outlineVariant.withValues(alpha: 0.42),
+                ),
+                child: const SizedBox.expand(),
               ),
             ),
-            if (!distanceAvailable &&
-                hasMetric(HealthDataType.STEPS) &&
-                !isValidHealthHeight(_profileHeightCm))
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: const Icon(Icons.height_outlined),
-                title: Text(context.l10n.text('health_distance')),
-                subtitle: Text(context.l10n.text('height_required')),
-              ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                for (final snapshot in snapshots)
+                  Expanded(
+                    child: Text(
+                      DateFormat.E(locale).format(snapshot.day),
+                      textAlign: TextAlign.center,
+                      maxLines: 1,
+                      overflow: TextOverflow.clip,
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: DateUtils.isSameDay(snapshot.day, DateTime.now())
+                            ? colors.tertiary
+                            : colors.onSurfaceVariant,
+                        fontWeight:
+                            DateUtils.isSameDay(snapshot.day, DateTime.now())
+                            ? FontWeight.w900
+                            : FontWeight.w500,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _WeeklyStepsPainter extends CustomPainter {
+  const _WeeklyStepsPainter({
+    required this.snapshots,
+    required this.barColor,
+    required this.todayColor,
+    required this.gridColor,
+  });
+
+  final List<_HealthDaySnapshot> snapshots;
+  final Color barColor;
+  final Color todayColor;
+  final Color gridColor;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final gridPaint = Paint()
+      ..color = gridColor
+      ..strokeWidth = 1;
+    for (var index = 0; index < 3; index++) {
+      final y = size.height * index / 2;
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), gridPaint);
+    }
+    if (snapshots.isEmpty) return;
+    final maximum = snapshots.fold<int>(
+      0,
+      (highest, snapshot) => math.max(highest, snapshot.summary.steps),
+    );
+    final slotWidth = size.width / snapshots.length;
+    final barWidth = math.min(24.0, slotWidth * 0.46);
+    for (var index = 0; index < snapshots.length; index++) {
+      final snapshot = snapshots[index];
+      final ratio = maximum == 0 ? 0.0 : snapshot.summary.steps / maximum;
+      final barHeight = ratio == 0 ? 4.0 : math.max(8.0, size.height * ratio);
+      final centerX = slotWidth * index + slotWidth / 2;
+      final rect = RRect.fromRectAndRadius(
+        Rect.fromLTWH(
+          centerX - barWidth / 2,
+          size.height - barHeight,
+          barWidth,
+          barHeight,
+        ),
+        const Radius.circular(12),
+      );
+      canvas.drawRRect(
+        rect,
+        Paint()
+          ..color = DateUtils.isSameDay(snapshot.day, DateTime.now())
+              ? todayColor
+              : barColor.withValues(alpha: ratio == 0 ? 0.18 : 0.82),
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _WeeklyStepsPainter oldDelegate) =>
+      oldDelegate.snapshots != snapshots ||
+      oldDelegate.barColor != barColor ||
+      oldDelegate.todayColor != todayColor ||
+      oldDelegate.gridColor != gridColor;
+}
+
+class _HealthSourcesCard extends StatelessWidget {
+  const _HealthSourcesCard({
+    required this.title,
+    required this.healthConnectLabel,
+    required this.healthConnectStatus,
+    required this.healthConnectConnected,
+    required this.applicationLabel,
+    required this.emptyApplicationsLabel,
+    required this.latestRecordLabel,
+    required this.providerNames,
+    required this.providerLastRecordAt,
+    required this.locale,
+    required this.showWearables,
+    required this.wearablesTitle,
+    required this.wearablesDetail,
+    required this.wearablesHistoryNotice,
+    required this.wearablesLoading,
+    required this.wearables,
+    required this.onInspectWearable,
+    required this.onBluetoothSettings,
+    this.wearablesMessage,
+    this.latestRecordAt,
+    this.estimatedDistanceDetail,
+  });
+
+  final String title;
+  final String healthConnectLabel;
+  final String healthConnectStatus;
+  final bool healthConnectConnected;
+  final String applicationLabel;
+  final String emptyApplicationsLabel;
+  final String latestRecordLabel;
+  final DateTime? latestRecordAt;
+  final List<String> providerNames;
+  final Map<String, DateTime> providerLastRecordAt;
+  final String locale;
+  final String? estimatedDistanceDetail;
+  final bool showWearables;
+  final String wearablesTitle;
+  final String wearablesDetail;
+  final String wearablesHistoryNotice;
+  final String? wearablesMessage;
+  final bool wearablesLoading;
+  final List<PairedHealthWearable> wearables;
+  final ValueChanged<String> onInspectWearable;
+  final VoidCallback onBluetoothSettings;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Card(
+      margin: EdgeInsets.zero,
+      elevation: 0,
+      color: colors.surfaceContainerLow,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+      clipBehavior: Clip.antiAlias,
+      child: ExpansionTile(
+        key: const PageStorageKey<String>('health-sources-expansion'),
+        leading: Container(
+          width: 42,
+          height: 42,
+          decoration: BoxDecoration(
+            color: colors.primary.withValues(alpha: 0.1),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(Icons.hub_rounded, color: colors.primary, size: 21),
+        ),
+        title: Text(title, style: const TextStyle(fontWeight: FontWeight.w800)),
+        subtitle: latestRecordAt == null
+            ? Text(healthConnectLabel)
+            : Text(
+                '$latestRecordLabel · ${DateFormat.MMMd(locale).add_Hm().format(latestRecordAt!.toLocal())}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+        childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        children: [
+          const Divider(),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            minLeadingWidth: 36,
+            leading: Icon(
+              Icons.health_and_safety_rounded,
+              color: healthConnectConnected
+                  ? const Color(0xFF22A06B)
+                  : colors.onSurfaceVariant,
+            ),
+            title: Text(
+              healthConnectLabel,
+              style: const TextStyle(fontWeight: FontWeight.w800),
+            ),
+            trailing: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color:
+                    (healthConnectConnected
+                            ? const Color(0xFF22A06B)
+                            : colors.surfaceContainerHighest)
+                        .withValues(alpha: healthConnectConnected ? 0.12 : 0.7),
+                borderRadius: BorderRadius.circular(99),
+              ),
+              child: Text(
+                healthConnectStatus,
+                style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                  color: healthConnectConnected
+                      ? const Color(0xFF16764F)
+                      : colors.onSurfaceVariant,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: Text(
+              applicationLabel,
+              style: Theme.of(
+                context,
+              ).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w800),
+            ),
+          ),
+          const SizedBox(height: 8),
+          if (providerNames.isEmpty)
+            Align(
+              alignment: AlignmentDirectional.centerStart,
+              child: Text(
+                emptyApplicationsLabel,
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: colors.onSurfaceVariant),
+              ),
+            )
+          else
+            Align(
+              alignment: AlignmentDirectional.centerStart,
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final provider in providerNames)
+                    Tooltip(
+                      message: providerLastRecordAt[provider] == null
+                          ? provider
+                          : DateFormat.yMMMd(locale).add_Hm().format(
+                              providerLastRecordAt[provider]!.toLocal(),
+                            ),
+                      child: Chip(
+                        avatar: const Icon(Icons.check_rounded, size: 17),
+                        label: Text(provider),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          if (estimatedDistanceDetail != null) ...[
+            const SizedBox(height: 12),
+            _HealthInlineNotice(
+              icon: Icons.straighten_rounded,
+              text: estimatedDistanceDetail!,
+            ),
+          ],
+          if (showWearables) ...[
+            const SizedBox(height: 14),
+            const Divider(),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: colors.tertiary.withValues(alpha: 0.12),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    Icons.watch_rounded,
+                    color: colors.tertiary,
+                    size: 21,
+                  ),
+                ),
+                const SizedBox(width: 11),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        wearablesTitle,
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        wearablesDetail,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: colors.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  tooltip: context.l10n.text('health_wearables_settings'),
+                  onPressed: onBluetoothSettings,
+                  icon: const Icon(Icons.settings_bluetooth_rounded),
+                ),
+              ],
+            ),
+            if (wearablesLoading) ...[
+              const SizedBox(height: 10),
+              LinearProgressIndicator(
+                minHeight: 3,
+                borderRadius: BorderRadius.circular(99),
+              ),
+            ],
+            if (wearablesMessage != null) ...[
+              const SizedBox(height: 12),
+              _HealthInlineNotice(
+                icon: Icons.watch_off_outlined,
+                text: wearablesMessage!,
+              ),
+            ],
+            if (wearables.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              for (final wearable in wearables)
+                _PairedHealthWearableTile(
+                  wearable: wearable,
+                  onInspect: onInspectWearable,
+                ),
+            ],
+            const SizedBox(height: 12),
+            Text(
+              wearablesHistoryNotice,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: colors.onSurfaceVariant,
+                height: 1.35,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _HealthInlineNotice extends StatelessWidget {
+  const _HealthInlineNotice({required this.icon, required this.text});
+
+  final IconData icon;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: colors.surfaceContainerHighest.withValues(alpha: 0.55),
+        borderRadius: BorderRadius.circular(15),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 19, color: colors.onSurfaceVariant),
+          const SizedBox(width: 9),
+          Expanded(
+            child: Text(
+              text,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: colors.onSurfaceVariant,
+                height: 1.35,
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -1237,12 +2205,15 @@ class _PairedHealthWearableTile extends StatelessWidget {
     final capabilityState = wearable.capabilityState;
     final capabilityLabels = wearable.capabilities
         .map(
-          (value) =>
-              context.l10n.format('health_wearables_capability_available', {
-                'capability': context.l10n.text(
-                  'health_wearables_capability_$value',
-                ),
-              }),
+          (value) => value == 'battery' && wearable.batteryPercent != null
+              ? context.l10n.format('health_wearables_battery_value', {
+                  'value': wearable.batteryPercent,
+                })
+              : context.l10n.format('health_wearables_capability_available', {
+                  'capability': context.l10n.text(
+                    'health_wearables_capability_$value',
+                  ),
+                }),
         )
         .join(' • ');
     final inspectionFailed = wearable.inspectionError != null;
@@ -1262,96 +2233,81 @@ class _PairedHealthWearableTile extends StatelessWidget {
     };
     final detail = <String>[
       capabilityText,
-      wearable.isConnected
-          ? context.l10n.text('health_wearables_connected')
-          : context.l10n.text('health_wearables_paired'),
+      context.l10n.text('health_wearables_connected'),
     ].join(' • ');
-    return ListTile(
-      contentPadding: EdgeInsets.zero,
-      leading: Icon(
-        capabilityState == 'direct_supported'
-            ? Icons.watch_outlined
-            : Icons.bluetooth_outlined,
+    final colors = Theme.of(context).colorScheme;
+    final direct = capabilityState == 'direct_supported';
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.fromLTRB(12, 12, 8, 12),
+      decoration: BoxDecoration(
+        color: colors.surface,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: direct
+              ? colors.tertiary.withValues(alpha: 0.35)
+              : colors.outlineVariant.withValues(alpha: 0.7),
+        ),
       ),
-      title: Text(
-        wearable.displayName.isEmpty
-            ? context.l10n.text('health_wearables_unnamed')
-            : wearable.displayName,
-      ),
-      subtitle: Text(detail),
-      trailing: capabilityState == 'inspecting'
-          ? const SizedBox.square(
-              dimension: 22,
-              child: CircularProgressIndicator(strokeWidth: 2),
+      child: Row(
+        children: [
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: (direct ? colors.tertiary : colors.primary).withValues(
+                alpha: 0.1,
+              ),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              direct
+                  ? Icons.sensors_rounded
+                  : Icons.bluetooth_connected_rounded,
+              color: direct ? colors.tertiary : colors.primary,
+              size: 21,
+            ),
+          ),
+          const SizedBox(width: 11),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  wearable.displayName.isEmpty
+                      ? context.l10n.text('health_wearables_unnamed')
+                      : wearable.displayName,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w900),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  detail,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: colors.onSurfaceVariant,
+                    height: 1.35,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 4),
+          if (capabilityState == 'inspecting')
+            const Padding(
+              padding: EdgeInsets.all(11),
+              child: SizedBox.square(
+                dimension: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
             )
-          : IconButton(
+          else
+            IconButton(
               tooltip: context.l10n.text('health_wearables_check_live'),
               onPressed: () => onInspect(wearable.bridgeId),
-              icon: const Icon(Icons.manage_search_outlined),
+              icon: const Icon(Icons.refresh_rounded),
             ),
-    );
-  }
-}
-
-class _HealthPlatformSourceTile extends StatelessWidget {
-  const _HealthPlatformSourceTile({
-    required this.title,
-    required this.isConnected,
-    this.latestRecordAt,
-  });
-
-  final String title;
-  final bool isConnected;
-  final DateTime? latestRecordAt;
-
-  @override
-  Widget build(BuildContext context) {
-    final subtitle = !isConnected
-        ? context.l10n.text('health_permission_required_state')
-        : latestRecordAt == null
-        ? context.l10n.text('health_permissions_ready')
-        : context.l10n.format('health_source_latest_record', {
-            'source': title,
-            'time': DateFormat.yMMMd(
-              context.l10n.locale.toLanguageTag(),
-            ).add_jm().format(latestRecordAt!.toLocal()),
-          });
-    return ListTile(
-      contentPadding: EdgeInsets.zero,
-      leading: Icon(
-        Icons.health_and_safety_outlined,
-        color: isConnected ? Theme.of(context).colorScheme.primary : null,
-      ),
-      title: Text(title),
-      subtitle: Text(subtitle),
-    );
-  }
-}
-
-class _HealthSourceTile extends StatelessWidget {
-  const _HealthSourceTile({required this.name, this.latestRecordAt});
-
-  final String name;
-  final DateTime? latestRecordAt;
-
-  @override
-  Widget build(BuildContext context) {
-    return ListTile(
-      contentPadding: EdgeInsets.zero,
-      leading: Icon(
-        Icons.check_circle_outline,
-        color: Theme.of(context).colorScheme.primary,
-      ),
-      title: Text(name),
-      subtitle: Text(
-        latestRecordAt == null
-            ? context.l10n.text('health_connected_data_received')
-            : context.l10n.format('health_source_latest_record', {
-                'source': name,
-                'time': DateFormat.yMMMd(
-                  context.l10n.locale.toLanguageTag(),
-                ).add_jm().format(latestRecordAt!.toLocal()),
-              }),
+        ],
       ),
     );
   }
@@ -1362,31 +2318,58 @@ class _HealthMetric extends StatelessWidget {
     required this.icon,
     required this.label,
     required this.value,
+    this.accent,
   });
 
   final IconData icon;
   final String label;
   final String value;
+  final Color? accent;
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(icon, color: Theme.of(context).colorScheme.primary),
-            const Spacer(),
-            Text(
+    final colors = Theme.of(context).colorScheme;
+    final resolvedAccent = accent ?? colors.primary;
+    return Container(
+      constraints: const BoxConstraints(minHeight: 108),
+      padding: const EdgeInsets.all(13),
+      decoration: BoxDecoration(
+        color: colors.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+              color: resolvedAccent.withValues(alpha: 0.11),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, color: resolvedAccent, size: 18),
+          ),
+          const SizedBox(height: 12),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: AlignmentDirectional.centerStart,
+            child: Text(
               value,
               style: Theme.of(
                 context,
-              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900),
             ),
-            Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
-          ],
-        ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: colors.onSurfaceVariant),
+          ),
+        ],
       ),
     );
   }

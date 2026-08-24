@@ -52,9 +52,11 @@ void main() {
     final inspected = wearable.copyWithPlatformInspection({
       'capabilityState': 'direct_supported',
       'capabilities': ['live_heart_rate', 'battery'],
+      'directReadings': {'batteryPercent': 74},
     });
     expect(inspected.capabilityState, 'direct_supported');
     expect(inspected.capabilities, ['live_heart_rate', 'battery']);
+    expect(inspected.batteryPercent, 74);
   });
 
   test('health provider labels do not expose raw package identifiers', () {

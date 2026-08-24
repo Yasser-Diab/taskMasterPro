@@ -60,7 +60,8 @@ class AppLocalizations {
   String taskStatus(String status, {bool compact = false}) {
     final key = switch (status) {
       'ready' => compact ? 'status_ready_compact' : 'status_ready',
-      'in_progress' || 'running' => 'status_running',
+      'in_progress' => 'status_in_progress',
+      'running' => 'status_running',
       'paused' => 'status_paused',
       'completed' => 'status_completed',
       'overdue' => 'status_overdue',
@@ -151,7 +152,7 @@ class AppLocalizations {
       'task_subheading_note_hint': 'Brief detail shown below the task title',
       'task_subheading_note_detail':
           'Use this as a short subheading. It remains separate from workspace notes.',
-      'execution_mode': 'Execution mode',
+      'execution_mode': 'Working style',
       'duration': 'Duration',
       'priority': 'Priority',
       'empty_tasks': 'Your local plan is clear.',
@@ -245,7 +246,7 @@ class AppLocalizations {
       'task_subheading_note_hint': 'تفصيل مختصر يظهر أسفل عنوان المهمة',
       'task_subheading_note_detail':
           'استخدمها كعنوان فرعي قصير. تبقى منفصلة عن ملاحظات مساحة العمل.',
-      'execution_mode': 'أسلوب التنفيذ',
+      'execution_mode': 'طريقة العمل',
       'duration': 'المدة',
       'priority': 'الأولوية',
       'empty_tasks': 'خطتك المحلية خالية الآن.',
@@ -339,7 +340,7 @@ class AppLocalizations {
       'task_subheading_note_hint': 'Kurzes Detail unter dem Aufgabentitel',
       'task_subheading_note_detail':
           'Als kurze Unterzeile verwenden. Sie bleibt von den Notizen im Arbeitsbereich getrennt.',
-      'execution_mode': 'Ausführungsmodus',
+      'execution_mode': 'Arbeitsweise',
       'duration': 'Dauer',
       'priority': 'Priorität',
       'empty_tasks': 'Dein lokaler Plan ist frei.',
@@ -487,6 +488,7 @@ class AppLocalizations {
     'loading': 'Loading…',
     'status_ready': 'Ready to start',
     'status_ready_compact': 'Ready',
+    'status_in_progress': 'In progress',
     'status_running': 'Running',
     'currently_running': 'Currently running',
     'status_paused': 'Paused',
@@ -1249,7 +1251,8 @@ class AppLocalizations {
         'We couldn’t read health data. Check your permissions and try again.',
     'health_summaries_removed':
         'Imported health summaries were removed from this device.',
-    'health_connected': 'Connected — data received',
+    'health_connected': 'Connected',
+    'health_data_received_popup': 'Data received',
     'health_permission_required_state': 'Permission required',
     'health_connected_no_recent': 'Connected — no recent records',
     'health_connected_no_recent_detail':
@@ -1266,8 +1269,15 @@ class AppLocalizations {
     'health_continue_permissions': 'Continue to Android permissions',
     'health_install_connect': 'Install or update Health Connect',
     'health_refresh_seven_days': 'Refresh health data',
+    'health_manage_access': 'Manage Health Connect access',
+    'health_operation_timed_out':
+        'Health Connect took too long to respond. No data was changed. Review access in Health Connect, then try again.',
     'health_disconnect': 'Disconnect',
-    'health_recent_context': 'Recent health context',
+    'health_recent_context': "Today's health context",
+    'health_weekly_steps': 'Your week in motion',
+    'health_weekly_steps_detail': 'Steps shared over the last seven days.',
+    'health_pull_to_refresh':
+        'Swipe down from the top to update health and watch connections.',
     'health_steps': 'Steps',
     'health_distance': 'Distance',
     'health_average_heart_rate': 'Average heart rate',
@@ -1281,6 +1291,12 @@ class AppLocalizations {
         'TaskMaster Pro can read Health Connect, but no health application has shared a supported record yet.',
     'health_no_records_explanation':
         'No supported health records were found. In your health application, enable sharing with Health Connect and refresh again.',
+    'health_no_recent_records_explanation':
+        'No health record has arrived in the last two days. Open the application that records your health data, let it synchronize, confirm that it can share with Health Connect, then refresh here.',
+    'health_no_records_today_explanation':
+        'Health Connect has shared recent data, but nothing for today yet. The cards below show today only. Open the application that records your health data, let it synchronize, then refresh here.',
+    'health_on_device_steps_waiting':
+        'No recent shared records were found. Android can start counting this phone’s steps after access is granted. Carry the phone during a walk, wait a few minutes, then refresh. For sleep, heart rate, workouts, and calories, enable Health Connect sharing in the app that records them.',
     'health_partial_import':
         'Available health records were imported. One or more categories could not be read and can be retried.',
     'health_delete_summaries': 'Delete imported health summaries',
@@ -1352,7 +1368,7 @@ class AppLocalizations {
     'calendar_view': 'Calendar view: {range}',
     'calendar_history_filter': 'History',
     'calendar_task': 'Task',
-    'calendar_task_history': 'Tasks and execution history',
+    'calendar_task_history': 'Tasks and focus history',
     'calendar_empty_day': 'No scheduled work or recorded history for this day',
     'cycle_entry': 'Cycle entry',
     'cycle_delete_title': 'Delete cycle entry?',
@@ -1399,6 +1415,14 @@ class AppLocalizations {
         'Those sign-in details were not accepted. Check them or choose Google.',
     'auth_signup_failed':
         'We couldn’t finish creating the account. Review the details and try again.',
+    'auth_signup_email_invalid':
+        'Use an email address that can receive messages. Reserved or temporary test addresses aren’t accepted.',
+    'auth_signup_password_weak':
+        'Choose a stronger password, then try creating the account again.',
+    'auth_signup_account_exists':
+        'An account already uses this email address. Sign in instead or reset the password.',
+    'auth_signup_unavailable':
+        'New account creation is temporarily unavailable. Please try again later.',
     'auth_accept_policies_required':
         'Accept the Terms of Service and Privacy Policy to continue.',
     'auth_confirmation_resent': 'A fresh confirmation link is on its way.',
@@ -1445,7 +1469,7 @@ class AppLocalizations {
     'onboarding_goal_reading': 'Reading',
     'onboarding_goal_exercise': 'Exercise',
     'onboarding_goal_personal_organization': 'Personal organization',
-    'onboarding_preferred_execution': 'Preferred execution',
+    'onboarding_preferred_execution': 'How do you prefer to work?',
     'onboarding_execution_pomodoro': 'Pomodoro',
     'onboarding_execution_continuous': 'Continuous work blocks',
     'onboarding_execution_checklist': 'Checklists',
@@ -1622,7 +1646,7 @@ class AppLocalizations {
     'task_edit': 'Edit task',
     'task_editor_basics': 'Basics',
     'task_editor_schedule': 'Schedule',
-    'task_editor_execution': 'Execution',
+    'task_editor_execution': 'How you’ll work',
     'task_editor_repeat': 'Repeat',
     'task_title_required': 'A task needs a title',
     'task_domain': 'Task domain',
@@ -1653,7 +1677,7 @@ class AppLocalizations {
     'task_filter_completed_today': 'Completed today',
     'task_filter_all_domains': 'All task domains',
     'task_filter_all_roadmaps': 'All roadmaps',
-    'task_filter_all_methods': 'All execution methods',
+    'task_filter_all_methods': 'All working styles',
     'task_filter_all_priorities': 'All priorities',
     'task_recurring': 'Recurring',
     'task_recurring_next': 'Recurring · Next: {date}',
@@ -1836,7 +1860,7 @@ class AppLocalizations {
     'document_unavailable':
         'This document is not available on this device. Download the synchronized resource or attach it again.',
     'workspace_overview': 'Overview',
-    'workspace_execute': 'Execute',
+    'workspace_execute': 'Focus',
     'workspace_checklist': 'Checklist',
     'workspace_browser': 'Browser',
     'workspace_resources': 'Resources',
@@ -1849,7 +1873,7 @@ class AppLocalizations {
     'task_delete': 'Delete task',
     'task_delete_title': 'Delete this task?',
     'task_delete_description':
-        'This task will be removed from your devices while its deletion record is kept for safe synchronization.',
+        'This task will be removed from your devices. Your other tasks and history will not be affected.',
     'progress': 'Progress',
     'planned_effort': 'Planned effort',
     'recorded_work': 'Recorded work',
@@ -1864,15 +1888,15 @@ class AppLocalizations {
     'local_time_detail':
         'Times are shown in your local time zone and stay consistent across devices.',
     'task_workspace': 'Task workspace',
-    'workspace_execute_detail': 'Timer, focus, and task state',
+    'workspace_execute_detail': 'Timer and current progress',
     'task_browser': 'Task browser',
     'task_browser_detail': 'Persistent tabs and bookmarks',
     'task_resources_detail': 'Files, PDFs, URLs, and books',
     'task_connections_detail': 'Roadmap, applications, websites, and tasks',
     'requirements': 'Requirements',
     'requirements_detail': 'Required and optional items',
-    'evidence_history': 'Evidence history',
-    'evidence_history_detail': 'Status, notes, and execution events',
+    'evidence_history': 'Progress history',
+    'evidence_history_detail': 'Status, notes, focus, and breaks',
     'planned_remaining': '{duration} planned remaining',
     'overtime_duration': '{duration} overtime',
     'overtime_label': 'OVERTIME',
@@ -1909,14 +1933,14 @@ class AppLocalizations {
     'resource_open_external_browser': 'Open in external browser',
     'resource_auto_open': 'Open the primary resource after Start',
     'resource_auto_open_detail':
-        'The task is committed first, so tracking continues while you learn in another app or browser.',
+        'TaskMaster Pro starts the timer before opening the resource, so your work keeps counting in another app or browser.',
     'resource_launch_behavior': 'Default resource destination',
     'resource_launch_behavior_detail':
         'An installed app falls back safely to your browser when it cannot handle the URL.',
     'remove': 'Remove',
     'task_connections': 'Task connections',
     'task_connections_description':
-        'Connections remain separate from execution and are visible from the task and its roadmap.',
+        'See related roadmaps, apps, websites, and tasks in one place.',
     'dependency_tasks': 'Dependency tasks',
     'dependency_tasks_detail': 'Tasks this work depends on or blocks',
     'connect_task': 'Connect task',
@@ -1938,15 +1962,15 @@ class AppLocalizations {
     'website_rule_scope_site': 'Entire site',
     'task_notes': 'Task notes',
     'task_notes_detail':
-        'Notes preserve their versions so conflicting offline copies can be reviewed safely.',
+        'If two devices edit the same note while offline, you can choose which version to keep.',
     'add_note': 'Add note',
     'no_notes': 'No notes yet',
     'no_notes_detail': 'Record decisions, context, evidence, or next steps.',
     'version_number': 'Version {version}',
     'delete_note': 'Delete note',
-    'execution_history': 'Execution and evidence history',
+    'execution_history': 'Activity and progress',
     'execution_history_detail':
-        'Planned state, actual changes, notes, interruptions, and approved contributions remain distinct.',
+        'See when you focused, paused, took a break, added a note, or credited related activity.',
     'task_created': 'Task created',
     'history_scheduled': 'Scheduled',
     'history_planned_until': 'Planned until {time}',
@@ -1989,22 +2013,22 @@ class AppLocalizations {
     'unknown_application': 'Unknown application',
     'unknown_connection': 'Unknown connection',
     'mode_pomodoro_detail':
-        'Focus and break periods remain distinct. Useful break activity can support another task without duplicating time.',
+        'Francesco Cirillo created the Pomodoro Technique to make starting easier and protect attention. Choose one clear task, focus for about 25 minutes, then take a real break. Short pauses can refresh attention, and TaskMaster Pro keeps break time separate so your focus record stays honest.',
     'mode_continuous_detail':
-        'The session measures active, paused, inactive, remaining, and overtime without fixed cycles.',
+        'Choose this for work that needs one flexible timer instead of fixed cycles. Pause when you need to, then continue from the same place while TaskMaster Pro keeps your focused time clear.',
     'mode_checklist_detail':
-        'Time provides supporting evidence while required checklist rules determine completion.',
+        'Choose this when finishing the right steps matters more than watching a timer. Tick each required item as you go, and finish when the work is truly complete.',
     'mode_reading_detail':
-        'Reading duration, unique pages, rereads, saved positions, and notes are tracked independently.',
+        'Choose this for books and study material. Keep your place, record pages and notes, and see how much focused reading you completed.',
     'mode_habit_detail':
-        'Completed, skipped, and missed outcomes remain available with recovery context.',
+        'Choose this for routines you want to repeat. Mark each attempt honestly, including skipped or missed days, and use the pattern to make the habit easier to keep.',
     'mode_event_detail':
-        'Arrival, start, finish, lateness, attendance, and follow-up are tracked separately.',
+        'Choose this for appointments, classes, and scheduled events. TaskMaster Pro helps you remember when to arrive, what happened, and anything that needs follow-up.',
     'mode_hybrid_detail':
-        'Timers, checklists, checkpoints, resources, and evidence can work together.',
+        'Choose this when a task needs more than one kind of progress. Combine a timer with steps, checkpoints, resources, and proof of completion in one place.',
     'mode_manual_detail':
-        'Manual completion remains available while notes, resources, and evidence are retained.',
-    'mode_execution_title': '{mode} execution',
+        'Choose this for simple tasks that do not need a timer. Add notes or resources if they help, then mark the task complete when you are done.',
+    'mode_execution_title': 'How {mode} helps',
     'add_checklist_item': 'Add checklist item',
     'requirement': 'Requirement',
     'required_for_completion': 'Required for completion',
@@ -2314,14 +2338,14 @@ class AppLocalizations {
         'Open a Pomodoro task to set focus, short break, long break, and automatic-start preferences.',
     'standalone_pomodoro': 'Standalone Pomodoro timer',
     'standalone_pomodoro_description':
-        'Run a private timer without linking it to a task. It stays on this device and never overlaps task execution.',
+        'Run a private timer without linking it to a task. It stays on this device and never overlaps a running task.',
     'standalone_pomodoro_ready': 'Ready to focus',
     'standalone_pomodoro_load_failed': 'The timer could not be restored.',
     'standalone_pomodoro_task_active_title': 'A task is already running',
     'standalone_pomodoro_task_active_detail':
-        '“{task}” owns the execution timer. Open it to pause or finish it before starting this standalone timer.',
+        '“{task}” is already using the task timer. Open it to pause or finish it before starting this standalone timer.',
     'standalone_pomodoro_task_active_banner':
-        'A task owns the execution timer. Standalone Pomodoro will wait.',
+        'A task is already using the timer. Standalone Pomodoro will wait.',
     'standalone_pomodoro_open_task': 'Open active task',
     'standalone_pomodoro_active_title': 'Standalone Pomodoro is active',
     'standalone_pomodoro_active_detail':
@@ -2356,7 +2380,7 @@ class AppLocalizations {
     'installation_help': 'Installation help',
     'settings_about_legal_description':
         'Review the installed version, release notes, updates, and legal information.',
-    'tasks_and_execution': 'Tasks and execution',
+    'tasks_and_execution': 'Tasks and focus',
     'pomodoro': 'Pomodoro',
     'health': 'Health',
     'coaching': 'Coaching',
@@ -2398,6 +2422,11 @@ class AppLocalizations {
     'health_wearables_refresh_failed':
         'Paired health wearables could not be refreshed.',
     'health_wearables_none': 'No paired health watch or band was found.',
+    'health_wearables_none_connected':
+        'No health watch is connected to this phone right now.',
+    'health_connected_watches': 'Connected watches',
+    'health_connected_watches_detail':
+        'Only watches connected to this phone right now appear here.',
     'health_wearables_history_notice':
         'Live features appear only when the watch confirms that it supports them. Past data stays in its companion app and Health Connect.',
     'health_wearables_unnamed': 'Unnamed health wearable',
@@ -2415,6 +2444,7 @@ class AppLocalizations {
     'health_wearables_paired': 'Paired with this phone',
     'health_wearables_capability_live_heart_rate': 'Live heart rate',
     'health_wearables_capability_battery': 'Battery level',
+    'health_wearables_battery_value': 'Battery {value}%',
     'health_wearables_capability_running_speed_cadence':
         'Running speed and cadence',
     'health_wearables_capability_cycling_speed_cadence':
@@ -2570,6 +2600,7 @@ class AppLocalizations {
     'loading': 'جارٍ التحميل…',
     'status_ready': 'جاهزة للبدء',
     'status_ready_compact': 'جاهزة',
+    'status_in_progress': 'قيد التنفيذ',
     'status_running': 'قيد التشغيل',
     'currently_running': 'قيد التشغيل الآن',
     'status_paused': 'متوقفة مؤقتًا',
@@ -3308,7 +3339,8 @@ class AppLocalizations {
         'تعذرت قراءة بيانات الصحة. تحقق من الأذونات وحاول مرة أخرى.',
     'health_summaries_removed':
         'تمت إزالة ملخصات الصحة المستوردة من هذا الجهاز.',
-    'health_connected': 'متصل — تم استلام البيانات',
+    'health_connected': 'متصل',
+    'health_data_received_popup': 'تم استلام البيانات',
     'health_permission_required_state': 'الإذن مطلوب',
     'health_connected_no_recent': 'متصل — لا توجد سجلات حديثة',
     'health_connected_no_recent_detail':
@@ -3325,8 +3357,16 @@ class AppLocalizations {
     'health_continue_permissions': 'المتابعة إلى أذونات Android',
     'health_install_connect': 'تثبيت Health Connect أو تحديثه',
     'health_refresh_seven_days': 'تحديث البيانات الصحية',
+    'health_manage_access': 'إدارة الوصول إلى Health Connect',
+    'health_operation_timed_out':
+        'استغرق Health Connect وقتًا أطول من المتوقع. لم تتغير أي بيانات. راجع الأذونات داخل Health Connect ثم حاول مجددًا.',
     'health_disconnect': 'قطع الاتصال',
-    'health_recent_context': 'ملخص الصحة الحديث',
+    'health_recent_context': 'ملخص صحة اليوم',
+    'health_weekly_steps': 'حركتك خلال الأسبوع',
+    'health_weekly_steps_detail':
+        'الخطوات التي تمت مشاركتها خلال آخر سبعة أيام.',
+    'health_pull_to_refresh':
+        'اسحب من أعلى الشاشة لتحديث بيانات الصحة واتصال الساعة.',
     'health_steps': 'الخطوات',
     'health_distance': 'المسافة',
     'health_average_heart_rate': 'متوسط نبض القلب',
@@ -3340,6 +3380,12 @@ class AppLocalizations {
         'يمكن لـ TaskMaster Pro قراءة Health Connect، لكن لم يشارك أي تطبيق صحي سجلًا مدعومًا حتى الآن.',
     'health_no_records_explanation':
         'لم يتم العثور على سجلات صحية مدعومة. فعّل المشاركة مع Health Connect داخل تطبيق الصحة ثم حدّث مرة أخرى.',
+    'health_no_recent_records_explanation':
+        'لم يصل أي سجل صحي خلال اليومين الماضيين. افتح التطبيق الذي يسجل بياناتك الصحية واتركه يزامن، وتأكد من السماح له بالمشاركة مع Health Connect، ثم حدّث هنا.',
+    'health_no_records_today_explanation':
+        'شارك Health Connect بيانات حديثة، لكن لا توجد بيانات لليوم حتى الآن. البطاقات أدناه تعرض اليوم فقط. افتح التطبيق الذي يسجل بياناتك الصحية واتركه يزامن، ثم حدّث هنا.',
+    'health_on_device_steps_waiting':
+        'لا توجد سجلات حديثة مشتركة. يستطيع Android بدء عدّ خطوات هذا الهاتف بعد منح الإذن. احمل الهاتف أثناء المشي وانتظر بضع دقائق ثم حدّث. وللنوم ونبض القلب والتمارين والسعرات، فعّل المشاركة مع Health Connect داخل التطبيق الذي يسجلها.',
     'health_partial_import':
         'تم استيراد السجلات الصحية المتاحة. تعذر قراءة فئة واحدة أو أكثر ويمكن إعادة المحاولة.',
     'health_delete_summaries': 'حذف ملخصات الصحة المستوردة',
@@ -3408,7 +3454,7 @@ class AppLocalizations {
     'calendar_view': 'عرض التقويم: {range}',
     'calendar_history_filter': 'السجل',
     'calendar_task': 'مهمة',
-    'calendar_task_history': 'المهام وسجل التنفيذ',
+    'calendar_task_history': 'المهام وسجل التركيز',
     'calendar_empty_day': 'لا يوجد عمل مجدول أو سجل محفوظ لهذا اليوم',
     'cycle_entry': 'إدخال الدورة',
     'cycle_delete_title': 'حذف إدخال الدورة؟',
@@ -3455,6 +3501,14 @@ class AppLocalizations {
         'لم يتم قبول بيانات تسجيل الدخول. تحقق منها أو اختر Google.',
     'auth_signup_failed':
         'تعذر إكمال إنشاء الحساب. راجع البيانات وحاول مرة أخرى.',
+    'auth_signup_email_invalid':
+        'استخدم بريدًا إلكترونيًا يمكنه استقبال الرسائل. عناوين الاختبار المحجوزة أو المؤقتة غير مقبولة.',
+    'auth_signup_password_weak':
+        'اختر كلمة مرور أقوى، ثم حاول إنشاء الحساب مرة أخرى.',
+    'auth_signup_account_exists':
+        'يوجد حساب يستخدم هذا البريد الإلكتروني بالفعل. سجّل الدخول أو أعد تعيين كلمة المرور.',
+    'auth_signup_unavailable':
+        'إنشاء الحسابات الجديدة غير متاح مؤقتًا. حاول مرة أخرى لاحقًا.',
     'auth_accept_policies_required':
         'وافق على شروط الخدمة وسياسة الخصوصية للمتابعة.',
     'auth_confirmation_resent': 'تم إرسال رابط تأكيد جديد.',
@@ -3502,7 +3556,7 @@ class AppLocalizations {
     'onboarding_goal_reading': 'القراءة',
     'onboarding_goal_exercise': 'التمارين',
     'onboarding_goal_personal_organization': 'التنظيم الشخصي',
-    'onboarding_preferred_execution': 'أسلوب التنفيذ المفضل',
+    'onboarding_preferred_execution': 'كيف تفضّل إنجاز مهامك؟',
     'onboarding_execution_pomodoro': 'بومودورو',
     'onboarding_execution_continuous': 'فترات عمل مستمرة',
     'onboarding_execution_checklist': 'قوائم تحقق',
@@ -3677,7 +3731,7 @@ class AppLocalizations {
     'task_edit': 'تعديل المهمة',
     'task_editor_basics': 'الأساسيات',
     'task_editor_schedule': 'الجدول',
-    'task_editor_execution': 'التنفيذ',
+    'task_editor_execution': 'طريقة العمل',
     'task_editor_repeat': 'التكرار',
     'task_title_required': 'تحتاج المهمة إلى عنوان',
     'task_domain': 'مجال المهمة',
@@ -3708,7 +3762,7 @@ class AppLocalizations {
     'task_filter_completed_today': 'المكتملة اليوم',
     'task_filter_all_domains': 'كل مجالات المهام',
     'task_filter_all_roadmaps': 'كل خرائط الطريق',
-    'task_filter_all_methods': 'كل أساليب التنفيذ',
+    'task_filter_all_methods': 'كل طرق العمل',
     'task_filter_all_priorities': 'كل الأولويات',
     'task_recurring': 'متكررة',
     'task_recurring_next': 'متكررة · التالية: {date}',
@@ -3887,7 +3941,7 @@ class AppLocalizations {
     'document_unavailable':
         'هذا المستند غير متاح على هذا الجهاز. نزّل المورد المتزامن أو أرفقه مرة أخرى.',
     'workspace_overview': 'نظرة عامة',
-    'workspace_execute': 'تنفيذ',
+    'workspace_execute': 'التركيز',
     'workspace_checklist': 'قائمة التحقق',
     'workspace_browser': 'المتصفح',
     'workspace_resources': 'الموارد',
@@ -3900,7 +3954,7 @@ class AppLocalizations {
     'task_delete': 'حذف المهمة',
     'task_delete_title': 'هل تريد حذف هذه المهمة؟',
     'task_delete_description':
-        'ستُحذف المهمة من أجهزتك مع الاحتفاظ بسجل الحذف لضمان المزامنة الآمنة.',
+        'ستُحذف هذه المهمة من أجهزتك. لن تتأثر مهامك الأخرى أو سجلاتها.',
     'progress': 'التقدم',
     'planned_effort': 'الجهد المخطط',
     'recorded_work': 'العمل المسجل',
@@ -3915,15 +3969,15 @@ class AppLocalizations {
     'local_time_detail':
         'تُعرض الأوقات وفق منطقتك الزمنية وتبقى متسقة عبر أجهزتك.',
     'task_workspace': 'مساحة عمل المهمة',
-    'workspace_execute_detail': 'المؤقت والتركيز وحالة المهمة',
+    'workspace_execute_detail': 'المؤقت والتقدم الحالي',
     'task_browser': 'متصفح المهمة',
     'task_browser_detail': 'علامات تبويب وإشارات مرجعية محفوظة',
     'task_resources_detail': 'ملفات وPDF وروابط وكتب',
     'task_connections_detail': 'خريطة الطريق والتطبيقات والمواقع والمهام',
     'requirements': 'المتطلبات',
     'requirements_detail': 'عناصر مطلوبة واختيارية',
-    'evidence_history': 'سجل الأدلة',
-    'evidence_history_detail': 'الحالة والملاحظات وأحداث التنفيذ',
+    'evidence_history': 'سجل التقدم',
+    'evidence_history_detail': 'الحالة والملاحظات والتركيز والاستراحات',
     'planned_remaining': 'متبقٍ حسب الخطة: {duration}',
     'overtime_duration': 'وقت إضافي: {duration}',
     'overtime_label': 'وقت إضافي',
@@ -3961,14 +4015,14 @@ class AppLocalizations {
     'resource_open_external_browser': 'فتح في متصفح خارجي',
     'resource_auto_open': 'فتح المورد الأساسي بعد بدء المهمة',
     'resource_auto_open_detail':
-        'تُثبت بداية المهمة أولًا، لذلك يستمر التتبع أثناء التعلم في تطبيق أو متصفح آخر.',
+        'يبدأ TaskMaster Pro المؤقت قبل فتح المورد، لذلك يستمر احتساب عملك في تطبيق أو متصفح آخر.',
     'resource_launch_behavior': 'وجهة المورد الافتراضية',
     'resource_launch_behavior_detail':
         'إذا لم يستطع التطبيق المثبت معالجة الرابط، يُفتح بأمان في متصفحك.',
     'remove': 'إزالة',
     'task_connections': 'ارتباطات المهمة',
     'task_connections_description':
-        'تبقى الارتباطات منفصلة عن التنفيذ وتظهر في المهمة وخريطة الطريق.',
+        'شاهد خرائط الطريق والتطبيقات والمواقع والمهام المرتبطة في مكان واحد.',
     'dependency_tasks': 'المهام المعتمدة',
     'dependency_tasks_detail': 'المهام التي يعتمد عليها هذا العمل أو يعوقها',
     'connect_task': 'ربط مهمة',
@@ -3990,15 +4044,15 @@ class AppLocalizations {
     'website_rule_scope_site': 'الموقع بالكامل',
     'task_notes': 'ملاحظات المهمة',
     'task_notes_detail':
-        'تُحفظ إصدارات الملاحظات لتتمكن من مراجعة النسخ المتعارضة بأمان.',
+        'إذا عُدلت الملاحظة على جهازين دون اتصال، يمكنك اختيار النسخة التي تريد الاحتفاظ بها.',
     'add_note': 'إضافة ملاحظة',
     'no_notes': 'لا توجد ملاحظات بعد',
     'no_notes_detail': 'سجّل القرارات أو السياق أو الأدلة أو الخطوات التالية.',
     'version_number': 'الإصدار {version}',
     'delete_note': 'حذف الملاحظة',
-    'execution_history': 'سجل التنفيذ والأدلة',
+    'execution_history': 'النشاط والتقدم',
     'execution_history_detail':
-        'تبقى الخطة والتغييرات الفعلية والملاحظات والمقاطعات والمساهمات المعتمدة منفصلة.',
+        'شاهد أوقات التركيز والتوقف والاستراحة وإضافة الملاحظات واحتساب النشاط المرتبط.',
     'task_created': 'تم إنشاء المهمة',
     'history_scheduled': 'تمت الجدولة',
     'history_planned_until': 'مخطط حتى {time}',
@@ -4041,22 +4095,22 @@ class AppLocalizations {
     'unknown_application': 'تطبيق غير معروف',
     'unknown_connection': 'ارتباط غير معروف',
     'mode_pomodoro_detail':
-        'تبقى فترات التركيز والاستراحة منفصلة. يمكن للنشاط المفيد أثناء الاستراحة دعم مهمة أخرى دون تكرار الوقت.',
+        'ابتكر فرانشيسكو تشيريلو تقنية بومودورو لتسهيل البدء وحماية الانتباه. اختر مهمة واضحة وركّز نحو 25 دقيقة ثم خذ استراحة حقيقية. تساعد الاستراحات القصيرة على تجديد الانتباه، ويحفظ TaskMaster Pro وقت الراحة منفصلًا لتبقى مدة التركيز دقيقة.',
     'mode_continuous_detail':
-        'تقيس الجلسة الوقت النشط والمتوقف وغير النشط والمتبقي والإضافي دون دورات ثابتة.',
+        'اختر هذا الأسلوب عندما تحتاج إلى مؤقت مرن واحد بدل الدورات الثابتة. أوقفه عند الحاجة ثم تابع من المكان نفسه، وسيحفظ TaskMaster Pro وقت تركيزك بوضوح.',
     'mode_checklist_detail':
-        'يوفر الوقت دليلًا مساعدًا بينما تحدد عناصر القائمة المطلوبة إكمال المهمة.',
+        'اختر هذا الأسلوب عندما يكون إنهاء الخطوات الصحيحة أهم من متابعة المؤقت. علّم كل خطوة مطلوبة أثناء العمل وأنهِ المهمة عندما تكتمل فعلًا.',
     'mode_reading_detail':
-        'يُتتبّع وقت القراءة والصفحات الفريدة وإعادة القراءة والموضع المحفوظ والملاحظات بشكل مستقل.',
+        'اختر هذا الأسلوب للكتب ومواد الدراسة. احفظ موضعك وسجّل الصفحات والملاحظات واعرف مقدار القراءة المركزة التي أنجزتها.',
     'mode_habit_detail':
-        'تظل حالات الإكمال والتخطي والفوات متاحة مع سياق التعافي.',
+        'اختر هذا الأسلوب للعادات التي تريد تكرارها. سجّل كل محاولة بصدق، بما في ذلك الأيام المتخطاة أو الفائتة، واستخدم النمط لتجعل الاستمرار أسهل.',
     'mode_event_detail':
-        'يُتتبّع الوصول والبدء والانتهاء والتأخير والحضور والمتابعة بشكل منفصل.',
+        'اختر هذا الأسلوب للمواعيد والدروس والفعاليات المحددة بوقت. يساعدك TaskMaster Pro على تذكّر موعد الوصول وما حدث وأي متابعة مطلوبة.',
     'mode_hybrid_detail':
-        'يمكن للمؤقتات وقوائم التحقق ونقاط التقدم والموارد والأدلة أن تعمل معًا.',
+        'اختر هذا الأسلوب عندما تحتاج المهمة إلى أكثر من طريقة لقياس التقدم. اجمع المؤقت والخطوات ونقاط التقدم والموارد وإثبات الإنجاز في مكان واحد.',
     'mode_manual_detail':
-        'يبقى الإكمال اليدوي متاحًا مع الاحتفاظ بالملاحظات والموارد والأدلة.',
-    'mode_execution_title': 'تنفيذ بأسلوب {mode}',
+        'اختر هذا الأسلوب للمهام البسيطة التي لا تحتاج إلى مؤقت. أضف ملاحظات أو موارد إن كانت مفيدة، ثم علّم المهمة كمكتملة عند الانتهاء.',
+    'mode_execution_title': 'كيف يساعدك أسلوب {mode}',
     'add_checklist_item': 'إضافة عنصر إلى قائمة التحقق',
     'requirement': 'المتطلب',
     'required_for_completion': 'مطلوب للإكمال',
@@ -4357,14 +4411,14 @@ class AppLocalizations {
         'افتح مهمة بومودورو لتحديد التركيز والاستراحة القصيرة والطويلة وتفضيلات البدء التلقائي.',
     'standalone_pomodoro': 'مؤقت بومودورو مستقل',
     'standalone_pomodoro_description':
-        'شغّل مؤقتًا خاصًا دون ربطه بمهمة. يبقى على هذا الجهاز ولا يتداخل أبدًا مع تنفيذ المهام.',
+        'شغّل مؤقتًا خاصًا دون ربطه بمهمة. يبقى على هذا الجهاز ولا يتداخل مع مهمة قيد التشغيل.',
     'standalone_pomodoro_ready': 'جاهز للتركيز',
     'standalone_pomodoro_load_failed': 'تعذّرت استعادة المؤقت.',
     'standalone_pomodoro_task_active_title': 'توجد مهمة قيد التشغيل',
     'standalone_pomodoro_task_active_detail':
-        'تملك المهمة «{task}» مؤقت التنفيذ. افتحها لإيقافها مؤقتًا أو إنهائها قبل بدء المؤقت المستقل.',
+        'تستخدم المهمة «{task}» مؤقت المهام الآن. افتحها لإيقافها مؤقتًا أو إنهائها قبل بدء المؤقت المستقل.',
     'standalone_pomodoro_task_active_banner':
-        'تملك مهمة مؤقت التنفيذ. سينتظر بومودورو المستقل.',
+        'تستخدم مهمة المؤقت الآن. سينتظر بومودورو المستقل.',
     'standalone_pomodoro_open_task': 'فتح المهمة النشطة',
     'standalone_pomodoro_active_title': 'بومودورو المستقل نشط',
     'standalone_pomodoro_active_detail':
@@ -4399,7 +4453,7 @@ class AppLocalizations {
     'installation_help': 'مساعدة التثبيت',
     'settings_about_legal_description':
         'راجع الإصدار المثبت وملاحظات الإصدار والتحديثات والمعلومات القانونية.',
-    'tasks_and_execution': 'المهام والتنفيذ',
+    'tasks_and_execution': 'المهام والتركيز',
     'pomodoro': 'بومودورو',
     'health': 'الصحة',
     'coaching': 'الإرشاد',
@@ -4440,6 +4494,11 @@ class AppLocalizations {
         'يلزم إذن Bluetooth لقراءة الأجهزة الصحية المقترنة.',
     'health_wearables_refresh_failed': 'تعذر تحديث الأجهزة الصحية المقترنة.',
     'health_wearables_none': 'لم يتم العثور على ساعة أو سوار صحي مقترن.',
+    'health_wearables_none_connected':
+        'لا توجد ساعة صحية متصلة بهذا الهاتف الآن.',
+    'health_connected_watches': 'الساعات المتصلة',
+    'health_connected_watches_detail':
+        'تظهر هنا فقط الساعات المتصلة بهذا الهاتف الآن.',
     'health_wearables_history_notice':
         'لا تظهر الميزات المباشرة إلا عندما تؤكد الساعة أنها تدعمها. تبقى البيانات السابقة في تطبيقها المصاحب وHealth Connect.',
     'health_wearables_unnamed': 'جهاز صحي بلا اسم',
@@ -4455,6 +4514,7 @@ class AppLocalizations {
     'health_wearables_paired': 'مقترن بهذا الهاتف',
     'health_wearables_capability_live_heart_rate': 'معدل نبض القلب المباشر',
     'health_wearables_capability_battery': 'مستوى البطارية',
+    'health_wearables_battery_value': 'البطارية {value}٪',
     'health_wearables_capability_running_speed_cadence': 'سرعة وإيقاع الجري',
     'health_wearables_capability_cycling_speed_cadence':
         'سرعة وإيقاع ركوب الدراجة',
@@ -4609,6 +4669,7 @@ class AppLocalizations {
     'loading': 'Wird geladen…',
     'status_ready': 'Bereit',
     'status_ready_compact': 'Bereit',
+    'status_in_progress': 'In Bearbeitung',
     'status_running': 'Läuft',
     'currently_running': 'Wird gerade ausgeführt',
     'status_paused': 'Pausiert',
@@ -5410,7 +5471,8 @@ class AppLocalizations {
         'Gesundheitsdaten konnten nicht gelesen werden. Prüfe die Berechtigungen und versuche es erneut.',
     'health_summaries_removed':
         'Importierte Gesundheitszusammenfassungen wurden von diesem Gerät entfernt.',
-    'health_connected': 'Verbunden — Daten empfangen',
+    'health_connected': 'Verbunden',
+    'health_data_received_popup': 'Daten empfangen',
     'health_permission_required_state': 'Berechtigung erforderlich',
     'health_connected_no_recent': 'Verbunden — keine aktuellen Datensätze',
     'health_connected_no_recent_detail':
@@ -5427,8 +5489,16 @@ class AppLocalizations {
     'health_continue_permissions': 'Weiter zu den Android-Berechtigungen',
     'health_install_connect': 'Health Connect installieren oder aktualisieren',
     'health_refresh_seven_days': 'Gesundheitsdaten aktualisieren',
+    'health_manage_access': 'Health-Connect-Zugriff verwalten',
+    'health_operation_timed_out':
+        'Health Connect hat zu lange nicht geantwortet. Es wurden keine Daten geändert. Prüfe den Zugriff in Health Connect und versuche es erneut.',
     'health_disconnect': 'Trennen',
-    'health_recent_context': 'Aktueller Gesundheitskontext',
+    'health_recent_context': 'Heutiger Gesundheitskontext',
+    'health_weekly_steps': 'Deine Woche in Bewegung',
+    'health_weekly_steps_detail':
+        'Geteilte Schritte der vergangenen sieben Tage.',
+    'health_pull_to_refresh':
+        'Von oben nach unten wischen, um Gesundheitsdaten und Uhrenverbindungen zu aktualisieren.',
     'health_steps': 'Schritte',
     'health_distance': 'Distanz',
     'health_average_heart_rate': 'Durchschnittliche Herzfrequenz',
@@ -5442,6 +5512,12 @@ class AppLocalizations {
         'TaskMaster Pro kann Health Connect lesen, aber noch keine Gesundheits-App hat einen unterstützten Datensatz geteilt.',
     'health_no_records_explanation':
         'Keine unterstützten Gesundheitsdaten gefunden. Aktiviere in deiner Gesundheits-App die Freigabe an Health Connect und aktualisiere erneut.',
+    'health_no_recent_records_explanation':
+        'In den letzten zwei Tagen ist kein Gesundheitsdatensatz eingegangen. Öffne die aufzeichnende Gesundheits-App, lasse sie synchronisieren, bestätige die Freigabe an Health Connect und aktualisiere dann hier.',
+    'health_no_records_today_explanation':
+        'Health Connect hat aktuelle Daten geteilt, aber für heute ist noch nichts vorhanden. Die Karten unten zeigen nur den heutigen Tag. Öffne die aufzeichnende Gesundheits-App, lasse sie synchronisieren und aktualisiere dann hier.',
+    'health_on_device_steps_waiting':
+        'Es wurden keine aktuellen freigegebenen Datensätze gefunden. Android kann nach erteiltem Zugriff beginnen, die Schritte dieses Telefons zu zählen. Trage das Telefon bei einem Spaziergang, warte einige Minuten und aktualisiere dann. Aktiviere für Schlaf, Herzfrequenz, Training und Kalorien die Health-Connect-Freigabe in der aufzeichnenden App.',
     'health_partial_import':
         'Verfügbare Gesundheitsdaten wurden importiert. Mindestens eine Kategorie konnte nicht gelesen werden und kann erneut versucht werden.',
     'health_delete_summaries':
@@ -5515,7 +5591,7 @@ class AppLocalizations {
     'calendar_view': 'Kalenderansicht: {range}',
     'calendar_history_filter': 'Verlauf',
     'calendar_task': 'Aufgabe',
-    'calendar_task_history': 'Aufgaben und Ausführungsverlauf',
+    'calendar_task_history': 'Aufgaben- und Fokusverlauf',
     'calendar_empty_day':
         'Für diesen Tag gibt es keine geplante Arbeit oder aufgezeichneten Verlauf',
     'cycle_entry': 'Zykluseintrag',
@@ -5564,6 +5640,14 @@ class AppLocalizations {
         'Diese Anmeldedaten wurden nicht akzeptiert. Prüfe sie oder wähle Google.',
     'auth_signup_failed':
         'Das Konto konnte nicht vollständig erstellt werden. Prüfe die Angaben und versuche es erneut.',
+    'auth_signup_email_invalid':
+        'Verwende eine E-Mail-Adresse, die Nachrichten empfangen kann. Reservierte oder temporäre Testadressen werden nicht akzeptiert.',
+    'auth_signup_password_weak':
+        'Wähle ein stärkeres Passwort und versuche erneut, das Konto zu erstellen.',
+    'auth_signup_account_exists':
+        'Für diese E-Mail-Adresse besteht bereits ein Konto. Melde dich an oder setze das Passwort zurück.',
+    'auth_signup_unavailable':
+        'Neue Konten können vorübergehend nicht erstellt werden. Versuche es später erneut.',
     'auth_accept_policies_required':
         'Akzeptiere die Nutzungsbedingungen und Datenschutzrichtlinie, um fortzufahren.',
     'auth_confirmation_resent': 'Ein neuer Bestätigungslink ist unterwegs.',
@@ -5612,7 +5696,7 @@ class AppLocalizations {
     'onboarding_goal_reading': 'Lesen',
     'onboarding_goal_exercise': 'Bewegung',
     'onboarding_goal_personal_organization': 'Persönliche Organisation',
-    'onboarding_preferred_execution': 'Bevorzugte Ausführung',
+    'onboarding_preferred_execution': 'Wie arbeitest du am liebsten?',
     'onboarding_execution_pomodoro': 'Pomodoro',
     'onboarding_execution_continuous': 'Durchgehende Arbeitsblöcke',
     'onboarding_execution_checklist': 'Checklisten',
@@ -5796,7 +5880,7 @@ class AppLocalizations {
     'task_edit': 'Aufgabe bearbeiten',
     'task_editor_basics': 'Grundlagen',
     'task_editor_schedule': 'Zeitplan',
-    'task_editor_execution': 'Ausführung',
+    'task_editor_execution': 'Arbeitsweise',
     'task_editor_repeat': 'Wiederholung',
     'task_title_required': 'Eine Aufgabe benötigt einen Titel',
     'task_domain': 'Aufgabenbereich',
@@ -5827,7 +5911,7 @@ class AppLocalizations {
     'task_filter_completed_today': 'Heute abgeschlossen',
     'task_filter_all_domains': 'Alle Aufgabenbereiche',
     'task_filter_all_roadmaps': 'Alle Roadmaps',
-    'task_filter_all_methods': 'Alle Ausführungsarten',
+    'task_filter_all_methods': 'Alle Arbeitsweisen',
     'task_filter_all_priorities': 'Alle Prioritäten',
     'task_recurring': 'Wiederkehrend',
     'task_recurring_next': 'Wiederkehrend · Nächster Termin: {date}',
@@ -6012,7 +6096,7 @@ class AppLocalizations {
     'document_unavailable':
         'Dieses Dokument ist auf diesem Gerät nicht verfügbar. Lade die synchronisierte Ressource herunter oder füge sie erneut an.',
     'workspace_overview': 'Übersicht',
-    'workspace_execute': 'Ausführen',
+    'workspace_execute': 'Fokus',
     'workspace_checklist': 'Checkliste',
     'workspace_browser': 'Browser',
     'workspace_resources': 'Ressourcen',
@@ -6025,7 +6109,7 @@ class AppLocalizations {
     'task_delete': 'Aufgabe löschen',
     'task_delete_title': 'Diese Aufgabe löschen?',
     'task_delete_description':
-        'Die Aufgabe wird von deinen Geräten entfernt. Der Löschvermerk bleibt für eine sichere Synchronisierung erhalten.',
+        'Diese Aufgabe wird von deinen Geräten entfernt. Deine anderen Aufgaben und Verläufe bleiben unverändert.',
     'progress': 'Fortschritt',
     'planned_effort': 'Geplanter Aufwand',
     'recorded_work': 'Erfasste Arbeit',
@@ -6040,15 +6124,15 @@ class AppLocalizations {
     'local_time_detail':
         'Zeiten werden in deiner Zeitzone angezeigt und bleiben geräteübergreifend konsistent.',
     'task_workspace': 'Aufgaben-Arbeitsbereich',
-    'workspace_execute_detail': 'Timer, Fokus und Aufgabenstatus',
+    'workspace_execute_detail': 'Timer und aktueller Fortschritt',
     'task_browser': 'Aufgabenbrowser',
     'task_browser_detail': 'Gespeicherte Tabs und Lesezeichen',
     'task_resources_detail': 'Dateien, PDFs, URLs und Bücher',
     'task_connections_detail': 'Roadmap, Anwendungen, Websites und Aufgaben',
     'requirements': 'Anforderungen',
     'requirements_detail': 'Erforderliche und optionale Elemente',
-    'evidence_history': 'Nachweisverlauf',
-    'evidence_history_detail': 'Status, Notizen und Ausführungsereignisse',
+    'evidence_history': 'Fortschrittsverlauf',
+    'evidence_history_detail': 'Status, Notizen, Fokus und Pausen',
     'planned_remaining': '{duration} laut Plan verbleibend',
     'overtime_duration': '{duration} Mehrzeit',
     'overtime_label': 'ÜBERZEIT',
@@ -6093,7 +6177,7 @@ class AppLocalizations {
     'remove': 'Entfernen',
     'task_connections': 'Aufgabenverknüpfungen',
     'task_connections_description':
-        'Verknüpfungen bleiben von der Ausführung getrennt und sind in Aufgabe und Roadmap sichtbar.',
+        'Sieh zugehörige Roadmaps, Apps, Websites und Aufgaben an einem Ort.',
     'dependency_tasks': 'Abhängige Aufgaben',
     'dependency_tasks_detail':
         'Aufgaben, von denen diese Arbeit abhängt oder die sie blockiert',
@@ -6116,16 +6200,16 @@ class AppLocalizations {
     'website_rule_scope_site': 'Gesamte Website',
     'task_notes': 'Aufgabennotizen',
     'task_notes_detail':
-        'Notizversionen bleiben erhalten, damit widersprüchliche Offline-Kopien sicher geprüft werden können.',
+        'Wenn zwei Geräte dieselbe Notiz offline ändern, kannst du auswählen, welche Version bleibt.',
     'add_note': 'Notiz hinzufügen',
     'no_notes': 'Noch keine Notizen',
     'no_notes_detail':
         'Halte Entscheidungen, Kontext, Nachweise oder nächste Schritte fest.',
     'version_number': 'Version {version}',
     'delete_note': 'Notiz löschen',
-    'execution_history': 'Ausführungs- und Nachweisverlauf',
+    'execution_history': 'Aktivität und Fortschritt',
     'execution_history_detail':
-        'Plan, tatsächliche Änderungen, Notizen, Unterbrechungen und bestätigte Beiträge bleiben getrennt.',
+        'Sieh, wann du fokussiert, pausiert, eine Pause gemacht, eine Notiz ergänzt oder passende Aktivität angerechnet hast.',
     'task_created': 'Aufgabe erstellt',
     'history_scheduled': 'Geplant',
     'history_planned_until': 'Geplant bis {time}',
@@ -6168,22 +6252,22 @@ class AppLocalizations {
     'unknown_application': 'Unbekannte Anwendung',
     'unknown_connection': 'Unbekannte Verknüpfung',
     'mode_pomodoro_detail':
-        'Fokus und Pausen bleiben getrennt. Nützliche Pausenaktivität kann eine andere Aufgabe unterstützen, ohne Zeit doppelt zu zählen.',
+        'Francesco Cirillo entwickelte die Pomodoro-Technik, um den Einstieg zu erleichtern und die Aufmerksamkeit zu schützen. Wähle eine klare Aufgabe, konzentriere dich etwa 25 Minuten und mache danach eine echte Pause. Kurze Pausen können die Aufmerksamkeit auffrischen; TaskMaster Pro hält Pausenzeit getrennt, damit deine Fokuszeit ehrlich bleibt.',
     'mode_continuous_detail':
-        'Die Sitzung misst aktive, pausierte, inaktive, verbleibende Zeit und Mehrzeit ohne feste Zyklen.',
+        'Wähle diese Methode für Arbeit, die einen flexiblen Timer statt fester Zyklen braucht. Pausiere bei Bedarf und setze an derselben Stelle fort; TaskMaster Pro hält deine Fokuszeit übersichtlich fest.',
     'mode_checklist_detail':
-        'Zeit dient als Nachweis, während erforderliche Checklistenregeln den Abschluss bestimmen.',
+        'Wähle diese Methode, wenn die richtigen Schritte wichtiger sind als ein Timer. Hake die nötigen Punkte während der Arbeit ab und schließe die Aufgabe erst ab, wenn sie wirklich erledigt ist.',
     'mode_reading_detail':
-        'Lesedauer, eindeutige Seiten, wiederholtes Lesen, Positionen und Notizen werden getrennt erfasst.',
+        'Wähle diese Methode für Bücher und Lernmaterial. Merke dir deine Stelle, notiere Seiten und Gedanken und sieh, wie viel konzentrierte Lesezeit du geschafft hast.',
     'mode_habit_detail':
-        'Erledigte, übersprungene und versäumte Ergebnisse bleiben mit Wiederaufnahme-Kontext erhalten.',
+        'Wähle diese Methode für Routinen, die du wiederholen möchtest. Halte jeden Versuch ehrlich fest, auch übersprungene oder verpasste Tage, und nutze das Muster, um dranzubleiben.',
     'mode_event_detail':
-        'Ankunft, Beginn, Ende, Verspätung, Teilnahme und Nachbereitung werden getrennt erfasst.',
+        'Wähle diese Methode für Termine, Kurse und geplante Ereignisse. TaskMaster Pro hilft dir, Ankunft, Verlauf und nötige Nachbereitung im Blick zu behalten.',
     'mode_hybrid_detail':
-        'Timer, Checklisten, Kontrollpunkte, Ressourcen und Nachweise können zusammenwirken.',
+        'Wähle diese Methode, wenn eine Aufgabe mehrere Arten von Fortschritt braucht. Verbinde Timer, Schritte, Kontrollpunkte, Materialien und Abschlussnachweise an einem Ort.',
     'mode_manual_detail':
-        'Manueller Abschluss bleibt verfügbar, während Notizen, Ressourcen und Nachweise erhalten bleiben.',
-    'mode_execution_title': '{mode}-Ausführung',
+        'Wähle diese Methode für einfache Aufgaben ohne Timer. Ergänze bei Bedarf Notizen oder Materialien und markiere die Aufgabe als erledigt, wenn du fertig bist.',
+    'mode_execution_title': 'So hilft dir {mode}',
     'add_checklist_item': 'Checklistenpunkt hinzufügen',
     'requirement': 'Anforderung',
     'required_for_completion': 'Für Abschluss erforderlich',
@@ -6505,9 +6589,9 @@ class AppLocalizations {
         'Der Timer konnte nicht wiederhergestellt werden.',
     'standalone_pomodoro_task_active_title': 'Eine Aufgabe läuft bereits',
     'standalone_pomodoro_task_active_detail':
-        '„{task}“ belegt den Ausführungs-Timer. Öffne die Aufgabe und pausiere oder beende sie, bevor du diesen Timer startest.',
+        '„{task}“ verwendet bereits den Aufgabentimer. Öffne die Aufgabe und pausiere oder beende sie, bevor du diesen Timer startest.',
     'standalone_pomodoro_task_active_banner':
-        'Eine Aufgabe belegt den Ausführungs-Timer. Der eigenständige Pomodoro wartet.',
+        'Eine Aufgabe verwendet bereits den Timer. Der eigenständige Pomodoro wartet.',
     'standalone_pomodoro_open_task': 'Aktive Aufgabe öffnen',
     'standalone_pomodoro_active_title': 'Eigenständiger Pomodoro ist aktiv',
     'standalone_pomodoro_active_detail':
@@ -6543,7 +6627,7 @@ class AppLocalizations {
     'installation_help': 'Installationshilfe',
     'settings_about_legal_description':
         'Prüfe installierte Version, Versionshinweise, Updates und rechtliche Informationen.',
-    'tasks_and_execution': 'Aufgaben und Ausführung',
+    'tasks_and_execution': 'Aufgaben und Fokus',
     'pomodoro': 'Pomodoro',
     'health': 'Gesundheit',
     'coaching': 'Coaching',
@@ -6586,6 +6670,11 @@ class AppLocalizations {
         'Gekoppelte Gesundheitsgeräte konnten nicht aktualisiert werden.',
     'health_wearables_none':
         'Keine gekoppelte Gesundheitsuhr oder kein Band gefunden.',
+    'health_wearables_none_connected':
+        'Derzeit ist keine Gesundheitsuhr mit diesem Telefon verbunden.',
+    'health_connected_watches': 'Verbundene Uhren',
+    'health_connected_watches_detail':
+        'Hier erscheinen nur Uhren, die gerade mit diesem Telefon verbunden sind.',
     'health_wearables_history_notice':
         'Live-Funktionen erscheinen erst, wenn die Uhr bestätigt, dass sie diese unterstützt. Frühere Daten bleiben in der Begleit-App und Health Connect.',
     'health_wearables_unnamed': 'Unbenanntes Gesundheitsgerät',
@@ -6604,6 +6693,7 @@ class AppLocalizations {
     'health_wearables_paired': 'Mit diesem Telefon gekoppelt',
     'health_wearables_capability_live_heart_rate': 'Live-Herzfrequenz',
     'health_wearables_capability_battery': 'Akkustand',
+    'health_wearables_battery_value': 'Akku {value} %',
     'health_wearables_capability_running_speed_cadence':
         'Laufgeschwindigkeit und Schrittfrequenz',
     'health_wearables_capability_cycling_speed_cadence':

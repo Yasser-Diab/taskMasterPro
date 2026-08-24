@@ -353,6 +353,32 @@ void main() {
     );
   });
 
+  test('task application permission conflicts get one bounded retry', () {
+    expect(
+      shouldRetryTaskApplicationLinkPermissionConflict(
+        reason: 'permission_denied',
+        currentVersion: 0,
+      ),
+      isTrue,
+    );
+    expect(
+      shouldRetryTaskApplicationLinkPermissionConflict(
+        reason: 'permission_denied',
+        currentVersion: 1,
+      ),
+      isFalse,
+      reason: 'a failed repair must remain visible instead of looping',
+    );
+    expect(
+      shouldRetryTaskApplicationLinkPermissionConflict(
+        reason: 'device_not_registered',
+        currentVersion: 0,
+      ),
+      isFalse,
+      reason: 'revoked devices must never be silently retried',
+    );
+  });
+
   test(
     'a missing Activity review retries once only with a complete approved aggregate',
     () {
@@ -826,6 +852,52 @@ void main() {
         'task_occurrence_id': null,
       }),
       'health_summaries',
+    );
+  });
+
+  test('Health wire payload excludes device-only source timestamps', () {
+    final payload = canonicalHealthSummaryPayload(const <String, dynamic>{
+      'summary_date': '2026-08-24',
+      'source': 'Health Connect',
+      'summary_type': 'steps',
+      'value': 723,
+      'unit': 'count',
+      'record_count': 3,
+      'source_applications': <String>['com.example.health'],
+      'source_record_counts': <String, int>{'com.example.health': 3},
+      'source_latest_record_at': <String, String>{
+        'com.example.health': '2026-08-24T12:00:00Z',
+      },
+      'latest_record_at': '2026-08-24T12:00:00Z',
+      'imported_at': '2026-08-24T12:01:00Z',
+    }, taskScoped: false);
+
+    expect(payload['summary_type'], 'steps');
+    expect(payload['value'], 723);
+    expect(payload, isNot(contains('source_latest_record_at')));
+    expect(payload, isNot(contains('latest_record_at')));
+    expect(payload, isNot(contains('imported_at')));
+  });
+
+  test('Health convergence follows source-record freshness', () {
+    expect(
+      localHealthSummaryIsNewer(
+        localPayload: const {'last_updated_at': '2026-08-24T12:01:00Z'},
+        serverRow: const {
+          'last_updated_at': '2026-08-24T12:00:00Z',
+          'updated_at': '2026-08-24T12:02:00Z',
+        },
+      ),
+      isTrue,
+      reason: 'Database arrival time must not override newer sensor evidence.',
+    );
+    expect(
+      localHealthSummaryIsNewer(
+        localPayload: const {'last_updated_at': '2026-08-24T12:00:00Z'},
+        serverRow: const {'last_updated_at': '2026-08-24T12:00:00Z'},
+      ),
+      isFalse,
+      reason: 'Equal evidence must settle on the existing canonical row.',
     );
   });
 
@@ -1617,6 +1689,105 @@ void main() {
         .getSingle();
     expect(record.lastCommandId, replacementId);
   });
+
+  test(
+    'invalid Health uploads collapse to one sanitized latest intent',
+    () async {
+      SharedPreferences.setMockInitialValues({});
+      final database = AppDatabase(NativeDatabase.memory());
+      addTearDown(database.close);
+      const userId = 'owner-health';
+      const entityId = 'health-steps-2026-08-24';
+      final now = DateTime.utc(2026, 8, 24, 12);
+      await database
+          .into(database.localEntityRecords)
+          .insert(
+            LocalEntityRecordsCompanion.insert(
+              id: entityId,
+              userId: userId,
+              entityType: 'health_summaries',
+              title: const Value('steps'),
+              dataJson: const Value('{"summary_type":"steps","value":700}'),
+              revision: const Value(8),
+              createdAt: now,
+              updatedAt: now,
+              lastCommandId: const Value('health-command-2'),
+            ),
+          );
+      for (final command in const [
+        (id: 'health-command-1', sequence: 1, baseRevision: 1, value: 500),
+        (id: 'health-command-2', sequence: 2, baseRevision: 2, value: 700),
+      ]) {
+        await database
+            .into(database.localOutboxCommands)
+            .insert(
+              LocalOutboxCommandsCompanion.insert(
+                commandId: command.id,
+                userId: userId,
+                deviceId: 'health-device',
+                deviceSequence: command.sequence,
+                entityType: 'health_summaries',
+                entityId: entityId,
+                commandType: 'update',
+                baseRevision: command.baseRevision,
+                payloadJson: jsonEncode({
+                  'summary_date': '2026-08-24',
+                  'source': 'Health Connect',
+                  'summary_type': 'steps',
+                  'value': command.value,
+                  'unit': 'count',
+                  'record_count': 2,
+                  'source_latest_record_at': {
+                    'com.example.health': '2026-08-24T12:00:00Z',
+                  },
+                }),
+                status: const Value('conflict'),
+                lastError: const Value(
+                  '{"reason":"invalid_command_contract",'
+                  '"message":"invalid_payload_columns: '
+                  '{source_latest_record_at}"}',
+                ),
+                clientTimestamp: now,
+                createdAt: now,
+              ),
+            );
+      }
+      final service = SyncService(
+        database: database,
+        client: SupabaseClient(
+          'https://example.supabase.co',
+          'sb_publishable_test_key',
+        ),
+      );
+
+      await service.repairInvalidHealthSummaryWireConflictsForTesting(userId);
+      await service.repairInvalidHealthSummaryWireConflictsForTesting(userId);
+
+      final commands = await database
+          .select(database.localOutboxCommands)
+          .get();
+      final repaired = commands.singleWhere(
+        (command) => command.commandId == 'health-command-1',
+      );
+      expect(repaired.status, 'pending');
+      expect(repaired.baseRevision, 1);
+      expect(repaired.attemptCount, 0);
+      final repairedPayload = jsonDecode(repaired.payloadJson) as Map;
+      expect(repairedPayload['value'], 700);
+      expect(repairedPayload, isNot(contains('source_latest_record_at')));
+      expect(
+        commands
+            .singleWhere((command) => command.commandId == 'health-command-2')
+            .status,
+        'superseded',
+      );
+      final record = await database
+          .select(database.localEntityRecords)
+          .getSingle();
+      expect(record.revision, 2);
+      expect(record.lastCommandId, 'health-command-1');
+    },
+  );
 
   test(
     'occurrence repair rebases identity without losing task edits',
@@ -2836,5 +3007,83 @@ void main() {
     drain.complete();
     await barrier;
     expect(settled, isTrue);
+  });
+
+  test('runtime commands rebase only on the exact canonical identity', () {
+    final migration = File(
+      'supabase/migrations/'
+      '20260823190000_v0037_execution_identity_rebase.sql',
+    ).readAsStringSync();
+
+    expect(migration, contains('taskmaster.identity_rebase_command'));
+    expect(
+      migration,
+      contains('runtime.active_session_id is not distinct from p_session_id'),
+    );
+    expect(
+      migration,
+      contains(
+        'runtime.active_task_occurrence_id is not distinct from\n'
+        '        p_task_occurrence_id',
+      ),
+    );
+    expect(
+      migration,
+      contains(
+        'runtime.active_session_id is not distinct from\n'
+        '        p_expected_active_session_id',
+      ),
+    );
+    expect(
+      migration,
+      contains("runtime.state in ('running', 'paused', 'break')"),
+    );
+    expect(
+      migration,
+      contains('identity_rebase_command is distinct from p_command_id::text'),
+    );
+    expect(
+      migration,
+      isNot(
+        contains("set_config('taskmaster.identity_rebase_command', 'true'"),
+      ),
+    );
+  });
+
+  test('task-link permissions and completion projection converge safely', () {
+    final migration = File(
+      'supabase/migrations/'
+      '20260823232000_v0038_task_link_permissions_and_execution_convergence.sql',
+    ).readAsStringSync();
+
+    expect(
+      migration,
+      contains(
+        'alter function public.connect_application_to_task(\n'
+        '  uuid, uuid, bigint, uuid, uuid, uuid, text, text, text, text\n'
+        ') security definer',
+      ),
+    );
+    expect(
+      migration,
+      contains(
+        'alter function public.remove_application_from_task(\n'
+        '  uuid, uuid, bigint, uuid, bigint\n'
+        ') security definer',
+      ),
+    );
+    expect(
+      migration,
+      contains('greatest(old.accumulated_active_ms, projected_active_ms)'),
+    );
+    expect(
+      migration,
+      contains('safe_boundary_at - old.active_segment_started_at'),
+    );
+    expect(
+      migration,
+      contains("raise exception 'invalid_projected_boundary_at'"),
+      reason: 'malformed commands must still fail closed',
+    );
   });
 }

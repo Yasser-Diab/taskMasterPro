@@ -94,6 +94,146 @@ class HealthInterval {
   }
 }
 
+/// Sleep records exposed by Android Health Connect all come from a
+/// [HealthDataType.SLEEP_SESSION]. A provider may describe the same session
+/// with generic sleeping stages or only with light, deep, REM, and awake
+/// stages. Reading only [HealthDataType.SLEEP_ASLEEP] therefore misses valid
+/// sleep from providers that use the more precise stage values.
+const healthConnectSleepReadTypes = <HealthDataType>[
+  HealthDataType.SLEEP_SESSION,
+  HealthDataType.SLEEP_ASLEEP,
+  HealthDataType.SLEEP_LIGHT,
+  HealthDataType.SLEEP_DEEP,
+  HealthDataType.SLEEP_REM,
+  HealthDataType.SLEEP_AWAKE,
+  HealthDataType.SLEEP_AWAKE_IN_BED,
+  HealthDataType.SLEEP_OUT_OF_BED,
+  HealthDataType.SLEEP_UNKNOWN,
+];
+
+const _healthConnectSleepTypes = <HealthDataType>{
+  ...healthConnectSleepReadTypes,
+  HealthDataType.SLEEP_IN_BED,
+};
+
+const _healthConnectAwakeSleepTypes = <HealthDataType>{
+  HealthDataType.SLEEP_AWAKE,
+  HealthDataType.SLEEP_AWAKE_IN_BED,
+  HealthDataType.SLEEP_OUT_OF_BED,
+};
+
+const _healthConnectAsleepStageTypes = <HealthDataType>{
+  HealthDataType.SLEEP_ASLEEP,
+  HealthDataType.SLEEP_LIGHT,
+  HealthDataType.SLEEP_DEEP,
+  HealthDataType.SLEEP_REM,
+};
+
+/// Converts Health Connect sleep sessions and stages into non-overlapping
+/// [HealthDataType.SLEEP_ASLEEP] intervals.
+///
+/// A full session is the best available sleep estimate. Explicit awake and
+/// out-of-bed stages are removed from it. If a provider exposes stages without
+/// the parent session, the known asleep stages are retained as a fallback.
+/// Stage UUIDs are expanded with their timestamps because Health Connect uses
+/// the parent session UUID for every stage.
+List<HealthDataPoint> normalizeHealthConnectSleepRecords(
+  List<HealthDataPoint> points,
+) {
+  final sleepPoints = points
+      .where((point) => _healthConnectSleepTypes.contains(point.type))
+      .toList(growable: false);
+  if (sleepPoints.isEmpty) return List.unmodifiable(points);
+
+  final sessions = sleepPoints
+      .where((point) => point.type == HealthDataType.SLEEP_SESSION)
+      .toList(growable: false);
+  final awakeStages = sleepPoints
+      .where((point) => _healthConnectAwakeSleepTypes.contains(point.type))
+      .toList(growable: false);
+  final canonicalSleep = <HealthDataPoint>[];
+
+  if (sessions.isNotEmpty) {
+    for (final session in sessions) {
+      final sessionInterval = _pointInterval(session);
+      final awakeCoverage = _mergeIntervals(
+        awakeStages
+            .where((stage) => _belongsToSleepSession(session, stage))
+            .map((stage) => _pointInterval(stage).intersection(sessionInterval))
+            .whereType<HealthInterval>()
+            .toList(growable: false),
+      );
+      for (final interval in _subtract(sessionInterval, awakeCoverage)) {
+        canonicalSleep.add(
+          _canonicalSleepPoint(session, interval, origin: 'session'),
+        );
+      }
+    }
+  } else {
+    for (final stage in sleepPoints.where(
+      (point) => _healthConnectAsleepStageTypes.contains(point.type),
+    )) {
+      canonicalSleep.add(
+        _canonicalSleepPoint(stage, _pointInterval(stage), origin: 'stage'),
+      );
+    }
+  }
+
+  return List.unmodifiable([
+    ...points.where((point) => !_healthConnectSleepTypes.contains(point.type)),
+    ...canonicalSleep,
+  ]);
+}
+
+bool _belongsToSleepSession(HealthDataPoint session, HealthDataPoint stage) {
+  final sessionUuid = session.uuid.trim();
+  final stageUuid = stage.uuid.trim();
+  if (sessionUuid.isNotEmpty && stageUuid.isNotEmpty) {
+    return sessionUuid == stageUuid;
+  }
+  if (HealthRecordReconciler._sourceKey(session) !=
+      HealthRecordReconciler._sourceKey(stage)) {
+    return false;
+  }
+  return _pointInterval(session).intersection(_pointInterval(stage)) != null;
+}
+
+HealthDataPoint _canonicalSleepPoint(
+  HealthDataPoint source,
+  HealthInterval interval, {
+  required String origin,
+}) {
+  final sourceIdentity = source.uuid.trim().isEmpty
+      ? [
+          HealthRecordReconciler._sourceKey(source),
+          source.dateFrom.toUtc().microsecondsSinceEpoch,
+          source.dateTo.toUtc().microsecondsSinceEpoch,
+        ].join('|')
+      : source.uuid.trim();
+  return HealthDataPoint(
+    uuid:
+        '$sourceIdentity|asleep|$origin|${interval.start.toUtc().microsecondsSinceEpoch}|${interval.end.toUtc().microsecondsSinceEpoch}',
+    value: NumericHealthValue(
+      numericValue:
+          interval.durationMilliseconds / Duration.millisecondsPerMinute,
+    ),
+    type: HealthDataType.SLEEP_ASLEEP,
+    unit: HealthDataUnit.MINUTE,
+    dateFrom: interval.start,
+    dateTo: interval.end,
+    sourcePlatform: source.sourcePlatform,
+    sourceDeviceId: source.sourceDeviceId,
+    sourceId: source.sourceId,
+    sourceName: source.sourceName,
+    recordingMethod: source.recordingMethod,
+    workoutSummary: source.workoutSummary,
+    metadata: source.metadata == null
+        ? null
+        : Map<String, dynamic>.from(source.metadata!),
+    deviceModel: source.deviceModel,
+  );
+}
+
 class HealthRecordAllocation {
   const HealthRecordAllocation({
     required this.point,

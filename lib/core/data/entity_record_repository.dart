@@ -419,6 +419,20 @@ class EntityRecordRepository {
             clientTimestamp: Value(now),
           ),
         );
+        // The merged command still represents exactly one unacknowledged
+        // canonical revision. Keep the optimistic record on that revision and
+        // command identity instead of incrementing it for every local refresh.
+        // Otherwise the next edit is based on a server revision that never
+        // existed and becomes a false revision conflict.
+        await (database.update(database.localEntityRecords)..where(
+              (row) => row.userId.equals(userId) & row.id.equals(entityId),
+            ))
+            .write(
+              LocalEntityRecordsCompanion(
+                revision: Value(existing.baseRevision + 1),
+                lastCommandId: Value(existing.commandId),
+              ),
+            );
         return;
       }
     }
@@ -448,6 +462,15 @@ class EntityRecordRepository {
             clientTimestamp: Value(now),
           ),
         );
+        await (database.update(database.localEntityRecords)..where(
+              (row) => row.userId.equals(userId) & row.id.equals(entityId),
+            ))
+            .write(
+              LocalEntityRecordsCompanion(
+                revision: Value(pendingUpdate.baseRevision + 1),
+                lastCommandId: Value(pendingUpdate.commandId),
+              ),
+            );
         return;
       }
     }

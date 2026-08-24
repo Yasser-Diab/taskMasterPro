@@ -11,6 +11,7 @@ import '../../../core/database/app_database.dart';
 import '../../../core/localization/app_localizations.dart';
 import '../../../core/navigation/app_route_observer.dart';
 import '../../../core/notifications/notification_sounds.dart';
+import '../../../core/platform/android_home_widget_projection.dart';
 import '../../../core/platform/android_home_widget_service.dart';
 import '../../../core/platform/windows_shell_service.dart';
 import '../../../core/profile/profile_avatar.dart';
@@ -27,6 +28,7 @@ import '../../activity/presentation/activity_review_screen.dart';
 import '../../activity/presentation/break_activity_check_in.dart';
 import '../../calendar/presentation/planning_calendar_screen.dart';
 import '../../dashboard/presentation/dashboard_screen.dart';
+import '../../health/presentation/health_connect_screen.dart';
 import '../../roadmaps/presentation/roadmaps_screen.dart';
 import '../../settings/presentation/settings_screen.dart';
 import '../../settings/presentation/notifications_sounds_screen.dart';
@@ -81,9 +83,9 @@ Stream<SyncHealth> synchronizedSyncHealthStream({
   return controller.stream.distinct();
 }
 
-/// Six destinations do not have enough width for six legible labels on a
-/// compact handset.  Keep the semantic names and long-press tooltips, while
-/// switching to an icon-first navigation bar before labels start wrapping.
+/// Top-level destinations do not have enough width for legible labels on a
+/// compact handset. Keep semantic names and tooltips while switching to a
+/// horizontally scrollable icon-first navigation bar before labels wrap.
 bool usesCompactBottomNavigation(double maxWidth) => maxWidth < 600;
 
 enum ShellSyncVisualState { offline, syncing, waiting, synced, attention }
@@ -272,7 +274,8 @@ class HomeShell extends ConsumerStatefulWidget {
   ConsumerState<HomeShell> createState() => _HomeShellState();
 }
 
-class _HomeShellState extends ConsumerState<HomeShell> with RouteAware {
+class _HomeShellState extends ConsumerState<HomeShell>
+    with RouteAware, WidgetsBindingObserver {
   static const _dashboardIndex = 0;
   int _selectedIndex = 0;
   final _backNavigation = HomeShellBackNavigation();
@@ -311,6 +314,8 @@ class _HomeShellState extends ConsumerState<HomeShell> with RouteAware {
   bool _androidWidgetRefreshInFlight = false;
   bool _androidWidgetRefreshRequested = false;
   bool _androidWidgetPinRequestPending = false;
+  bool _externalExecutionRefreshInFlight = false;
+  bool _externalExecutionRefreshRequested = false;
   StreamSubscription<List<LocalTask>>? _androidWidgetTaskSubscription;
   StreamSubscription<AndroidHomeWidgetAction>? _androidWidgetActionSubscription;
   StreamSubscription<List<LocalEntityRecord>>? _taskReminderSubscription;
@@ -319,6 +324,7 @@ class _HomeShellState extends ConsumerState<HomeShell> with RouteAware {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     final androidWidgetService = AndroidHomeWidgetService.instance;
     if (androidWidgetService.isSupported) {
       _androidWidgetActionSubscription = androidWidgetService.actions.listen(
@@ -337,6 +343,7 @@ class _HomeShellState extends ConsumerState<HomeShell> with RouteAware {
         ),
       );
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      _queueExternalExecutionRefresh();
       unawaited(_restorePlatformAuthorityAfterLaunchActions());
       unawaited(_refreshTray());
       _queueAndroidHomeWidgetRefresh(requestPinIfMissing: true);
@@ -353,6 +360,43 @@ class _HomeShellState extends ConsumerState<HomeShell> with RouteAware {
       const Duration(seconds: 1),
       (_) => unawaited(_advanceAutomaticPomodoroBoundary()),
     );
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _queueExternalExecutionRefresh();
+    }
+  }
+
+  void _queueExternalExecutionRefresh() {
+    if (!mounted) return;
+    _externalExecutionRefreshRequested = true;
+    if (_externalExecutionRefreshInFlight) return;
+    _externalExecutionRefreshInFlight = true;
+    unawaited(_drainExternalExecutionRefreshes());
+  }
+
+  Future<void> _drainExternalExecutionRefreshes() async {
+    try {
+      while (mounted && _externalExecutionRefreshRequested) {
+        _externalExecutionRefreshRequested = false;
+        ref.read(databaseProvider).notifyExternalExecutionMutation();
+
+        // The notification shade can return focus a fraction before Android's
+        // headless service commits. One bounded local recheck closes that
+        // lifecycle race without polling Supabase or increasing sync traffic.
+        await Future<void>.delayed(const Duration(milliseconds: 750));
+        if (mounted) {
+          ref.read(databaseProvider).notifyExternalExecutionMutation();
+        }
+      }
+    } finally {
+      _externalExecutionRefreshInFlight = false;
+      if (mounted && _externalExecutionRefreshRequested) {
+        _queueExternalExecutionRefresh();
+      }
+    }
   }
 
   Future<void> _restorePlatformAuthorityAfterLaunchActions() async {
@@ -454,6 +498,7 @@ class _HomeShellState extends ConsumerState<HomeShell> with RouteAware {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     appRouteObserver.unsubscribe(this);
     for (final subscription in _notificationResponses) {
       unawaited(subscription.cancel());
@@ -559,241 +604,13 @@ class _HomeShellState extends ConsumerState<HomeShell> with RouteAware {
     if (!mounted) return;
     final settings = ref.read(appSettingsProvider).value;
     final localeCode = settings?.localeCode ?? 'en';
-    final l10n = AppLocalizations(Locale(localeCode));
     final repository = ref.read(taskRepositoryProvider);
-    final runtime = await repository.getRuntime();
-    final task = runtime?.activeTaskId == null
-        ? null
-        : await repository.getTask(runtime!.activeTaskId!);
-    final now = DateTime.now().toUtc();
-
-    if (task == null || runtime == null) {
-      final suggestions = _selectAndroidWidgetSuggestions(
-        await repository.watchTasks().first,
-        now.toLocal(),
-      );
-      await service.update(
-        AndroidHomeWidgetState(
-          mode: AndroidHomeWidgetMode.idle,
-          localeCode: localeCode,
-          statusLabel: 'TaskMaster Pro',
-          title: l10n.text('widget_idle_title'),
-          message: suggestions.isEmpty
-              ? l10n.text('widget_no_suggestions')
-              : l10n.text('widget_idle_message'),
-          timerLabel: l10n.format('widget_tasks_ready', {
-            'count': suggestions.length,
-          }),
-          timerMode: AndroidHomeWidgetTimerMode.fixed,
-          actionLabel: l10n.text('widget_open_app'),
-          completionLabel: l10n.text('widget_idle_message'),
-          suggestions: [
-            for (final suggestion in suggestions)
-              AndroidHomeWidgetSuggestion(
-                id: suggestion.id,
-                title: suggestion.title,
-              ),
-          ],
-        ),
-        requestPinIfMissing: requestPinIfMissing,
-      );
-      return;
-    }
-
-    final recordedMs = liveTaskRecordedWorkMs(
-      recordedMs: runtime.accumulatedActiveMs,
-      running: runtime.state == 'running',
-      segmentStartedAt: runtime.segmentStartedAt,
-      now: now,
+    final state = await AndroidHomeWidgetProjection.build(
+      repository: repository,
+      ownerId: widget.user.id,
+      localeCode: localeCode,
     );
-    final pomodoro = task.executionMode == 'pomodoro'
-        ? PomodoroExecutionSnapshot.fromTask(
-            task: task,
-            runtime: runtime,
-            now: now,
-          )
-        : null;
-    final widgetMode = switch (runtime.state) {
-      'break' => AndroidHomeWidgetMode.breakTime,
-      'paused' => AndroidHomeWidgetMode.paused,
-      _ => AndroidHomeWidgetMode.running,
-    };
-    final controls = switch (runtime.state) {
-      'break' => [
-        AndroidHomeWidgetControl(
-          id: 'start_focus',
-          label: l10n.text('widget_action_focus'),
-        ),
-        AndroidHomeWidgetControl(
-          id: 'extend_break',
-          label: l10n.text('widget_action_extend'),
-        ),
-        AndroidHomeWidgetControl(
-          id: 'review_break',
-          label: l10n.text('widget_action_review'),
-        ),
-      ],
-      'paused' => [
-        AndroidHomeWidgetControl(
-          id: 'resume',
-          label: l10n.text('widget_action_continue'),
-        ),
-        AndroidHomeWidgetControl(
-          id: 'finish_task',
-          label: l10n.text('widget_action_finish'),
-        ),
-      ],
-      _ => [
-        AndroidHomeWidgetControl(
-          id: 'pause',
-          label: l10n.text('widget_action_pause'),
-        ),
-        AndroidHomeWidgetControl(
-          id: 'start_break',
-          label: l10n.text('widget_action_break'),
-        ),
-        AndroidHomeWidgetControl(
-          id: 'finish_task',
-          label: l10n.text('widget_action_finish'),
-        ),
-      ],
-    };
-    var timerMode = AndroidHomeWidgetTimerMode.fixed;
-    DateTime? timerBoundary;
-    late String timerLabel;
-    late String statusLabel;
-    late String message;
-    late String completionLabel;
-    double progress;
-
-    if (pomodoro != null) {
-      final waiting = pomodoro.isWaiting || pomodoro.remainingMs <= 0;
-      final intervalMs = pomodoro.intervalDurationMs.clamp(1, 1 << 53);
-      progress = ((intervalMs - pomodoro.remainingMs) / intervalMs).clamp(
-        0.0,
-        1.0,
-      );
-      timerLabel = formatPomodoroCountdown(pomodoro.remainingMs);
-      completionLabel = l10n.text(
-        pomodoro.isBreak ? 'widget_break_complete' : 'widget_focus_complete',
-      );
-      if (!waiting && runtime.state != 'paused') {
-        timerMode = AndroidHomeWidgetTimerMode.countdown;
-        timerBoundary = now.add(Duration(milliseconds: pomodoro.remainingMs));
-      }
-      statusLabel = l10n.text(
-        pomodoro.isBreak
-            ? 'pomodoro_break_session'
-            : runtime.state == 'paused'
-            ? 'status_paused'
-            : 'pomodoro_focus_session',
-      );
-      message = waiting
-          ? completionLabel
-          : runtime.state == 'paused'
-          ? l10n.text('widget_paused_message')
-          : pomodoro.isBreak
-          ? l10n.text('widget_break_message')
-          : l10n.text('widget_focus_message');
-    } else {
-      final plannedMs = task.estimatedDurationMs.clamp(0, 1 << 53);
-      final remainingMs = taskEffortRemainingMs(
-        plannedMs: plannedMs,
-        recordedMs: recordedMs,
-      );
-      final overtimeMs = taskEffortOvertimeMs(
-        plannedMs: plannedMs,
-        recordedMs: recordedMs,
-      );
-      progress = plannedMs <= 0 ? 0 : (recordedMs / plannedMs).clamp(0.0, 1.0);
-      completionLabel = l10n.text('status_overdue');
-      if (runtime.state == 'running' && remainingMs > 0) {
-        timerMode = AndroidHomeWidgetTimerMode.countdown;
-        timerBoundary = now.add(Duration(milliseconds: remainingMs));
-        timerLabel = formatTaskEffortCountdown(remainingMs);
-      } else if (runtime.state == 'running' && overtimeMs > 0) {
-        timerMode = AndroidHomeWidgetTimerMode.countup;
-        timerBoundary = now.subtract(Duration(milliseconds: overtimeMs));
-        timerLabel = formatTaskEffortOvertime(overtimeMs);
-      } else {
-        timerLabel = overtimeMs > 0
-            ? formatTaskEffortOvertime(overtimeMs)
-            : formatTaskEffortCountdown(remainingMs);
-      }
-      statusLabel = overtimeMs > 0
-          ? l10n.text('status_overdue')
-          : runtime.state == 'paused'
-          ? l10n.text('status_paused')
-          : l10n.text('currently_running');
-      message = runtime.state == 'paused'
-          ? l10n.text('widget_paused_message')
-          : l10n.text('widget_focus_message');
-    }
-
-    await service.update(
-      AndroidHomeWidgetState(
-        mode: widgetMode,
-        localeCode: localeCode,
-        statusLabel: statusLabel,
-        title: task.title,
-        message: message,
-        timerLabel: timerLabel,
-        timerMode: timerMode,
-        timerBoundary: timerBoundary,
-        progress: progress,
-        actionLabel: l10n.text('widget_open_task'),
-        completionLabel: completionLabel,
-        taskId: task.id,
-        sessionId: runtime.sessionId,
-        runtimeRevision: runtime.revision,
-        controls: runtime.sessionId == null ? const [] : controls,
-      ),
-      requestPinIfMissing: requestPinIfMissing,
-    );
-  }
-
-  List<LocalTask> _selectAndroidWidgetSuggestions(
-    List<LocalTask> tasks,
-    DateTime now,
-  ) {
-    final eligible = tasks
-        .where(
-          (task) => !const {
-            'completed',
-            'cancelled',
-            'archived',
-            'skipped',
-          }.contains(task.status),
-        )
-        .toList();
-    DateTime? schedule(LocalTask task) =>
-        task.plannedStart?.toLocal() ??
-        task.scheduledDate?.toLocal() ??
-        task.dueAt?.toLocal();
-    int bucket(LocalTask task) {
-      final value = schedule(task);
-      if (value == null) return 3;
-      final day = DateTime(value.year, value.month, value.day);
-      final today = DateTime(now.year, now.month, now.day);
-      if (day.isBefore(today)) return 0;
-      if (day == today) return 1;
-      return 2;
-    }
-
-    eligible.sort((left, right) {
-      final byBucket = bucket(left).compareTo(bucket(right));
-      if (byBucket != 0) return byBucket;
-      final byPriority = right.priority.compareTo(left.priority);
-      if (byPriority != 0) return byPriority;
-      final leftSchedule = schedule(left);
-      final rightSchedule = schedule(right);
-      if (leftSchedule != null && rightSchedule != null) {
-        final bySchedule = leftSchedule.compareTo(rightSchedule);
-        if (bySchedule != 0) return bySchedule;
-      }
-      return right.updatedAt.compareTo(left.updatedAt);
-    });
-    return eligible.take(3).toList(growable: false);
+    await service.update(state, requestPinIfMissing: requestPinIfMissing);
   }
 
   Future<void> _handleAndroidHomeWidgetAction(
@@ -868,6 +685,7 @@ class _HomeShellState extends ConsumerState<HomeShell> with RouteAware {
     AndroidHomeWidgetAction action,
   ) =>
       runtime != null &&
+      action.ownerId == widget.user.id &&
       runtime.activeTaskId == action.taskId &&
       runtime.sessionId == action.sessionId &&
       runtime.revision == action.runtimeRevision &&
@@ -1040,6 +858,9 @@ class _HomeShellState extends ConsumerState<HomeShell> with RouteAware {
       _lastObservedExecutionTaskId = null;
       _cancelExecutionAlarmRetry();
       _executionAlarmRetryState.reset();
+      await localNotificationService.cancelOrphanedExecutionNotifications(
+        activeTaskId: null,
+      );
       // Completing a task clears activeTaskId. Keep the prior slot long enough
       // to cancel/supersede it, otherwise its old alarm survives completion.
       final taskIdsToCancel = <String>{?previousTaskId, ?taskId};
@@ -1051,7 +872,13 @@ class _HomeShellState extends ConsumerState<HomeShell> with RouteAware {
 
     final task = await ref.read(taskRepositoryProvider).getTask(taskId);
     if (task == null) return;
-    _lastObservedExecutionTaskId = taskId;
+    if (!await _executionRuntimeIsCurrent(runtime)) {
+      _queueExecutionAlarmSynchronization(runtime);
+      return;
+    }
+    await localNotificationService.cancelOrphanedExecutionNotifications(
+      activeTaskId: taskId,
+    );
     final settings = ref.read(appSettingsProvider).value;
     final now = DateTime.now().toUtc();
     late final int remainingMs;
@@ -1169,6 +996,11 @@ class _HomeShellState extends ConsumerState<HomeShell> with RouteAware {
         runtime.state != 'paused' &&
         categoryEnabled &&
         executionNotificationsAuthorized;
+    if (!await _executionRuntimeIsCurrent(runtime)) {
+      _queueExecutionAlarmSynchronization(runtime);
+      return;
+    }
+    _lastObservedExecutionTaskId = taskId;
     ExecutionAlarmScheduleResult? scheduleResult;
     var transientScheduleFailure = false;
     if (shouldScheduleBoundary) {
@@ -1259,6 +1091,15 @@ class _HomeShellState extends ConsumerState<HomeShell> with RouteAware {
         // Status-card delivery has no authority over exact alarm retry state.
       }
     }
+    if (!await _executionRuntimeIsCurrent(runtime)) {
+      _queueExecutionAlarmSynchronization(runtime);
+    }
+  }
+
+  Future<bool> _executionRuntimeIsCurrent(LocalRuntime expected) async {
+    if (!mounted) return false;
+    final current = await ref.read(taskRepositoryProvider).getRuntime();
+    return sameWidgetRuntimeProjection(expected, current);
   }
 
   void _cancelExecutionAlarmRetry() {
@@ -1293,12 +1134,18 @@ class _HomeShellState extends ConsumerState<HomeShell> with RouteAware {
   }
 
   Future<void> _queueExecutionAlarmSynchronization(
-    LocalRuntime? runtime, {
+    LocalRuntime? _, {
     String? retryIdentity,
   }) {
     final previous = _executionAlarmQueue;
     _executionAlarmQueue = previous
         .then((_) async {
+          if (!mounted) return;
+          // Runtime emissions are serialized, but notification permission and
+          // platform scheduling calls can be slow. Read the canonical runtime
+          // when this queue item actually runs instead of replaying the stale
+          // snapshot captured before a task hand-off.
+          final runtime = await ref.read(taskRepositoryProvider).getRuntime();
           if (!mounted) return;
           await _synchronizeExecutionAlarm(
             runtime,
@@ -2242,6 +2089,8 @@ class _HomeShellState extends ConsumerState<HomeShell> with RouteAware {
       }
     });
     final l10n = context.l10n;
+    final showHealthDestination =
+        Theme.of(context).platform == TargetPlatform.android;
     final destinations = [
       (Icons.dashboard_outlined, Icons.dashboard, l10n.text('dashboard')),
       (Icons.task_alt_outlined, Icons.task_alt, l10n.text('tasks')),
@@ -2252,6 +2101,12 @@ class _HomeShellState extends ConsumerState<HomeShell> with RouteAware {
       ),
       (Icons.route_outlined, Icons.route, l10n.text('roadmaps')),
       (Icons.insights_outlined, Icons.insights, l10n.text('activity')),
+      if (showHealthDestination)
+        (
+          Icons.favorite_border_rounded,
+          Icons.favorite_rounded,
+          l10n.text('health'),
+        ),
       (Icons.settings_outlined, Icons.settings, l10n.text('settings')),
     ];
     final pages = [
@@ -2288,6 +2143,7 @@ class _HomeShellState extends ConsumerState<HomeShell> with RouteAware {
         initialFilter: _activityFilter,
         onBack: () => unawaited(_handleBackRequested()),
       ),
+      if (showHealthDestination) const HealthConnectScreen(),
       SettingsScreen(user: widget.user),
     ];
 
@@ -2313,8 +2169,8 @@ class _HomeShellState extends ConsumerState<HomeShell> with RouteAware {
                   )
                 : NavigationBar(
                     // Wider phones and small tablets retain labels, but
-                    // keeping non-selected labels hidden prevents the six
-                    // localized destination names from colliding.
+                    // keeping non-selected labels hidden prevents localized
+                    // destination names from colliding.
                     labelBehavior:
                         NavigationDestinationLabelBehavior.onlyShowSelected,
                     selectedIndex: _selectedIndex,
@@ -2477,7 +2333,7 @@ class _HomeShellState extends ConsumerState<HomeShell> with RouteAware {
   }
 }
 
-class CompactBottomNavigationBar extends StatelessWidget {
+class CompactBottomNavigationBar extends StatefulWidget {
   const CompactBottomNavigationBar({
     required this.selectedIndex,
     required this.destinations,
@@ -2490,6 +2346,59 @@ class CompactBottomNavigationBar extends StatelessWidget {
   final ValueChanged<int> onDestinationSelected;
 
   @override
+  State<CompactBottomNavigationBar> createState() =>
+      _CompactBottomNavigationBarState();
+}
+
+class _CompactBottomNavigationBarState
+    extends State<CompactBottomNavigationBar> {
+  late List<GlobalKey> _destinationKeys;
+
+  @override
+  void initState() {
+    super.initState();
+    _destinationKeys = List.generate(
+      widget.destinations.length,
+      (_) => GlobalKey(),
+    );
+    _revealSelection();
+  }
+
+  @override
+  void didUpdateWidget(covariant CompactBottomNavigationBar oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.destinations.length != widget.destinations.length) {
+      _destinationKeys = List.generate(
+        widget.destinations.length,
+        (_) => GlobalKey(),
+      );
+    }
+    if (oldWidget.selectedIndex != widget.selectedIndex ||
+        oldWidget.destinations.length != widget.destinations.length) {
+      _revealSelection();
+    }
+  }
+
+  void _revealSelection() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted ||
+          widget.selectedIndex < 0 ||
+          widget.selectedIndex >= _destinationKeys.length) {
+        return;
+      }
+      final selectedContext =
+          _destinationKeys[widget.selectedIndex].currentContext;
+      if (selectedContext == null) return;
+      Scrollable.ensureVisible(
+        selectedContext,
+        alignment: 0.5,
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
+      );
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return Material(
@@ -2500,17 +2409,24 @@ class CompactBottomNavigationBar extends StatelessWidget {
         minimum: const EdgeInsets.symmetric(vertical: 8),
         child: SizedBox(
           height: 56,
-          child: Row(
-            children: [
-              for (var index = 0; index < destinations.length; index++)
-                Expanded(
-                  child: _CompactNavigationDestination(
-                    destination: destinations[index],
-                    selected: selectedIndex == index,
-                    onPressed: () => onDestinationSelected(index),
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            physics: const BouncingScrollPhysics(),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                for (var index = 0; index < widget.destinations.length; index++)
+                  SizedBox(
+                    key: _destinationKeys[index],
+                    width: 72,
+                    child: _CompactNavigationDestination(
+                      destination: widget.destinations[index],
+                      selected: widget.selectedIndex == index,
+                      onPressed: () => widget.onDestinationSelected(index),
+                    ),
                   ),
-                ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

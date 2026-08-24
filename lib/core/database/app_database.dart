@@ -479,6 +479,26 @@ class AppDatabase extends _$AppDatabase {
   @override
   int get schemaVersion => 19;
 
+  /// Re-runs execution queries after another Flutter engine writes this
+  /// account database.
+  ///
+  /// Android widget and notification controls execute in a dedicated
+  /// headless engine so they never have to open the app. Both engines share
+  /// the same SQLite file, but Drift change notifications are connection
+  /// local. Without this explicit invalidation, an already-running foreground
+  /// engine can keep rendering its pre-action runtime even though a fresh
+  /// query (and the launcher widget) sees the new canonical state.
+  void notifyExternalExecutionMutation() {
+    notifyUpdates({
+      TableUpdate.onTable(localRuntimeStates),
+      TableUpdate.onTable(localTasks),
+      TableUpdate.onTable(localEntityRecords),
+      TableUpdate.onTable(localActivityReviews),
+      TableUpdate.onTable(localOutboxCommands),
+      TableUpdate.onTable(localSyncStates),
+    });
+  }
+
   /// Repairs a narrow v0.0.28 canonical-duration corruption.
   ///
   /// The local completion path saved the correct capped Pomodoro duration in

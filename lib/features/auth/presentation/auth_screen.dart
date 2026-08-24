@@ -9,6 +9,24 @@ import '../data/google_oauth_launcher.dart';
 
 enum _AuthMode { signIn, createAccount }
 
+@visibleForTesting
+String authFailureMessageKey({
+  required bool signingIn,
+  required String? statusCode,
+  required String? code,
+}) {
+  if (statusCode == '429') return 'auth_link_recently_sent';
+  if (signingIn) return 'auth_signin_rejected';
+  return switch (code) {
+    'email_address_invalid' ||
+    'email_address_not_authorized' => 'auth_signup_email_invalid',
+    'weak_password' => 'auth_signup_password_weak',
+    'user_already_exists' || 'email_exists' => 'auth_signup_account_exists',
+    'signup_disabled' => 'auth_signup_unavailable',
+    _ => 'auth_signup_failed',
+  };
+}
+
 class AuthScreen extends StatefulWidget {
   const AuthScreen({required this.themeKey, super.key});
 
@@ -65,13 +83,13 @@ class _AuthScreenState extends State<AuthScreen> {
   }
 
   String _friendlyAuthMessage(AuthException error) {
-    if (error.statusCode == '429') {
-      return context.l10n.text('auth_link_recently_sent');
-    }
-    if (_mode == _AuthMode.signIn) {
-      return context.l10n.text('auth_signin_rejected');
-    }
-    return context.l10n.text('auth_signup_failed');
+    return context.l10n.text(
+      authFailureMessageKey(
+        signingIn: _mode == _AuthMode.signIn,
+        statusCode: error.statusCode,
+        code: error.code,
+      ),
+    );
   }
 
   Future<void> _submit() async {

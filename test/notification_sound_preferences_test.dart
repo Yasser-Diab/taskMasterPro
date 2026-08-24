@@ -535,29 +535,40 @@ void main() {
     },
   );
 
-  test('quiet execution status cannot replace the audible boundary alarm', () {
-    final boundary = LocalNotificationService.executionNotificationId('task-1');
-    final status = LocalNotificationService.executionStatusNotificationId(
-      'task-1',
-    );
-    final shellSource = File(
-      'lib/features/shell/presentation/home_shell.dart',
-    ).readAsStringSync();
-    final notificationSource = File(
-      'lib/core/notifications/notification_sounds.dart',
-    ).readAsStringSync();
-    final statusBody = notificationSource.substring(
-      notificationSource.indexOf('Future<void> showExecutionStatus'),
-      notificationSource.indexOf(
-        'Importance _notificationImportance',
+  test(
+    'quiet execution status keeps the exact boundary identity actionable',
+    () {
+      final boundary = LocalNotificationService.executionNotificationId(
+        'task-1',
+      );
+      final status = LocalNotificationService.executionStatusNotificationId(
+        'task-1',
+      );
+      final shellSource = File(
+        'lib/features/shell/presentation/home_shell.dart',
+      ).readAsStringSync();
+      final notificationSource = File(
+        'lib/core/notifications/notification_sounds.dart',
+      ).readAsStringSync();
+      final statusBody = notificationSource.substring(
         notificationSource.indexOf('Future<void> showExecutionStatus'),
-      ),
-    );
+        notificationSource.indexOf(
+          'Importance _notificationImportance',
+          notificationSource.indexOf('Future<void> showExecutionStatus'),
+        ),
+      );
 
-    expect(status, isNot(boundary));
-    expect(shellSource, contains('executionStatusNotificationId(task.id)'));
-    expect(statusBody, isNot(contains('_setExecutionLedgerState')));
-  });
+      expect(status, isNot(boundary));
+      expect(shellSource, contains('executionStatusNotificationId(task.id)'));
+      expect(statusBody, contains('_setExecutionLedgerState'));
+      expect(statusBody, contains('notificationId: notificationIdentity'));
+      expect(statusBody, contains('runtimeRevision: runtimeRevision'));
+      expect(
+        statusBody.indexOf('await _plugin.show('),
+        lessThan(statusBody.indexOf('await _setExecutionLedgerState(')),
+      );
+    },
+  );
 
   test(
     'notification kinds use deterministic non-overlapping ID namespaces',
@@ -789,43 +800,40 @@ void main() {
     expect(retirement, contains('_queueExecutionAlarmSynchronization('));
   });
 
-  test(
-    'Android execution commands launch canonical UI and never dismiss early',
-    () {
-      const mutations = <String>{
-        'pause',
-        'resume',
-        'start_break',
-        'start_focus',
-        'continue_working',
-        'extend_break',
-        'finish_task',
-      };
+  test('Android execution commands run headlessly and never dismiss early', () {
+    const mutations = <String>{
+      'pause',
+      'resume',
+      'start_break',
+      'start_focus',
+      'continue_working',
+      'extend_break',
+      'finish_task',
+    };
 
-      for (final action in mutations) {
-        final delivery = executionNotificationActionDelivery(action);
-        expect(
-          delivery.showsUserInterface,
-          isTrue,
-          reason: '$action must reach HomeShell canonical command handling',
-        );
-        expect(
-          delivery.cancelNotification,
-          isFalse,
-          reason: '$action must keep its card until the command is accepted',
-        );
-      }
+    for (final action in mutations) {
+      final delivery = executionNotificationActionDelivery(action);
+      expect(
+        delivery.showsUserInterface,
+        isFalse,
+        reason: '$action must reach the headless canonical command service',
+      );
+      expect(
+        delivery.cancelNotification,
+        isFalse,
+        reason: '$action must keep its card until the command is accepted',
+      );
+    }
 
-      final dismiss = executionNotificationActionDelivery('dismiss');
-      expect(dismiss.showsUserInterface, isFalse);
-      expect(dismiss.cancelNotification, isTrue);
-    },
-  );
+    final dismiss = executionNotificationActionDelivery('dismiss');
+    expect(dismiss.showsUserInterface, isFalse);
+    expect(dismiss.cancelNotification, isTrue);
+  });
 
-  test('Android reminder mutations also remain until local acceptance', () {
+  test('Android reminder mutations run headlessly until local acceptance', () {
     for (final action in const ['start', 'complete', 'snooze']) {
       final delivery = reminderNotificationActionDelivery(action);
-      expect(delivery.showsUserInterface, isTrue);
+      expect(delivery.showsUserInterface, isFalse);
       expect(delivery.cancelNotification, isFalse);
     }
     final dismiss = reminderNotificationActionDelivery('dismiss');
@@ -914,6 +922,41 @@ void main() {
 
     expect(obsolete, {1, 2, 3, 4});
     expect(isExecutionNotificationTag('execution:id:focus_completed'), isTrue);
+    expect(
+      isExecutionNotificationTagForTask(
+        'execution:task-1:task_reminders',
+        'task-1',
+      ),
+      isTrue,
+    );
+    expect(
+      isExecutionNotificationTagForTask(
+        'execution:task-2:task_reminders',
+        'task-1',
+      ),
+      isFalse,
+    );
+    expect(
+      isOrphanedExecutionNotificationTag(
+        'execution:task-1:task_reminders',
+        activeTaskId: 'task-1',
+      ),
+      isFalse,
+    );
+    expect(
+      isOrphanedExecutionNotificationTag(
+        'execution:task-2:focus_completed',
+        activeTaskId: 'task-1',
+      ),
+      isTrue,
+    );
+    expect(
+      isOrphanedExecutionNotificationTag(
+        'execution:task-1:short_break_completed',
+        activeTaskId: null,
+      ),
+      isTrue,
+    );
     expect(isExecutionNotificationTag('reminder:id:task_reminders'), isFalse);
     expect(isExecutionNotificationTag('wellbeing:sleep'), isFalse);
   });
