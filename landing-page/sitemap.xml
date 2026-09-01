@@ -1,27 +1,27 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
-    <loc>https://dayvector.com/</loc>
+    <loc>https://yasser-diab.github.io/DayVector_landing/</loc>
     <changefreq>weekly</changefreq>
     <priority>1.0</priority>
   </url>
   <url>
-    <loc>https://dayvector.com/pomodoro/</loc>
+    <loc>https://yasser-diab.github.io/DayVector_landing/pomodoro/</loc>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://dayvector.com/privacy-policy/</loc>
+    <loc>https://yasser-diab.github.io/DayVector_landing/privacy-policy/</loc>
     <changefreq>yearly</changefreq>
     <priority>0.4</priority>
   </url>
   <url>
-    <loc>https://dayvector.com/terms/</loc>
+    <loc>https://yasser-diab.github.io/DayVector_landing/terms/</loc>
     <changefreq>yearly</changefreq>
     <priority>0.4</priority>
   </url>
   <url>
-    <loc>https://dayvector.com/installation-help/</loc>
+    <loc>https://yasser-diab.github.io/DayVector_landing/installation-help/</loc>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
   </url>

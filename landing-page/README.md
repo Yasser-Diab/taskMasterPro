@@ -1,5 +1,7 @@
 # DayVector landing page
 
+Live site: `https://yasser-diab.github.io/DayVector_landing/`
+
 This is a dependency-free static website. Upload the contents of this directory
 to any static host.
 
