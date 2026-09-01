@@ -249,6 +249,13 @@ class _TodayHealthCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     final steps = overview.value('steps');
+    final todayWorkouts = overview.value('exercise_sessions');
+    final workoutValue =
+        todayWorkouts ??
+        (overview.weeklyWorkoutCount > 0 ? overview.weeklyWorkoutCount : null);
+    final workoutText = workoutValue == null
+        ? '—'
+        : '${formatSyncedHealthNumber('exercise_sessions', workoutValue, locale: locale)}${todayWorkouts == null ? ' ${context.l10n.text('health_this_week')}' : ''}';
     return Card(
       clipBehavior: Clip.antiAlias,
       color: colors.primaryContainer.withValues(alpha: 0.62),
@@ -324,11 +331,7 @@ class _TodayHealthCard extends StatelessWidget {
                       _CompactMetricRow(
                         icon: Icons.fitness_center_rounded,
                         label: context.l10n.text('health_workouts'),
-                        value: formatSyncedHealthNumber(
-                          'exercise_sessions',
-                          overview.value('exercise_sessions'),
-                          locale: locale,
-                        ),
+                        value: workoutText,
                       ),
                     ],
                   ),

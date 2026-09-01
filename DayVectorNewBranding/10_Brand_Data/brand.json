@@ -1,0 +1,14 @@
+{
+  "brand": "DayVector",
+  "approved_source": "00_Approved_Reference/DayVector_Approved_Exact_Source.png",
+  "artwork_policy": "Primary geometry/colors are cropped/resized from the approved source; no redesign.",
+  "colors": {
+    "Night Ink": "#101828",
+    "Vector Indigo": "#4F46E5",
+    "Momentum Mint": "#20C6A4",
+    "Signal Amber": "#F5B942",
+    "Cloud": "#F7F9FC"
+  },
+  "public_spelling": "DayVector",
+  "legacy_name": "TaskMaster Pro"
+}

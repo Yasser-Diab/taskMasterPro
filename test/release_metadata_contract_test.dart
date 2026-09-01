@@ -6,25 +6,25 @@ String _read(String relativePath) =>
     File('${Directory.current.path}/$relativePath').readAsStringSync();
 
 void main() {
-  test('release-facing version metadata is aligned to v0.0.28', () {
-    expect(_read('pubspec.yaml'), contains('version: 0.0.28+54'));
-    expect(_read('package.json'), contains('"version": "0.0.28"'));
-    expect(_read('package-lock.json'), contains('"version": "0.0.28"'));
+  test('release-facing version metadata is aligned to v0.0.29', () {
+    expect(_read('pubspec.yaml'), contains('version: 0.0.29+56'));
+    expect(_read('package.json'), contains('"version": "0.0.29"'));
+    expect(_read('package-lock.json'), contains('"version": "0.0.29"'));
     expect(
       _read('installer/taskmaster-pro.iss'),
-      contains('#define MyAppVersion "0.0.28"'),
+      contains('#define MyAppVersion "0.0.29"'),
     );
     expect(
       _read('lib/core/platform/windows_shell_service.dart'),
-      contains("'version': '0.0.28'"),
+      contains("'version': '0.0.29'"),
     );
     expect(
       _read('windows/runner/flutter_window.h'),
-      contains('What\'s new in v0.0.28'),
+      contains('What\'s new in v0.0.29'),
     );
     expect(
       _read('lib/features/settings/presentation/settings_screen.dart'),
-      contains("String _version = '0.0.28';"),
+      contains("String _version = '0.0.29';"),
     );
   });
 
@@ -38,6 +38,8 @@ void main() {
     expect(script, contains('& \$npm ci'));
     expect(script, contains('& \$flutter build windows --release'));
     expect(script, contains('& \$flutter build apk --release'));
+    expect(script, contains('& \$flutter build appbundle --release'));
+    expect(script, contains('Android App Bundle signature verification'));
     expect(script, contains(r'$displayVersion = "$version+$buildNumber"'));
     expect(script, contains(r'ProductVersion'));
     expect(script, contains('Windows build version mismatch'));
@@ -54,6 +56,13 @@ void main() {
     expect(script, contains('displayVersion = \$displayVersion'));
     expect(installer, contains('#define MyAppDisplayVersion MyAppVersion'));
     expect(installer, contains('AppVersion={#MyAppDisplayVersion}'));
+    expect(installer, contains('UsePreviousAppDir=no'));
+    expect(
+      installer,
+      contains("ExpandConstant('{localappdata}\\Programs\\TaskMaster Pro')"),
+    );
+    expect(installer, contains('FileExists(LegacyUninstaller)'));
+    expect(installer, contains('DelTree(LegacyDir, True, True, True)'));
     expect(script, isNot(contains('& npm ci')));
     expect(script, isNot(contains('Get-Command iscc.exe')));
     expect(script, contains('Refusing to generate a replacement key'));

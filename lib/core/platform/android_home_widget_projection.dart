@@ -42,20 +42,21 @@ abstract final class AndroidHomeWidgetProjection {
         : await repository.getTask(runtime!.activeTaskId!);
 
     if (task == null || runtime == null) {
+      final eligibleTasks = _eligibleTasks(await repository.watchTasks().first);
       final suggestions = _selectSuggestions(
-        await repository.watchTasks().first,
+        eligibleTasks,
         effectiveNow.toLocal(),
       );
       return AndroidHomeWidgetState(
         mode: AndroidHomeWidgetMode.idle,
         localeCode: localeCode,
-        statusLabel: 'TaskMaster Pro',
+        statusLabel: 'DayVector',
         title: l10n.text('widget_idle_title'),
         message: suggestions.isEmpty
             ? l10n.text('widget_no_suggestions')
             : l10n.text('widget_idle_message'),
         timerLabel: l10n.format('widget_tasks_ready', {
-          'count': suggestions.length,
+          'count': eligibleTasks.length,
         }),
         timerMode: AndroidHomeWidgetTimerMode.fixed,
         actionLabel: l10n.text('widget_open_app'),
@@ -233,16 +234,7 @@ abstract final class AndroidHomeWidgetProjection {
     List<LocalTask> tasks,
     DateTime now,
   ) {
-    final eligible = tasks
-        .where(
-          (task) => !const {
-            'completed',
-            'cancelled',
-            'archived',
-            'skipped',
-          }.contains(task.status),
-        )
-        .toList();
+    final eligible = tasks.toList();
     DateTime? schedule(LocalTask task) =>
         task.plannedStart?.toLocal() ??
         task.scheduledDate?.toLocal() ??
@@ -272,6 +264,17 @@ abstract final class AndroidHomeWidgetProjection {
     });
     return eligible.take(3).toList(growable: false);
   }
+
+  static List<LocalTask> _eligibleTasks(List<LocalTask> tasks) => tasks
+      .where(
+        (task) => !const {
+          'completed',
+          'cancelled',
+          'archived',
+          'skipped',
+        }.contains(task.status),
+      )
+      .toList(growable: false);
 }
 
 /// A widget projection is owned by one exact persisted runtime snapshot. The

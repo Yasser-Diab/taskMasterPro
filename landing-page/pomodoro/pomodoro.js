@@ -2,8 +2,8 @@
   const app = document.querySelector('[data-pomodoro-app]')
   if (!app) return
 
-  const STORAGE_KEY = 'taskmaster-pro:pomodoro:v1'
-  const DEFAULT_TITLE = 'Free Pomodoro Timer from TaskMaster Pro'
+  const STORAGE_KEY = 'dayvector:pomodoro:v1'
+  const DEFAULT_TITLE = 'Free Pomodoro Timer from DayVector'
   const PHASES = {
     focus: { label: 'Focus', setting: 'focusMinutes' },
     shortBreak: { label: 'Short break', setting: 'shortBreakMinutes' },
@@ -222,7 +222,7 @@
     })
     updateSettingsSummary()
     document.title = state.isRunning
-      ? `${display} ${PHASES[state.phase].label}, TaskMaster Pro`
+      ? `${display} ${PHASES[state.phase].label}, DayVector`
       : DEFAULT_TITLE
   }
 

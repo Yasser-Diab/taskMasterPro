@@ -30,7 +30,7 @@ function Assert-ProjectPath {
         $prefix,
         [System.StringComparison]::OrdinalIgnoreCase
     )) {
-        throw "Refusing to modify a path outside the TaskMaster Pro workspace"
+        throw "Refusing to modify a path outside the DayVector workspace"
     }
 }
 
@@ -106,6 +106,9 @@ $npm = Resolve-StagedTool -Label 'npm' -Candidates @(
 $keytool = Resolve-StagedTool -Label 'Java keytool' -Candidates @(
     (Join-Path $toolRoot 'jdk-21\bin\keytool.exe')
 )
+$jarsigner = Resolve-StagedTool -Label 'Java jarsigner' -Candidates @(
+    (Join-Path $toolRoot 'jdk-21\bin\jarsigner.exe')
+)
 $innoCompiler = Resolve-StagedTool -Label 'Inno Setup compiler' -Candidates @(
     (Join-Path $toolRoot 'inno-setup\iscc.exe')
 )
@@ -133,10 +136,10 @@ $env:JAVA_HOME = $javaHome
 $env:ANDROID_HOME = $androidSdkRoot
 $env:ANDROID_SDK_ROOT = $androidSdkRoot
 $env:PUB_CACHE = Join-Path $toolRoot 'pub-cache'
-# Keep TaskMaster Pro's release cache isolated from other staged Android
+# Keep DayVector's release cache isolated from other staged Android
 # projects. A killed build must not corrupt a shared Gradle lock protocol and
 # make a later production package fail before compilation starts.
-$env:GRADLE_USER_HOME = Join-Path $toolRoot 'gradle-home-taskmasterpro'
+$env:GRADLE_USER_HOME = Join-Path $toolRoot 'gradle-home-dayvector'
 
 # Flutter keeps SDK preferences per Flutter installation.  Pin them here as
 # well as in the process environment so a former drive letter cannot override
@@ -210,10 +213,22 @@ try {
         if ($LASTEXITCODE -ne 0) {
             throw 'dart format check failed'
         }
-        & $flutter analyze
+        # Third-party Windows plugin overrides intentionally include their
+        # upstream example apps, which are not release dependencies. Analyze
+        # DayVector's application, tests, and build tools directly.
+        & $flutter analyze lib test tool
         if ($LASTEXITCODE -ne 0) { throw 'flutter analyze failed' }
         & $flutter test
         if ($LASTEXITCODE -ne 0) { throw 'flutter test failed' }
+    }
+
+    # CMake caches the executable target in generated install scripts. A
+    # product rename must regenerate that directory or plugin install rules can
+    # keep pointing at the previous target even though source metadata is new.
+    $windowsGeneratedBuild = Join-Path $projectRoot 'build\windows'
+    Assert-ProjectPath -Path $windowsGeneratedBuild
+    if (Test-Path -LiteralPath $windowsGeneratedBuild) {
+        Remove-Item -LiteralPath $windowsGeneratedBuild -Recurse -Force
     }
 
     & $flutter build windows --release
@@ -221,7 +236,7 @@ try {
 
     $windowsBuild = Join-Path (
         Join-Path $projectRoot 'build\windows\x64\runner\Release'
-    ) 'taskmaster_pro.exe'
+    ) 'dayvector.exe'
     Assert-ReleaseArtifact -Path $windowsBuild -Label 'Windows build'
     $builtProductVersion = (
         Get-Item -LiteralPath $windowsBuild
@@ -289,6 +304,8 @@ try {
 
     & $flutter build apk --release
     if ($LASTEXITCODE -ne 0) { throw 'Android release build failed' }
+    & $flutter build appbundle --release
+    if ($LASTEXITCODE -ne 0) { throw 'Android App Bundle build failed' }
 }
 finally {
     Pop-Location
@@ -326,19 +343,32 @@ if (-not $installerPackaged) {
     throw 'Windows installer packaging failed'
 }
 
-$windowsName = "TaskMasterPro-$version-Windows-Setup.exe"
+$windowsName = "DayVector-$version-Windows-Setup.exe"
 $windowsOutput = Join-Path $candidateReleaseDirectory $windowsName
-$androidName = "TaskMasterPro-$version-Android.apk"
+$androidName = "DayVector-$version-Android.apk"
 $androidOutput = Join-Path $candidateReleaseDirectory $androidName
+$androidBundleName = "DayVector-$version-Android.aab"
+$androidBundleOutput = Join-Path (
+    $candidateReleaseDirectory
+) $androidBundleName
 Copy-Item -LiteralPath (
     Join-Path $projectRoot 'build\app\outputs\flutter-apk\app-release.apk'
 ) -Destination $androidOutput
+Copy-Item -LiteralPath (
+    Join-Path $projectRoot 'build\app\outputs\bundle\release\app-release.aab'
+) -Destination $androidBundleOutput
 
 Assert-ReleaseArtifact -Path $windowsOutput -Label 'Windows installer'
 Assert-ReleaseArtifact -Path $androidOutput -Label 'Android APK'
+Assert-ReleaseArtifact -Path $androidBundleOutput -Label 'Android App Bundle'
+
+& $jarsigner -verify $androidBundleOutput
+if ($LASTEXITCODE -ne 0) {
+    throw 'Android App Bundle signature verification failed'
+}
 
 $installers = Get-ChildItem -LiteralPath $candidateReleaseDirectory -File |
-    Where-Object { $_.Extension -in @('.exe', '.apk') }
+    Where-Object { $_.Extension -in @('.exe', '.apk', '.aab') }
 foreach ($installer in $installers) {
     $hash = Get-Sha256Hash -Path $installer.FullName
     "$hash  $($installer.Name)" | Set-Content -LiteralPath (
@@ -347,7 +377,7 @@ foreach ($installer in $installers) {
 }
 
 $manifest = [ordered]@{
-    product = 'TaskMaster Pro'
+    product = 'DayVector'
     version = $version
     buildNumber = [int]$buildNumber
     displayVersion = $displayVersion
@@ -402,9 +432,12 @@ Assert-ReleaseArtifact -Path (
 Assert-ReleaseArtifact -Path (
     Join-Path $releaseDirectory $androidName
 ) -Label 'Published Android APK'
+Assert-ReleaseArtifact -Path (
+    Join-Path $releaseDirectory $androidBundleName
+) -Label 'Published Android App Bundle'
 
 if (Test-Path -LiteralPath $stagingDirectory) {
     Remove-Item -LiteralPath $stagingDirectory -Recurse -Force
 }
 
-Write-Host "TaskMaster Pro $version release created in $releaseDirectory"
+Write-Host "DayVector $version release created in $releaseDirectory"

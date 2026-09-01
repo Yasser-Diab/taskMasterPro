@@ -1,5 +1,7 @@
 import 'package:intl/intl.dart';
 
+import 'health_source_discovery.dart';
+
 class SyncedHealthEntry {
   const SyncedHealthEntry({
     required this.summaryDate,
@@ -22,6 +24,7 @@ class SyncedHealthOverview {
     required this.updatedAt,
     required this.metrics,
     required this.weeklySteps,
+    required this.weeklyWorkoutCount,
     required this.source,
   });
 
@@ -29,6 +32,7 @@ class SyncedHealthOverview {
   final DateTime updatedAt;
   final Map<String, SyncedHealthEntry> metrics;
   final List<SyncedHealthEntry> weeklySteps;
+  final int weeklyWorkoutCount;
   final String source;
 
   static SyncedHealthOverview? fromEntries(
@@ -69,19 +73,38 @@ class SyncedHealthOverview {
             .map((entry) => entry.value)
             .toList(growable: false)
           ..sort((a, b) => a.summaryDate.compareTo(b.summaryDate));
+    final workoutsByDate = <DateTime, SyncedHealthEntry>{};
+    for (final entry in all.where(
+      (entry) => entry.type == 'exercise_sessions',
+    )) {
+      final day = _dateOnly(entry.summaryDate);
+      final existing = workoutsByDate[day];
+      if (existing == null || entry.updatedAt.isAfter(existing.updatedAt)) {
+        workoutsByDate[day] = entry;
+      }
+    }
+    final weeklyWorkoutCount = workoutsByDate.entries
+        .where(
+          (entry) =>
+              !entry.key.isBefore(firstVisibleDay) &&
+              !entry.key.isAfter(newestDate),
+        )
+        .fold<int>(0, (sum, entry) => sum + entry.value.value.round());
 
     final updatedAt = currentMetrics.values
         .map((entry) => entry.updatedAt)
         .reduce((a, b) => a.isAfter(b) ? a : b);
-    final source = currentMetrics.values
+    final rawSource = currentMetrics.values
         .map((entry) => entry.source.trim())
         .firstWhere((value) => value.isNotEmpty, orElse: () => '');
+    final source = healthSourceSummaryLabel(rawSource);
 
     return SyncedHealthOverview(
       date: newestDate,
       updatedAt: updatedAt,
       metrics: Map.unmodifiable(currentMetrics),
       weeklySteps: List.unmodifiable(weeklySteps),
+      weeklyWorkoutCount: weeklyWorkoutCount,
       source: source,
     );
   }

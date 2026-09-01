@@ -57,6 +57,7 @@ class _TaskEditorDialogState extends ConsumerState<TaskEditorDialog> {
   late final TextEditingController _title;
   late final TextEditingController _note;
   late final _DurationParts _duration;
+  late final _DurationParts _plannedRest;
   late final _DurationParts _minimumDuration;
   late final _DurationParts _maximumDuration;
   late final _DurationParts _preparationDuration;
@@ -94,9 +95,14 @@ class _TaskEditorDialogState extends ConsumerState<TaskEditorDialog> {
   bool get _editing => widget.task != null;
   TaskScheduleWindow? get _scheduleWindow =>
       TaskSchedulePolicy.resolve(_plannedStart, _plannedEnd);
-  Duration get _effectiveEstimatedDuration =>
-      _scheduleWindow?.duration ??
-      Duration(milliseconds: _duration.milliseconds);
+  Duration get _plannedRestDuration =>
+      Duration(milliseconds: _plannedRest.milliseconds);
+  Duration get _effectiveEstimatedDuration => _scheduleWindow == null
+      ? Duration(milliseconds: _duration.milliseconds)
+      : TaskSchedulePolicy.workDurationWithin(
+          occupiedDuration: _scheduleWindow!.duration,
+          plannedRest: _plannedRestDuration,
+        );
 
   DateTime? get _minimumPlannedEnd => _plannedStart == null
       ? null
@@ -107,9 +113,28 @@ class _TaskEditorDialogState extends ConsumerState<TaskEditorDialog> {
     if (start == null) return null;
     final estimate = Duration(milliseconds: _duration.milliseconds);
     final minimum = TaskSchedulePolicy.minimumPlannedEnd(start);
-    final suggested = start.add(estimate);
+    final suggested = start.add(
+      TaskSchedulePolicy.occupiedDurationFor(
+        workDuration: estimate,
+        plannedRest: _plannedRestDuration,
+      ),
+    );
     return suggested.isBefore(minimum) ? minimum : suggested;
   }
+
+  bool get _plannedRestFitsWindow {
+    if (_plannedRest.milliseconds > 0x7fffffff) return false;
+    final window = _scheduleWindow;
+    return window == null ||
+        TaskSchedulePolicy.plannedRestFits(
+          occupiedDuration: window.duration,
+          plannedRest: _plannedRestDuration,
+        );
+  }
+
+  String? _plannedRestValidationMessage() => _plannedRestFitsWindow
+      ? null
+      : context.l10n.text('task_planned_rest_too_long');
 
   void _onPlannedStartChanged(DateTime? value) {
     setState(() {
@@ -197,6 +222,9 @@ class _TaskEditorDialogState extends ConsumerState<TaskEditorDialog> {
     _note = TextEditingController(text: task?.description ?? '');
     _duration = _DurationParts.fromMilliseconds(
       task?.estimatedDurationMs ?? 1800000,
+    );
+    _plannedRest = _DurationParts.fromMilliseconds(
+      TaskSchedulePolicy.plannedRestDuration(config).inMilliseconds,
     );
     _minimumDuration = _DurationParts.fromMilliseconds(
       (config['minimum_useful_duration_ms'] as num?)?.toInt() ?? 0,
@@ -302,6 +330,7 @@ class _TaskEditorDialogState extends ConsumerState<TaskEditorDialog> {
     _title.dispose();
     _note.dispose();
     _duration.dispose();
+    _plannedRest.dispose();
     _minimumDuration.dispose();
     _maximumDuration.dispose();
     _preparationDuration.dispose();
@@ -328,11 +357,20 @@ class _TaskEditorDialogState extends ConsumerState<TaskEditorDialog> {
       );
       return;
     }
+    if (!_plannedRestFitsWindow) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(context.l10n.text('task_planned_rest_too_long')),
+        ),
+      );
+      return;
+    }
     setState(() => _busy = true);
     try {
       await _resourceLoad;
       final scheduleWindow = _scheduleWindow;
       final configuration = <String, Object?>{
+        plannedTaskRestDurationMsKey: _plannedRest.milliseconds,
         'minimum_useful_duration_ms': _minimumDuration.milliseconds,
         'maximum_intended_duration_ms': _maximumDuration.milliseconds,
         'preparation_duration_ms': _preparationDuration.milliseconds,
@@ -363,9 +401,9 @@ class _TaskEditorDialogState extends ConsumerState<TaskEditorDialog> {
         plannedStart: _plannedStart,
         plannedEnd: _plannedEnd,
         dueAt: _dueAt,
-        estimatedDuration:
-            scheduleWindow?.duration ??
-            Duration(milliseconds: _duration.milliseconds),
+        estimatedDuration: scheduleWindow == null
+            ? Duration(milliseconds: _duration.milliseconds)
+            : _effectiveEstimatedDuration,
         roadmapId: _roadmapId,
         roadmapPhaseId: _roadmapPhaseId,
         configuration: configuration,
@@ -992,27 +1030,49 @@ class _TaskEditorDialogState extends ConsumerState<TaskEditorDialog> {
                   parts: _duration,
                   label: context.l10n.text('task_estimated_duration'),
                 )
-              : _CalculatedDurationField(window: scheduleWindow),
+              : _CalculatedDurationField(
+                  window: scheduleWindow,
+                  workDuration: _effectiveEstimatedDuration,
+                  plannedRest: _plannedRestDuration,
+                ),
           _DurationField(
-            parts: _minimumDuration,
-            label: context.l10n.text('task_minimum_useful'),
+            parts: _plannedRest,
+            label: context.l10n.text('task_planned_rest'),
             optional: true,
-            semanticValidator: _minimumDurationValidationMessage,
+            helperText: context.l10n.text('task_planned_rest_help'),
+            semanticValidator: _plannedRestValidationMessage,
           ),
         ),
         const SizedBox(height: 12),
         _durationRow(
           context,
           _DurationField(
+            parts: _minimumDuration,
+            label: context.l10n.text('task_minimum_useful'),
+            optional: true,
+            semanticValidator: _minimumDurationValidationMessage,
+          ),
+          _DurationField(
             parts: _maximumDuration,
             label: context.l10n.text('task_maximum_intended'),
             optional: true,
             semanticValidator: _maximumDurationValidationMessage,
           ),
-          _DurationField(
-            parts: _preparationDuration,
-            label: context.l10n.text('task_preparation'),
-            optional: true,
+        ),
+        const SizedBox(height: 12),
+        LayoutBuilder(
+          builder: (context, constraints) => Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: SizedBox(
+              width: constraints.maxWidth < 560
+                  ? constraints.maxWidth
+                  : (constraints.maxWidth - 10) / 2,
+              child: _DurationField(
+                parts: _preparationDuration,
+                label: context.l10n.text('task_preparation'),
+                optional: true,
+              ),
+            ),
           ),
         ),
         const SizedBox(height: 14),
@@ -1746,9 +1806,15 @@ class _DurationParts {
 }
 
 class _CalculatedDurationField extends StatelessWidget {
-  const _CalculatedDurationField({required this.window});
+  const _CalculatedDurationField({
+    required this.window,
+    required this.workDuration,
+    required this.plannedRest,
+  });
 
   final TaskScheduleWindow window;
+  final Duration workDuration;
+  final Duration plannedRest;
 
   @override
   Widget build(BuildContext context) {
@@ -1756,12 +1822,17 @@ class _CalculatedDurationField extends StatelessWidget {
       decoration: InputDecoration(
         labelText: context.l10n.text('task_estimated_duration'),
         prefixIcon: const Icon(Icons.calculate_outlined),
-        helperText: window.crossesMidnight
+        helperText: plannedRest > Duration.zero
+            ? context.l10n.format('task_calculated_duration_with_rest', {
+                'window': context.l10n.duration(window.duration),
+                'rest': context.l10n.duration(plannedRest),
+              })
+            : window.crossesMidnight
             ? context.l10n.text('task_crosses_midnight')
             : context.l10n.text('task_calculated_duration_help'),
       ),
       child: Text(
-        context.l10n.duration(window.duration),
+        context.l10n.duration(workDuration),
         style: Theme.of(
           context,
         ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
@@ -1775,12 +1846,14 @@ class _DurationField extends StatelessWidget {
     required this.parts,
     required this.label,
     this.optional = false,
+    this.helperText,
     this.semanticValidator,
   });
 
   final _DurationParts parts;
   final String label;
   final bool optional;
+  final String? helperText;
   final String? Function()? semanticValidator;
 
   @override
@@ -1839,6 +1912,15 @@ class _DurationField extends StatelessWidget {
             ),
           ],
         ),
+        if (helperText != null) ...[
+          const SizedBox(height: 6),
+          Text(
+            helperText!,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
       ],
     );
   }

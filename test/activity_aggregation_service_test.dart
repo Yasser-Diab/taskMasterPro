@@ -101,7 +101,7 @@ void main() {
     },
   );
 
-  test('TaskMaster legacy display-name periods are hidden entirely', () async {
+  test('DayVector display-name periods are hidden entirely', () async {
     final start = DateTime.utc(2026, 8, 15, 9);
     final segment = LocalActivitySegment(
       id: 'legacy-taskmaster',
@@ -111,7 +111,7 @@ void main() {
       startedAt: start,
       endedAt: start.add(const Duration(minutes: 5)),
       sourceType: 'windows_foreground',
-      processName: 'TaskMaster Pro',
+      processName: 'DayVector',
       rawMetadataJson: '{}',
       revision: 1,
       createdAt: start,

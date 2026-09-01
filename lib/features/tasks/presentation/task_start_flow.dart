@@ -94,7 +94,7 @@ Future<bool> startTaskWithConfirmation(
       return false;
     }
     if (!context.mounted) return false;
-    _afterTaskStarted(
+    await _afterTaskStarted(
       context,
       ref,
       selectedTask,
@@ -151,7 +151,7 @@ Future<bool> startTaskWithConfirmation(
     return false;
   }
   if (!context.mounted) return false;
-  _afterTaskStarted(
+  await _afterTaskStarted(
     context,
     ref,
     selectedTask,
@@ -172,15 +172,19 @@ bool taskRuntimeOwnsStartedTask(LocalRuntime? runtime, String taskId) {
       runtime?.state == 'running';
 }
 
-void _afterTaskStarted(
+Future<void> _afterTaskStarted(
   BuildContext context,
   WidgetRef ref,
   LocalTask task, {
   required FutureOr<void> Function(String url)? onOpenInAppResource,
   required bool launchPreferredResource,
-}) {
-  unawaited(ref.read(syncServiceProvider).drainOutbox());
-  if (!launchPreferredResource) return;
+}) async {
+  // Start is the account-wide ownership boundary. Wait for the durable
+  // publish attempt before returning success so a receiving device never
+  // depends on a later Pause/Resume action to discover the running task.
+  // Offline failures remain in the outbox and its one-shot retry worker.
+  await publishStartedTask(ref.read(syncServiceProvider).drainOutbox);
+  if (!launchPreferredResource || !context.mounted) return;
   final resources = ref.read(taskResourceServiceProvider);
   // Resource discovery and navigation are follow-up work. Keeping them off the
   // awaited Start path means a full-screen browser route, Android intent
@@ -194,6 +198,12 @@ void _afterTaskStarted(
     ),
   );
 }
+
+/// Keeps the Start flow tied to the completion of its durable publish pass.
+/// Exposed for a regression test because accidentally changing this back to
+/// fire-and-forget recreates the cross-device stale-start defect.
+@visibleForTesting
+Future<void> publishStartedTask(Future<void> Function() publish) => publish();
 
 Future<void> _launchPreferredResource({
   required BuildContext context,

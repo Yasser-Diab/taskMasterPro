@@ -14,6 +14,7 @@ import 'package:timezone/timezone.dart' as tz;
 import '../../../core/database/app_database.dart';
 import '../../../core/localization/app_localizations.dart';
 import '../../activity/domain/activity_reporting_policy.dart';
+import '../../health/data/health_source_discovery.dart';
 import '../../tasks/data/installed_application_service.dart';
 import '../../../core/time/time_zone_service.dart';
 import '../../tasks/domain/daily_planned_time.dart';
@@ -2129,20 +2130,25 @@ class PerformanceReportService {
   }
 
   static List<String> _healthSources(Map<String, Object?> data) {
-    final sources = <String>{};
+    final rawSources = <String>[];
     final applications = data['source_applications'];
     if (applications is Iterable) {
       for (final source in applications) {
         final value = source?.toString().trim() ?? '';
-        if (value.isNotEmpty) sources.add(value);
+        if (value.isNotEmpty) rawSources.add(value);
       }
     }
     final fallback = data['source']?.toString() ?? '';
-    for (final source in fallback.split(',')) {
-      final value = source.trim();
-      if (value.isNotEmpty) sources.add(value);
+    if (fallback.trim().isNotEmpty) rawSources.add(fallback);
+    final labels = <String>[];
+    final seen = <String>{};
+    for (final raw in rawSources) {
+      for (final candidate in raw.split(RegExp(r'[,;]'))) {
+        final label = healthApplicationDisplayName(candidate);
+        if (label != null && seen.add(label)) labels.add(label);
+      }
     }
-    return sources.toList(growable: false);
+    return List.unmodifiable(labels);
   }
 
   static DateTime _startOfDay(DateTime value) =>
@@ -2427,7 +2433,7 @@ class PerformanceReportService {
     );
     final font = pw.Font.ttf(fontData);
     final logoData = await rootBundle.load(
-      'media/app-logo/TaskMaster_Pro_Light_Transparent.png',
+      'media/app-logo/DayVector_Horizontal_840.png',
     );
     final logo = pw.MemoryImage(logoData.buffer.asUint8List());
     pw.MemoryImage? avatar;
@@ -2442,7 +2448,7 @@ class PerformanceReportService {
     final document = pw.Document(
       theme: pw.ThemeData.withFont(base: font, bold: font),
       title: l10n.text(options.type.titleLocalizationKey),
-      author: snapshot.profile?.displayName ?? 'TaskMaster Pro',
+      author: snapshot.profile?.displayName ?? 'DayVector',
     );
     final format = options.landscape
         ? PdfPageFormat.a4.landscape
@@ -2866,7 +2872,7 @@ class PerformanceReportService {
           ),
         pw.SizedBox(width: 8),
         pw.Text(
-          snapshot.profile?.displayName ?? 'TaskMaster Pro',
+          snapshot.profile?.displayName ?? 'DayVector',
           style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
         ),
       ],

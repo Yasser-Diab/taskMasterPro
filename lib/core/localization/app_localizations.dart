@@ -22,9 +22,7 @@ class AppLocalizations {
     final value = optionalText(key);
     if (value != null) return value;
     assert(() {
-      debugPrint(
-        'Missing TaskMaster Pro translation: ${locale.languageCode}.$key',
-      );
+      debugPrint('Missing DayVector translation: ${locale.languageCode}.$key');
       return true;
     }());
     if (kDebugMode) return '⟦$key⟧';
@@ -122,13 +120,15 @@ class AppLocalizations {
 
   static const _translations = <String, Map<String, String>>{
     'en': {
-      'app_name': 'TaskMaster Pro',
+      'app_name': 'DayVector',
       'dashboard': 'Dashboard',
       'tasks': 'Tasks',
       'calendar': 'Calendar',
       'roadmaps': 'Roadmaps',
       'activity': 'Activity',
       'settings': 'Settings',
+      'collapse_navigation': 'Collapse navigation (Ctrl+B)',
+      'expand_navigation': 'Expand navigation (Ctrl+B)',
       'today': 'Today',
       'quick_add': 'Quick add',
       'active_task': 'Active task',
@@ -216,13 +216,15 @@ class AppLocalizations {
       ..._v26En,
     },
     'ar': {
-      'app_name': 'TaskMaster Pro',
+      'app_name': 'DayVector',
       'dashboard': 'لوحة التحكم',
       'tasks': 'المهام',
       'calendar': 'التقويم',
       'roadmaps': 'خرائط الطريق',
       'activity': 'النشاط',
       'settings': 'الإعدادات',
+      'collapse_navigation': 'طي شريط التنقل (Ctrl+B)',
+      'expand_navigation': 'توسيع شريط التنقل (Ctrl+B)',
       'today': 'اليوم',
       'quick_add': 'إضافة سريعة',
       'active_task': 'المهمة النشطة',
@@ -310,13 +312,15 @@ class AppLocalizations {
       ..._v26Ar,
     },
     'de': {
-      'app_name': 'TaskMaster Pro',
+      'app_name': 'DayVector',
       'dashboard': 'Übersicht',
       'tasks': 'Aufgaben',
       'calendar': 'Kalender',
       'roadmaps': 'Roadmaps',
       'activity': 'Aktivität',
       'settings': 'Einstellungen',
+      'collapse_navigation': 'Navigation einklappen (Strg+B)',
+      'expand_navigation': 'Navigation ausklappen (Strg+B)',
       'today': 'Heute',
       'quick_add': 'Schnell hinzufügen',
       'active_task': 'Aktive Aufgabe',
@@ -529,7 +533,7 @@ class AppLocalizations {
         'Your progress is safe. Continue when you are ready.',
     'widget_idle_title': 'What will you move forward?',
     'widget_idle_message': 'Choose a suggested task and build momentum.',
-    'widget_no_suggestions': 'Plan one useful next step in TaskMaster Pro.',
+    'widget_no_suggestions': 'Plan one useful next step in DayVector.',
     'widget_open_task': 'Open task',
     'widget_open_app': 'Open app',
     'widget_tasks_ready': '{count} tasks ready',
@@ -773,7 +777,7 @@ class AppLocalizations {
     'activity_allocated_total': 'Allocated: {percentage}%',
     'activity_apply_allocation': 'Apply allocation',
     'activity_learned_from_usage': 'Learned from your usage',
-    'activity_suggested_by_taskmaster': 'Suggested by TaskMaster Pro',
+    'activity_suggested_by_taskmaster': 'Suggested by DayVector',
     'activity_useful_reading': 'Useful reading',
     'break_activity_title': 'What did you do during your break?',
     'break_activity_prompt':
@@ -840,7 +844,7 @@ class AppLocalizations {
     'privacy_and_vault': 'Privacy and Password Vault',
     'activity_stays_on_device': 'Your detailed Activity stays on this device',
     'activity_stays_on_device_description':
-        'TaskMaster Pro synchronizes only activity you connect to tasks or activity classified through rules you approve.',
+        'DayVector synchronizes only activity you connect to tasks or activity classified through rules you approve.',
     'synchronize_confirmed_contributions':
         'Synchronize confirmed contributions',
     'synchronize_confirmed_contributions_description':
@@ -866,7 +870,7 @@ class AppLocalizations {
     'show_possible_system_activity': 'Show possible system activity',
     'community_system_learning': 'Help identify system apps',
     'community_system_learning_description':
-        'Optional. After you classify an app, share an anonymous yes-or-no vote so TaskMaster Pro can suggest likely system apps to others. Your account, tasks, titles, websites, paths, and activity history are never shared.',
+        'Optional. After you classify an app, share an anonymous yes-or-no vote so DayVector can suggest likely system apps to others. Your account, tasks, titles, websites, paths, and activity history are never shared.',
     'community_system_learning_consent':
         'Only a protected app identifier and your anonymous yes-or-no choice will be shared. The choice cannot identify your account or connect your votes across apps. Suggestions never override your own decision.',
     'share_anonymous_votes': 'Allow anonymous votes',
@@ -916,7 +920,7 @@ class AppLocalizations {
     'sync_offline_compact': 'Offline',
     'sync_waiting_changes': 'Changes are waiting to sync',
     'notification_sound_description':
-        'The system default uses the notification sound selected on your Android device. Custom TaskMaster Pro sounds are also available offline.',
+        'The system default uses the notification sound selected on your Android device. Custom DayVector sounds are also available offline.',
     'choose_android_sound': 'Choose Android system sound',
     'preview_sound': 'Preview selected sound',
     'send_test_notification': 'Send a test notification',
@@ -960,7 +964,7 @@ class AppLocalizations {
     'vault_automatic_lock_minutes': 'After {minutes} minutes',
     'vault_lock_on_background': 'Lock when the app enters the background',
     'vault_use_device_auth': 'Use device authentication',
-    'vault_device_auth_reason': 'Unlock your TaskMaster Pro Password Vault',
+    'vault_device_auth_reason': 'Unlock your DayVector Password Vault',
     'vault_change_password': 'Change vault password',
     'vault_current_password': 'Current vault password',
     'vault_new_password': 'New vault password',
@@ -974,7 +978,7 @@ class AppLocalizations {
     'vault_autofill_detail':
         'Require vault unlock before using a saved sign-in',
     'vault_select_autofill_account':
-        'Choose the saved account to fill on this website. TaskMaster Pro will not submit the form.',
+        'Choose the saved account to fill on this website. DayVector will not submit the form.',
     'vault_no_matching_account':
         'No saved account matches this website. Add one with this exact website address first.',
     'vault_fill_sign_in': 'Fill sign-in',
@@ -983,7 +987,7 @@ class AppLocalizations {
         'Removes the remembered device key without deleting saved accounts',
     'vault_recovery_options': 'Vault recovery options',
     'vault_recovery_body':
-        'Your vault password is the recovery method. Device unlock works only on this device. TaskMaster Pro cannot read or reset your protected saved accounts.',
+        'Your vault password is the recovery method. Device unlock works only on this device. DayVector cannot read or reset your protected saved accounts.',
     'vault_learn_title': 'How the Password Vault works',
     'vault_learn_body':
         'Your vault password unlocks saved accounts on your device. Protected vault data can synchronize, but readable usernames and passwords are never uploaded.',
@@ -1025,7 +1029,7 @@ class AppLocalizations {
     'sync_connected_account': 'Connected account',
     'signed_out': 'Signed out',
     'sync_registered_devices': 'Registered devices',
-    'taskmaster_device': 'TaskMaster Pro device',
+    'taskmaster_device': 'DayVector device',
     'version_label': 'Version {version}',
     'connected_devices': 'Connected devices',
     'profile_and_account': 'Profile and account',
@@ -1045,7 +1049,7 @@ class AppLocalizations {
     'sign_out_device': 'Sign out device',
     'sign_out_device_question': 'Sign out this device?',
     'sign_out_device_explanation':
-        'TaskMaster Pro will revoke its account access. Unsynchronized changes stored only on that device may not be available elsewhere.',
+        'DayVector will revoke its account access. Unsynchronized changes stored only on that device may not be available elsewhere.',
     'device_signed_out': 'The device has been signed out.',
     'show_technical_details': 'Open technical details',
     'hide_technical_details': 'Hide technical details',
@@ -1125,13 +1129,13 @@ class AppLocalizations {
     'notification_test_body': 'Notifications continue to work offline.',
     'notification_test_failed':
         'Could not send the test notification. Check notification permissions and the selected sound.',
-    'notification_channel_system': 'TaskMaster Pro — System default',
+    'notification_channel_system': 'DayVector — System default',
     'notification_channel_system_description':
         'Task reminders using the sound selected on this device',
-    'notification_channel_tasks': 'TaskMaster Pro — Task reminders',
+    'notification_channel_tasks': 'DayVector — Task reminders',
     'notification_channel_tasks_description':
         'Task reminders and execution events',
-    'notification_channel_activity': 'TaskMaster Pro — Activity review',
+    'notification_channel_activity': 'DayVector — Activity review',
     'notification_channel_activity_description':
         'Activity that needs your review',
     'reminder_before_start': 'Prepare now so you can begin on time',
@@ -1141,7 +1145,7 @@ class AppLocalizations {
     'reminder_due': 'This task is due',
     'reminder_overdue': 'This task is overdue and needs a decision',
     'reminder_missed': 'This task was not started as planned',
-    'reminder_open_task': 'Open TaskMaster Pro to review this task',
+    'reminder_open_task': 'Open DayVector to review this task',
     'activity_review_notification_title': 'Review this session’s activity',
     'sound_system': 'System default',
     'sound_silent': 'Silent',
@@ -1153,19 +1157,19 @@ class AppLocalizations {
     'sound_notification': 'Focused reminder',
     'sound_ui_tone': 'Calm signal',
     'exit': 'Exit',
-    'exit_app_question': 'Exit TaskMaster Pro?',
+    'exit_app_question': 'Exit DayVector?',
     'exit_active_timer_saved':
         'Your active timer will remain saved and will be restored when you open the app again.',
     'back_exit_hint': 'Swipe or press back again to exit',
     'update_close_notes': 'Close update notes',
-    'update_got_it': 'Got it — start using TaskMaster Pro',
-    'update_welcome': 'Welcome to TaskMaster Pro',
-    'update_installed': 'TaskMaster Pro has been updated',
+    'update_got_it': 'Got it — start using DayVector',
+    'update_welcome': 'Welcome to DayVector',
+    'update_installed': 'DayVector has been updated',
     'update_version': 'Version {version}',
     'update_notes_unavailable': 'Update notes are not available right now.',
     'update_view_full_notes': 'View full release notes',
     'update_copy_notes_link': 'Copy release-notes link',
-    'update_ready': 'TaskMaster Pro {version} is ready',
+    'update_ready': 'DayVector {version} is ready',
     'update_newer_available': 'A newer release is available for this device',
     'update_download_progress': 'Downloading {percent}%',
     'update_open_failed':
@@ -1198,7 +1202,7 @@ class AppLocalizations {
     'account_deletion_signin_warning':
         'Signing in does not cancel deletion. Cancel it explicitly before the recovery period ends.',
     'account_cancel_deletion': 'Cancel account deletion',
-    'account_delete_heading': 'Delete your TaskMaster Pro account',
+    'account_delete_heading': 'Delete your DayVector account',
     'account_delete_recovery_detail':
         'Deletion begins with a 30-day recovery period. You can cancel during that period after confirming your identity.',
     'account_schedule_deletion': 'Schedule account deletion',
@@ -1232,7 +1236,7 @@ class AppLocalizations {
     'health_sync_summaries_description':
         'Detailed raw health records remain on Android',
     'schedule_health_disclaimer':
-        'Sleep and phone-use insights support planning only. TaskMaster Pro does not diagnose sleep or health conditions, and you can correct imported interpretations.',
+        'Sleep and phone-use insights support planning only. DayVector does not diagnose sleep or health conditions, and you can correct imported interpretations.',
     'weekday_mon': 'Mon',
     'weekday_tue': 'Tue',
     'weekday_wed': 'Wed',
@@ -1242,7 +1246,7 @@ class AppLocalizations {
     'weekday_sun': 'Sun',
     'health_connect': 'Health Connect',
     'health_android_only':
-        'Health Connect is available in the Android version of TaskMaster Pro.',
+        'Health Connect is available in the Android version of DayVector.',
     'health_check_failed':
         'We couldn’t check Health Connect. Try again shortly.',
     'health_permission_failed':
@@ -1259,11 +1263,11 @@ class AppLocalizations {
         'Access is available, but no supported record was received in the last two days.',
     'health_connection_needs_attention': 'Connection needs attention',
     'health_connection_needs_attention_detail':
-        'TaskMaster Pro could not read the authorized health records. Review access and try again.',
+        'DayVector could not read the authorized health records. Review access and try again.',
     'health_connect_context': 'Connect health context',
     'health_read_only_active': 'Read-only access is active',
     'health_permission_explanation':
-        'TaskMaster Pro explains the permission before Android opens the system panel.',
+        'DayVector explains the permission before Android opens the system panel.',
     'health_permission_detail':
         'With your permission, the app can read steps, exercise, distance, heart rate, sleep, and active calories. Health data is used only for productivity context and is never a medical diagnosis.',
     'health_continue_permissions': 'Continue to Android permissions',
@@ -1284,11 +1288,12 @@ class AppLocalizations {
     'health_sleep': 'Sleep',
     'health_active_energy': 'Active energy',
     'health_workouts': 'Workouts',
+    'health_this_week': 'this week',
     'health_available_sources': 'Connected health sources',
     'health_no_records': 'No records were returned',
     'health_permissions_ready': 'Permission granted — waiting for data',
     'health_permissions_no_source':
-        'TaskMaster Pro can read Health Connect, but no health application has shared a supported record yet.',
+        'DayVector can read Health Connect, but no health application has shared a supported record yet.',
     'health_no_records_explanation':
         'No supported health records were found. In your health application, enable sharing with Health Connect and refresh again.',
     'health_no_recent_records_explanation':
@@ -1302,11 +1307,11 @@ class AppLocalizations {
     'health_delete_summaries': 'Delete imported health summaries',
     'health_and_rest': 'Health and rest',
     'health_stale':
-        'Health data hasn’t updated recently. Open TaskMaster Pro on your Android phone to refresh it.',
+        'Health data hasn’t updated recently. Open DayVector on your Android phone to refresh it.',
     'health_updated_from_android': 'Updated from your Android phone',
     'health_windows_privacy_detail':
         'These read-only summaries provide planning context. Detailed raw health records remain on Android unless you explicitly permit broader synchronization.',
-    'update_up_to_date': 'TaskMaster Pro {version} is up to date.',
+    'update_up_to_date': 'DayVector {version} is up to date.',
     'update_check_failed':
         'Updates could not be checked right now. Try again when online.',
     'account_export_success': 'Account data exported successfully.',
@@ -1315,7 +1320,7 @@ class AppLocalizations {
         'We couldn’t export your account data. Try again shortly.',
     'usage_access_title': 'Allow Android usage access?',
     'usage_access_description':
-        'Android can provide recent application usage and screen activity after you enable TaskMaster Pro in the system Usage Access page. It does not provide the same window-title detail available on Windows.',
+        'Android can provide recent application usage and screen activity after you enable DayVector in the system Usage Access page. It does not provide the same window-title detail available on Windows.',
     'usage_open_settings': 'Open Android settings',
     'schedule_wellbeing_description':
         'Wake and sleep times, working days, quiet hours, health permissions, and coaching sensitivity',
@@ -1326,9 +1331,9 @@ class AppLocalizations {
     'cycle_local_only': 'This device only',
     'cycle_encrypted_sync': 'Encrypted synchronization',
     'cycle_open_calendar': 'Open cycle calendar',
-    'app_version': 'TaskMaster Pro {version}',
+    'app_version': 'DayVector {version}',
     'app_update_security_detail':
-        'Check for a newer TaskMaster Pro release and review what changed before downloading.',
+        'Check for a newer DayVector release and review what changed before downloading.',
     'view_privacy_policy': 'View Privacy Policy',
     'view_terms_of_use': 'View Terms of Use',
     'gender': 'Gender',
@@ -1457,7 +1462,7 @@ class AppLocalizations {
     'auth_confirmation_title': 'One click and you are in',
     'auth_confirmation_sent_to': 'We sent a confirmation link to',
     'auth_confirmation_instructions':
-        'Open the message on this device and choose Confirm email address. TaskMaster Pro will reopen and finish sign-in automatically.',
+        'Open the message on this device and choose Confirm email address. DayVector will reopen and finish sign-in automatically.',
     'auth_resend_confirmation': 'Resend confirmation link',
     'auth_return_signin': 'Return to sign in',
     'language_english': 'English',
@@ -1684,6 +1689,8 @@ class AppLocalizations {
     'task_calculated_duration': 'Calculated duration',
     'task_calculated_duration_help':
         'Calculated automatically from planned start and end.',
+    'task_calculated_duration_with_rest':
+        '{window} is reserved from start to end, including {rest} of rest.',
     'task_crosses_midnight': 'This task ends after midnight.',
     'task_time_window_invalid':
         'Choose an end at least one minute after the start.',
@@ -1713,6 +1720,12 @@ class AppLocalizations {
     'task_planned_end_local': 'Planned end (local time)',
     'task_due_date_time': 'Due date and time',
     'task_estimated_duration': 'Estimated duration',
+    'task_planned_rest': 'Planned rest',
+    'task_planned_rest_summary': '{duration} rest',
+    'task_planned_rest_help':
+        'Optional time inside this task, such as a 30-minute lunch. It does not count as expected work.',
+    'task_planned_rest_too_long':
+        'Planned rest must be shorter than the task time window.',
     'task_another_running_title': 'Another task is already running',
     'task_another_running_detail':
         '{currentTask} is active. What would you like to do before starting {selectedTask}?',
@@ -1739,7 +1752,7 @@ class AppLocalizations {
     'task_preparation': 'Preparation',
     'task_local_scheduling': 'Local-time scheduling',
     'task_local_scheduling_detail':
-        'Choose times in your local time zone. TaskMaster Pro keeps the same moment accurate on every device.',
+        'Choose times in your local time zone. DayVector keeps the same moment accurate on every device.',
     'task_focus_length': 'Focus length',
     'task_short_break': 'Short break',
     'task_long_break': 'Long break',
@@ -1928,12 +1941,12 @@ class AppLocalizations {
     'waiting_to_upload': 'Waiting to upload',
     'unavailable_device': 'Unavailable on this device',
     'open_externally': 'Open externally',
-    'resource_open_in_app': 'Open in TaskMaster browser',
+    'resource_open_in_app': 'Open in DayVector browser',
     'resource_open_installed_app': 'Open in installed app',
     'resource_open_external_browser': 'Open in external browser',
     'resource_auto_open': 'Open the primary resource after Start',
     'resource_auto_open_detail':
-        'TaskMaster Pro starts the timer before opening the resource, so your work keeps counting in another app or browser.',
+        'DayVector starts the timer before opening the resource, so your work keeps counting in another app or browser.',
     'resource_launch_behavior': 'Default resource destination',
     'resource_launch_behavior_detail':
         'An installed app falls back safely to your browser when it cannot handle the URL.',
@@ -2013,9 +2026,9 @@ class AppLocalizations {
     'unknown_application': 'Unknown application',
     'unknown_connection': 'Unknown connection',
     'mode_pomodoro_detail':
-        'Francesco Cirillo created the Pomodoro Technique to make starting easier and protect attention. Choose one clear task, focus for about 25 minutes, then take a real break. Short pauses can refresh attention, and TaskMaster Pro keeps break time separate so your focus record stays honest.',
+        'Francesco Cirillo created the Pomodoro Technique to make starting easier and protect attention. Choose one clear task, focus for about 25 minutes, then take a real break. Short pauses can refresh attention, and DayVector keeps break time separate so your focus record stays honest.',
     'mode_continuous_detail':
-        'Choose this for work that needs one flexible timer instead of fixed cycles. Pause when you need to, then continue from the same place while TaskMaster Pro keeps your focused time clear.',
+        'Choose this for work that needs one flexible timer instead of fixed cycles. Pause when you need to, then continue from the same place while DayVector keeps your focused time clear.',
     'mode_checklist_detail':
         'Choose this when finishing the right steps matters more than watching a timer. Tick each required item as you go, and finish when the work is truly complete.',
     'mode_reading_detail':
@@ -2023,7 +2036,7 @@ class AppLocalizations {
     'mode_habit_detail':
         'Choose this for routines you want to repeat. Mark each attempt honestly, including skipped or missed days, and use the pattern to make the habit easier to keep.',
     'mode_event_detail':
-        'Choose this for appointments, classes, and scheduled events. TaskMaster Pro helps you remember when to arrive, what happened, and anything that needs follow-up.',
+        'Choose this for appointments, classes, and scheduled events. DayVector helps you remember when to arrive, what happened, and anything that needs follow-up.',
     'mode_hybrid_detail':
         'Choose this when a task needs more than one kind of progress. Combine a timer with steps, checkpoints, resources, and proof of completion in one place.',
     'mode_manual_detail':
@@ -2068,7 +2081,7 @@ class AppLocalizations {
         'This application is already connected to the task.',
     'application_links_title': 'Use {application} for task links?',
     'application_links_detail':
-        'TaskMaster Pro will try the selected application first when you open this task’s web resources. If it cannot open the exact page, you can still use the external browser.',
+        'DayVector will try the selected application first when you open this task’s web resources. If it cannot open the exact page, you can still use the external browser.',
     'application_links_keep_current': 'Keep current behavior',
     'application_links_use_app': 'Use installed application',
     'connect_website': 'Connect website',
@@ -2087,7 +2100,7 @@ class AppLocalizations {
     'local_date_time': 'Local date and time',
     'sound': 'Sound',
     'sound_system_default': 'Device default',
-    'sound_selected': 'Selected TaskMaster Pro sound',
+    'sound_selected': 'Selected DayVector sound',
     'silent': 'Silent',
     'schedule': 'Schedule',
     'no_time': 'No time',
@@ -2162,7 +2175,7 @@ class AppLocalizations {
     'report_task_unavailable': 'Task no longer available',
     'report_empty_title': 'No report data yet',
     'report_empty_body':
-        'TaskMaster Pro will show graphs after real task, Activity, roadmap, or approved health records exist in this period.',
+        'DayVector will show graphs after real task, Activity, roadmap, or approved health records exist in this period.',
     'report_completed_tasks': 'Completed tasks',
     'report_overdue_tasks': 'Overdue tasks',
     'report_roadmap_contribution': 'Roadmap contribution',
@@ -2204,7 +2217,7 @@ class AppLocalizations {
         'We couldn’t prepare this report. Your data has not been changed.',
     'status': 'Status',
     'status_missed': 'Missed',
-    'notification_channel_execution': 'TaskMaster Pro — Task execution',
+    'notification_channel_execution': 'DayVector — Task execution',
     'notification_channel_execution_description':
         'Focus, break and task-duration events',
     'notification_focus_completed_title': 'Focus session completed',
@@ -2227,7 +2240,7 @@ class AppLocalizations {
     'notification_action_extend_compact': '+5 min',
     'notification_action_review_compact': 'Review',
     'notification_action_finish_compact': 'Finish',
-    'notification_channel_wellbeing': 'TaskMaster Pro — Wellbeing',
+    'notification_channel_wellbeing': 'DayVector — Wellbeing',
     'notification_channel_wellbeing_description':
         'Sleep-schedule and wellbeing reminders',
     'sleep_reminder_title': 'It’s almost time to rest 🌙',
@@ -2236,10 +2249,10 @@ class AppLocalizations {
     'notification_view_schedule': 'View schedule',
     'break_in_progress': 'Break in progress',
     'break_extended_five': 'The break was extended by 5 minutes.',
-    'tray_still_running_title': 'TaskMaster Pro is still running',
+    'tray_still_running_title': 'DayVector is still running',
     'tray_still_running_body':
         'Timers and reminders will continue in the background. Use the tray icon to reopen or exit the app.',
-    'tray_open': 'Open TaskMaster Pro',
+    'tray_open': 'Open DayVector',
     'tray_no_task': 'No task is currently running',
     'tray_start_next': 'Start next task',
     'tray_pause_task': 'Pause task',
@@ -2249,7 +2262,7 @@ class AppLocalizations {
     'tray_whats_new_version': 'What’s new in v{version}',
     'tray_check_updates': 'Check for updates',
     'tray_update_available': 'Update available',
-    'tray_exit': 'Exit TaskMaster Pro',
+    'tray_exit': 'Exit DayVector',
     'tray_deletion_scheduled': 'Account deletion scheduled',
     'tray_tooltip_break': 'Break in progress',
     'tray_tooltip_paused': 'Task paused',
@@ -2400,9 +2413,9 @@ class AppLocalizations {
     'health_distance_estimate_provenance':
         'Estimated from daily steps and your {height} cm profile height.',
     'health_huawei_not_available':
-        'Huawei Health data is not available to TaskMaster Pro through an approved connection on this device.',
+        'Huawei Health data is not available to DayVector through an approved connection on this device.',
     'health_nothing_not_available':
-        'Nothing X data is not available to TaskMaster Pro on this device.',
+        'Nothing X data is not available to DayVector on this device.',
     'health_last_updated': 'Last updated',
     'health_sources': 'Health sources',
     'health_sources_detail':
@@ -2453,7 +2466,7 @@ class AppLocalizations {
     'health_wearables_capability_available': '{capability}: Available',
     'health_ble_discovery': 'Find a health watch',
     'health_ble_discovery_detail':
-        'Find nearby or paired watches. TaskMaster Pro shows only health features that the watch confirms it supports.',
+        'Find nearby or paired watches. DayVector shows only health features that the watch confirms it supports.',
     'health_ble_scan': 'Discover watches',
     'health_ble_settings': 'Bluetooth settings',
     'health_ble_disabled': 'Turn on Bluetooth to discover nearby watches.',
@@ -2481,7 +2494,7 @@ class AppLocalizations {
     'health_ble_capability_available': '{capability}: Available',
     'permission_setup_title': 'Set up Android access',
     'permission_setup_subtitle':
-        'Choose which TaskMaster Pro capabilities this phone may use. You can change every choice later.',
+        'Choose which DayVector capabilities this phone may use. You can change every choice later.',
     'permission_setup_privacy':
         'Nothing is granted automatically. Android asks only after you select the matching action.',
     'permission_setup_notifications_title': 'Notifications',
@@ -2501,7 +2514,7 @@ class AppLocalizations {
         'Allows Android to deliver scheduled task, focus, and break boundaries as accurately as the device permits.',
     'permission_setup_health_title': 'Health Connect',
     'permission_setup_health_detail':
-        'Optional and user-initiated. Choose the health records to share from the Health screen; TaskMaster Pro never requests them automatically.',
+        'Optional and user-initiated. Choose the health records to share from the Health screen; DayVector never requests them automatically.',
     'permission_setup_allowed': 'Allowed',
     'permission_setup_needs_permission': 'Permission needed',
     'permission_setup_needs_settings': 'Allow in Android settings',
@@ -2517,7 +2530,7 @@ class AppLocalizations {
     'permission_setup_revisit':
         'To review a denied choice later, open Settings → Notifications & sounds, Activity & privacy, or Health. Android special-access screens remain available from their matching controls.',
     'permission_setup_storage_error':
-        'TaskMaster Pro could not save this device’s permission review. Try again before continuing.',
+        'DayVector could not save this device’s permission review. Try again before continuing.',
   };
 
   static const _v26Ar = <String, String>{
@@ -2639,7 +2652,7 @@ class AppLocalizations {
     'widget_paused_message': 'تقدمك محفوظ. واصل عندما تكون مستعدًا.',
     'widget_idle_title': 'ما الذي ستدفعه إلى الأمام؟',
     'widget_idle_message': 'اختر مهمة مقترحة وابدأ ببناء الزخم.',
-    'widget_no_suggestions': 'خطط لخطوة تالية مفيدة في TaskMaster Pro.',
+    'widget_no_suggestions': 'خطط لخطوة تالية مفيدة في DayVector.',
     'widget_open_task': 'فتح المهمة',
     'widget_open_app': 'فتح التطبيق',
     'widget_tasks_ready': '{count} مهام جاهزة',
@@ -2870,7 +2883,7 @@ class AppLocalizations {
     'activity_allocated_total': 'الموزع: {percentage}٪',
     'activity_apply_allocation': 'تطبيق التوزيع',
     'activity_learned_from_usage': 'تعلّمه من استخدامك',
-    'activity_suggested_by_taskmaster': 'اقتراح من TaskMaster Pro',
+    'activity_suggested_by_taskmaster': 'اقتراح من DayVector',
     'activity_useful_reading': 'قراءة مفيدة',
     'break_activity_title': 'ماذا فعلت خلال الاستراحة؟',
     'break_activity_prompt':
@@ -2936,7 +2949,7 @@ class AppLocalizations {
     'privacy_and_vault': 'الخصوصية وخزنة كلمات المرور',
     'activity_stays_on_device': 'تبقى تفاصيل نشاطك على هذا الجهاز',
     'activity_stays_on_device_description':
-        'لا يزامن TaskMaster Pro إلا النشاط الذي تربطه بالمهام أو الذي يتم تصنيفه من خلال القواعد التي توافق عليها.',
+        'لا يزامن DayVector إلا النشاط الذي تربطه بالمهام أو الذي يتم تصنيفه من خلال القواعد التي توافق عليها.',
     'synchronize_confirmed_contributions': 'مزامنة المساهمات المؤكدة',
     'synchronize_confirmed_contributions_description':
         'شارك إجماليات المهام الصغيرة والمعتمدة مع أجهزتك الأخرى. تبقى التفاصيل على هذا الجهاز.',
@@ -2961,7 +2974,7 @@ class AppLocalizations {
     'show_possible_system_activity': 'إظهار نشاط النظام المحتمل',
     'community_system_learning': 'المساعدة في تمييز تطبيقات النظام',
     'community_system_learning_description':
-        'اختياري. بعد تصنيف تطبيق، شارك اختيارًا مجهولًا بنعم أو لا كي يتمكن TaskMaster Pro من اقتراح تطبيقات النظام المحتملة للآخرين. لن تتم مشاركة حسابك أو مهامك أو العناوين أو المواقع أو المسارات أو سجل نشاطك.',
+        'اختياري. بعد تصنيف تطبيق، شارك اختيارًا مجهولًا بنعم أو لا كي يتمكن DayVector من اقتراح تطبيقات النظام المحتملة للآخرين. لن تتم مشاركة حسابك أو مهامك أو العناوين أو المواقع أو المسارات أو سجل نشاطك.',
     'community_system_learning_consent':
         'ستتم مشاركة معرّف محمي للتطبيق واختيارك المجهول بنعم أو لا فقط. لا يمكن للاختيار تحديد حسابك أو ربط اختياراتك بين التطبيقات، ولن تتجاوز الاقتراحات قرارك الشخصي.',
     'share_anonymous_votes': 'السماح بالاختيارات المجهولة',
@@ -3011,7 +3024,7 @@ class AppLocalizations {
     'sync_offline_compact': 'غير متصل',
     'sync_waiting_changes': 'توجد تغييرات بانتظار المزامنة',
     'notification_sound_description':
-        'يستخدم الخيار الافتراضي نغمة الإشعارات المحددة على جهاز Android. وتتوفر أيضًا نغمات TaskMaster Pro المخصصة دون اتصال.',
+        'يستخدم الخيار الافتراضي نغمة الإشعارات المحددة على جهاز Android. وتتوفر أيضًا نغمات DayVector المخصصة دون اتصال.',
     'choose_android_sound': 'اختيار نغمة نظام Android',
     'preview_sound': 'معاينة النغمة المحددة',
     'send_test_notification': 'إرسال إشعار تجريبي',
@@ -3053,7 +3066,7 @@ class AppLocalizations {
     'vault_automatic_lock_minutes': 'بعد {minutes} دقائق',
     'vault_lock_on_background': 'القفل عند انتقال التطبيق إلى الخلفية',
     'vault_use_device_auth': 'استخدام مصادقة الجهاز',
-    'vault_device_auth_reason': 'افتح خزنة كلمات المرور في TaskMaster Pro',
+    'vault_device_auth_reason': 'افتح خزنة كلمات المرور في DayVector',
     'vault_change_password': 'تغيير كلمة مرور الخزنة',
     'vault_current_password': 'كلمة مرور الخزنة الحالية',
     'vault_new_password': 'كلمة مرور الخزنة الجديدة',
@@ -3067,7 +3080,7 @@ class AppLocalizations {
     'vault_autofill_detail':
         'يلزم فتح الخزنة قبل استخدام بيانات تسجيل دخول محفوظة',
     'vault_select_autofill_account':
-        'اختر الحساب المحفوظ لملء بيانات هذا الموقع. لن يرسل TaskMaster Pro النموذج.',
+        'اختر الحساب المحفوظ لملء بيانات هذا الموقع. لن يرسل DayVector النموذج.',
     'vault_no_matching_account':
         'لا يوجد حساب محفوظ يطابق هذا الموقع. أضف حسابًا بعنوان الموقع نفسه أولًا.',
     'vault_fill_sign_in': 'ملء بيانات الدخول',
@@ -3076,7 +3089,7 @@ class AppLocalizations {
         'يزيل مفتاح الجهاز المحفوظ دون حذف الحسابات المحفوظة',
     'vault_recovery_options': 'خيارات استرداد الخزنة',
     'vault_recovery_body':
-        'كلمة مرور الخزنة هي وسيلة الاسترداد. يعمل فتح القفل بالجهاز على هذا الجهاز فقط. لا يستطيع TaskMaster Pro قراءة حساباتك المحفوظة المحمية أو إعادة تعيينها.',
+        'كلمة مرور الخزنة هي وسيلة الاسترداد. يعمل فتح القفل بالجهاز على هذا الجهاز فقط. لا يستطيع DayVector قراءة حساباتك المحفوظة المحمية أو إعادة تعيينها.',
     'vault_learn_title': 'كيف تعمل خزنة كلمات المرور',
     'vault_learn_body':
         'تفتح كلمة مرور الخزنة الحسابات المحفوظة على جهازك. يمكن مزامنة البيانات المحمية، لكن لا يتم رفع أسماء المستخدمين أو كلمات المرور المقروءة.',
@@ -3118,7 +3131,7 @@ class AppLocalizations {
     'sync_connected_account': 'الحساب المتصل',
     'signed_out': 'تم تسجيل الخروج',
     'sync_registered_devices': 'الأجهزة المسجلة',
-    'taskmaster_device': 'جهاز TaskMaster Pro',
+    'taskmaster_device': 'جهاز DayVector',
     'version_label': 'الإصدار {version}',
     'connected_devices': 'الأجهزة المتصلة',
     'profile_and_account': 'الملف الشخصي والحساب',
@@ -3138,7 +3151,7 @@ class AppLocalizations {
     'sign_out_device': 'تسجيل خروج الجهاز',
     'sign_out_device_question': 'هل تريد تسجيل خروج هذا الجهاز؟',
     'sign_out_device_explanation':
-        'سيسحب TaskMaster Pro وصوله إلى الحساب. قد لا تتوفر التغييرات غير المتزامنة المخزنة على هذا الجهاز في مكان آخر.',
+        'سيسحب DayVector وصوله إلى الحساب. قد لا تتوفر التغييرات غير المتزامنة المخزنة على هذا الجهاز في مكان آخر.',
     'device_signed_out': 'تم تسجيل خروج الجهاز.',
     'show_technical_details': 'فتح التفاصيل التقنية',
     'hide_technical_details': 'إخفاء التفاصيل التقنية',
@@ -3218,12 +3231,12 @@ class AppLocalizations {
     'notification_test_body': 'تستمر الإشعارات في العمل دون اتصال.',
     'notification_test_failed':
         'تعذر إرسال الإشعار التجريبي. تحقق من أذونات الإشعارات والصوت المحدد.',
-    'notification_channel_system': 'TaskMaster Pro — نغمة النظام',
+    'notification_channel_system': 'DayVector — نغمة النظام',
     'notification_channel_system_description':
         'تذكيرات المهام باستخدام النغمة المحددة على هذا الجهاز',
-    'notification_channel_tasks': 'TaskMaster Pro — تذكيرات المهام',
+    'notification_channel_tasks': 'DayVector — تذكيرات المهام',
     'notification_channel_tasks_description': 'تذكيرات المهام وأحداث التنفيذ',
-    'notification_channel_activity': 'TaskMaster Pro — مراجعة النشاط',
+    'notification_channel_activity': 'DayVector — مراجعة النشاط',
     'notification_channel_activity_description': 'نشاط يحتاج إلى مراجعتك',
     'reminder_before_start': 'استعد الآن لتبدأ في الوقت المحدد',
     'reminder_start': 'حان وقت البدء المخطط',
@@ -3232,7 +3245,7 @@ class AppLocalizations {
     'reminder_due': 'حل موعد استحقاق هذه المهمة',
     'reminder_overdue': 'هذه المهمة متأخرة وتحتاج إلى قرار',
     'reminder_missed': 'لم تبدأ هذه المهمة كما خُطط لها',
-    'reminder_open_task': 'افتح TaskMaster Pro لمراجعة هذه المهمة',
+    'reminder_open_task': 'افتح DayVector لمراجعة هذه المهمة',
     'activity_review_notification_title': 'راجع نشاط هذه الجلسة',
     'sound_system': 'النغمة الافتراضية للنظام',
     'sound_silent': 'صامت',
@@ -3244,19 +3257,19 @@ class AppLocalizations {
     'sound_notification': 'تذكير للتركيز',
     'sound_ui_tone': 'إشارة هادئة',
     'exit': 'خروج',
-    'exit_app_question': 'الخروج من TaskMaster Pro؟',
+    'exit_app_question': 'الخروج من DayVector؟',
     'exit_active_timer_saved':
         'سيظل مؤقتك النشط محفوظًا وستتم استعادته عند فتح التطبيق مرة أخرى.',
     'back_exit_hint': 'اسحب أو اضغط رجوع مرة أخرى للخروج',
     'update_close_notes': 'إغلاق ملاحظات التحديث',
-    'update_got_it': 'حسنًا — ابدأ استخدام TaskMaster Pro',
-    'update_welcome': 'مرحبًا بك في TaskMaster Pro',
-    'update_installed': 'تم تحديث TaskMaster Pro',
+    'update_got_it': 'حسنًا — ابدأ استخدام DayVector',
+    'update_welcome': 'مرحبًا بك في DayVector',
+    'update_installed': 'تم تحديث DayVector',
     'update_version': 'الإصدار {version}',
     'update_notes_unavailable': 'ملاحظات التحديث غير متاحة الآن.',
     'update_view_full_notes': 'عرض ملاحظات الإصدار كاملة',
     'update_copy_notes_link': 'نسخ رابط ملاحظات الإصدار',
-    'update_ready': 'الإصدار {version} من TaskMaster Pro جاهز',
+    'update_ready': 'الإصدار {version} من DayVector جاهز',
     'update_newer_available': 'يتوفر إصدار أحدث لهذا الجهاز',
     'update_download_progress': 'جارٍ التنزيل {percent}٪',
     'update_open_failed':
@@ -3288,7 +3301,7 @@ class AppLocalizations {
     'account_deletion_signin_warning':
         'لا يؤدي تسجيل الدخول إلى إلغاء الحذف. ألغِه بوضوح قبل انتهاء فترة الاسترداد.',
     'account_cancel_deletion': 'إلغاء حذف الحساب',
-    'account_delete_heading': 'حذف حساب TaskMaster Pro',
+    'account_delete_heading': 'حذف حساب DayVector',
     'account_delete_recovery_detail':
         'يبدأ الحذف بفترة استرداد مدتها 30 يومًا. يمكنك الإلغاء خلالها بعد تأكيد هويتك.',
     'account_schedule_deletion': 'جدولة حذف الحساب',
@@ -3321,7 +3334,7 @@ class AppLocalizations {
     'health_sync_summaries_description':
         'تبقى سجلات الصحة التفصيلية على جهاز Android',
     'schedule_health_disclaimer':
-        'تدعم معلومات النوم واستخدام الهاتف التخطيط فقط. لا يشخّص TaskMaster Pro حالات النوم أو الصحة، ويمكنك تصحيح التفسيرات المستوردة.',
+        'تدعم معلومات النوم واستخدام الهاتف التخطيط فقط. لا يشخّص DayVector حالات النوم أو الصحة، ويمكنك تصحيح التفسيرات المستوردة.',
     'weekday_mon': 'الاثنين',
     'weekday_tue': 'الثلاثاء',
     'weekday_wed': 'الأربعاء',
@@ -3331,7 +3344,7 @@ class AppLocalizations {
     'weekday_sun': 'الأحد',
     'health_connect': 'Health Connect',
     'health_android_only':
-        'يتوفر Health Connect في إصدار Android من TaskMaster Pro.',
+        'يتوفر Health Connect في إصدار Android من DayVector.',
     'health_check_failed':
         'تعذر التحقق من Health Connect. حاول مرة أخرى بعد قليل.',
     'health_permission_failed': 'لم يتم منح إذن الصحة المطلوب.',
@@ -3347,11 +3360,11 @@ class AppLocalizations {
         'الوصول متاح، لكن لم يتم استلام سجل مدعوم خلال اليومين الماضيين.',
     'health_connection_needs_attention': 'الاتصال يحتاج إلى انتباه',
     'health_connection_needs_attention_detail':
-        'تعذر على TaskMaster Pro قراءة السجلات الصحية المصرح بها. راجع الوصول وحاول مرة أخرى.',
+        'تعذر على DayVector قراءة السجلات الصحية المصرح بها. راجع الوصول وحاول مرة أخرى.',
     'health_connect_context': 'ربط بيانات الصحة',
     'health_read_only_active': 'إذن القراءة فقط نشط',
     'health_permission_explanation':
-        'يشرح TaskMaster Pro سبب الإذن قبل أن يفتح Android لوحة النظام.',
+        'يشرح DayVector سبب الإذن قبل أن يفتح Android لوحة النظام.',
     'health_permission_detail':
         'بإذنك، يمكن للتطبيق قراءة الخطوات والتمارين والمسافة ونبض القلب والنوم والسعرات النشطة. تُستخدم البيانات لسياق الإنتاجية فقط وليست تشخيصًا طبيًا.',
     'health_continue_permissions': 'المتابعة إلى أذونات Android',
@@ -3373,11 +3386,12 @@ class AppLocalizations {
     'health_sleep': 'النوم',
     'health_active_energy': 'الطاقة النشطة',
     'health_workouts': 'التمارين',
+    'health_this_week': 'هذا الأسبوع',
     'health_available_sources': 'المصادر الصحية المتصلة',
     'health_no_records': 'لم تُرجع المصادر أي سجلات',
     'health_permissions_ready': 'تم منح الإذن — بانتظار البيانات',
     'health_permissions_no_source':
-        'يمكن لـ TaskMaster Pro قراءة Health Connect، لكن لم يشارك أي تطبيق صحي سجلًا مدعومًا حتى الآن.',
+        'يمكن لـ DayVector قراءة Health Connect، لكن لم يشارك أي تطبيق صحي سجلًا مدعومًا حتى الآن.',
     'health_no_records_explanation':
         'لم يتم العثور على سجلات صحية مدعومة. فعّل المشاركة مع Health Connect داخل تطبيق الصحة ثم حدّث مرة أخرى.',
     'health_no_recent_records_explanation':
@@ -3391,11 +3405,11 @@ class AppLocalizations {
     'health_delete_summaries': 'حذف ملخصات الصحة المستوردة',
     'health_and_rest': 'الصحة والراحة',
     'health_stale':
-        'لم تُحدَّث بيانات الصحة مؤخرًا. افتح TaskMaster Pro على هاتف Android لتحديثها.',
+        'لم تُحدَّث بيانات الصحة مؤخرًا. افتح DayVector على هاتف Android لتحديثها.',
     'health_updated_from_android': 'تم التحديث من هاتف Android',
     'health_windows_privacy_detail':
         'توفر هذه الملخصات للقراءة فقط سياقًا للتخطيط. تبقى سجلات الصحة التفصيلية على Android ما لم تسمح بمزامنة أوسع بوضوح.',
-    'update_up_to_date': 'إصدار TaskMaster Pro {version} محدّث.',
+    'update_up_to_date': 'إصدار DayVector {version} محدّث.',
     'update_check_failed':
         'تعذر التحقق من التحديثات الآن. حاول مرة أخرى عند الاتصال.',
     'account_export_success': 'تم تصدير بيانات الحساب بنجاح.',
@@ -3403,7 +3417,7 @@ class AppLocalizations {
     'account_export_failed': 'تعذر تصدير بيانات حسابك. حاول مرة أخرى بعد قليل.',
     'usage_access_title': 'السماح بالوصول إلى استخدام Android؟',
     'usage_access_description':
-        'يمكن لـ Android توفير استخدام التطبيقات ونشاط الشاشة حديثًا بعد تمكين TaskMaster Pro في صفحة الوصول إلى الاستخدام في النظام. ولا يوفر تفاصيل عناوين النوافذ نفسها المتاحة على Windows.',
+        'يمكن لـ Android توفير استخدام التطبيقات ونشاط الشاشة حديثًا بعد تمكين DayVector في صفحة الوصول إلى الاستخدام في النظام. ولا يوفر تفاصيل عناوين النوافذ نفسها المتاحة على Windows.',
     'usage_open_settings': 'فتح إعدادات Android',
     'schedule_wellbeing_description':
         'أوقات الاستيقاظ والنوم وأيام العمل وساعات الهدوء وأذونات الصحة وحساسية التوجيه',
@@ -3413,9 +3427,9 @@ class AppLocalizations {
     'cycle_local_only': 'على هذا الجهاز فقط',
     'cycle_encrypted_sync': 'مزامنة مشفرة',
     'cycle_open_calendar': 'فتح تقويم الدورة',
-    'app_version': 'TaskMaster Pro {version}',
+    'app_version': 'DayVector {version}',
     'app_update_security_detail':
-        'تحقق من توفر إصدار أحدث من TaskMaster Pro وراجع التغييرات قبل التنزيل.',
+        'تحقق من توفر إصدار أحدث من DayVector وراجع التغييرات قبل التنزيل.',
     'view_privacy_policy': 'عرض سياسة الخصوصية',
     'view_terms_of_use': 'عرض شروط الاستخدام',
     'gender': 'النوع',
@@ -3544,7 +3558,7 @@ class AppLocalizations {
     'auth_confirmation_title': 'نقرة واحدة وتبدأ',
     'auth_confirmation_sent_to': 'أرسلنا رابط تأكيد إلى',
     'auth_confirmation_instructions':
-        'افتح الرسالة على هذا الجهاز واختر تأكيد عنوان البريد الإلكتروني. سيُعاد فتح TaskMaster Pro ويُكمل تسجيل الدخول تلقائيًا.',
+        'افتح الرسالة على هذا الجهاز واختر تأكيد عنوان البريد الإلكتروني. سيُعاد فتح DayVector ويُكمل تسجيل الدخول تلقائيًا.',
     'auth_resend_confirmation': 'إعادة إرسال رابط التأكيد',
     'auth_return_signin': 'العودة إلى تسجيل الدخول',
     'language_english': 'English',
@@ -3769,6 +3783,8 @@ class AppLocalizations {
     'task_calculated_duration': 'المدة المحسوبة',
     'task_calculated_duration_help':
         'تُحسب تلقائيًا من وقت البدء والنهاية المخططين.',
+    'task_calculated_duration_with_rest':
+        'تم حجز {window} من وقت البدء إلى النهاية، وتشمل {rest} للراحة.',
     'task_crosses_midnight': 'تنتهي هذه المهمة بعد منتصف الليل.',
     'task_time_window_invalid': 'اختر نهاية بعد البدء بدقيقة واحدة على الأقل.',
     'task_minimum_duration_exceeds_planned':
@@ -3796,6 +3812,12 @@ class AppLocalizations {
     'task_planned_end_local': 'النهاية المخططة (بالتوقيت المحلي)',
     'task_due_date_time': 'تاريخ ووقت الاستحقاق',
     'task_estimated_duration': 'المدة المقدرة',
+    'task_planned_rest': 'الراحة المخططة',
+    'task_planned_rest_summary': 'راحة {duration}',
+    'task_planned_rest_help':
+        'وقت اختياري داخل المهمة، مثل استراحة غداء مدتها 30 دقيقة. لا يُحتسب ضمن وقت العمل المتوقع.',
+    'task_planned_rest_too_long':
+        'يجب أن تكون الراحة المخططة أقصر من الفترة الزمنية للمهمة.',
     'task_another_running_title': 'توجد مهمة أخرى قيد التشغيل',
     'task_another_running_detail':
         'المهمة {currentTask} نشطة الآن. ماذا تريد أن تفعل قبل بدء {selectedTask}؟',
@@ -3820,7 +3842,7 @@ class AppLocalizations {
     'task_preparation': 'التحضير',
     'task_local_scheduling': 'الجدولة بالتوقيت المحلي',
     'task_local_scheduling_detail':
-        'اختر الأوقات وفق منطقتك الزمنية المحلية. يحافظ TaskMaster Pro على دقة اللحظة نفسها على كل جهاز.',
+        'اختر الأوقات وفق منطقتك الزمنية المحلية. يحافظ DayVector على دقة اللحظة نفسها على كل جهاز.',
     'task_focus_length': 'مدة التركيز',
     'task_short_break': 'استراحة قصيرة',
     'task_long_break': 'استراحة طويلة',
@@ -4010,12 +4032,12 @@ class AppLocalizations {
     'waiting_to_upload': 'بانتظار الرفع',
     'unavailable_device': 'غير متاح على هذا الجهاز',
     'open_externally': 'فتح خارجيًا',
-    'resource_open_in_app': 'فتح في متصفح TaskMaster',
+    'resource_open_in_app': 'فتح في متصفح DayVector',
     'resource_open_installed_app': 'فتح في تطبيق مثبت',
     'resource_open_external_browser': 'فتح في متصفح خارجي',
     'resource_auto_open': 'فتح المورد الأساسي بعد بدء المهمة',
     'resource_auto_open_detail':
-        'يبدأ TaskMaster Pro المؤقت قبل فتح المورد، لذلك يستمر احتساب عملك في تطبيق أو متصفح آخر.',
+        'يبدأ DayVector المؤقت قبل فتح المورد، لذلك يستمر احتساب عملك في تطبيق أو متصفح آخر.',
     'resource_launch_behavior': 'وجهة المورد الافتراضية',
     'resource_launch_behavior_detail':
         'إذا لم يستطع التطبيق المثبت معالجة الرابط، يُفتح بأمان في متصفحك.',
@@ -4095,9 +4117,9 @@ class AppLocalizations {
     'unknown_application': 'تطبيق غير معروف',
     'unknown_connection': 'ارتباط غير معروف',
     'mode_pomodoro_detail':
-        'ابتكر فرانشيسكو تشيريلو تقنية بومودورو لتسهيل البدء وحماية الانتباه. اختر مهمة واضحة وركّز نحو 25 دقيقة ثم خذ استراحة حقيقية. تساعد الاستراحات القصيرة على تجديد الانتباه، ويحفظ TaskMaster Pro وقت الراحة منفصلًا لتبقى مدة التركيز دقيقة.',
+        'ابتكر فرانشيسكو تشيريلو تقنية بومودورو لتسهيل البدء وحماية الانتباه. اختر مهمة واضحة وركّز نحو 25 دقيقة ثم خذ استراحة حقيقية. تساعد الاستراحات القصيرة على تجديد الانتباه، ويحفظ DayVector وقت الراحة منفصلًا لتبقى مدة التركيز دقيقة.',
     'mode_continuous_detail':
-        'اختر هذا الأسلوب عندما تحتاج إلى مؤقت مرن واحد بدل الدورات الثابتة. أوقفه عند الحاجة ثم تابع من المكان نفسه، وسيحفظ TaskMaster Pro وقت تركيزك بوضوح.',
+        'اختر هذا الأسلوب عندما تحتاج إلى مؤقت مرن واحد بدل الدورات الثابتة. أوقفه عند الحاجة ثم تابع من المكان نفسه، وسيحفظ DayVector وقت تركيزك بوضوح.',
     'mode_checklist_detail':
         'اختر هذا الأسلوب عندما يكون إنهاء الخطوات الصحيحة أهم من متابعة المؤقت. علّم كل خطوة مطلوبة أثناء العمل وأنهِ المهمة عندما تكتمل فعلًا.',
     'mode_reading_detail':
@@ -4105,7 +4127,7 @@ class AppLocalizations {
     'mode_habit_detail':
         'اختر هذا الأسلوب للعادات التي تريد تكرارها. سجّل كل محاولة بصدق، بما في ذلك الأيام المتخطاة أو الفائتة، واستخدم النمط لتجعل الاستمرار أسهل.',
     'mode_event_detail':
-        'اختر هذا الأسلوب للمواعيد والدروس والفعاليات المحددة بوقت. يساعدك TaskMaster Pro على تذكّر موعد الوصول وما حدث وأي متابعة مطلوبة.',
+        'اختر هذا الأسلوب للمواعيد والدروس والفعاليات المحددة بوقت. يساعدك DayVector على تذكّر موعد الوصول وما حدث وأي متابعة مطلوبة.',
     'mode_hybrid_detail':
         'اختر هذا الأسلوب عندما تحتاج المهمة إلى أكثر من طريقة لقياس التقدم. اجمع المؤقت والخطوات ونقاط التقدم والموارد وإثبات الإنجاز في مكان واحد.',
     'mode_manual_detail':
@@ -4148,7 +4170,7 @@ class AppLocalizations {
     'application_already_connected': 'هذا التطبيق مرتبط بالمهمة بالفعل.',
     'application_links_title': 'استخدام {application} لروابط المهمة؟',
     'application_links_detail':
-        'سيحاول TaskMaster Pro فتح موارد الويب لهذه المهمة في التطبيق المحدد أولًا. وإذا تعذر فتح الصفحة المطلوبة، يمكنك استخدام المتصفح الخارجي.',
+        'سيحاول DayVector فتح موارد الويب لهذه المهمة في التطبيق المحدد أولًا. وإذا تعذر فتح الصفحة المطلوبة، يمكنك استخدام المتصفح الخارجي.',
     'application_links_keep_current': 'الإبقاء على السلوك الحالي',
     'application_links_use_app': 'استخدام التطبيق المثبت',
     'connect_website': 'ربط موقع',
@@ -4167,7 +4189,7 @@ class AppLocalizations {
     'local_date_time': 'التاريخ والوقت المحليان',
     'sound': 'النغمة',
     'sound_system_default': 'إعداد الجهاز الافتراضي',
-    'sound_selected': 'نغمة TaskMaster Pro المختارة',
+    'sound_selected': 'نغمة DayVector المختارة',
     'silent': 'صامت',
     'schedule': 'جدولة',
     'no_time': 'لا يوجد وقت',
@@ -4240,7 +4262,7 @@ class AppLocalizations {
     'report_task_unavailable': 'المهمة لم تعد متاحة',
     'report_empty_title': 'لا توجد بيانات تقرير بعد',
     'report_empty_body':
-        'سيعرض TaskMaster Pro الرسوم بعد وجود سجلات فعلية للمهام أو النشاط أو خرائط الطريق أو الصحة المعتمدة في هذه الفترة.',
+        'سيعرض DayVector الرسوم بعد وجود سجلات فعلية للمهام أو النشاط أو خرائط الطريق أو الصحة المعتمدة في هذه الفترة.',
     'report_completed_tasks': 'المهام المكتملة',
     'report_overdue_tasks': 'المهام المتأخرة',
     'report_roadmap_contribution': 'المساهمة في خرائط الطريق',
@@ -4279,7 +4301,7 @@ class AppLocalizations {
     'report_generation_failed': 'تعذر إعداد هذا التقرير. لم يتم تغيير بياناتك.',
     'status': 'الحالة',
     'status_missed': 'فائتة',
-    'notification_channel_execution': 'TaskMaster Pro — تنفيذ المهام',
+    'notification_channel_execution': 'DayVector — تنفيذ المهام',
     'notification_channel_execution_description':
         'أحداث التركيز والاستراحة وانتهاء مدة المهمة',
     'notification_focus_completed_title': 'اكتملت جلسة التركيز',
@@ -4301,7 +4323,7 @@ class AppLocalizations {
     'notification_action_extend_compact': '+٥ د',
     'notification_action_review_compact': 'مراجعة',
     'notification_action_finish_compact': 'إنهاء',
-    'notification_channel_wellbeing': 'TaskMaster Pro — العافية',
+    'notification_channel_wellbeing': 'DayVector — العافية',
     'notification_channel_wellbeing_description':
         'تذكيرات مواعيد النوم والعافية',
     'sleep_reminder_title': 'اقترب موعد راحتك 🌙',
@@ -4310,10 +4332,10 @@ class AppLocalizations {
     'notification_view_schedule': 'عرض الجدول',
     'break_in_progress': 'الاستراحة قيد التشغيل',
     'break_extended_five': 'تم تمديد الاستراحة 5 دقائق.',
-    'tray_still_running_title': 'لا يزال TaskMaster Pro قيد التشغيل',
+    'tray_still_running_title': 'لا يزال DayVector قيد التشغيل',
     'tray_still_running_body':
         'ستستمر المؤقتات والتذكيرات في الخلفية. استخدم أيقونة شريط النظام لإعادة فتح التطبيق أو الخروج منه.',
-    'tray_open': 'فتح TaskMaster Pro',
+    'tray_open': 'فتح DayVector',
     'tray_no_task': 'لا توجد مهمة قيد التشغيل حاليًا',
     'tray_start_next': 'بدء المهمة التالية',
     'tray_pause_task': 'إيقاف المهمة مؤقتًا',
@@ -4323,7 +4345,7 @@ class AppLocalizations {
     'tray_whats_new_version': 'ما الجديد في v{version}',
     'tray_check_updates': 'التحقق من التحديثات',
     'tray_update_available': 'يتوفر تحديث',
-    'tray_exit': 'إنهاء TaskMaster Pro',
+    'tray_exit': 'إنهاء DayVector',
     'tray_deletion_scheduled': 'تمت جدولة حذف الحساب',
     'tray_tooltip_break': 'الاستراحة قيد التشغيل',
     'tray_tooltip_paused': 'المهمة متوقفة مؤقتًا',
@@ -4473,9 +4495,9 @@ class AppLocalizations {
     'health_distance_estimate_provenance':
         'تقدير من خطوات اليوم وطولك المسجّل البالغ {height} سم.',
     'health_huawei_not_available':
-        'بيانات Huawei Health غير متاحة لـ TaskMaster Pro عبر اتصال معتمد على هذا الجهاز.',
+        'بيانات Huawei Health غير متاحة لـ DayVector عبر اتصال معتمد على هذا الجهاز.',
     'health_nothing_not_available':
-        'بيانات Nothing X غير متاحة لـ TaskMaster Pro على هذا الجهاز.',
+        'بيانات Nothing X غير متاحة لـ DayVector على هذا الجهاز.',
     'health_last_updated': 'آخر تحديث',
     'health_sources': 'مصادر الصحة',
     'health_sources_detail':
@@ -4522,7 +4544,7 @@ class AppLocalizations {
     'health_wearables_capability_available': '{capability}: متاح',
     'health_ble_discovery': 'البحث عن ساعة صحية',
     'health_ble_discovery_detail':
-        'ابحث عن الساعات القريبة أو المقترنة. يعرض TaskMaster Pro الميزات الصحية التي تؤكد الساعة أنها تدعمها فقط.',
+        'ابحث عن الساعات القريبة أو المقترنة. يعرض DayVector الميزات الصحية التي تؤكد الساعة أنها تدعمها فقط.',
     'health_ble_scan': 'اكتشاف الساعات',
     'health_ble_settings': 'إعدادات Bluetooth',
     'health_ble_disabled': 'شغّل Bluetooth لاكتشاف الساعات القريبة.',
@@ -4549,7 +4571,7 @@ class AppLocalizations {
     'health_ble_capability_available': '{capability}: متاح',
     'permission_setup_title': 'إعداد أذونات Android',
     'permission_setup_subtitle':
-        'اختر إمكانات TaskMaster Pro التي يمكن لهذا الهاتف استخدامها. يمكنك تغيير كل اختيار لاحقًا.',
+        'اختر إمكانات DayVector التي يمكن لهذا الهاتف استخدامها. يمكنك تغيير كل اختيار لاحقًا.',
     'permission_setup_privacy':
         'لا يُمنح أي إذن تلقائيًا. لا يطلب Android الإذن إلا بعد اختيار الإجراء المطابق.',
     'permission_setup_notifications_title': 'الإشعارات',
@@ -4569,7 +4591,7 @@ class AppLocalizations {
         'يسمح لـ Android بتسليم حدود المهمة والتركيز والاستراحة المجدولة بدقة تسمح بها الأجهزة.',
     'permission_setup_health_title': 'Health Connect',
     'permission_setup_health_detail':
-        'اختياري وبمبادرة منك. اختر سجلات الصحة التي تريد مشاركتها من شاشة الصحة؛ ولا يطلبها TaskMaster Pro تلقائيًا.',
+        'اختياري وبمبادرة منك. اختر سجلات الصحة التي تريد مشاركتها من شاشة الصحة؛ ولا يطلبها DayVector تلقائيًا.',
     'permission_setup_allowed': 'مسموح',
     'permission_setup_needs_permission': 'الإذن مطلوب',
     'permission_setup_needs_settings': 'اسمح به من إعدادات Android',
@@ -4585,7 +4607,7 @@ class AppLocalizations {
     'permission_setup_revisit':
         'لمراجعة اختيار مرفوض لاحقًا، افتح الإعدادات ← الإشعارات والأصوات أو النشاط والخصوصية أو الصحة. وتبقى شاشات الوصول الخاص في Android متاحة من عناصر التحكم المطابقة.',
     'permission_setup_storage_error':
-        'تعذر على TaskMaster Pro حفظ مراجعة أذونات هذا الهاتف. حاول مجددًا قبل المتابعة.',
+        'تعذر على DayVector حفظ مراجعة أذونات هذا الهاتف. حاول مجددًا قبل المتابعة.',
   };
 
   static const _v26De = <String, String>{
@@ -4714,7 +4736,7 @@ class AppLocalizations {
     'widget_idle_message':
         'Wähle eine vorgeschlagene Aufgabe und komm in Schwung.',
     'widget_no_suggestions':
-        'Plane den nächsten sinnvollen Schritt in TaskMaster Pro.',
+        'Plane den nächsten sinnvollen Schritt in DayVector.',
     'widget_open_task': 'Aufgabe öffnen',
     'widget_open_app': 'App öffnen',
     'widget_tasks_ready': '{count} Aufgaben bereit',
@@ -4974,7 +4996,7 @@ class AppLocalizations {
     'activity_allocated_total': 'Zugeordnet: {percentage} %',
     'activity_apply_allocation': 'Zuordnung anwenden',
     'activity_learned_from_usage': 'Aus deiner Nutzung gelernt',
-    'activity_suggested_by_taskmaster': 'Von TaskMaster Pro vorgeschlagen',
+    'activity_suggested_by_taskmaster': 'Von DayVector vorgeschlagen',
     'activity_useful_reading': 'Nützliches Lesen',
     'break_activity_title': 'Was hast du in deiner Pause gemacht?',
     'break_activity_prompt':
@@ -5045,7 +5067,7 @@ class AppLocalizations {
     'activity_stays_on_device':
         'Deine detaillierten Aktivitäten bleiben auf diesem Gerät',
     'activity_stays_on_device_description':
-        'TaskMaster Pro synchronisiert nur Aktivitäten, die du mit Aufgaben verknüpfst oder durch von dir bestätigte Regeln klassifizierst.',
+        'DayVector synchronisiert nur Aktivitäten, die du mit Aufgaben verknüpfst oder durch von dir bestätigte Regeln klassifizierst.',
     'synchronize_confirmed_contributions':
         'Bestätigte Beiträge synchronisieren',
     'synchronize_confirmed_contributions_description':
@@ -5072,7 +5094,7 @@ class AppLocalizations {
     'show_possible_system_activity': 'Mögliche Systemaktivität anzeigen',
     'community_system_learning': 'System-Apps gemeinsam erkennen',
     'community_system_learning_description':
-        'Optional. Teile nach der Einordnung einer App eine anonyme Ja-oder-Nein-Stimme, damit TaskMaster Pro anderen wahrscheinliche System-Apps vorschlagen kann. Konto, Aufgaben, Titel, Websites, Pfade und Aktivitätsverlauf werden nie geteilt.',
+        'Optional. Teile nach der Einordnung einer App eine anonyme Ja-oder-Nein-Stimme, damit DayVector anderen wahrscheinliche System-Apps vorschlagen kann. Konto, Aufgaben, Titel, Websites, Pfade und Aktivitätsverlauf werden nie geteilt.',
     'community_system_learning_consent':
         'Nur eine geschützte App-Kennung und deine anonyme Ja-oder-Nein-Auswahl werden geteilt. Daraus lassen sich weder dein Konto noch deine Stimmen für andere Apps ableiten. Vorschläge überschreiben nie deine eigene Entscheidung.',
     'share_anonymous_votes': 'Anonyme Stimmen erlauben',
@@ -5126,7 +5148,7 @@ class AppLocalizations {
     'sync_offline_compact': 'Offline',
     'sync_waiting_changes': 'Änderungen warten auf Synchronisierung',
     'notification_sound_description':
-        'Die Systemeinstellung verwendet den auf deinem Android-Gerät ausgewählten Benachrichtigungston. Eigene TaskMaster-Pro-Töne sind auch offline verfügbar.',
+        'Die Systemeinstellung verwendet den auf deinem Android-Gerät ausgewählten Benachrichtigungston. Eigene DayVector-Töne sind auch offline verfügbar.',
     'choose_android_sound': 'Android-Systemton auswählen',
     'preview_sound': 'Ausgewählten Ton anhören',
     'send_test_notification': 'Testbenachrichtigung senden',
@@ -5171,8 +5193,7 @@ class AppLocalizations {
     'vault_automatic_lock_minutes': 'Nach {minutes} Minuten',
     'vault_lock_on_background': 'Sperren, wenn die App in den Hintergrund geht',
     'vault_use_device_auth': 'Geräteauthentifizierung verwenden',
-    'vault_device_auth_reason':
-        'Entsperre deinen Passwort-Tresor in TaskMaster Pro',
+    'vault_device_auth_reason': 'Entsperre deinen Passwort-Tresor in DayVector',
     'vault_change_password': 'Tresor-Passwort ändern',
     'vault_current_password': 'Aktuelles Tresor-Passwort',
     'vault_new_password': 'Neues Tresor-Passwort',
@@ -5186,7 +5207,7 @@ class AppLocalizations {
     'vault_autofill_detail':
         'Der Tresor muss vor der Verwendung gespeicherter Anmeldungen entsperrt werden',
     'vault_select_autofill_account':
-        'Wähle das gespeicherte Konto für diese Website. TaskMaster Pro sendet das Formular nicht ab.',
+        'Wähle das gespeicherte Konto für diese Website. DayVector sendet das Formular nicht ab.',
     'vault_no_matching_account':
         'Kein gespeichertes Konto stimmt mit dieser Website überein. Füge zuerst ein Konto mit genau dieser Website-Adresse hinzu.',
     'vault_fill_sign_in': 'Anmeldung ausfüllen',
@@ -5195,7 +5216,7 @@ class AppLocalizations {
         'Entfernt den gespeicherten Geräteschlüssel, ohne Konten zu löschen',
     'vault_recovery_options': 'Wiederherstellungsoptionen',
     'vault_recovery_body':
-        'Dein Tresor-Passwort ist die Wiederherstellungsmethode. Die Geräteentsperrung funktioniert nur auf diesem Gerät. TaskMaster Pro kann deine geschützten gespeicherten Konten weder lesen noch zurücksetzen.',
+        'Dein Tresor-Passwort ist die Wiederherstellungsmethode. Die Geräteentsperrung funktioniert nur auf diesem Gerät. DayVector kann deine geschützten gespeicherten Konten weder lesen noch zurücksetzen.',
     'vault_learn_title': 'So funktioniert der Passwort-Tresor',
     'vault_learn_body':
         'Dein Tresor-Passwort entsperrt gespeicherte Konten auf deinem Gerät. Geschützte Tresordaten können synchronisiert werden, lesbare Benutzernamen und Passwörter werden jedoch nie hochgeladen.',
@@ -5237,7 +5258,7 @@ class AppLocalizations {
     'sync_connected_account': 'Verbundenes Konto',
     'signed_out': 'Abgemeldet',
     'sync_registered_devices': 'Registrierte Geräte',
-    'taskmaster_device': 'TaskMaster-Pro-Gerät',
+    'taskmaster_device': 'DayVector-Gerät',
     'version_label': 'Version {version}',
     'connected_devices': 'Verbundene Geräte',
     'profile_and_account': 'Profil und Konto',
@@ -5257,7 +5278,7 @@ class AppLocalizations {
     'sign_out_device': 'Gerät abmelden',
     'sign_out_device_question': 'Dieses Gerät abmelden?',
     'sign_out_device_explanation':
-        'TaskMaster Pro entzieht diesem Gerät den Kontozugriff. Nicht synchronisierte Änderungen, die nur dort gespeichert sind, sind möglicherweise anderswo nicht verfügbar.',
+        'DayVector entzieht diesem Gerät den Kontozugriff. Nicht synchronisierte Änderungen, die nur dort gespeichert sind, sind möglicherweise anderswo nicht verfügbar.',
     'device_signed_out': 'Das Gerät wurde abgemeldet.',
     'show_technical_details': 'Technische Details öffnen',
     'hide_technical_details': 'Technische Details ausblenden',
@@ -5342,13 +5363,13 @@ class AppLocalizations {
     'notification_test_body': 'Benachrichtigungen funktionieren auch offline.',
     'notification_test_failed':
         'Die Testbenachrichtigung konnte nicht gesendet werden. Prüfe die Benachrichtigungsberechtigung und den ausgewählten Ton.',
-    'notification_channel_system': 'TaskMaster Pro — Systemton',
+    'notification_channel_system': 'DayVector — Systemton',
     'notification_channel_system_description':
         'Aufgabenerinnerungen mit dem auf diesem Gerät ausgewählten Ton',
-    'notification_channel_tasks': 'TaskMaster Pro — Aufgabenerinnerungen',
+    'notification_channel_tasks': 'DayVector — Aufgabenerinnerungen',
     'notification_channel_tasks_description':
         'Aufgabenerinnerungen und Ausführungsereignisse',
-    'notification_channel_activity': 'TaskMaster Pro — Aktivitätsprüfung',
+    'notification_channel_activity': 'DayVector — Aktivitätsprüfung',
     'notification_channel_activity_description':
         'Aktivität, die du prüfen solltest',
     'reminder_before_start':
@@ -5360,7 +5381,7 @@ class AppLocalizations {
     'reminder_overdue':
         'Diese Aufgabe ist überfällig und benötigt eine Entscheidung',
     'reminder_missed': 'Diese Aufgabe wurde nicht wie geplant gestartet',
-    'reminder_open_task': 'Öffne TaskMaster Pro, um diese Aufgabe zu prüfen',
+    'reminder_open_task': 'Öffne DayVector, um diese Aufgabe zu prüfen',
     'activity_review_notification_title': 'Aktivität dieser Sitzung prüfen',
     'sound_system': 'Systemeinstellung',
     'sound_silent': 'Stumm',
@@ -5372,20 +5393,20 @@ class AppLocalizations {
     'sound_notification': 'Fokussierte Erinnerung',
     'sound_ui_tone': 'Ruhiges Signal',
     'exit': 'Beenden',
-    'exit_app_question': 'TaskMaster Pro beenden?',
+    'exit_app_question': 'DayVector beenden?',
     'exit_active_timer_saved':
         'Dein aktiver Timer bleibt gespeichert und wird beim nächsten Öffnen der App wiederhergestellt.',
     'back_exit_hint': 'Noch einmal zurückwischen oder -drücken zum Beenden',
     'update_close_notes': 'Update-Hinweise schließen',
-    'update_got_it': 'Verstanden — TaskMaster Pro verwenden',
-    'update_welcome': 'Willkommen bei TaskMaster Pro',
-    'update_installed': 'TaskMaster Pro wurde aktualisiert',
+    'update_got_it': 'Verstanden — DayVector verwenden',
+    'update_welcome': 'Willkommen bei DayVector',
+    'update_installed': 'DayVector wurde aktualisiert',
     'update_version': 'Version {version}',
     'update_notes_unavailable':
         'Die Update-Hinweise sind gerade nicht verfügbar.',
     'update_view_full_notes': 'Vollständige Versionshinweise anzeigen',
     'update_copy_notes_link': 'Link zu den Versionshinweisen kopieren',
-    'update_ready': 'TaskMaster Pro {version} ist bereit',
+    'update_ready': 'DayVector {version} ist bereit',
     'update_newer_available':
         'Für dieses Gerät ist eine neuere Version verfügbar',
     'update_download_progress': 'Wird heruntergeladen: {percent} %',
@@ -5418,7 +5439,7 @@ class AppLocalizations {
     'account_deletion_signin_warning':
         'Eine Anmeldung bricht die Löschung nicht ab. Brich sie vor Ablauf der Wiederherstellungsfrist ausdrücklich ab.',
     'account_cancel_deletion': 'Kontolöschung abbrechen',
-    'account_delete_heading': 'Dein TaskMaster-Pro-Konto löschen',
+    'account_delete_heading': 'Dein DayVector-Konto löschen',
     'account_delete_recovery_detail':
         'Die Löschung beginnt mit einer 30-tägigen Wiederherstellungsfrist. Du kannst sie nach einer Identitätsbestätigung abbrechen.',
     'account_schedule_deletion': 'Kontolöschung planen',
@@ -5452,7 +5473,7 @@ class AppLocalizations {
     'health_sync_summaries_description':
         'Detaillierte Rohdaten verbleiben auf Android',
     'schedule_health_disclaimer':
-        'Erkenntnisse zu Schlaf und Telefonnutzung dienen nur der Planung. TaskMaster Pro diagnostiziert keine Schlaf- oder Gesundheitsprobleme; importierte Interpretationen können korrigiert werden.',
+        'Erkenntnisse zu Schlaf und Telefonnutzung dienen nur der Planung. DayVector diagnostiziert keine Schlaf- oder Gesundheitsprobleme; importierte Interpretationen können korrigiert werden.',
     'weekday_mon': 'Mo',
     'weekday_tue': 'Di',
     'weekday_wed': 'Mi',
@@ -5462,7 +5483,7 @@ class AppLocalizations {
     'weekday_sun': 'So',
     'health_connect': 'Health Connect',
     'health_android_only':
-        'Health Connect ist in der Android-Version von TaskMaster Pro verfügbar.',
+        'Health Connect ist in der Android-Version von DayVector verfügbar.',
     'health_check_failed':
         'Health Connect konnte nicht geprüft werden. Versuche es gleich erneut.',
     'health_permission_failed':
@@ -5479,11 +5500,11 @@ class AppLocalizations {
         'Der Zugriff ist verfügbar, aber in den letzten zwei Tagen wurde kein unterstützter Datensatz empfangen.',
     'health_connection_needs_attention': 'Verbindung erfordert Aufmerksamkeit',
     'health_connection_needs_attention_detail':
-        'TaskMaster Pro konnte die freigegebenen Gesundheitsdatensätze nicht lesen. Prüfe den Zugriff und versuche es erneut.',
+        'DayVector konnte die freigegebenen Gesundheitsdatensätze nicht lesen. Prüfe den Zugriff und versuche es erneut.',
     'health_connect_context': 'Gesundheitskontext verbinden',
     'health_read_only_active': 'Schreibgeschützter Zugriff ist aktiv',
     'health_permission_explanation':
-        'TaskMaster Pro erklärt die Berechtigung, bevor Android die Systemeinstellungen öffnet.',
+        'DayVector erklärt die Berechtigung, bevor Android die Systemeinstellungen öffnet.',
     'health_permission_detail':
         'Mit deiner Erlaubnis kann die App Schritte, Training, Distanz, Herzfrequenz, Schlaf und aktive Kalorien lesen. Gesundheitsdaten dienen nur dem Produktivitätskontext und sind keine medizinische Diagnose.',
     'health_continue_permissions': 'Weiter zu den Android-Berechtigungen',
@@ -5505,11 +5526,12 @@ class AppLocalizations {
     'health_sleep': 'Schlaf',
     'health_active_energy': 'Aktive Energie',
     'health_workouts': 'Trainingseinheiten',
+    'health_this_week': 'diese Woche',
     'health_available_sources': 'Verbundene Gesundheitsquellen',
     'health_no_records': 'Keine Datensätze wurden zurückgegeben',
     'health_permissions_ready': 'Berechtigung erteilt — Daten werden erwartet',
     'health_permissions_no_source':
-        'TaskMaster Pro kann Health Connect lesen, aber noch keine Gesundheits-App hat einen unterstützten Datensatz geteilt.',
+        'DayVector kann Health Connect lesen, aber noch keine Gesundheits-App hat einen unterstützten Datensatz geteilt.',
     'health_no_records_explanation':
         'Keine unterstützten Gesundheitsdaten gefunden. Aktiviere in deiner Gesundheits-App die Freigabe an Health Connect und aktualisiere erneut.',
     'health_no_recent_records_explanation':
@@ -5524,11 +5546,11 @@ class AppLocalizations {
         'Importierte Gesundheitszusammenfassungen löschen',
     'health_and_rest': 'Gesundheit und Erholung',
     'health_stale':
-        'Gesundheitsdaten wurden kürzlich nicht aktualisiert. Öffne TaskMaster Pro auf deinem Android-Telefon, um sie zu aktualisieren.',
+        'Gesundheitsdaten wurden kürzlich nicht aktualisiert. Öffne DayVector auf deinem Android-Telefon, um sie zu aktualisieren.',
     'health_updated_from_android': 'Von deinem Android-Telefon aktualisiert',
     'health_windows_privacy_detail':
         'Diese schreibgeschützten Zusammenfassungen liefern Planungskontext. Detaillierte Rohdaten verbleiben auf Android, sofern du keine umfassendere Synchronisierung ausdrücklich erlaubst.',
-    'update_up_to_date': 'TaskMaster Pro {version} ist aktuell.',
+    'update_up_to_date': 'DayVector {version} ist aktuell.',
     'update_check_failed':
         'Updates konnten gerade nicht geprüft werden. Versuche es erneut, wenn du online bist.',
     'account_export_success': 'Kontodaten wurden erfolgreich exportiert.',
@@ -5537,7 +5559,7 @@ class AppLocalizations {
         'Deine Kontodaten konnten nicht exportiert werden. Versuche es gleich erneut.',
     'usage_access_title': 'Android-Nutzungszugriff erlauben?',
     'usage_access_description':
-        'Android kann aktuelle App-Nutzung und Bildschirmaktivität bereitstellen, nachdem du TaskMaster Pro in den Systemeinstellungen für den Nutzungszugriff aktivierst. Es bietet nicht dieselben Fenstertiteldetails wie Windows.',
+        'Android kann aktuelle App-Nutzung und Bildschirmaktivität bereitstellen, nachdem du DayVector in den Systemeinstellungen für den Nutzungszugriff aktivierst. Es bietet nicht dieselben Fenstertiteldetails wie Windows.',
     'usage_open_settings': 'Android-Einstellungen öffnen',
     'schedule_wellbeing_description':
         'Aufsteh- und Schlafenszeiten, Arbeitstage, Ruhezeiten, Gesundheitsberechtigungen und Coaching-Intensität',
@@ -5548,9 +5570,9 @@ class AppLocalizations {
     'cycle_local_only': 'Nur dieses Gerät',
     'cycle_encrypted_sync': 'Verschlüsselte Synchronisierung',
     'cycle_open_calendar': 'Zykluskalender öffnen',
-    'app_version': 'TaskMaster Pro {version}',
+    'app_version': 'DayVector {version}',
     'app_update_security_detail':
-        'Prüfe, ob eine neuere TaskMaster-Pro-Version verfügbar ist, und lies vor dem Download, was sich geändert hat.',
+        'Prüfe, ob eine neuere DayVector-Version verfügbar ist, und lies vor dem Download, was sich geändert hat.',
     'view_privacy_policy': 'Datenschutzerklärung anzeigen',
     'view_terms_of_use': 'Nutzungsbedingungen anzeigen',
     'gender': 'Geschlecht',
@@ -5684,7 +5706,7 @@ class AppLocalizations {
     'auth_confirmation_title': 'Ein Klick, und du bist dabei',
     'auth_confirmation_sent_to': 'Wir haben einen Bestätigungslink gesendet an',
     'auth_confirmation_instructions':
-        'Öffne die Nachricht auf diesem Gerät und wähle E-Mail-Adresse bestätigen. TaskMaster Pro öffnet sich erneut und schließt die Anmeldung automatisch ab.',
+        'Öffne die Nachricht auf diesem Gerät und wähle E-Mail-Adresse bestätigen. DayVector öffnet sich erneut und schließt die Anmeldung automatisch ab.',
     'auth_resend_confirmation': 'Bestätigungslink erneut senden',
     'auth_return_signin': 'Zur Anmeldung zurückkehren',
     'language_english': 'English',
@@ -5918,6 +5940,8 @@ class AppLocalizations {
     'task_calculated_duration': 'Berechnete Dauer',
     'task_calculated_duration_help':
         'Wird automatisch aus geplantem Start und Ende berechnet.',
+    'task_calculated_duration_with_rest':
+        'Von Start bis Ende sind {window} reserviert, einschließlich {rest} Pause.',
     'task_crosses_midnight': 'Diese Aufgabe endet nach Mitternacht.',
     'task_time_window_invalid':
         'Wähle ein Ende mindestens eine Minute nach dem Start.',
@@ -5947,6 +5971,12 @@ class AppLocalizations {
     'task_planned_end_local': 'Geplantes Ende (Ortszeit)',
     'task_due_date_time': 'Fälligkeitsdatum und -zeit',
     'task_estimated_duration': 'Geschätzte Dauer',
+    'task_planned_rest': 'Geplante Pause',
+    'task_planned_rest_summary': '{duration} Pause',
+    'task_planned_rest_help':
+        'Optionale Zeit innerhalb dieser Aufgabe, zum Beispiel 30 Minuten Mittagspause. Sie zählt nicht als erwartete Arbeitszeit.',
+    'task_planned_rest_too_long':
+        'Die geplante Pause muss kürzer als das Zeitfenster der Aufgabe sein.',
     'task_another_running_title': 'Eine andere Aufgabe läuft bereits',
     'task_another_running_detail':
         '{currentTask} ist aktiv. Was möchtest du tun, bevor {selectedTask} gestartet wird?',
@@ -5973,7 +6003,7 @@ class AppLocalizations {
     'task_preparation': 'Vorbereitung',
     'task_local_scheduling': 'Planung in Ortszeit',
     'task_local_scheduling_detail':
-        'Wähle Zeiten in deiner lokalen Zeitzone. TaskMaster Pro hält denselben Zeitpunkt auf allen Geräten korrekt.',
+        'Wähle Zeiten in deiner lokalen Zeitzone. DayVector hält denselben Zeitpunkt auf allen Geräten korrekt.',
     'task_focus_length': 'Fokusdauer',
     'task_short_break': 'Kurze Pause',
     'task_long_break': 'Lange Pause',
@@ -6165,7 +6195,7 @@ class AppLocalizations {
     'waiting_to_upload': 'Wartet auf Upload',
     'unavailable_device': 'Auf diesem Gerät nicht verfügbar',
     'open_externally': 'Extern öffnen',
-    'resource_open_in_app': 'Im TaskMaster-Browser öffnen',
+    'resource_open_in_app': 'Im DayVector-Browser öffnen',
     'resource_open_installed_app': 'In installierter App öffnen',
     'resource_open_external_browser': 'Im externen Browser öffnen',
     'resource_auto_open': 'Primäre Ressource nach dem Start öffnen',
@@ -6252,9 +6282,9 @@ class AppLocalizations {
     'unknown_application': 'Unbekannte Anwendung',
     'unknown_connection': 'Unbekannte Verknüpfung',
     'mode_pomodoro_detail':
-        'Francesco Cirillo entwickelte die Pomodoro-Technik, um den Einstieg zu erleichtern und die Aufmerksamkeit zu schützen. Wähle eine klare Aufgabe, konzentriere dich etwa 25 Minuten und mache danach eine echte Pause. Kurze Pausen können die Aufmerksamkeit auffrischen; TaskMaster Pro hält Pausenzeit getrennt, damit deine Fokuszeit ehrlich bleibt.',
+        'Francesco Cirillo entwickelte die Pomodoro-Technik, um den Einstieg zu erleichtern und die Aufmerksamkeit zu schützen. Wähle eine klare Aufgabe, konzentriere dich etwa 25 Minuten und mache danach eine echte Pause. Kurze Pausen können die Aufmerksamkeit auffrischen; DayVector hält Pausenzeit getrennt, damit deine Fokuszeit ehrlich bleibt.',
     'mode_continuous_detail':
-        'Wähle diese Methode für Arbeit, die einen flexiblen Timer statt fester Zyklen braucht. Pausiere bei Bedarf und setze an derselben Stelle fort; TaskMaster Pro hält deine Fokuszeit übersichtlich fest.',
+        'Wähle diese Methode für Arbeit, die einen flexiblen Timer statt fester Zyklen braucht. Pausiere bei Bedarf und setze an derselben Stelle fort; DayVector hält deine Fokuszeit übersichtlich fest.',
     'mode_checklist_detail':
         'Wähle diese Methode, wenn die richtigen Schritte wichtiger sind als ein Timer. Hake die nötigen Punkte während der Arbeit ab und schließe die Aufgabe erst ab, wenn sie wirklich erledigt ist.',
     'mode_reading_detail':
@@ -6262,7 +6292,7 @@ class AppLocalizations {
     'mode_habit_detail':
         'Wähle diese Methode für Routinen, die du wiederholen möchtest. Halte jeden Versuch ehrlich fest, auch übersprungene oder verpasste Tage, und nutze das Muster, um dranzubleiben.',
     'mode_event_detail':
-        'Wähle diese Methode für Termine, Kurse und geplante Ereignisse. TaskMaster Pro hilft dir, Ankunft, Verlauf und nötige Nachbereitung im Blick zu behalten.',
+        'Wähle diese Methode für Termine, Kurse und geplante Ereignisse. DayVector hilft dir, Ankunft, Verlauf und nötige Nachbereitung im Blick zu behalten.',
     'mode_hybrid_detail':
         'Wähle diese Methode, wenn eine Aufgabe mehrere Arten von Fortschritt braucht. Verbinde Timer, Schritte, Kontrollpunkte, Materialien und Abschlussnachweise an einem Ort.',
     'mode_manual_detail':
@@ -6308,7 +6338,7 @@ class AppLocalizations {
         'Diese Anwendung ist bereits mit der Aufgabe verknüpft.',
     'application_links_title': '{application} für Aufgabenlinks verwenden?',
     'application_links_detail':
-        'TaskMaster Pro versucht zuerst, die Webressourcen dieser Aufgabe in der ausgewählten Anwendung zu öffnen. Kann sie die genaue Seite nicht öffnen, kannst du weiterhin den externen Browser verwenden.',
+        'DayVector versucht zuerst, die Webressourcen dieser Aufgabe in der ausgewählten Anwendung zu öffnen. Kann sie die genaue Seite nicht öffnen, kannst du weiterhin den externen Browser verwenden.',
     'application_links_keep_current': 'Aktuelles Verhalten beibehalten',
     'application_links_use_app': 'Installierte Anwendung verwenden',
     'connect_website': 'Website verknüpfen',
@@ -6327,7 +6357,7 @@ class AppLocalizations {
     'local_date_time': 'Lokales Datum und Uhrzeit',
     'sound': 'Ton',
     'sound_system_default': 'Gerätestandard',
-    'sound_selected': 'Ausgewählter TaskMaster-Pro-Ton',
+    'sound_selected': 'Ausgewählter DayVector-Ton',
     'silent': 'Stumm',
     'schedule': 'Planen',
     'no_time': 'Keine Zeit',
@@ -6403,7 +6433,7 @@ class AppLocalizations {
     'report_task_unavailable': 'Aufgabe nicht mehr verfügbar',
     'report_empty_title': 'Noch keine Berichtsdaten',
     'report_empty_body':
-        'TaskMaster Pro zeigt Diagramme, sobald in diesem Zeitraum echte Aufgaben-, Aktivitäts-, Roadmap- oder bestätigte Gesundheitsdaten vorhanden sind.',
+        'DayVector zeigt Diagramme, sobald in diesem Zeitraum echte Aufgaben-, Aktivitäts-, Roadmap- oder bestätigte Gesundheitsdaten vorhanden sind.',
     'report_completed_tasks': 'Abgeschlossene Aufgaben',
     'report_overdue_tasks': 'Überfällige Aufgaben',
     'report_roadmap_contribution': 'Roadmap-Beitrag',
@@ -6446,7 +6476,7 @@ class AppLocalizations {
         'Dieser Bericht konnte nicht erstellt werden. Deine Daten wurden nicht verändert.',
     'status': 'Status',
     'status_missed': 'Verpasst',
-    'notification_channel_execution': 'TaskMaster Pro — Aufgabenausführung',
+    'notification_channel_execution': 'DayVector — Aufgabenausführung',
     'notification_channel_execution_description':
         'Fokus-, Pausen- und Aufgabenzeit-Ereignisse',
     'notification_focus_completed_title': 'Fokussitzung abgeschlossen',
@@ -6469,7 +6499,7 @@ class AppLocalizations {
     'notification_action_extend_compact': '+5 Min.',
     'notification_action_review_compact': 'Prüfen',
     'notification_action_finish_compact': 'Fertig',
-    'notification_channel_wellbeing': 'TaskMaster Pro — Wohlbefinden',
+    'notification_channel_wellbeing': 'DayVector — Wohlbefinden',
     'notification_channel_wellbeing_description':
         'Erinnerungen an Schlafrhythmus und Wohlbefinden',
     'sleep_reminder_title': 'Es ist fast Zeit, zur Ruhe zu kommen 🌙',
@@ -6478,10 +6508,10 @@ class AppLocalizations {
     'notification_view_schedule': 'Zeitplan anzeigen',
     'break_in_progress': 'Pause läuft',
     'break_extended_five': 'Die Pause wurde um 5 Minuten verlängert.',
-    'tray_still_running_title': 'TaskMaster Pro läuft weiter',
+    'tray_still_running_title': 'DayVector läuft weiter',
     'tray_still_running_body':
         'Timer und Erinnerungen laufen im Hintergrund weiter. Über das Taskleistensymbol kannst du die App erneut öffnen oder beenden.',
-    'tray_open': 'TaskMaster Pro öffnen',
+    'tray_open': 'DayVector öffnen',
     'tray_no_task': 'Derzeit läuft keine Aufgabe',
     'tray_start_next': 'Nächste Aufgabe starten',
     'tray_pause_task': 'Aufgabe pausieren',
@@ -6491,7 +6521,7 @@ class AppLocalizations {
     'tray_whats_new_version': 'Neu in v{version}',
     'tray_check_updates': 'Nach Updates suchen',
     'tray_update_available': 'Update verfügbar',
-    'tray_exit': 'TaskMaster Pro beenden',
+    'tray_exit': 'DayVector beenden',
     'tray_deletion_scheduled': 'Kontolöschung geplant',
     'tray_tooltip_break': 'Pause läuft',
     'tray_tooltip_paused': 'Aufgabe pausiert',
@@ -6647,9 +6677,9 @@ class AppLocalizations {
     'health_distance_estimate_provenance':
         'Aus Tagesschritten und deiner hinterlegten Körpergröße von {height} cm geschätzt.',
     'health_huawei_not_available':
-        'Huawei-Health-Daten sind auf diesem Gerät nicht über eine unterstützte Verbindung für TaskMaster Pro verfügbar.',
+        'Huawei-Health-Daten sind auf diesem Gerät nicht über eine unterstützte Verbindung für DayVector verfügbar.',
     'health_nothing_not_available':
-        'Nothing-X-Daten sind auf diesem Gerät nicht für TaskMaster Pro verfügbar.',
+        'Nothing-X-Daten sind auf diesem Gerät nicht für DayVector verfügbar.',
     'health_last_updated': 'Zuletzt aktualisiert',
     'health_sources': 'Gesundheitsquellen',
     'health_sources_detail':
@@ -6702,7 +6732,7 @@ class AppLocalizations {
     'health_wearables_capability_available': '{capability}: Verfügbar',
     'health_ble_discovery': 'Gesundheitsuhr finden',
     'health_ble_discovery_detail':
-        'Finde Uhren in der Nähe oder bereits gekoppelte Uhren. TaskMaster Pro zeigt nur Gesundheitsfunktionen, die von der Uhr bestätigt werden.',
+        'Finde Uhren in der Nähe oder bereits gekoppelte Uhren. DayVector zeigt nur Gesundheitsfunktionen, die von der Uhr bestätigt werden.',
     'health_ble_scan': 'Uhren suchen',
     'health_ble_settings': 'Bluetooth-Einstellungen',
     'health_ble_disabled':
@@ -6735,7 +6765,7 @@ class AppLocalizations {
     'health_ble_capability_available': '{capability}: Verfügbar',
     'permission_setup_title': 'Android-Zugriffe einrichten',
     'permission_setup_subtitle':
-        'Wähle, welche Funktionen von TaskMaster Pro dieses Telefon verwenden darf. Du kannst jede Auswahl später ändern.',
+        'Wähle, welche Funktionen von DayVector dieses Telefon verwenden darf. Du kannst jede Auswahl später ändern.',
     'permission_setup_privacy':
         'Nichts wird automatisch freigegeben. Android fragt erst nach einer passenden Aktion.',
     'permission_setup_notifications_title': 'Benachrichtigungen',
@@ -6755,7 +6785,7 @@ class AppLocalizations {
         'Erlaubt Android, geplante Grenzen für Aufgaben, Fokus und Pausen so genau auszuliefern, wie das Gerät es zulässt.',
     'permission_setup_health_title': 'Health Connect',
     'permission_setup_health_detail':
-        'Optional und von dir gestartet. Wähle im Gesundheitsbildschirm die zu teilenden Datensätze; TaskMaster Pro fordert sie niemals automatisch an.',
+        'Optional und von dir gestartet. Wähle im Gesundheitsbildschirm die zu teilenden Datensätze; DayVector fordert sie niemals automatisch an.',
     'permission_setup_allowed': 'Erlaubt',
     'permission_setup_needs_permission': 'Berechtigung erforderlich',
     'permission_setup_needs_settings': 'In Android-Einstellungen erlauben',
@@ -6771,7 +6801,7 @@ class AppLocalizations {
     'permission_setup_revisit':
         'Um eine abgelehnte Auswahl später zu prüfen, öffne Einstellungen → Benachrichtigungen und Töne, Aktivität und Datenschutz oder Gesundheit. Android-Spezialzugriffe bleiben über die jeweilige Steuerung erreichbar.',
     'permission_setup_storage_error':
-        'TaskMaster Pro konnte die Berechtigungsprüfung dieses Geräts nicht speichern. Versuche es erneut, bevor du fortfährst.',
+        'DayVector konnte die Berechtigungsprüfung dieses Geräts nicht speichern. Versuche es erneut, bevor du fortfährst.',
   };
 }
 

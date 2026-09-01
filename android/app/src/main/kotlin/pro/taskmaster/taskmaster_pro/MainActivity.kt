@@ -53,6 +53,7 @@ class MainActivity : FlutterFragmentActivity() {
     private val bleChannel = "taskmasterpro/ble"
     private val vaultChannel = "taskmasterpro/vault"
     private var homeWidgetMethodChannel: MethodChannel? = null
+    private var healthWorkoutBridge: DayVectorHealthWorkoutBridge? = null
     private var pendingHomeWidgetAction: Map<String, Any>? = null
     private val heartRateServiceUuid =
         UUID.fromString("0000180d-0000-1000-8000-00805f9b34fb")
@@ -442,6 +443,11 @@ class MainActivity : FlutterFragmentActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        healthWorkoutBridge?.close()
+        healthWorkoutBridge = DayVectorHealthWorkoutBridge(
+            applicationContext,
+            flutterEngine.dartExecutor.binaryMessenger,
+        )
         captureHomeWidgetAction(intent)
         MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
@@ -1899,6 +1905,8 @@ class MainActivity : FlutterFragmentActivity() {
     }
 
     override fun onDestroy() {
+        healthWorkoutBridge?.close()
+        healthWorkoutBridge = null
         mainHandler.removeCallbacks(stopGattInspection)
         runCatching {
             inspectedGatt?.disconnect()

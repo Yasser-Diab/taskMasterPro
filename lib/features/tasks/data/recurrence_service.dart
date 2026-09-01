@@ -3,6 +3,7 @@ import 'dart:convert';
 import '../../../core/data/entity_record_repository.dart';
 import '../../../core/database/app_database.dart';
 import '../domain/recurring_occurrence_identity.dart';
+import '../domain/task_schedule_policy.dart';
 import '../domain/vacation_period.dart';
 import 'task_repository.dart';
 import 'vacation_repository.dart';
@@ -142,6 +143,13 @@ class RecurrenceService {
             final baseExecutionSettings = <String, Object?>{
               ...inheritedExecutionSettings,
             }..remove(vacationAdjustmentKey);
+            final plannedRest = TaskSchedulePolicy.plannedRestDuration(
+              baseExecutionSettings,
+            );
+            final occupiedDuration = TaskSchedulePolicy.occupiedDurationFor(
+              workDuration: Duration(milliseconds: durationMs),
+              plannedRest: plannedRest,
+            );
             final executionSettings = vacation.isAdjusted
                 ? <String, Object?>{
                     ...baseExecutionSettings,
@@ -154,14 +162,14 @@ class RecurrenceService {
                       'original_planned_start': originalPlannedStart
                           ?.toIso8601String(),
                       'original_planned_end': originalPlannedStart
-                          ?.add(Duration(milliseconds: durationMs))
+                          ?.add(occupiedDuration)
                           .toIso8601String(),
                       'original_due_at': null,
                       'applied_status': 'ready',
                       'applied_scheduled_date': dateOnlyText(plannedDate),
                       'applied_planned_start': plannedStart?.toIso8601String(),
                       'applied_planned_end': plannedStart
-                          ?.add(Duration(milliseconds: durationMs))
+                          ?.add(occupiedDuration)
                           .toIso8601String(),
                       'applied_due_at': null,
                     },
@@ -194,9 +202,7 @@ class RecurrenceService {
                     'manual',
                 scheduledDate: plannedDate,
                 plannedStart: plannedStart,
-                plannedEnd: plannedStart?.add(
-                  Duration(milliseconds: durationMs),
-                ),
+                plannedEnd: plannedStart?.add(occupiedDuration),
                 estimatedDuration: Duration(milliseconds: durationMs),
                 roadmapId:
                     templateRow['roadmap_id'] as String? ?? source?.roadmapId,

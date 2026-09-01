@@ -11,6 +11,7 @@ void main() {
     DateTime? dueAt,
     DateTime? scheduledDate,
     DateTime? plannedStart,
+    DateTime? plannedEnd,
     String? templateId,
     String? occurrenceKey,
     String dataJson = '{}',
@@ -27,7 +28,7 @@ void main() {
     executionMode: 'continuous',
     scheduledDate: scheduledDate,
     plannedStart: plannedStart,
-    plannedEnd: null,
+    plannedEnd: plannedEnd,
     dueAt: dueAt,
     estimatedDurationMs: 2400000,
     actualStart: null,
@@ -64,8 +65,21 @@ void main() {
         now: now,
         timeZone: 'Africa/Cairo',
       ),
-      isFalse,
-      reason: 'A stale status without a deadline is not canonical evidence.',
+      isTrue,
+      reason:
+          'The synchronized server classification remains valid for legacy rows without an explicit deadline.',
+    );
+    expect(
+      TaskOccurrencePolicy.isOverdue(
+        task(
+          plannedStart: now.subtract(const Duration(hours: 2)),
+          plannedEnd: now.subtract(const Duration(minutes: 1)),
+        ),
+        now: now,
+        timeZone: 'Africa/Cairo',
+      ),
+      isTrue,
+      reason: 'A passed planned end is a real deadline for the task window.',
     );
     for (final status in const [
       'completed',

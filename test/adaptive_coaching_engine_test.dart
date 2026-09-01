@@ -110,7 +110,7 @@ void main() {
     expect(decision.expression, CoachingExpression.overwhelmed);
   });
 
-  test('too-frequent feedback produces a compact low-pressure card', () {
+  test('too-frequent feedback lowers only the repeated coaching topic', () {
     final decision = engine.select(evidence(readyTodayCount: 2), [
       CoachingFeedbackSignal(
         kind: CoachingFeedbackKind.tooFrequent,
@@ -119,10 +119,44 @@ void main() {
         submittedAt: now.subtract(const Duration(hours: 1)),
       ),
     ]);
-    expect(decision.cardKey, 'feedback_space');
-    expect(decision.compact, isTrue);
-    expect(decision.mood, CoachingMood.supportive);
+    expect(decision.cardKey, 'limited_evidence_plan');
+    expect(decision.cardKey, isNot('feedback_space'));
   });
+
+  test(
+    'several independent coaching suggestions remain available together',
+    () {
+      final decisions = engine.rank(
+        evidence(
+          hasActiveTask: true,
+          overdueCount: 2,
+          overdueTaskIds: const ['late-a', 'late-b'],
+          lateNightMinutes: 35,
+          readyTodayCount: 2,
+        ),
+        [
+          CoachingFeedbackSignal(
+            kind: CoachingFeedbackKind.tooFrequent,
+            category: 'rest_timing',
+            cardKey: 'late_night_reset',
+            submittedAt: now.subtract(const Duration(hours: 1)),
+          ),
+        ],
+        maxCount: 4,
+      );
+
+      expect(decisions, hasLength(4));
+      expect(
+        decisions.map((item) => item.cardKey),
+        contains('protect_active_focus'),
+      );
+      expect(decisions.map((item) => item.cardKey), contains('overdue_triage'));
+      expect(
+        decisions.map((item) => item.cardKey),
+        isNot(contains('feedback_space')),
+      );
+    },
+  );
 
   test('active work receives supportive rather than punitive coaching', () {
     final decision = engine.select(

@@ -329,7 +329,7 @@ class _WhatsNewDialogState extends State<_WhatsNewDialog> {
               Expanded(
                 child: Markdown(
                   data: widget.release.notes.trim().isEmpty
-                      ? '# TaskMaster Pro v${widget.release.version}\n\n'
+                      ? '# DayVector v${widget.release.version}\n\n'
                             '${context.l10n.text('update_notes_unavailable')}'
                       : widget.release.notes,
                   selectable: true,

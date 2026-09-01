@@ -386,7 +386,7 @@ class _SynchronizationDiagnosticsPanelState
   ) {
     final connection = ref.read(syncServiceProvider).getConnectionDiagnostics();
     final buffer = StringBuffer()
-      ..writeln('TaskMaster Pro synchronization diagnostics')
+      ..writeln('DayVector synchronization diagnostics')
       ..writeln(
         'Last successful synchronization: '
         '${snapshot.lastSuccessfulSync?.toIso8601String() ?? 'none'}',

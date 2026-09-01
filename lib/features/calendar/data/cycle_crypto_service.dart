@@ -89,6 +89,7 @@ class CycleCryptoService {
   Future<SecretKey> _deriveKey(String userId, String passphrase) {
     return _kdf.deriveKey(
       secretKey: SecretKey(utf8.encode(passphrase)),
+      // Immutable cryptographic context retained across the public rename.
       nonce: utf8.encode('TaskMaster Pro cycle data $userId'),
     );
   }

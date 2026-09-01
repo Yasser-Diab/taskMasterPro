@@ -1,4 +1,4 @@
-# TaskMaster Pro landing page
+# DayVector landing page
 
 This is a dependency-free static website. Upload the contents of this directory
 to any static host.
@@ -8,22 +8,23 @@ visitor's task label, durations, current phase, round and remaining time only in
 that browser's `localStorage`; no account or backend request is required.
 
 The English/German/Arabic switch is implemented by `i18n.js`. The chosen language is
-stored locally under `taskmaster-pro:site-language` and applies to the landing,
+stored locally under `dayvector:site-language`, reflected in the `lang` URL
+parameter and applies to the landing,
 Pomodoro, privacy, terms and installation-help pages.
 
 The Android widget showcase combines the real, privacy-cleaned phone backdrop
 in `assets/images/widget-phone-backdrop.png` with an interactive HTML widget, so
 the countdown and controls remain live and responsive.
 
-The Health section uses a real app capture from the verified Android 0.0.28
+The Health section uses a real app capture from the verified Android 0.0.29
 build at `assets/images/health-dashboard-phone-clean.png`. Only the phone's
 unrelated media-status indicator was removed from the capture.
 
-The page reads the latest published release from:
+The page reads the latest published DayVector release from:
 
 `https://github.com/Yasser-Diab/taskMasterPro/releases`
 
-When a release contains Windows `.exe` and Android `.apk` assets, the download
+When a release contains Windows `.exe`, Android `.apk` and Android `.aab` assets, the download
 buttons link directly to them. Until then, the page shows that the installers
 are not yet published.
 

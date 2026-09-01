@@ -3,7 +3,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 
 import '../data/adaptive_coaching_service.dart';
 
-/// Theme-aware rendering for the TaskMaster Pro coaching expression pack.
+/// Theme-aware rendering for the DayVector coaching expression pack.
 ///
 /// The SVGs contain geometry only. Applying the semantic accent here keeps the
 /// same illustration legible in light, dark-blue, and black-and-gold themes.

@@ -24,7 +24,7 @@ seed_templates as (
   where template.user_id = owner.id
     and template.data ->> 'installed_release' = '0.0.27'
     and template.description =
-      'Sustainable recurring study timetable for TaskMaster Pro v0.0.27'
+      'Sustainable recurring study timetable for DayVector v0.0.27'
     and template.deleted_at is null
 )
 select

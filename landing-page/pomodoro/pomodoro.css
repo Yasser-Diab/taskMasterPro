@@ -1,10 +1,10 @@
 .pomodoro-page {
-  --timer-accent: #4faeff;
-  --timer-accent-soft: rgba(79, 174, 255, 0.16);
+  --timer-accent: #4f46e5;
+  --timer-accent-soft: rgba(79, 70, 229, 0.16);
   min-height: 100vh;
   background:
-    radial-gradient(circle at 82% 10%, rgba(27, 130, 226, 0.14), transparent 34rem),
-    radial-gradient(circle at 4% 35%, rgba(50, 211, 166, 0.08), transparent 28rem),
+    radial-gradient(circle at 82% 10%, rgba(79, 70, 229, 0.14), transparent 34rem),
+    radial-gradient(circle at 4% 35%, rgba(32, 198, 164, 0.08), transparent 28rem),
     var(--background);
 }
 
@@ -22,7 +22,7 @@
   inset: 0 0 auto;
   z-index: 50;
   border-bottom: 1px solid rgba(157, 190, 221, 0.1);
-  background: rgba(7, 17, 31, 0.83);
+  background: rgba(16, 24, 40, 0.83);
   backdrop-filter: blur(22px);
 }
 
@@ -64,9 +64,9 @@
   left: 50%;
   width: min(84vw, 1100px);
   height: min(84vw, 1100px);
-  border: 1px solid rgba(68, 165, 255, 0.1);
+  border: 1px solid rgba(79, 70, 229, 0.1);
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(28, 125, 218, 0.12), transparent 68%);
+  background: radial-gradient(circle, rgba(79, 70, 229, 0.12), transparent 68%);
   transform: translateX(-10%);
   pointer-events: none;
 }
@@ -224,9 +224,9 @@
   gap: 6px;
   flex: 0 0 auto;
   padding: 7px 10px;
-  border: 1px solid rgba(78, 212, 156, 0.2);
+  border: 1px solid rgba(32, 198, 164, 0.2);
   border-radius: 99px;
-  background: rgba(78, 212, 156, 0.07);
+  background: rgba(32, 198, 164, 0.07);
   color: #77d9b2;
   font-size: 0.62rem;
   font-weight: 800;
@@ -707,9 +707,9 @@
   gap: 12px;
   margin: 22px 0;
   padding: 16px;
-  border: 1px solid rgba(242, 184, 75, 0.2);
+  border: 1px solid rgba(245, 185, 66, 0.2);
   border-radius: 16px;
-  background: rgba(242, 184, 75, 0.07);
+  background: rgba(245, 185, 66, 0.07);
 }
 
 .information-caution .material-symbols-rounded { color: var(--warning); }
@@ -849,7 +849,7 @@ html[data-theme="light"] .book-recommendation {
 }
 
 html[data-theme="light"] .book-recommendation h2 {
-  color: #122236;
+  color: #101828;
 }
 
 html[data-theme="light"] .book-recommendation p {

@@ -26,7 +26,7 @@ void main() {
       id: 'roadmap-1',
       userId: 'user-1',
       title: 'Flutter Application Development',
-      description: 'Build and release TaskMaster Pro',
+      description: 'Build and release DayVector',
       status: 'active',
       plannedStart: now.subtract(const Duration(days: 60)),
       originalTargetDate: DateTime(2026, 10, 12),

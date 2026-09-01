@@ -13,7 +13,7 @@ abstract final class DeviceIdentity {
   /// Identifies this installation without tying it to an account.
   ///
   /// This value must never be sent as the synchronized `device_id` directly:
-  /// the same installation can be used by more than one TaskMaster Pro
+  /// the same installation can be used by more than one DayVector
   /// account, while `account_devices.id` is globally unique.
   static Future<String> id() {
     return _installationIdFuture ??= _loadInstallationId();
@@ -85,6 +85,6 @@ abstract final class DeviceIdentity {
   static String get displayName {
     if (Platform.isWindows) return 'Windows device';
     if (Platform.isAndroid) return 'Android device';
-    return 'TaskMaster Pro device';
+    return 'DayVector device';
   }
 }

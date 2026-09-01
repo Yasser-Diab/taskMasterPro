@@ -21,7 +21,7 @@ void taskMasterNotificationBackgroundResponse(
 ) async {
   // This callback is invoked in a background isolate. A StreamController in
   // that isolate is not the one listened to by the foreground application, so
-  // actions used to disappear when Android had to launch TaskMaster Pro. Keep
+  // actions used to disappear when Android had to launch DayVector. Keep
   // the small, non-sensitive action envelope until HomeShell is ready.
   WidgetsFlutterBinding.ensureInitialized();
   DartPluginRegistrant.ensureInitialized();
@@ -915,7 +915,7 @@ class LocalNotificationService {
     final canonicalCategory = NotificationSounds.canonicalCategory(category);
     final key = 'notification_category_$canonicalCategory';
     final value = l10n.text(key);
-    return value == key ? 'TaskMaster Pro' : 'TaskMaster Pro — $value';
+    return value == key ? 'DayVector' : 'DayVector — $value';
   }
 
   String _channelDescription(AppLocalizations l10n, String category) {
@@ -1259,7 +1259,7 @@ class LocalNotificationService {
     const settings = InitializationSettings(
       android: AndroidInitializationSettings('ic_notification'),
       windows: WindowsInitializationSettings(
-        appName: 'TaskMaster Pro',
+        appName: 'DayVector',
         appUserModelId: 'TaskMasterPro.Desktop',
         guid: '1d4219a0-d2e8-4b11-b478-aa8bb9870d9c',
       ),
@@ -1749,7 +1749,7 @@ class LocalNotificationService {
   }) async {
     await initialize();
     final l10n = AppLocalizations(Locale(localeCode));
-    final title = 'TaskMaster Pro';
+    final title = 'DayVector';
     final body = l10n.text('notification_test_body');
     await _plugin.show(
       id: 9001,

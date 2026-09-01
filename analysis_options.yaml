@@ -9,6 +9,13 @@
 # packages, and plugins designed to encourage good coding practices.
 include: package:flutter_lints/flutter.yaml
 
+analyzer:
+  # Locally patched plugins are compiled as dependencies by each platform
+  # build. Their bundled example applications have separate pubspec files and
+  # must not be analyzed as part of the DayVector application workspace.
+  exclude:
+    - third_party/**
+
 linter:
   # The lint rules applied to this project can be customized in the
   # section below to disable rules from the `package:flutter_lints/flutter.yaml`

@@ -64,10 +64,7 @@ void main() {
 
   test('task relationships remain visible from the linked roadmap', () async {
     final roadmapId = await roadmaps.createRoadmap(
-      RoadmapDraft(
-        title: 'Ship TaskMaster Pro',
-        targetDate: DateTime(2026, 10, 1),
-      ),
+      RoadmapDraft(title: 'Ship DayVector', targetDate: DateTime(2026, 10, 1)),
     );
     final phaseId = await roadmaps.addPhase(
       roadmapId: roadmapId,
@@ -94,33 +91,30 @@ void main() {
     expect(ruleRecords, hasLength(4));
   });
 
-  test(
-    'local roadmap projection refresh preserves canonical revision',
-    () async {
-      final roadmapId = await roadmaps.createRoadmap(
-        const RoadmapDraft(title: 'Canonical roadmap'),
-      );
-      final before = await (database.select(
-        database.localRoadmaps,
-      )..where((row) => row.id.equals(roadmapId))).getSingle();
-      final commandsBefore = await database
-          .select(database.localOutboxCommands)
-          .get();
+  test('roadmap projection refresh is local-only by default', () async {
+    final roadmapId = await roadmaps.createRoadmap(
+      const RoadmapDraft(title: 'Canonical roadmap'),
+    );
+    final before = await (database.select(
+      database.localRoadmaps,
+    )..where((row) => row.id.equals(roadmapId))).getSingle();
+    final commandsBefore = await database
+        .select(database.localOutboxCommands)
+        .get();
 
-      await roadmaps.recalculateProgress(roadmapId, synchronize: false);
+    await roadmaps.recalculateProgress(roadmapId);
 
-      final after = await (database.select(
-        database.localRoadmaps,
-      )..where((row) => row.id.equals(roadmapId))).getSingle();
-      final commandsAfter = await database
-          .select(database.localOutboxCommands)
-          .get();
-      expect(after.revision, before.revision);
-      expect(after.lastCommandId, before.lastCommandId);
-      expect(after.updatedByDeviceId, before.updatedByDeviceId);
-      expect(commandsAfter, hasLength(commandsBefore.length));
-    },
-  );
+    final after = await (database.select(
+      database.localRoadmaps,
+    )..where((row) => row.id.equals(roadmapId))).getSingle();
+    final commandsAfter = await database
+        .select(database.localOutboxCommands)
+        .get();
+    expect(after.revision, before.revision);
+    expect(after.lastCommandId, before.lastCommandId);
+    expect(after.updatedByDeviceId, before.updatedByDeviceId);
+    expect(commandsAfter, hasLength(commandsBefore.length));
+  });
 
   test(
     'nine-phase programming plan persists complete connected content once',

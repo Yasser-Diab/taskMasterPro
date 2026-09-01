@@ -71,5 +71,19 @@ void main() {
       ]),
       {'Huawei Health', 'Samsung Health'},
     );
+    expect(
+      healthSourceSummaryLabel(
+        'Nothing X, com.android.healthconnect.phone.j1cbd7fde659a3cc79f852f59ea55f398',
+        fallback: 'Android phone',
+      ),
+      'Nothing X',
+    );
+    expect(
+      healthSourceSummaryLabel(
+        'com.android.healthconnect.phone.j1cbd7fde659a3cc79f852f59ea55f398',
+        fallback: 'Android phone',
+      ),
+      'Android phone',
+    );
   });
 }

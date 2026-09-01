@@ -251,6 +251,26 @@ void main() {
     expect(widget.runtimeUpdatedAt, idle?.updatedAt);
   });
 
+  test(
+    'idle widget reports every ready task while previewing at most three',
+    () async {
+      for (var index = 1; index <= 5; index += 1) {
+        await repository.createTask(TaskDraft(title: 'Ready task $index'));
+      }
+
+      final widget = await AndroidHomeWidgetProjection.build(
+        repository: repository,
+        ownerId: 'local',
+        localeCode: 'en',
+        now: DateTime.utc(2026, 8, 29, 12),
+      );
+
+      expect(widget.mode, AndroidHomeWidgetMode.idle);
+      expect(widget.timerLabel, '5 tasks ready');
+      expect(widget.suggestions, hasLength(3));
+    },
+  );
+
   test('active-task switch persists the switch command identity', () async {
     final firstId = await repository.createTask(
       const TaskDraft(title: 'First task'),

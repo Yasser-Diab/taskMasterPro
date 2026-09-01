@@ -1,3 +1,7 @@
+import 'dart:convert';
+
+const plannedTaskRestDurationMsKey = 'planned_rest_duration_ms';
+
 class TaskScheduleWindow {
   const TaskScheduleWindow({
     required this.start,
@@ -22,6 +26,54 @@ enum TaskDurationBoundsViolation {
 
 abstract final class TaskSchedulePolicy {
   static const minimumPlanningWindow = Duration(minutes: 1);
+
+  /// Reads the optional rest reserved inside a task's occupied time.
+  ///
+  /// The value lives in the task's canonical `data` object so it inherits the
+  /// established task revision, outbox, conflict, and Realtime convergence
+  /// contract instead of creating a second independently synchronized row.
+  static Duration plannedRestDuration(Map<String, Object?> configuration) {
+    final raw = configuration[plannedTaskRestDurationMsKey];
+    final milliseconds = raw is num
+        ? raw.toInt()
+        : int.tryParse('${raw ?? ''}') ?? 0;
+    return Duration(milliseconds: milliseconds.clamp(0, 0x7fffffff).toInt());
+  }
+
+  static Duration plannedRestDurationFromJson(String raw) {
+    try {
+      final decoded = jsonDecode(raw);
+      return decoded is Map
+          ? plannedRestDuration(Map<String, Object?>.from(decoded))
+          : Duration.zero;
+    } on FormatException {
+      return Duration.zero;
+    }
+  }
+
+  /// Expected productive work within an occupied start/end window.
+  static Duration workDurationWithin({
+    required Duration occupiedDuration,
+    required Duration plannedRest,
+  }) {
+    final milliseconds =
+        occupiedDuration.inMilliseconds - plannedRest.inMilliseconds;
+    return Duration(milliseconds: milliseconds.clamp(0, 1 << 62).toInt());
+  }
+
+  /// Total calendar space needed for unpositioned work plus its planned rest.
+  static Duration occupiedDurationFor({
+    required Duration workDuration,
+    required Duration plannedRest,
+  }) => workDuration + plannedRest;
+
+  static bool plannedRestFits({
+    required Duration occupiedDuration,
+    required Duration plannedRest,
+  }) =>
+      plannedRest >= Duration.zero &&
+      plannedRest.inMilliseconds <= 0x7fffffff &&
+      (plannedRest == Duration.zero || plannedRest < occupiedDuration);
 
   /// The earliest valid end for a task with a concrete start.
   ///

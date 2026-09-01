@@ -1,6 +1,6 @@
-# TaskMaster Pro
+# DayVector
 
-TaskMaster Pro is a local-first execution, roadmap, activity-attribution, and
+DayVector is a local-first execution, roadmap, activity-attribution, and
 evidence-based coaching application for Windows and Android.
 
 ## Current baseline

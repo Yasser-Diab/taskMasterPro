@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -5,6 +8,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:taskmaster_pro/core/database/app_database.dart';
 import 'package:taskmaster_pro/features/settings/data/settings_repository.dart';
 import 'package:taskmaster_pro/features/tasks/data/task_repository.dart';
+import 'package:taskmaster_pro/features/tasks/domain/task_schedule_policy.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -114,6 +118,75 @@ void main() {
       task.estimatedDurationMs,
       const Duration(minutes: 40).inMilliseconds,
     );
+  });
+
+  test(
+    'planned rest stays in the guarded task payload and outside work time',
+    () async {
+      await repository.createTask(
+        TaskDraft(
+          title: 'Workday with lunch',
+          plannedStart: DateTime(2026, 8, 26, 9),
+          plannedEnd: DateTime(2026, 8, 26, 17),
+          configuration: const {plannedTaskRestDurationMsKey: 30 * 60 * 1000},
+        ),
+      );
+
+      final task = await database.select(database.localTasks).getSingle();
+      final command = await database
+          .select(database.localOutboxCommands)
+          .getSingle();
+      final taskData = jsonDecode(task.dataJson) as Map<String, dynamic>;
+      final payload = jsonDecode(command.payloadJson) as Map<String, dynamic>;
+
+      expect(
+        task.estimatedDurationMs,
+        const Duration(hours: 7, minutes: 30).inMilliseconds,
+      );
+      expect(taskData[plannedTaskRestDurationMsKey], 30 * 60 * 1000);
+      expect(
+        (payload['data'] as Map<String, dynamic>)[plannedTaskRestDurationMsKey],
+        30 * 60 * 1000,
+      );
+      expect(command.entityType, 'task_occurrences');
+      expect(command.commandType, 'create');
+    },
+  );
+
+  test('planned rest must fit inside a concrete task window', () async {
+    await expectLater(
+      repository.createTask(
+        TaskDraft(
+          title: 'Impossible rest',
+          plannedStart: DateTime(2026, 8, 26, 9),
+          plannedEnd: DateTime(2026, 8, 26, 9, 30),
+          configuration: const {plannedTaskRestDurationMsKey: 30 * 60 * 1000},
+        ),
+      ),
+      throwsArgumentError,
+    );
+  });
+
+  test('Supabase validates planned rest on tasks and recurring templates', () {
+    final migration = File(
+      'supabase/migrations/20260826111500_v0039_planned_task_rest.sql',
+    ).readAsStringSync();
+
+    expect(
+      migration,
+      contains('task_occurrences_planned_rest_duration_ms_check'),
+    );
+    expect(
+      migration,
+      contains('task_templates_planned_rest_duration_ms_check'),
+    );
+    expect(migration, contains("data ? 'planned_rest_duration_ms'"));
+    expect(
+      migration,
+      contains("execution_settings ? 'planned_rest_duration_ms'"),
+    );
+    expect(migration, contains('between 0 and 2147483647'));
+    expect(migration, contains('not valid'));
   });
 
   test(

@@ -15,15 +15,15 @@ enum TaskMasterThemeKey {
 }
 
 abstract final class TaskMasterTheme {
-  static const gold = Color(0xFFFFC928);
-  static const blue = Color(0xFF31B8FF);
-  static const green = Color(0xFF35C979);
+  static const gold = Color(0xFFF5B942);
+  static const blue = Color(0xFF4F46E5);
+  static const green = Color(0xFF20C6A4);
 
-  static ThemeData light({Color accent = const Color(0xFF0B78D1)}) {
+  static ThemeData light({Color accent = blue}) {
     final scheme = ColorScheme.fromSeed(
       seedColor: accent,
       brightness: Brightness.light,
-      surface: const Color(0xFFF5F8FC),
+      surface: const Color(0xFFF7F9FC),
     );
     return _build(scheme, const Color(0xFFFFFFFF), golden: false);
   }
@@ -32,9 +32,9 @@ abstract final class TaskMasterTheme {
     final scheme = ColorScheme.fromSeed(
       seedColor: accent,
       brightness: Brightness.dark,
-      surface: const Color(0xFF10171F),
+      surface: const Color(0xFF101828),
     );
-    return _build(scheme, const Color(0xFF151E28), golden: false);
+    return _build(scheme, const Color(0xFF182235), golden: false);
   }
 
   static ThemeData golden() {

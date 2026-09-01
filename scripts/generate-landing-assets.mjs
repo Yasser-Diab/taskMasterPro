@@ -1,8 +1,11 @@
-import { chromium } from 'playwright'
-import sharp from 'sharp'
-import { mkdir, readFile } from 'node:fs/promises'
+import { copyFile, mkdir, readFile } from 'node:fs/promises'
+import { createRequire } from 'node:module'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
+
+const require = createRequire(import.meta.url)
+const { chromium } = require('playwright')
+const sharp = require('sharp')
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url))
 const projectRoot = resolve(scriptDirectory, '..')
@@ -46,21 +49,32 @@ for (const width of [640, 1024, 1600]) {
     .toFile(join(outputDirectory, `dashboard-${width}.webp`))
 }
 
-const sourceLogo = join(
-  projectRoot,
-  'media',
-  'app-logo',
-  'TaskMaster_Pro_Blue_Dark_Transparent.png',
+// Keep the public Health preview tied to a captured, installed Android build.
+// The committed output remains available to the landing page; the QA capture
+// is regenerated whenever the release is verified on the connected phone.
+await sharp(
+  join(projectRoot, 'build', 'qa-captures', 'dayvector-health-weekly-workouts.png'),
 )
-const optimizedLogo = join(
-  landingRoot,
-  'assets',
-  'images',
-  'taskmaster-logo.webp',
+  .resize({ width: 852 })
+  .png({ compressionLevel: 9, adaptiveFiltering: true })
+  .toFile(
+    join(landingRoot, 'assets', 'images', 'health-dashboard-phone-clean.png'),
+  )
+
+const approvedBrand = join(projectRoot, 'DayVectorNewBranding')
+const brandOutput = join(landingRoot, 'assets', 'brand')
+await mkdir(brandOutput, { recursive: true })
+await copyFile(
+  join(approvedBrand, '01_Master_Artwork', 'DayVector_Symbol_Approved_Exact.svg'),
+  join(brandOutput, 'dayvector-symbol.svg'),
 )
-await sharp(sourceLogo)
-  .resize({ width: 620, withoutEnlargement: true })
-  .webp({ quality: 88, alphaQuality: 95 })
-  .toFile(optimizedLogo)
+await copyFile(
+  join(approvedBrand, '01_Master_Artwork', 'DayVector_Lockup_Horizontal.svg'),
+  join(brandOutput, 'dayvector-horizontal.svg'),
+)
+await copyFile(
+  join(approvedBrand, '01_Master_Artwork', 'DayVector_Lockup_Dark.svg'),
+  join(brandOutput, 'dayvector-horizontal-dark.svg'),
+)
 
 await browser.close()

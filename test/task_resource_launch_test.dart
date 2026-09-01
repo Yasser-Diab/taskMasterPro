@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:taskmaster_pro/core/database/app_database.dart';
 import 'package:taskmaster_pro/features/tasks/data/task_resource_service.dart';
@@ -154,5 +156,24 @@ void main() {
       isFalse,
     );
     expect(taskRuntimeOwnsStartedTask(null, 'selected-task'), isFalse);
+  });
+
+  test('task Start waits for its durable publish pass', () async {
+    final releasePublish = Completer<void>();
+    var publishStarted = false;
+    var returned = false;
+
+    final startPublish = publishStartedTask(() async {
+      publishStarted = true;
+      await releasePublish.future;
+    }).whenComplete(() => returned = true);
+
+    await Future<void>.delayed(Duration.zero);
+    expect(publishStarted, isTrue);
+    expect(returned, isFalse);
+
+    releasePublish.complete();
+    await startPublish;
+    expect(returned, isTrue);
   });
 }

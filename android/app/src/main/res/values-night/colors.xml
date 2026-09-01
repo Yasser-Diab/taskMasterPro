@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="taskmaster_splash_background">#05142B</color>
+    <color name="dayvector_splash_background">#101828</color>
+    <color name="dayvector_cloud">#F7F9FC</color>
+    <color name="dayvector_night">#101828</color>
 </resources>

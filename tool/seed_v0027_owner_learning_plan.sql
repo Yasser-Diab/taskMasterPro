@@ -1,4 +1,4 @@
--- Idempotent production-data installation for TaskMaster Pro v0.0.27.
+-- Idempotent production-data installation for DayVector v0.0.27.
 --
 -- This is an operational seed, not a schema migration and not a reset script.
 -- It never derives ownership from an email address. The configured owner UUID
@@ -153,7 +153,7 @@ declare
             {"title":"Build a React expense manager","minutes":900,"mode":"pomodoro","resource_name":"React Learn","url":"https://react.dev/learn"},
             {"title":"Build a weather dashboard","minutes":720,"mode":"pomodoro","resource_name":"MDN Fetch API","url":"https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API"},
             {"title":"Build a typed product-management interface","minutes":1200,"mode":"pomodoro","resource_name":"TypeScript Handbook","url":"https://www.typescriptlang.org/docs/handbook/intro.html"},
-            {"title":"Build a TaskMaster Pro front-end prototype","minutes":1200,"mode":"pomodoro","resource_name":"React Managing State","url":"https://react.dev/learn/managing-state"},
+            {"title":"Build a DayVector front-end prototype","minutes":1200,"mode":"pomodoro","resource_name":"React Managing State","url":"https://react.dev/learn/managing-state"},
             {"title":"Build a typed forms and validation project","minutes":720,"mode":"pomodoro","resource_name":"React input documentation","url":"https://react.dev/reference/react-dom/components/input"}
           ]
         },
@@ -199,13 +199,13 @@ declare
           "title": "Phase 5 — SQL and PostgreSQL",
           "duration": "8–10 weeks",
           "days": 70,
-          "milestone": "TaskMaster Pro relational database designed and implemented",
+          "milestone": "DayVector relational database designed and implemented",
           "checkpoints": [
             "Entity-relationship diagram completed before table implementation",
             "Relationships and normalization are explained",
             "Queries, joins, aggregates, and window functions work",
             "Foreign keys, transactions, migrations, and indexes are present",
-            "TaskMaster Pro application entities have explicit ownership and access rules"
+            "DayVector application entities have explicit ownership and access rules"
           ],
           "tasks": [
             {"title":"Start freeCodeCamp Relational Databases","minutes":1800,"mode":"pomodoro","resource_name":"freeCodeCamp Relational Databases","url":"https://www.freecodecamp.org/learn/relational-databases-v9/"},
@@ -218,7 +218,7 @@ declare
             {"title":"Learn transactions","minutes":240,"mode":"pomodoro","resource_name":"PostgreSQL Transactions","url":"https://www.postgresql.org/docs/current/tutorial-transactions.html"},
             {"title":"Learn window functions","minutes":240,"mode":"pomodoro","resource_name":"PostgreSQL Window Functions","url":"https://www.postgresql.org/docs/current/tutorial-window.html"},
             {"title":"Study relational databases in Full Stack Open Part 13","minutes":480,"mode":"pomodoro","resource_name":"Full Stack Open Part 13","url":"https://fullstackopen.com/en/part13"},
-            {"title":"Design the TaskMaster Pro database and entity-relationship diagram","minutes":1200,"mode":"pomodoro","resource_name":"PostgreSQL Data Definition","url":"https://www.postgresql.org/docs/current/ddl.html"}
+            {"title":"Design the DayVector database and entity-relationship diagram","minutes":1200,"mode":"pomodoro","resource_name":"PostgreSQL Data Definition","url":"https://www.postgresql.org/docs/current/ddl.html"}
           ]
         },
         {
@@ -255,7 +255,7 @@ declare
           "title": "Phase 7 — Full-Stack Capstone",
           "duration": "14–16 weeks",
           "days": 112,
-          "milestone": "TaskMaster Pro full-stack MVP completed through controlled releases",
+          "milestone": "DayVector full-stack MVP completed through controlled releases",
           "checkpoints": [
             "Authentication and profile ownership are secure",
             "Tasks, roadmaps, recurrence, timers, and interruptions work",
@@ -264,15 +264,15 @@ declare
             "CI/CD, containers, deployment, and release documentation are complete"
           ],
           "tasks": [
-            {"title":"TaskMaster Pro v0.1 — Authentication, profiles, and tasks","minutes":1200,"mode":"pomodoro","resource_name":"Full Stack Open Parts 3–4","url":"https://fullstackopen.com/en/part3"},
-            {"title":"TaskMaster Pro v0.2 — Roadmaps and recurring tasks","minutes":1200,"mode":"pomodoro","resource_name":"React Managing State","url":"https://react.dev/learn/managing-state"},
-            {"title":"TaskMaster Pro v0.3 — Pomodoro and general time tracking","minutes":900,"mode":"pomodoro","resource_name":"Node.js Timers","url":"https://nodejs.org/api/timers.html"},
-            {"title":"TaskMaster Pro v0.4 — Notes, interruptions, and reminders","minutes":900,"mode":"pomodoro","resource_name":"MDN Notifications API","url":"https://developer.mozilla.org/en-US/docs/Web/API/Notifications_API"},
-            {"title":"TaskMaster Pro v0.5 — PostgreSQL database and reporting","minutes":1200,"mode":"pomodoro","resource_name":"PostgreSQL Tutorial","url":"https://www.postgresql.org/docs/current/tutorial.html"},
-            {"title":"TaskMaster Pro v0.6 — Automated front-end and API tests","minutes":900,"mode":"pomodoro","resource_name":"Full Stack Open Part 5","url":"https://fullstackopen.com/en/part5"},
-            {"title":"TaskMaster Pro v0.7 — Continuous integration","minutes":720,"mode":"pomodoro","resource_name":"Full Stack Open Part 11","url":"https://fullstackopen.com/en/part11"},
-            {"title":"TaskMaster Pro v0.8 — Containers and deployment","minutes":720,"mode":"pomodoro","resource_name":"Full Stack Open Part 12","url":"https://fullstackopen.com/en/part12"},
-            {"title":"TaskMaster Pro v1.0 — Stable portfolio release","minutes":720,"mode":"pomodoro","resource_name":"GitHub Releases documentation","url":"https://docs.github.com/en/repositories/releasing-projects-on-github/about-releases"}
+            {"title":"DayVector v0.1 — Authentication, profiles, and tasks","minutes":1200,"mode":"pomodoro","resource_name":"Full Stack Open Parts 3–4","url":"https://fullstackopen.com/en/part3"},
+            {"title":"DayVector v0.2 — Roadmaps and recurring tasks","minutes":1200,"mode":"pomodoro","resource_name":"React Managing State","url":"https://react.dev/learn/managing-state"},
+            {"title":"DayVector v0.3 — Pomodoro and general time tracking","minutes":900,"mode":"pomodoro","resource_name":"Node.js Timers","url":"https://nodejs.org/api/timers.html"},
+            {"title":"DayVector v0.4 — Notes, interruptions, and reminders","minutes":900,"mode":"pomodoro","resource_name":"MDN Notifications API","url":"https://developer.mozilla.org/en-US/docs/Web/API/Notifications_API"},
+            {"title":"DayVector v0.5 — PostgreSQL database and reporting","minutes":1200,"mode":"pomodoro","resource_name":"PostgreSQL Tutorial","url":"https://www.postgresql.org/docs/current/tutorial.html"},
+            {"title":"DayVector v0.6 — Automated front-end and API tests","minutes":900,"mode":"pomodoro","resource_name":"Full Stack Open Part 5","url":"https://fullstackopen.com/en/part5"},
+            {"title":"DayVector v0.7 — Continuous integration","minutes":720,"mode":"pomodoro","resource_name":"Full Stack Open Part 11","url":"https://fullstackopen.com/en/part11"},
+            {"title":"DayVector v0.8 — Containers and deployment","minutes":720,"mode":"pomodoro","resource_name":"Full Stack Open Part 12","url":"https://fullstackopen.com/en/part12"},
+            {"title":"DayVector v1.0 — Stable portfolio release","minutes":720,"mode":"pomodoro","resource_name":"GitHub Releases documentation","url":"https://docs.github.com/en/repositories/releasing-projects-on-github/about-releases"}
           ]
         },
         {
@@ -288,7 +288,7 @@ declare
             "Applications and technical interview preparation are active"
           ],
           "tasks": [
-            {"title":"Polish TaskMaster Pro as a portfolio project","minutes":1200,"mode":"pomodoro","resource_name":"GitHub README guidance","url":"https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-readmes"},
+            {"title":"Polish DayVector as a portfolio project","minutes":1200,"mode":"pomodoro","resource_name":"GitHub README guidance","url":"https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-readmes"},
             {"title":"Polish Y.D Glass Manager as a portfolio project","minutes":900,"mode":"pomodoro","resource_name":"GitHub README guidance","url":"https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-readmes"},
             {"title":"Build an Accounting Management portfolio project","minutes":1200,"mode":"pomodoro","resource_name":"MDN Learn Web Development","url":"https://developer.mozilla.org/en-US/docs/Learn_web_development/"},
             {"title":"Build a public API application with caching, filtering, and pagination","minutes":900,"mode":"pomodoro","resource_name":"MDN Fetch API","url":"https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API"},
@@ -514,7 +514,7 @@ begin
     where account.id = owner_id
   ) then
     raise exception
-      'Configured TaskMaster Pro owner UUID % does not exist',
+      'Configured DayVector owner UUID % does not exist',
       owner_id;
   end if;
 
@@ -1088,7 +1088,7 @@ begin
         template_id,
         owner_id,
         schedule_plan ->> 'title',
-        'Sustainable recurring study timetable for TaskMaster Pro v0.0.27',
+        'Sustainable recurring study timetable for DayVector v0.0.27',
         2,
         (schedule_plan ->> 'mode')::public.execution_mode,
         duration_minutes::bigint * 60000,
@@ -1120,7 +1120,7 @@ begin
       set
         title = schedule_plan ->> 'title',
         description =
-          'Sustainable recurring study timetable for TaskMaster Pro v0.0.27',
+          'Sustainable recurring study timetable for DayVector v0.0.27',
         priority = 2,
         execution_mode =
           (schedule_plan ->> 'mode')::public.execution_mode,

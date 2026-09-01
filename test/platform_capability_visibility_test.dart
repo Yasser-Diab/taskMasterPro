@@ -27,6 +27,9 @@ void main() {
       final settings = File(
         'lib/features/settings/presentation/settings_screen.dart',
       ).readAsStringSync();
+      final shell = File(
+        'lib/features/shell/presentation/home_shell.dart',
+      ).readAsStringSync();
       final wellbeing = File(
         'lib/features/settings/presentation/schedule_wellbeing_screen.dart',
       ).readAsStringSync();
@@ -34,6 +37,13 @@ void main() {
       expect(settings, contains('builder: (_) => Platform.isAndroid'));
       expect(settings, contains('? const HealthConnectScreen()'));
       expect(settings, contains(': const WindowsHealthSummaryScreen()'));
+      expect(
+        shell,
+        contains('platform == TargetPlatform.windows'),
+        reason: 'The Windows rail must open the synchronized summary surface.',
+      );
+      expect(shell, contains('? const WindowsHealthSummaryScreen()'));
+      expect(shell, contains(': const HealthConnectScreen()'));
       expect(
         wellbeing,
         contains('if (!coachingOnly && Platform.isAndroid)'),
@@ -53,6 +63,20 @@ void main() {
       expect(screen, contains('.timeout(_healthReadTimeout)'));
       expect(screen, contains("'health_operation_timed_out'"));
       expect(screen, contains("'openHealthConnectSettings'"));
+      expect(
+        screen,
+        contains('HealthDataType.TOTAL_CALORIES_BURNED'),
+        reason:
+            'The health plugin enriches WORKOUT records with total calories, '
+            'so Android must grant that separate read permission.',
+      );
+      final manifest = File(
+        'android/app/src/main/AndroidManifest.xml',
+      ).readAsStringSync();
+      expect(
+        manifest,
+        contains('android.permission.health.READ_TOTAL_CALORIES_BURNED'),
+      );
       expect(activity, contains('healthConnectStepTrackingAvailable'));
       expect(
         activity,

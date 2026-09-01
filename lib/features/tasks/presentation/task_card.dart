@@ -10,6 +10,8 @@ import '../../activity/presentation/break_activity_check_in.dart';
 import '../data/task_execution_commands.dart';
 import '../data/task_execution_providers.dart';
 import '../domain/pomodoro_execution_state.dart';
+import '../domain/task_occurrence_policy.dart';
+import '../domain/task_schedule_policy.dart';
 import 'task_completion_flow.dart';
 import 'task_editor_dialog.dart';
 import 'task_start_flow.dart';
@@ -48,9 +50,17 @@ class TaskCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final colorScheme = Theme.of(context).colorScheme;
+    final projectedStatus =
+        TaskOccurrencePolicy.isOverdue(
+          task,
+          now: DateTime.now(),
+          timeZone: 'UTC',
+        )
+        ? 'overdue'
+        : task.status;
     final effectiveStatus = activeSessionState == 'running'
         ? 'in_progress'
-        : activeSessionState ?? task.status;
+        : activeSessionState ?? projectedStatus;
     final completed = effectiveStatus == 'completed';
     final note = task.description.trim();
     final runtime = effectiveStatus == 'paused'
@@ -58,6 +68,9 @@ class TaskCard extends ConsumerWidget {
         : null;
     final estimatedDuration = Duration(
       milliseconds: task.estimatedDurationMs.clamp(0, 1 << 62),
+    );
+    final plannedRest = TaskSchedulePolicy.plannedRestDurationFromJson(
+      task.dataJson,
     );
 
     return Card(
@@ -125,6 +138,18 @@ class TaskCard extends ConsumerWidget {
                               icon: Icons.timer_outlined,
                               label: context.l10n.duration(estimatedDuration),
                             ),
+                            if (plannedRest > Duration.zero)
+                              _Meta(
+                                icon: Icons.free_breakfast_outlined,
+                                label: context.l10n.format(
+                                  'task_planned_rest_summary',
+                                  {
+                                    'duration': context.l10n.duration(
+                                      plannedRest,
+                                    ),
+                                  },
+                                ),
+                              ),
                             _StatusPill(
                               status: effectiveStatus,
                               activeSession: activeSessionState != null,

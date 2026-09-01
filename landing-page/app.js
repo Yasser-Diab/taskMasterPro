@@ -251,7 +251,7 @@
 
   const releaseVersion = (release) => {
     const tag = String(release?.tag_name || '')
-    const prefix = window.TASKMASTER_RELEASES?.tagPrefix || 'v'
+    const prefix = window.DAYVECTOR_RELEASES?.tagPrefix || 'v'
     return tag.toLowerCase().startsWith(prefix.toLowerCase())
       ? tag.slice(prefix.length)
       : null
@@ -267,7 +267,7 @@
     )
 
   const loadLatestPublishedRelease = async () => {
-    const config = window.TASKMASTER_RELEASES
+    const config = window.DAYVECTOR_RELEASES
     if (!config?.latestApiUrl) {
       throw new Error('Release configuration unavailable')
     }
@@ -380,7 +380,7 @@
   }
 
   const releaseCacheKey = (version) =>
-    `taskmaster-release-notes:${window.TASKMASTER_RELEASES?.repository || 'taskmaster'}:v${version}`
+    `dayvector-release-notes:${window.DAYVECTOR_RELEASES?.repository || 'dayvector'}:v${version}`
 
   const validRelease = (release, version) => {
     const expected = `v${version}`.toLowerCase()
@@ -394,7 +394,7 @@
   }
 
   const loadReleaseForVersion = async (version) => {
-    const config = window.TASKMASTER_RELEASES
+    const config = window.DAYVECTOR_RELEASES
     if (!config) throw new Error('Release configuration unavailable')
     const cacheKey = releaseCacheKey(version)
     try {
@@ -539,7 +539,7 @@
   })
 
   const loadLatestRelease = async () => {
-    const config = window.TASKMASTER_RELEASES
+    const config = window.DAYVECTOR_RELEASES
     const setDownload = (platform, asset) => {
       const link = document.getElementById(`${platform}-download`)
       const size = document.querySelector(`[data-${platform}-size]`)
@@ -560,20 +560,28 @@
       if (label) label.textContent = 'Coming soon!'
       if (size) size.textContent = 'Available with the release'
     }
-    const setReleaseUnavailable = () => {
+    const setReleaseUnavailable = (version = null) => {
       document.querySelectorAll('[data-release-version]').forEach((element) => {
-        element.textContent = 'Coming soon!'
+        element.textContent = version || 'Coming soon!'
       })
+      if (version) {
+        document.querySelectorAll('[data-release-notes]').forEach((control) => {
+          control.setAttribute('data-release-version-value', version)
+        })
+      }
       setDownload('windows', null)
       setDownload('android', null)
     }
+    const currentVersion = String(config?.currentVersion || '').trim() || null
     if (!config?.latestApiUrl) {
-      setReleaseUnavailable()
+      setReleaseUnavailable(currentVersion)
       return
     }
 
     try {
-      const release = await loadLatestPublishedRelease()
+      const release = currentVersion
+        ? await loadReleaseForVersion(currentVersion)
+        : await loadLatestPublishedRelease()
       const assets = Array.isArray(release.assets) ? release.assets : []
       const windows = assets.find((asset) =>
         String(asset.name).toLowerCase().endsWith('.exe'),
@@ -596,7 +604,7 @@
       setDownload('windows', windows)
       setDownload('android', android)
     } catch {
-      setReleaseUnavailable()
+      setReleaseUnavailable(currentVersion)
     }
   }
 

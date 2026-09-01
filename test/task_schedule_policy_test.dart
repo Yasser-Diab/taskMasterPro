@@ -91,6 +91,40 @@ void main() {
     );
   });
 
+  test('planned rest is removed from work but retained in occupied time', () {
+    const occupied = Duration(hours: 8);
+    const rest = Duration(minutes: 30);
+
+    expect(
+      TaskSchedulePolicy.workDurationWithin(
+        occupiedDuration: occupied,
+        plannedRest: rest,
+      ),
+      const Duration(hours: 7, minutes: 30),
+    );
+    expect(
+      TaskSchedulePolicy.occupiedDurationFor(
+        workDuration: const Duration(hours: 7, minutes: 30),
+        plannedRest: rest,
+      ),
+      occupied,
+    );
+    expect(
+      TaskSchedulePolicy.plannedRestFits(
+        occupiedDuration: occupied,
+        plannedRest: rest,
+      ),
+      isTrue,
+    );
+    expect(
+      TaskSchedulePolicy.plannedRestFits(
+        occupiedDuration: rest,
+        plannedRest: rest,
+      ),
+      isFalse,
+    );
+  });
+
   test('invalid or duplicate time windows are rejected', () {
     expect(
       TaskSchedulePolicy.resolve(

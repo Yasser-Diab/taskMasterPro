@@ -1,14 +1,17 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:timezone/timezone.dart' as tz;
 
 import '../../../core/data/entity_record_repository.dart';
 import '../../../core/database/app_database.dart';
 import '../../../core/localization/app_localizations.dart';
+import '../../../core/notifications/notification_sounds.dart';
 import '../../../core/providers.dart';
 import '../../activity/data/activity_repository.dart';
 import '../../activity/presentation/activity_review_screen.dart';
@@ -258,6 +261,7 @@ class DashboardScreen extends ConsumerWidget {
                     ),
                     const SizedBox(height: 20),
                     _AdaptiveCoachingCard(
+                      userId: user.id,
                       userName: displayName,
                       age: age,
                       createdAt: profile?.createdAt,
@@ -1492,6 +1496,7 @@ class _TodaySchedule extends StatelessWidget {
 
 class _AdaptiveCoachingCard extends ConsumerStatefulWidget {
   const _AdaptiveCoachingCard({
+    required this.userId,
     required this.userName,
     required this.age,
     required this.createdAt,
@@ -1500,6 +1505,7 @@ class _AdaptiveCoachingCard extends ConsumerStatefulWidget {
     required this.settings,
   });
 
+  final String userId;
   final String userName;
   final int? age;
   final DateTime? createdAt;
@@ -1513,14 +1519,19 @@ class _AdaptiveCoachingCard extends ConsumerStatefulWidget {
 }
 
 class _AdaptiveCoachingCardState extends ConsumerState<_AdaptiveCoachingCard> {
-  Future<AdaptiveCoachingInsight>? _insight;
-  AdaptiveCoachingInsight? _lastInsight;
+  Future<List<AdaptiveCoachingInsight>>? _insights;
+  List<AdaptiveCoachingInsight> _lastInsights = const [];
+  late final PageController _pageController = PageController();
+  Timer? _rotationTimer;
+  int _rotationCardCount = 0;
+  int _rotationDirection = 1;
+  int _activePage = 0;
   bool _savingFeedback = false;
 
   @override
   void initState() {
     super.initState();
-    _insight = _load();
+    _insights = _load();
   }
 
   @override
@@ -1531,20 +1542,151 @@ class _AdaptiveCoachingCardState extends ConsumerState<_AdaptiveCoachingCard> {
         oldWidget.settings != widget.settings ||
         oldWidget.createdAt != widget.createdAt ||
         oldWidget.age != widget.age) {
-      _insight = _load();
+      _insights = _load();
     }
   }
 
-  Future<AdaptiveCoachingInsight> _load() {
-    return ref
+  @override
+  void dispose() {
+    _rotationTimer?.cancel();
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  Future<List<AdaptiveCoachingInsight>> _load() async {
+    final insights = await ref
         .read(adaptiveCoachingServiceProvider)
-        .buildInsight(
+        .buildInsights(
           tasks: widget.tasks,
           runtime: widget.runtime,
           settings: widget.settings,
           accountCreatedAt: widget.createdAt,
           age: widget.age,
         );
+    if (mounted) {
+      _configureRotation(insights.length);
+      unawaited(_publishCurrentCoaching(insights));
+    }
+    return insights;
+  }
+
+  void _configureRotation(int count) {
+    if (_rotationCardCount == count) return;
+    _rotationCardCount = count;
+    _rotationTimer?.cancel();
+    _rotationTimer = null;
+    _rotationDirection = 1;
+    _activePage = 0;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _pageController.hasClients) {
+        _pageController.jumpToPage(0);
+      }
+    });
+    if (count < 2) return;
+    _rotationTimer = Timer.periodic(const Duration(seconds: 8), (_) {
+      if (!mounted || !_pageController.hasClients) return;
+      var next = _activePage + _rotationDirection;
+      if (next >= count) {
+        _rotationDirection = -1;
+        next = count - 2;
+      } else if (next < 0) {
+        _rotationDirection = 1;
+        next = 1;
+      }
+      _pageController.animateToPage(
+        next,
+        duration: const Duration(milliseconds: 520),
+        curve: Curves.easeInOutCubic,
+      );
+    });
+  }
+
+  Future<void> _publishCurrentCoaching(
+    List<AdaptiveCoachingInsight> insights,
+  ) async {
+    final settings = widget.settings;
+    if (settings == null || insights.isEmpty) return;
+    final preferencesJson = settings.notificationPreferencesJson;
+    if (!NotificationSounds.categoryEnabled(
+      preferencesJson: preferencesJson,
+      category: 'coaching',
+    )) {
+      return;
+    }
+    final insight = insights
+        .where(
+          (item) =>
+              item.decision.score >= 50 &&
+              item.decision.cardKey != 'limited_evidence_plan' &&
+              item.decision.cardKey != 'first_day_learning',
+        )
+        .firstOrNull;
+    if (insight == null || !mounted) return;
+    final decision = insight.decision;
+    final fingerprint = jsonEncode({
+      'card': decision.cardKey,
+      'values': decision.bodyValues,
+      'task': decision.relatedTaskId,
+      'tasks': decision.relatedTaskIds,
+    });
+    final preferences = await SharedPreferences.getInstance();
+    final keyPrefix = 'dayvector.coaching.notification.${widget.userId}';
+    final previousFingerprint = preferences.getString('$keyPrefix.fingerprint');
+    final previousAt = DateTime.tryParse(
+      preferences.getString('$keyPrefix.sent_at') ?? '',
+    );
+    final now = DateTime.now().toUtc();
+    final minimumGap = switch (settings.coachingSensitivity) {
+      'quiet' => const Duration(hours: 4),
+      'persistent' => const Duration(minutes: 10),
+      'active' => const Duration(minutes: 20),
+      _ => const Duration(minutes: 45),
+    };
+    if (previousAt != null) {
+      final age = now.difference(previousAt.toUtc());
+      if (previousFingerprint == fingerprint &&
+          age < const Duration(hours: 8)) {
+        return;
+      }
+      if (age < minimumGap) return;
+    }
+    if (!mounted) return;
+    final title = context.l10n.format(decision.titleKey, {
+      'userName': widget.userName,
+    });
+    final body = context.l10n.format(decision.bodyKey, {
+      ..._coachingDisplayValues(context.l10n, decision.bodyValues),
+      'userName': widget.userName,
+    });
+    try {
+      await localNotificationService.showCategoryNotification(
+        id: LocalNotificationService.coachingNotificationId(
+          'adaptive:${widget.userId}',
+        ),
+        category: 'coaching',
+        title: title,
+        body: body,
+        sound: NotificationSounds.forCategory(
+          preferencesJson: preferencesJson,
+          category: 'coaching',
+          fallbackKey: settings.notificationSoundKey,
+        ),
+        vibration: NotificationSounds.vibrationForCategory(
+          preferencesJson: preferencesJson,
+          category: 'coaching',
+        ),
+        localeCode: settings.localeCode,
+        payload: decision.relatedTaskId == null
+            ? 'coaching'
+            : 'task/${decision.relatedTaskId}',
+      );
+      await preferences.setString('$keyPrefix.fingerprint', fingerprint);
+      await preferences.setString('$keyPrefix.sent_at', now.toIso8601String());
+    } catch (_) {
+      // The card remains useful when OS notifications are unavailable. A
+      // later state refresh will retry because no delivery fingerprint was
+      // persisted.
+    }
   }
 
   Future<void> _submit(
@@ -1558,7 +1700,7 @@ class _AdaptiveCoachingCardState extends ConsumerState<_AdaptiveCoachingCard> {
           .read(adaptiveCoachingServiceProvider)
           .submitFeedback(insight, kind);
       if (!mounted) return;
-      setState(() => _insight = _load());
+      setState(() => _insights = _load());
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(context.l10n.text('coaching_feedback_saved'))),
       );
@@ -1574,18 +1716,82 @@ class _AdaptiveCoachingCardState extends ConsumerState<_AdaptiveCoachingCard> {
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<AdaptiveCoachingInsight>(
-      future: _insight,
-      initialData: _lastInsight,
+    return FutureBuilder<List<AdaptiveCoachingInsight>>(
+      future: _insights,
+      initialData: _lastInsights.isEmpty ? null : _lastInsights,
       builder: (context, snapshot) {
-        if (!snapshot.hasData) {
+        if (!snapshot.hasData || snapshot.requireData.isEmpty) {
           return _CoachLoadingCard(
             reducedMotion:
                 MediaQuery.maybeOf(context)?.disableAnimations ?? false,
           );
         }
-        _lastInsight = snapshot.requireData;
-        return _buildInsight(context, snapshot.requireData);
+        _lastInsights = snapshot.requireData;
+        return _buildCarousel(context, snapshot.requireData);
+      },
+    );
+  }
+
+  Widget _buildCarousel(
+    BuildContext context,
+    List<AdaptiveCoachingInsight> insights,
+  ) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.maxWidth < 560;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _SectionTitle(
+              title: context.l10n.text('coaching'),
+              icon: Icons.auto_awesome_rounded,
+            ),
+            const SizedBox(height: 10),
+            SizedBox(
+              height: compact ? 430 : 340,
+              child: PageView.builder(
+                key: const ValueKey('adaptive-coaching-carousel'),
+                controller: _pageController,
+                itemCount: insights.length,
+                onPageChanged: (index) {
+                  setState(() => _activePage = index);
+                  if (index == 0) _rotationDirection = 1;
+                  if (index == insights.length - 1) _rotationDirection = -1;
+                },
+                itemBuilder: (context, index) => Padding(
+                  padding: EdgeInsetsDirectional.only(
+                    end: insights.length > 1 ? 8 : 0,
+                  ),
+                  child: Align(
+                    alignment: AlignmentDirectional.topCenter,
+                    child: _buildInsight(context, insights[index]),
+                  ),
+                ),
+              ),
+            ),
+            if (insights.length > 1) ...[
+              const SizedBox(height: 10),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  for (var index = 0; index < insights.length; index++)
+                    AnimatedContainer(
+                      duration: const Duration(milliseconds: 220),
+                      width: index == _activePage ? 22 : 8,
+                      height: 8,
+                      margin: const EdgeInsets.symmetric(horizontal: 3),
+                      decoration: BoxDecoration(
+                        color: index == _activePage
+                            ? Theme.of(context).colorScheme.primary
+                            : Theme.of(context).colorScheme.outlineVariant,
+                        borderRadius: BorderRadius.circular(99),
+                      ),
+                    ),
+                ],
+              ),
+            ],
+          ],
+        );
       },
     );
   }

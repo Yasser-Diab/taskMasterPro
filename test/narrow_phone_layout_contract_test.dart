@@ -100,10 +100,9 @@ void main() {
       expect(source, contains('final compact = viewport.width < 520'));
       expect(source, contains('if (constraints.maxWidth < 390)'));
       expect(source, contains('keyboardDismissBehavior:'));
-      expect(
-        source,
-        contains('_CalculatedDurationField(window: scheduleWindow)'),
-      );
+      expect(source, contains('_CalculatedDurationField('));
+      expect(source, contains('window: scheduleWindow'));
+      expect(source, contains('plannedRest: _plannedRestDuration'));
       expect(source, contains('minimum: _minimumPlannedEnd'));
     });
 

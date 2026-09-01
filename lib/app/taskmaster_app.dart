@@ -16,7 +16,7 @@ class TaskMasterApp extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final settings = ref.watch(appSettingsProvider).value;
     final themeKey = TaskMasterThemeKey.fromKey(settings?.themeKey ?? 'system');
-    final accent = Color(settings?.accentColor ?? 0xFF0B78D1);
+    final accent = Color(settings?.accentColor ?? 0xFF4F46E5);
     final localeCode = settings?.localeCode ?? 'en';
 
     final ThemeData lightTheme;
@@ -42,7 +42,7 @@ class TaskMasterApp extends ConsumerWidget {
     }
 
     return MaterialApp(
-      title: 'TaskMaster Pro',
+      title: 'DayVector',
       debugShowCheckedModeBanner: false,
       theme: lightTheme,
       darkTheme: darkTheme,

@@ -1,4 +1,4 @@
--- One-time QA/production-repair reset for the verified TaskMaster Pro owner.
+-- One-time QA/production-repair reset for the verified DayVector owner.
 --
 -- This deliberately preserves account identity, profile/preferences, task
 -- domains, and encrypted vault data. It removes the operational workspace
@@ -7,7 +7,7 @@
 -- notifications, command ledgers, change-log rows, and sync conflicts.
 --
 -- Auth users are never touched. Run only after exporting the owner's rows and
--- force-stopping TaskMaster Pro on every device.
+-- force-stopping DayVector on every device.
 
 begin;
 
@@ -24,7 +24,7 @@ begin
     where user_id = owner_id
       and deleted_at is null
   ) then
-    raise exception 'Verified TaskMaster Pro owner profile is missing';
+    raise exception 'Verified DayVector owner profile is missing';
   end if;
 
   for relation in

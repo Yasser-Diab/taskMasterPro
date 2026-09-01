@@ -211,7 +211,7 @@ void main() {
         recalculateRoadmap: roadmaps.recalculateProgress,
       );
       final roadmapId = await roadmaps.createRoadmap(
-        const RoadmapDraft(title: 'Release TaskMaster Pro'),
+        const RoadmapDraft(title: 'Release DayVector'),
       );
       final taskId = await tasks.createTask(
         TaskDraft(

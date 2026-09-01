@@ -16,6 +16,26 @@ import 'auth_screen.dart';
 import 'password_recovery_controller.dart';
 import 'password_recovery_screen.dart';
 
+@visibleForTesting
+class RealtimeLifecycleRecoveryState {
+  bool _mayHaveMissedRealtime = false;
+
+  bool observe(AppLifecycleState state) {
+    if (const {
+      AppLifecycleState.hidden,
+      AppLifecycleState.paused,
+      AppLifecycleState.detached,
+    }.contains(state)) {
+      _mayHaveMissedRealtime = true;
+      return false;
+    }
+    if (state != AppLifecycleState.resumed) return false;
+    final shouldRecover = _mayHaveMissedRealtime;
+    _mayHaveMissedRealtime = false;
+    return shouldRecover;
+  }
+}
+
 class AuthGate extends ConsumerStatefulWidget {
   const AuthGate({required this.themeKey, super.key});
 
@@ -31,6 +51,7 @@ class _AuthGateState extends ConsumerState<AuthGate>
   String? _signedOutTrayLocale;
   Future<void>? _preparation;
   final _accountTransition = AccountDatabaseTransitionCoordinator();
+  final _realtimeLifecycle = RealtimeLifecycleRecoveryState();
 
   @override
   void initState() {
@@ -46,18 +67,19 @@ class _AuthGateState extends ConsumerState<AuthGate>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    final mayHaveMissedRealtime = _realtimeLifecycle.observe(state);
     if (state != AppLifecycleState.resumed ||
         ref.read(supabaseClientProvider).auth.currentUser == null) {
       return;
     }
-    // A resume can be emitted by window focus, a permission sheet, or the
-    // OAuth browser. It is not evidence of a missed remote change, so never
-    // reinstall routines or run an authoritative pull here. The sync service
-    // already observes connectivity and only retries an interrupted Realtime
-    // join with bounded backoff.
+    // Window focus and permission sheets remain read-free. Only a real
+    // hidden/paused interval advances the durable cursor once, because mobile
+    // operating systems can suspend Dart without first reporting a dead socket.
     unawaited(() async {
       try {
-        await ref.read(syncServiceProvider).recoverAfterResume();
+        await ref
+            .read(syncServiceProvider)
+            .recoverAfterResume(mayHaveMissedRealtime: mayHaveMissedRealtime);
       } catch (_) {
         // Connectivity and canonical state are retried by the normal sync
         // lifecycle; resume must never surface a synchronization dialog.

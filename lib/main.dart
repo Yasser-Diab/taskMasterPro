@@ -67,7 +67,7 @@ Future<void> main() async {
 
 /// Android starts this entrypoint in a service-owned FlutterEngine after a
 /// widget or notification control is pressed. It intentionally does not call
-/// runApp and therefore cannot open or foreground TaskMaster Pro.
+/// runApp and therefore cannot open or foreground DayVector.
 @pragma('vm:entry-point')
 Future<void> taskMasterBackgroundActionMain() async {
   WidgetsFlutterBinding.ensureInitialized();

@@ -26,6 +26,7 @@ import '../../account/presentation/account_deletion_screen.dart';
 import '../../activity/presentation/activity_review_screen.dart';
 import '../../health/presentation/health_connect_screen.dart';
 import '../../health/presentation/windows_health_summary_screen.dart';
+import '../../health/data/health_source_discovery.dart';
 import '../../reports/presentation/performance_report_screen.dart';
 import '../../sync/presentation/synchronization_panel.dart';
 import '../../tasks/presentation/tasks_screen.dart';
@@ -55,7 +56,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   bool _notificationReady = false;
   bool _checkingUpdate = false;
   bool _showAllSettings = false;
-  String _version = '0.0.28';
+  String _version = '0.0.29';
   final _profileSectionKey = GlobalKey();
   final _appearanceSectionKey = GlobalKey();
   final _helpSectionKey = GlobalKey();
@@ -1702,7 +1703,7 @@ class _AboutLegalCategory extends StatefulWidget {
 
 class _AboutLegalCategoryState extends State<_AboutLegalCategory> {
   final _updates = AppUpdateService();
-  String _version = '0.0.28';
+  String _version = '0.0.29';
   bool _checking = false;
 
   @override
@@ -2703,9 +2704,10 @@ class _WindowsHealthSection extends ConsumerWidget {
         if (records.isEmpty) return const SizedBox.shrink();
         final latest = [...records]
           ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
-        final source =
-            entities.decode(latest.first)['source'] as String? ??
-            context.l10n.text('health_android_phone');
+        final source = healthSourceSummaryLabel(
+          entities.decode(latest.first)['source'] as String? ?? '',
+          fallback: context.l10n.text('health_android_phone'),
+        );
         return _SettingsSection(
           title: context.l10n.text('health_and_rest'),
           icon: Icons.health_and_safety_outlined,

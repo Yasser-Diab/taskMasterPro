@@ -8,10 +8,11 @@ import '../../../core/time/time_zone_service.dart';
 /// The single interpretation of a task occurrence used by Dashboard, Tasks,
 /// Calendar, coaching, notifications, and reports.
 ///
-/// A synchronized `status == overdue` value is only a presentation cache. The
-/// deadline and the user's current IANA time zone decide whether an occurrence
-/// is actually overdue. This prevents a stale status from disagreeing with
-/// coaching or a device that crossed a local date boundary.
+/// Explicit due dates and planned end times are the strongest overdue
+/// evidence. A synchronized `status == overdue` remains a valid fallback for
+/// older occurrences that were classified by the server before those fields
+/// were introduced. This keeps every screen truthful without turning every
+/// unfinished, date-only recurring occurrence into an overdue backlog.
 abstract final class TaskOccurrencePolicy {
   static const Set<String> terminalStatuses = {
     'completed',
@@ -73,12 +74,13 @@ abstract final class TaskOccurrencePolicy {
     required String timeZone,
   }) {
     if (!isOpenOccurrence(task)) return false;
-    final dueAt = task.dueAt;
-    if (dueAt == null) return false;
-    final location = _location(timeZone);
-    final localDue = tz.TZDateTime.from(dueAt.toUtc(), location);
-    final localNow = tz.TZDateTime.from(now.toUtc(), location);
-    return localDue.isBefore(localNow);
+    final dueAt = task.dueAt ?? task.plannedEnd;
+    if (dueAt == null) return task.status == 'overdue';
+    // Both values are instants. Converting them to a display time zone before
+    // comparing is unnecessary and can make a simple task card depend on the
+    // settings database. Keep the time-zone parameter for the shared policy
+    // API used by date-based projections, while comparing the exact moments.
+    return dueAt.toUtc().isBefore(now.toUtc());
   }
 
   static List<LocalTask> overdueOccurrences(

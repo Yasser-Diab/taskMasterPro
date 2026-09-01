@@ -285,7 +285,7 @@ class _PerformanceReportScreenState
   }
 
   String get _fileName {
-    return 'TaskMaster-Pro-${_reportType.fileSlug}-'
+    return 'DayVector-${_reportType.fileSlug}-'
         '${DateFormat('yyyy-MM-dd').format(_to)}.pdf';
   }
 

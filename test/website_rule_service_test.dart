@@ -170,7 +170,7 @@ void main() {
   test('application resource labels do not expose technical identifiers', () {
     expect(
       normalizedApplicationDisplayName('pro.taskmanager.com'),
-      'TaskMaster Pro',
+      'DayVector',
     );
     expect(normalizedApplicationDisplayName('exe.chrome'), 'Google Chrome');
     expect(normalizedApplicationDisplayName('Code.exe'), 'Visual Studio Code');
@@ -181,7 +181,7 @@ void main() {
         rawIdentifier: 'pro.taskmaster.app',
         unknownLabel: 'Unknown application',
       ),
-      'TaskMaster Pro',
+      'DayVector',
     );
   });
 

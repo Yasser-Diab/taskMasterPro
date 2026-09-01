@@ -122,7 +122,7 @@ class AccountExportService {
 
     try {
       final savedPath = await FilePicker.platform.saveFile(
-        dialogTitle: 'Save TaskMaster Pro account export',
+        dialogTitle: 'Save DayVector account export',
         fileName: fileName,
         type: FileType.custom,
         allowedExtensions: const ['json'],

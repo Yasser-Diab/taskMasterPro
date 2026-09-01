@@ -1,5 +1,6 @@
-window.TASKMASTER_RELEASES = Object.freeze({
+window.DAYVECTOR_RELEASES = Object.freeze({
   repository: 'Yasser-Diab/taskMasterPro',
+  currentVersion: '0.0.29',
   tagPrefix: 'v',
   releasesPage: 'https://github.com/Yasser-Diab/taskMasterPro/releases',
   latestApiUrl:

@@ -74,7 +74,7 @@ class AppUpdateService {
       headers: const {
         'Accept': 'application/vnd.github+json',
         'X-GitHub-Api-Version': '2022-11-28',
-        'User-Agent': 'TaskMaster-Pro-Updater',
+        'User-Agent': 'DayVector-Updater',
       },
     );
     if (response.statusCode == 404) return null;
@@ -105,7 +105,7 @@ class AppUpdateService {
 
     return AppRelease(
       version: version,
-      title: json['name'] as String? ?? 'TaskMaster Pro $tag',
+      title: json['name'] as String? ?? 'DayVector $tag',
       notes: json['body'] as String? ?? '',
       pageUrl:
           Uri.tryParse(json['html_url'] as String? ?? '') ??
@@ -129,7 +129,7 @@ class AppUpdateService {
           headers: const {
             'Accept': 'application/vnd.github+json',
             'X-GitHub-Api-Version': '2022-11-28',
-            'User-Agent': 'TaskMaster-Pro-Release-Notes',
+            'User-Agent': 'DayVector-Release-Notes',
           },
         )
         .timeout(const Duration(seconds: 8));
@@ -149,7 +149,7 @@ class AppUpdateService {
             headers: const {
               'Accept': 'application/vnd.github+json',
               'X-GitHub-Api-Version': '2022-11-28',
-              'User-Agent': 'TaskMaster-Pro-Release-Notes',
+              'User-Agent': 'DayVector-Release-Notes',
             },
           )
           .timeout(const Duration(seconds: 8));
@@ -190,7 +190,7 @@ class AppUpdateService {
     };
     return AppRelease(
       version: version,
-      title: 'TaskMaster Pro v$version',
+      title: 'DayVector v$version',
       notes: notes,
       pageUrl: Uri.parse(ReleaseConfig.releasesPage),
       assets: const [],
@@ -214,7 +214,7 @@ class AppUpdateService {
     }
     return AppRelease(
       version: version,
-      title: json['name'] as String? ?? 'TaskMaster Pro v$version',
+      title: json['name'] as String? ?? 'DayVector v$version',
       notes: json['body'] as String? ?? '',
       pageUrl:
           Uri.tryParse(json['html_url'] as String? ?? '') ??
@@ -249,7 +249,7 @@ class AppUpdateService {
     final request = http.Request('GET', installer.downloadUrl)
       ..headers.addAll(const {
         'Accept': 'application/octet-stream',
-        'User-Agent': 'TaskMaster-Pro-Updater',
+        'User-Agent': 'DayVector-Updater',
       });
     final response = await _client.send(request);
     if (response.statusCode < 200 || response.statusCode >= 300) {
@@ -286,7 +286,7 @@ class AppUpdateService {
     if (checksumAsset == null) return;
     final response = await _client.get(
       checksumAsset.downloadUrl,
-      headers: const {'User-Agent': 'TaskMaster-Pro-Updater'},
+      headers: const {'User-Agent': 'DayVector-Updater'},
     );
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw const FileSystemException('Unable to verify the update checksum');

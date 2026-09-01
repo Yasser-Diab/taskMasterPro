@@ -7,6 +7,7 @@ import '../../../core/database/app_database.dart';
 import '../../settings/data/settings_repository.dart';
 import '../domain/owner_routine_catalog.dart';
 import '../domain/task_domain_catalog.dart';
+import '../domain/task_schedule_policy.dart';
 import 'task_repository.dart';
 
 class OwnerRoutineInstallResult {
@@ -392,11 +393,16 @@ class OwnerRoutineInstaller {
         routine.hour,
         routine.minute,
       );
-      final plannedEnd = plannedStart.add(routine.duration);
       final settings = <String, Object?>{
         ..._taskConfiguration(task),
         ...routine.executionSettings,
       };
+      final plannedEnd = plannedStart.add(
+        TaskSchedulePolicy.occupiedDurationFor(
+          workDuration: routine.duration,
+          plannedRest: TaskSchedulePolicy.plannedRestDuration(settings),
+        ),
+      );
       if (task.title == routine.title &&
           task.executionMode == routine.executionMode &&
           task.plannedStart == plannedStart &&

@@ -1,6 +1,6 @@
--- Idempotent production-data installation for TaskMaster Pro v0.0.26.
+-- Idempotent production-data installation for DayVector v0.0.26.
 --
--- Run only against the linked TaskMasterPro project. Ownership is bound to
+-- Run only against the linked DayVector project. Ownership is bound to
 -- the authenticated Supabase user UUID supplied by the release owner, never
 -- inferred from email. This is operational seed data, not a schema migration.
 
@@ -89,7 +89,7 @@ declare
             {"title":"React expense manager","minutes":720,"mode":"pomodoro","url":"https://react.dev/learn"},
             {"title":"Typed dashboard","minutes":720,"mode":"pomodoro","url":"https://www.typescriptlang.org/docs/"},
             {"title":"Product-management interface","minutes":900,"mode":"pomodoro","url":"https://react.dev/learn"},
-            {"title":"TaskMaster Pro front-end prototype","minutes":900,"mode":"pomodoro","url":"https://react.dev/learn/thinking-in-react"},
+            {"title":"DayVector front-end prototype","minutes":900,"mode":"pomodoro","url":"https://react.dev/learn/thinking-in-react"},
             {"title":"REST API client application","minutes":600,"mode":"pomodoro","url":"https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API"}
           ]
         },
@@ -116,7 +116,7 @@ declare
           "title": "Phase 5 — SQL and Database Engineering",
           "duration": "8 weeks",
           "days": 56,
-          "milestone": "TaskMaster Pro relational database designed",
+          "milestone": "DayVector relational database designed",
           "checkpoints": [
             "Relationships and normalization",
             "Joins, indexes, and transactions",
@@ -136,7 +136,7 @@ declare
           "title": "Phase 6 — Full-Stack Integration",
           "duration": "14 weeks",
           "days": 98,
-          "milestone": "TaskMaster Pro full-stack MVP completed",
+          "milestone": "DayVector full-stack MVP completed",
           "checkpoints": [
             "Authentication and profile",
             "Tasks and roadmaps",
@@ -326,7 +326,7 @@ begin
   if not exists (
     select 1 from auth.users account where account.id = owner_id
   ) then
-    raise exception 'Configured TaskMaster Pro owner UUID does not exist';
+    raise exception 'Configured DayVector owner UUID does not exist';
   end if;
 
   for roadmap_plan in
@@ -683,7 +683,7 @@ begin
         template_id,
         owner_id,
         schedule_plan ->> 'title',
-        'Recurring study timetable for TaskMaster Pro v0.0.26',
+        'Recurring study timetable for DayVector v0.0.26',
         2,
         (schedule_plan ->> 'mode')::public.execution_mode,
         duration_minutes * 60000,

@@ -68,8 +68,12 @@ class TaskDraft {
 
   DateTime? get effectivePlannedEnd => scheduleWindow?.end ?? plannedEnd;
 
-  Duration get effectiveEstimatedDuration =>
-      scheduleWindow?.duration ?? estimatedDuration;
+  Duration get effectiveEstimatedDuration => scheduleWindow == null
+      ? estimatedDuration
+      : TaskSchedulePolicy.workDurationWithin(
+          occupiedDuration: scheduleWindow!.duration,
+          plannedRest: TaskSchedulePolicy.plannedRestDuration(configuration),
+        );
 }
 
 /// Starting a task and resuming a paused session are deliberately different
@@ -3337,6 +3341,25 @@ class TaskRepository {
 
   void _validateDraftDurationBounds(TaskDraft draft) {
     final configuration = draft.configuration;
+    final plannedRest = TaskSchedulePolicy.plannedRestDuration(configuration);
+    final rawPlannedRest = configuration[plannedTaskRestDurationMsKey];
+    final rawPlannedRestMs = rawPlannedRest is num
+        ? rawPlannedRest.toInt()
+        : int.tryParse('${rawPlannedRest ?? ''}') ?? 0;
+    final scheduleWindow = draft.scheduleWindow;
+    if (rawPlannedRestMs < 0 ||
+        rawPlannedRestMs > 0x7fffffff ||
+        (scheduleWindow != null &&
+            !TaskSchedulePolicy.plannedRestFits(
+              occupiedDuration: scheduleWindow.duration,
+              plannedRest: plannedRest,
+            ))) {
+      throw ArgumentError.value(
+        rawPlannedRestMs,
+        plannedTaskRestDurationMsKey,
+        'Planned rest must fit inside the task time window.',
+      );
+    }
     final minimumDuration = _configuredDuration(
       configuration['minimum_useful_duration_ms'],
     );

@@ -7,12 +7,14 @@ class BrandLogo extends StatelessWidget {
     required this.themeKey,
     this.height = 58,
     this.fit = BoxFit.contain,
+    this.symbolOnly = false,
     super.key,
   });
 
   final TaskMasterThemeKey themeKey;
   final double height;
   final BoxFit fit;
+  final bool symbolOnly;
 
   String _asset(BuildContext context) {
     final resolved = themeKey == TaskMasterThemeKey.system
@@ -20,35 +22,36 @@ class BrandLogo extends StatelessWidget {
               ? TaskMasterThemeKey.dark
               : TaskMasterThemeKey.light)
         : themeKey;
+    if (symbolOnly) return 'media/app-logo/DayVector_Symbol_128.png';
     return switch (resolved) {
-      TaskMasterThemeKey.golden =>
-        'media/app-logo/TaskMaster_Pro_Black_Gold_Transparent_main-logo.png',
       TaskMasterThemeKey.dark =>
-        'media/app-logo/TaskMaster_Pro_Blue_Dark_Transparent.png',
-      TaskMasterThemeKey.light =>
-        'media/app-logo/TaskMaster_Pro_Light_Transparent.png',
+        'media/app-logo/DayVector_Horizontal_Dark_600.png',
+      TaskMasterThemeKey.golden ||
+      TaskMasterThemeKey.light ||
       TaskMasterThemeKey.system =>
-        'media/app-logo/TaskMaster_Pro_Light_Transparent.png',
+        'media/app-logo/DayVector_Horizontal_Light_600.png',
     };
   }
 
   @override
   Widget build(BuildContext context) {
     return Semantics(
-      label: 'TaskMaster Pro',
+      label: 'DayVector',
       image: true,
       child: Image.asset(
         _asset(context),
         height: height,
         fit: fit,
         filterQuality: FilterQuality.high,
+        isAntiAlias: true,
+        gaplessPlayback: true,
         errorBuilder: (_, _, _) => Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(Icons.task_alt, color: Theme.of(context).colorScheme.primary),
             const SizedBox(width: 8),
             Text(
-              'TaskMaster Pro',
+              'DayVector',
               style: Theme.of(
                 context,
               ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),

@@ -446,6 +446,50 @@ bool shouldAutoDrainPendingOutbox({
     startedForUserId == observedUserId &&
     nextAttemptAt.any((deadline) => deadline == null || !deadline.isAfter(now));
 
+/// A Realtime broadcast is only a wake-up hint. Advance the durable cursor
+/// first so task and session dependencies are present, then read the compact
+/// singleton runtime row that owns the cross-device timer. This final read is
+/// what makes one Start event converge without waiting for a later action.
+@visibleForTesting
+Future<void> runRealtimeConvergencePass({
+  required Future<void> Function() pullChanges,
+  required Future<void> Function() restoreCanonicalRuntime,
+  required bool Function() isCurrent,
+}) async {
+  await pullChanges();
+  if (!isCurrent()) return;
+  await restoreCanonicalRuntime();
+}
+
+/// Coalesces a transaction's burst of Realtime envelopes without allowing an
+/// unrelated stream of later changes to postpone convergence forever.
+///
+/// A trailing-edge debounce used to restart its timer for every message. A
+/// sustained health/task import could therefore keep an execution Start hidden
+/// on another device until Pause produced a quieter, later wake-up.
+@visibleForTesting
+class RealtimeWakeCoalescer {
+  RealtimeWakeCoalescer({this.delay = const Duration(milliseconds: 250)});
+
+  final Duration delay;
+  Timer? _timer;
+
+  bool get scheduled => _timer != null;
+
+  void schedule(VoidCallback action) {
+    if (_timer != null) return;
+    _timer = Timer(delay, () {
+      _timer = null;
+      action();
+    });
+  }
+
+  void cancel() {
+    _timer?.cancel();
+    _timer = null;
+  }
+}
+
 /// Realtime reconnects continue with bounded exponential backoff. This delay
 /// schedules only another channel join; a given outage generation is allowed
 /// at most one incremental catch-up pull.
@@ -1409,12 +1453,25 @@ Map<String, dynamic> canonicalHealthSummaryPayload(
   Map<String, dynamic> payload, {
   required bool taskScoped,
 }) {
+  final recordCount = _nonNegativeHealthCount(payload['record_count']);
+  final discardedOverlapCount = _nonNegativeHealthCount(
+    payload['discarded_overlap_count'],
+  );
+  var rawRecordCount = _nonNegativeHealthCount(payload['raw_record_count']);
+  if (rawRecordCount < recordCount) rawRecordCount = recordCount;
+  if (rawRecordCount < discardedOverlapCount) {
+    rawRecordCount = discardedOverlapCount;
+  }
   if (!taskScoped) {
-    return <String, dynamic>{
+    final canonical = <String, dynamic>{
       for (final entry in payload.entries)
         if (_remoteDailyHealthSummaryColumns.contains(entry.key))
           entry.key: entry.value,
     };
+    canonical['record_count'] = recordCount;
+    canonical['raw_record_count'] = rawRecordCount;
+    canonical['discarded_overlap_count'] = discardedOverlapCount;
+    return canonical;
   }
 
   final sourceApplications = payload['source_applications'];
@@ -1437,7 +1494,7 @@ Map<String, dynamic> canonicalHealthSummaryPayload(
     'summary_type': payload['summary_type'] ?? payload['metric_type'],
     'value': payload['value'],
     'unit': payload['unit'],
-    'record_count': payload['record_count'] ?? 0,
+    'record_count': recordCount,
     'source_applications': sourceApplications ?? const <String>[],
     'source_record_counts':
         payload['source_record_counts'] ?? const <String, int>{},
@@ -1445,9 +1502,8 @@ Map<String, dynamic> canonicalHealthSummaryPayload(
     'window_start_at':
         payload['window_start_at'] ?? payload['interval_start_at'],
     'window_end_at': payload['window_end_at'] ?? payload['interval_end_at'],
-    'raw_record_count':
-        payload['raw_record_count'] ?? payload['record_count'] ?? 0,
-    'discarded_overlap_count': payload['discarded_overlap_count'] ?? 0,
+    'raw_record_count': rawRecordCount,
+    'discarded_overlap_count': discardedOverlapCount,
     'task_occurrence_id': payload['task_occurrence_id'],
     'execution_session_id': payload['execution_session_id'],
     'interval_start_at': payload['interval_start_at'],
@@ -1459,6 +1515,15 @@ Map<String, dynamic> canonicalHealthSummaryPayload(
     'height_cm': payload['height_cm'],
     'stride_factor': payload['stride_factor'],
   };
+}
+
+int _nonNegativeHealthCount(Object? value) {
+  final parsed = switch (value) {
+    num number => number.toInt(),
+    String text => int.tryParse(text.trim()) ?? 0,
+    _ => 0,
+  };
+  return parsed < 0 ? 0 : parsed;
 }
 
 DateTime? _healthSummaryFreshness(Map<String, dynamic> value) {
@@ -1598,6 +1663,134 @@ bool isSemanticLifecyclePayload(
   return allowedKeys.isNotEmpty &&
       payload.keys.every(allowedKeys.contains) &&
       payload.keys.any(allowedKeys.contains);
+}
+
+/// Roadmap progress and forecast values are a cache derived from canonical
+/// tasks, milestones, checkpoints and approved activity. They are never an
+/// independent user edit. Sending a fresh cache snapshot from every device
+/// creates compare-and-set races without preserving any additional intent.
+@visibleForTesting
+bool isDerivedRoadmapProjectionPayload(Map<String, dynamic> payload) {
+  const projectionKeys = <String>{
+    'progress',
+    'required_effort_ms',
+    'completed_effort_ms',
+    'forecast_target_date',
+    'risk_level',
+    'forecast_confidence',
+    'data',
+  };
+  const requiredProjectionKeys = <String>{
+    'progress',
+    'completed_effort_ms',
+    'forecast_target_date',
+    'risk_level',
+    'forecast_confidence',
+    'data',
+  };
+  const forecastDataKeys = <String>{
+    'forecast_evidence_count',
+    'forecast_active_days',
+    'forecast_observed_effort_ms',
+    'forecast_daily_variation',
+    'forecast_range_start',
+    'forecast_range_end',
+    'forecast_reasons',
+  };
+  if (!payload.keys.every(projectionKeys.contains) ||
+      !requiredProjectionKeys.every(payload.containsKey)) {
+    return false;
+  }
+  final dataValue = payload['data'];
+  if (dataValue is! Map || dataValue.isEmpty) return false;
+  final data = Map<String, dynamic>.from(dataValue);
+  return data.keys.every(forecastDataKeys.contains) &&
+      data.containsKey('forecast_reasons') &&
+      data.containsKey('forecast_evidence_count');
+}
+
+bool _canonicalValueContains(Object? intended, Object? canonical) {
+  if (intended is Map) {
+    if (canonical is! Map) return false;
+    final canonicalMap = Map<String, dynamic>.from(canonical);
+    for (final entry in intended.entries) {
+      final key = entry.key.toString();
+      if (!canonicalMap.containsKey(key) ||
+          !_canonicalValueContains(entry.value, canonicalMap[key])) {
+        return false;
+      }
+    }
+    return true;
+  }
+  if (intended is List) {
+    return canonical is List &&
+        const DeepCollectionEquality().equals(intended, canonical);
+  }
+  if (intended is num || canonical is num) {
+    return _normalizedComparableNumber(intended) ==
+        _normalizedComparableNumber(canonical);
+  }
+  return intended == canonical;
+}
+
+/// Proves that a rejected task update has already reached the canonical row.
+///
+/// The comparison is intentionally one-way: task `data` is merged by the
+/// server, so unrelated canonical keys may coexist, but every field and nested
+/// value carried by this command must be present with the same meaning. Date
+/// instants are normalized because PostgreSQL returns the account offset while
+/// the outbox writes UTC.
+@visibleForTesting
+bool isTaskUpdateAlreadyCanonical({
+  required Map<String, dynamic> localPayload,
+  required Map<String, dynamic> canonicalRow,
+}) {
+  if (localPayload.isEmpty) return false;
+  const instantKeys = <String>{
+    'planned_start',
+    'planned_end',
+    'due_at',
+    'actual_start',
+    'actual_finish',
+  };
+  const numberKeys = <String>{
+    'priority',
+    'estimated_duration_ms',
+    'active_duration_ms',
+    'actual_duration_ms',
+    'paused_duration_ms',
+    'idle_duration_ms',
+    'progress',
+  };
+  for (final entry in localPayload.entries) {
+    final key = entry.key;
+    final canonicalKey = key == 'actual_duration_ms'
+        ? 'active_duration_ms'
+        : key;
+    if (!canonicalRow.containsKey(canonicalKey)) return false;
+    final intended = entry.value;
+    final canonical = canonicalRow[canonicalKey];
+    if (instantKeys.contains(key)) {
+      if (intended == null && canonical == null) continue;
+      final intendedInstant = _normalizedComparableInstant(intended);
+      final canonicalInstant = _normalizedComparableInstant(canonical);
+      if (intendedInstant == null ||
+          canonicalInstant == null ||
+          intendedInstant != canonicalInstant) {
+        return false;
+      }
+      continue;
+    }
+    if (numberKeys.contains(key)) {
+      if (_normalizedComparableNumber(intended) !=
+          _normalizedComparableNumber(canonical)) {
+        return false;
+      }
+      continue;
+    }
+    if (!_canonicalValueContains(intended, canonical)) return false;
+  }
+  return true;
 }
 
 Object? _normalizedComparableNumber(Object? value) {
@@ -1882,7 +2075,7 @@ class SyncService {
   final Map<String, Set<String>> _incrementalDeferredRows = {};
   String? _startedForUserId;
   DateTime? _lastDeviceAuthorizationCheck;
-  Timer? _realtimePullTimer;
+  final RealtimeWakeCoalescer _realtimeWake = RealtimeWakeCoalescer();
   final Map<String, _MutableSyncTrafficDiagnostic> _traffic = {};
   String? _subscribedForUserId;
   int _registeredRealtimeHandlers = 0;
@@ -2002,8 +2195,7 @@ class SyncService {
     _realtimeRecoveryTimer = null;
     _snapshotRetryTimer?.cancel();
     _snapshotRetryTimer = null;
-    _realtimePullTimer?.cancel();
-    _realtimePullTimer = null;
+    _realtimeWake.cancel();
     await _connectivitySubscription?.cancel();
     _connectivitySubscription = null;
     await _pendingOutboxSubscription?.cancel();
@@ -2159,11 +2351,11 @@ class SyncService {
     }
   }
 
-  /// Handles a lifecycle resume without treating focus changes as evidence of
-  /// remote work. Connectivity transitions are already delivered by the
-  /// connectivity subscription; this method only restores the visible state
-  /// and ensures an interrupted Realtime join still has a bounded retry.
-  Future<void> recoverAfterResume() async {
+  /// Restores workers after a lifecycle resume. Ordinary desktop focus changes
+  /// remain read-free. A real hidden/paused interval, however, is a bounded
+  /// recovery boundary because Android may suspend Dart while leaving the old
+  /// socket marked as subscribed.
+  Future<void> recoverAfterResume({bool mayHaveMissedRealtime = false}) async {
     final user = client.auth.currentUser;
     if (user == null || _startedForUserId != user.id) return;
     final connectivity = await Connectivity().checkConnectivity();
@@ -2181,6 +2373,16 @@ class SyncService {
       );
       return;
     }
+    if (mayHaveMissedRealtime) {
+      // Rejoin the private account channel and advance both directions once.
+      // This delivers a Start that was queued immediately before suspension
+      // and restores a remote Start whose broadcast arrived while suspended.
+      await _synchronizeNow(
+        realtimeGapExpired: true,
+        forceRealtimeResubscribe: true,
+      );
+      return;
+    }
     if (!_liveConnectionAvailable) {
       _setHealth(SyncHealth.waiting);
       _scheduleRealtimeRecovery();
@@ -2193,7 +2395,7 @@ class SyncService {
     } on _StaleSyncOperation {
       // Account invalidation is expected during sign-out or namespace switch.
     } catch (error, stackTrace) {
-      debugPrint('TaskMaster Pro sync recovery failed: $error');
+      debugPrint('DayVector sync recovery failed: $error');
       debugPrintStack(stackTrace: stackTrace);
       final errorCode = error is PostgrestException ? error.code : null;
       if (isPermanentSyncInfrastructureFailure(
@@ -2634,13 +2836,22 @@ class SyncService {
               requests: 0,
               realtimeMessages: 1,
             );
-            // A command transaction can emit several entity broadcasts.
-            // Coalesce that burst into one incremental cursor pull instead
-            // of downloading the same entity set once per notification.
-            _realtimePullTimer?.cancel();
-            _realtimePullTimer = Timer(const Duration(milliseconds: 750), () {
-              _realtimePullTimer = null;
-              unawaited(pullChanges());
+            // A command transaction can emit several entity broadcasts. Use a
+            // leading bounded wake: later unrelated events join the same pass
+            // but can never keep moving its deadline indefinitely.
+            _realtimeWake.schedule(() {
+              final generation = _accountGeneration;
+              final userId = _startedForUserId;
+              if (userId == null) return;
+              unawaited(
+                _runBestEffort(
+                  () => runRealtimeConvergencePass(
+                    pullChanges: pullChanges,
+                    restoreCanonicalRuntime: _restoreCanonicalRuntime,
+                    isCurrent: () => _isCurrentOperation(generation, userId),
+                  ),
+                ),
+              );
             });
           },
         )
@@ -3205,6 +3416,35 @@ class SyncService {
   Future<void> repairInvalidHealthSummaryWireConflictsForTesting(
     String userId,
   ) => _repairInvalidHealthSummaryWireConflicts(userId);
+
+  /// Delivers commands created by an Android headless control without first
+  /// downloading canonical state. A widget or notification action has already
+  /// committed its optimistic command locally; pulling here could replace that
+  /// fresh command before it reaches the server.
+  ///
+  /// Normal foreground startup still owns registration, authorization checks,
+  /// subscriptions, and reconciliation. This narrow entrypoint only binds the
+  /// authenticated account generation needed by [drainOutbox]. If delivery is
+  /// unavailable, the durable command remains pending for the normal worker.
+  Future<void> deliverPendingOutboxForHeadlessAction() async {
+    var user = client.auth.currentUser;
+    if (user == null) return;
+    if (_startedForUserId != null && _startedForUserId != user.id) {
+      await stop();
+      user = client.auth.currentUser;
+      if (user == null) return;
+    }
+    if (_startedForUserId == null) {
+      _accountGeneration += 1;
+      _startedForUserId = user.id;
+      _snapshotRetryRequired = false;
+      _snapshotRetryAttempts = 0;
+      _snapshotDeferredRows.clear();
+      _incrementalDeferredRows.clear();
+      _initialSyncComplete = false;
+    }
+    await drainOutbox();
+  }
 
   Future<void> drainOutbox() async {
     final userId = _startedForUserId;
@@ -3837,6 +4077,23 @@ class SyncService {
           // row is positively readable. Resolve it in this delivery pass so
           // an ordinary duplicate starter Area never spends even one refresh
           // in the user-facing synchronization queue.
+        } else if (await _recoverDerivedRoadmapProjectionMismatch(
+          command,
+          result,
+          generation: generation,
+          userId: userId,
+        )) {
+          // Forecast/progress snapshots are derived from synchronized source
+          // rows. Rebuild the local cache from the canonical roadmap instead
+          // of asking the user to choose between two equivalent projections.
+        } else if (await _recoverAlreadyCanonicalTaskUpdate(
+          command,
+          result,
+          generation: generation,
+          userId: userId,
+        )) {
+          // Another device has already committed every field carried by this
+          // task update. Canonical equality is positive idempotency proof.
         } else if (await _recoverHealthSummaryRevisionMismatch(
           command,
           result,
@@ -4603,13 +4860,20 @@ class SyncService {
     }
     final error = _payloadMap(command.lastError ?? '');
     final reason = error['reason']?.toString();
+    final code = error['code']?.toString().toUpperCase();
     final message = error['message']?.toString().toLowerCase() ?? '';
-    return const {
+    final hasLegacyPrivateColumns =
+        const {
           'invalid_command_contract',
           'server_rejected_command',
         }.contains(reason) &&
         message.contains('invalid_payload_columns') &&
         message.contains('source_latest_record_at');
+    final hasInvalidRecordCounts =
+        reason == 'invalid_command_payload' &&
+        code == '23514' &&
+        message.contains('health_summaries_record_counts_valid');
+    return hasLegacyPrivateColumns || hasInvalidRecordCounts;
   }
 
   /// Rebuilds only the Health commands rejected by the proven v0.0.28 wire
@@ -7379,6 +7643,171 @@ class SyncService {
     }
   }
 
+  Future<bool> _recoverDerivedRoadmapProjectionMismatch(
+    LocalOutboxCommand command,
+    Map<String, dynamic> result, {
+    required String userId,
+    int? generation,
+  }) async {
+    if (command.entityType != 'roadmaps' ||
+        command.commandType != 'update' ||
+        result['reason'] != 'revision_mismatch' ||
+        !isDerivedRoadmapProjectionPayload(_payloadMap(command.payloadJson))) {
+      return false;
+    }
+    try {
+      if (generation != null) _ensureCurrentOperation(generation, userId);
+      final unresolved =
+          await (database.select(database.localOutboxCommands)
+                ..where(
+                  (row) =>
+                      row.userId.equals(userId) &
+                      row.entityType.equals('roadmaps') &
+                      row.entityId.equals(command.entityId) &
+                      row.status.isIn(const ['pending', 'conflict']),
+                )
+                ..orderBy([(row) => OrderingTerm.asc(row.deviceSequence)]))
+              .get();
+      if (unresolved.isEmpty ||
+          unresolved.any(
+            (candidate) =>
+                candidate.commandType != 'update' ||
+                !isDerivedRoadmapProjectionPayload(
+                  _payloadMap(candidate.payloadJson),
+                ),
+          )) {
+        // A user-authored roadmap edit shares this entity. It must retain its
+        // own conflict decision; never let a cache repair overwrite it.
+        return false;
+      }
+
+      final remote = await _trackedRemote<Map<String, dynamic>?>(
+        'table:roadmaps.derived_projection_recovery',
+        () => client
+            .from('roadmaps')
+            .select()
+            .eq('id', command.entityId)
+            .maybeSingle(),
+        uploaded: {'roadmap_id': command.entityId},
+        fingerprint: command.entityId,
+      );
+      if (generation != null) _ensureCurrentOperation(generation, userId);
+      if (remote == null ||
+          remote['id'] != command.entityId ||
+          remote['user_id'] != userId ||
+          remote['deleted_at'] != null ||
+          remote['revision'] is! num) {
+        return false;
+      }
+
+      // Canonical source rows will immediately rebuild this projection. Apply
+      // the server envelope first so the local revision is never based on a
+      // forecast command the server rejected.
+      await _applyRoadmap(Map<String, dynamic>.from(remote));
+      await _supersedeCommands(unresolved);
+      await _recalculateRoadmaps({command.entityId});
+      for (final stale in unresolved.where(
+        (candidate) => candidate.status == 'conflict',
+      )) {
+        await _markRemoteConflictResolved(
+          stale,
+          strategy: 'local_command_already_superseded',
+        );
+      }
+      if (generation != null) _ensureCurrentOperation(generation, userId);
+      return true;
+    } on _StaleSyncOperation {
+      rethrow;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<bool> _recoverAlreadyCanonicalTaskUpdate(
+    LocalOutboxCommand command,
+    Map<String, dynamic> result, {
+    required String userId,
+    int? generation,
+  }) async {
+    if (command.entityType != 'task_occurrences' ||
+        command.commandType != 'update' ||
+        result['reason'] != 'revision_mismatch') {
+      return false;
+    }
+    try {
+      if (generation != null) _ensureCurrentOperation(generation, userId);
+      final remote = await _trackedRemote<Map<String, dynamic>?>(
+        'table:task_occurrences.idempotent_update_recovery',
+        () => client
+            .from('task_occurrences')
+            .select()
+            .eq('id', command.entityId)
+            .maybeSingle(),
+        uploaded: {'task_id': command.entityId},
+        fingerprint: command.entityId,
+      );
+      if (generation != null) _ensureCurrentOperation(generation, userId);
+      if (remote == null ||
+          remote['id'] != command.entityId ||
+          remote['user_id'] != userId ||
+          remote['deleted_at'] != null) {
+        return false;
+      }
+      final canonicalRevision = (remote['revision'] as num?)?.toInt();
+      final reportedRevision = switch (result['server_revision']) {
+        num value => value.toInt(),
+        String value => int.tryParse(value),
+        _ => null,
+      };
+      if (canonicalRevision == null ||
+          (reportedRevision != null && canonicalRevision < reportedRevision)) {
+        return false;
+      }
+
+      final unresolved =
+          await (database.select(database.localOutboxCommands)
+                ..where(
+                  (row) =>
+                      row.userId.equals(userId) &
+                      row.entityType.equals('task_occurrences') &
+                      row.entityId.equals(command.entityId) &
+                      row.status.isIn(const ['pending', 'conflict']),
+                )
+                ..orderBy([(row) => OrderingTerm.asc(row.deviceSequence)]))
+              .get();
+      if (unresolved.isEmpty ||
+          unresolved.any(
+            (candidate) =>
+                candidate.commandType != 'update' ||
+                !isTaskUpdateAlreadyCanonical(
+                  localPayload: _payloadMap(candidate.payloadJson),
+                  canonicalRow: remote,
+                ),
+          )) {
+        // A sibling command still carries unapplied user intent. Keep the
+        // optimistic row and every decision visible until that edit is merged.
+        return false;
+      }
+
+      await _applyTask(Map<String, dynamic>.from(remote));
+      await _supersedeCommands(unresolved);
+      for (final stale in unresolved.where(
+        (candidate) => candidate.status == 'conflict',
+      )) {
+        await _markRemoteConflictResolved(
+          stale,
+          strategy: 'local_command_already_superseded',
+        );
+      }
+      if (generation != null) _ensureCurrentOperation(generation, userId);
+      return true;
+    } on _StaleSyncOperation {
+      rethrow;
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<bool> _recoverHealthSummaryRevisionMismatch(
     LocalOutboxCommand command,
     Map<String, dynamic> result, {
@@ -8067,7 +8496,7 @@ class SyncService {
         _setHealth(SyncHealth.attention);
       }
     } catch (error, stackTrace) {
-      debugPrint('TaskMaster Pro incremental pull failed: $error');
+      debugPrint('DayVector incremental pull failed: $error');
       debugPrintStack(stackTrace: stackTrace);
       rethrow;
     }
@@ -8129,7 +8558,7 @@ class SyncService {
       );
       if (kDebugMode) {
         debugPrint(
-          'TaskMaster Pro incremental page: after=$sequence '
+          'DayVector incremental page: after=$sequence '
           'last=$pageLastSequence deferred=$firstDeferredSequence',
         );
       }
@@ -8333,6 +8762,7 @@ class SyncService {
     final user = client.auth.currentUser;
     if (user == null) return;
     await _reconcileRemoteConflictDecisions(user.id);
+    await _reconcileDeterministicProjectionConflicts(user.id);
     await _reconcileTaskOccurrenceIdentityUpdateCollisions(user.id);
     await _reconcileTaskOccurrenceAliases(user.id);
     await _reconcileRoadmapTaskLinkAliases(user.id);
@@ -8344,6 +8774,48 @@ class SyncService {
     await _retireSafeLegacyTransportConflicts(user.id);
     await _resolveRemoteCanonicalConflictHistory(user.id);
     await _repairSupersededStartCleanupCommands(user.id);
+  }
+
+  /// Repairs deterministic compare-and-set races left by an interrupted app
+  /// run. This uses the same proof as the online delivery path so restarting a
+  /// device cannot change whether a conflict is considered safe.
+  Future<void> _reconcileDeterministicProjectionConflicts(String userId) async {
+    final conflicts =
+        await (database.select(database.localOutboxCommands)
+              ..where(
+                (row) =>
+                    row.userId.equals(userId) &
+                    row.status.equals('conflict') &
+                    row.commandType.equals('update') &
+                    row.entityType.isIn(const ['roadmaps', 'task_occurrences']),
+              )
+              ..orderBy([(row) => OrderingTerm.asc(row.deviceSequence)]))
+            .get();
+    final firstByEntity = <String, LocalOutboxCommand>{};
+    for (final command in conflicts) {
+      final error = _payloadMap(command.lastError ?? '');
+      if (error['reason'] != 'revision_mismatch') continue;
+      firstByEntity.putIfAbsent(
+        '${command.entityType}:${command.entityId}',
+        () => command,
+      );
+    }
+    for (final command in firstByEntity.values) {
+      final error = _payloadMap(command.lastError ?? '');
+      if (command.entityType == 'roadmaps') {
+        await _recoverDerivedRoadmapProjectionMismatch(
+          command,
+          error,
+          userId: userId,
+        );
+      } else {
+        await _recoverAlreadyCanonicalTaskUpdate(
+          command,
+          error,
+          userId: userId,
+        );
+      }
+    }
   }
 
   /// Retires only pre-v0036 generic task updates whose complete payload proves
@@ -8756,6 +9228,14 @@ class SyncService {
                   ))
                   .getSingleOrNull();
         if (localCommand?.status == 'superseded') {
+          strategy = 'local_command_already_superseded';
+        } else if (conflictType == 'revision_mismatch' &&
+            entityType == 'roadmaps' &&
+            isDerivedRoadmapProjectionPayload(payload)) {
+          // Forecast snapshots have no independent intent and every current
+          // client rebuilds them from canonical source rows. Old server-side
+          // diagnostic entries can therefore converge even if their original
+          // local outbox row was already compacted.
           strategy = 'local_command_already_superseded';
         } else if (conflictType == 'revision_mismatch' &&
             entityType != null &&
@@ -10025,7 +10505,7 @@ class SyncService {
     );
     if (kDebugMode && owner != null) {
       debugPrint(
-        'TaskMaster Pro deferred $canonicalEntityType/$entityId behind '
+        'DayVector deferred $canonicalEntityType/$entityId behind '
         '${owner.entityType}/${owner.commandId}',
       );
     }

@@ -90,13 +90,13 @@ BEGIN
     BEGIN
         BLOCK "040904e4"
         BEGIN
-            VALUE "CompanyName", "pro.taskmaster" "\0"
-            VALUE "FileDescription", "TaskMaster Pro" "\0"
+            VALUE "CompanyName", "Y. A. Diab" "\0"
+            VALUE "FileDescription", "DayVector" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
-            VALUE "InternalName", "taskmaster_pro" "\0"
-            VALUE "LegalCopyright", "Copyright (C) 2026 pro.taskmaster. All rights reserved." "\0"
-            VALUE "OriginalFilename", "taskmaster_pro.exe" "\0"
-            VALUE "ProductName", "TaskMaster Pro" "\0"
+            VALUE "InternalName", "dayvector" "\0"
+            VALUE "LegalCopyright", "Copyright (C) 2026 Y. A. Diab. All rights reserved." "\0"
+            VALUE "OriginalFilename", "dayvector.exe" "\0"
+            VALUE "ProductName", "DayVector" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

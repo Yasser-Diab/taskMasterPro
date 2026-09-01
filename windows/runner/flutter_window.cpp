@@ -27,9 +27,11 @@ constexpr UINT kTrayCommandExit = 62013;
 constexpr UINT kTrayCommandSignIn = 62014;
 constexpr UINT kTrayCommandStartNext = 62015;
 constexpr UINT kTrayCommandDeletion = 62016;
-constexpr wchar_t kTrayTooltip[] = L"TaskMaster Pro";
+constexpr wchar_t kTrayTooltip[] = L"DayVector";
+constexpr wchar_t kActivateExistingInstanceMessageName[] =
+    L"YADiab.DayVector.ActivateExistingInstance.v1";
 constexpr wchar_t kWindowRegistryPath[] =
-    L"Software\\Y. A. Diab\\TaskMaster Pro\\Window";
+    L"Software\\Y. A. Diab\\DayVector\\Window";
 // Version 2 could overwrite a real maximized state with a transient
 // SIZE_RESTORED notification while the window was being hidden to the tray.
 // Ignore those records so an affected installation starts from the healthy
@@ -37,6 +39,27 @@ constexpr wchar_t kWindowRegistryPath[] =
 constexpr DWORD kWindowPlacementVersion = 3;
 constexpr int kMinimumRestoredWidth = 960;
 constexpr int kMinimumRestoredHeight = 640;
+// Hardware scan code for the physical B key. Unlike translated characters or
+// virtual-key values, this remains stable when Windows switches keyboard
+// layouts (for example between English, German, and Arabic).
+constexpr UINT kPhysicalBScanCode = 0x30;
+
+bool IsControlPhysicalBShortcut(UINT const message, LPARAM const lparam) {
+  if (message != WM_KEYDOWN && message != WM_SYSKEYDOWN) {
+    return false;
+  }
+  const auto key_details = static_cast<UINT_PTR>(lparam);
+  const UINT scan_code = static_cast<UINT>((key_details >> 16) & 0xFFu);
+  const bool was_already_down = (key_details & (UINT_PTR{1} << 30)) != 0;
+  const bool control_pressed = (GetKeyState(VK_CONTROL) & 0x8000) != 0;
+  const bool other_modifier_pressed =
+      (GetKeyState(VK_SHIFT) & 0x8000) != 0 ||
+      (GetKeyState(VK_MENU) & 0x8000) != 0 ||
+      (GetKeyState(VK_LWIN) & 0x8000) != 0 ||
+      (GetKeyState(VK_RWIN) & 0x8000) != 0;
+  return scan_code == kPhysicalBScanCode && !was_already_down &&
+         control_pressed && !other_modifier_pressed;
+}
 
 std::optional<flutter::EncodableMap> ArgumentMap(
     const flutter::EncodableValue* arguments) {
@@ -105,6 +128,14 @@ FlutterWindow::FlutterWindow(const flutter::DartProject& project)
     : project_(project) {}
 
 FlutterWindow::~FlutterWindow() { RemoveTrayIcon(); }
+
+bool FlutterWindow::HandleAccelerator(const MSG& message) {
+  if (!IsControlPhysicalBShortcut(message.message, message.lParam)) {
+    return false;
+  }
+  SendTrayCommand("toggleSidebar");
+  return true;
+}
 
 bool FlutterWindow::OnCreate() {
   if (!Win32Window::OnCreate()) {
@@ -316,6 +347,13 @@ LRESULT
 FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
                               WPARAM const wparam,
                               LPARAM const lparam) noexcept {
+  static const UINT activate_existing_instance_message =
+      RegisterWindowMessageW(kActivateExistingInstanceMessageName);
+  if (message == activate_existing_instance_message) {
+    RestoreAndFocus();
+    return 0;
+  }
+
   // Capture placement before a Flutter plugin can consume the native message.
   // In particular, window_manager handles WM_SIZE/WM_CLOSE on some builds;
   // saving only after plugin dispatch left the registry at an old 720x520
@@ -438,7 +476,7 @@ void FlutterWindow::ShowTrayMenu() {
   POINT cursor = {};
   GetCursorPos(&cursor);
   HMENU menu = CreatePopupMenu();
-  AppendMenuW(menu, MF_STRING | MF_DISABLED, 0, L"TaskMaster Pro");
+  AppendMenuW(menu, MF_STRING | MF_DISABLED, 0, L"DayVector");
   AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
   AppendMenuW(menu, MF_STRING, kTrayCommandOpen, tray_open_label_.c_str());
   if (!tray_signed_in_) {

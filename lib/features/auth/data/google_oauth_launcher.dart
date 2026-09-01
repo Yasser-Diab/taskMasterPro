@@ -28,7 +28,7 @@ class GoogleOAuthLaunchPlan {
   /// Whether the application owns a closeable browser surface.
   ///
   /// Android Custom Tabs and Windows' system browser are owned by the browser,
-  /// so the deep link foregrounds TaskMaster Pro but the app must not attempt
+  /// so the deep link foregrounds DayVector but the app must not attempt
   /// to close a browser process it does not own.
   final bool appCanForceCloseBrowserSurface;
 }
@@ -78,7 +78,7 @@ typedef OAuthUrlLaunch = Future<bool> Function(Uri url, LaunchMode mode);
 /// Opens a Supabase-generated Google OAuth URL in the platform's best surface.
 ///
 /// On Android this first asks for a Chrome/compatible Custom Tab.  The return
-/// URL is the registered app link, so Android returns to TaskMaster Pro after
+/// URL is the registered app link, so Android returns to DayVector after
 /// authentication.  If a device has no Custom Tabs provider, it falls back to
 /// the system browser rather than embedding Google in an app WebView.
 Future<bool> launchGoogleOAuthUrl(

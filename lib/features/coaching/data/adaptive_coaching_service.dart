@@ -237,7 +237,19 @@ class AdaptiveCoachingEngine {
   AdaptiveCoachingDecision select(
     AdaptiveCoachingEvidence evidence,
     List<CoachingFeedbackSignal> feedback,
-  ) {
+  ) => rank(evidence, feedback, maxCount: 1).first;
+
+  /// Returns several evidence-backed suggestions in priority order.
+  ///
+  /// Feedback changes the weight of the relevant topic; it never replaces the
+  /// entire coach with a generic silence card. This lets an overdue decision,
+  /// a current focus prompt, and a recovery suggestion remain independently
+  /// useful at the same time.
+  List<AdaptiveCoachingDecision> rank(
+    AdaptiveCoachingEvidence evidence,
+    List<CoachingFeedbackSignal> feedback, {
+    int maxCount = 4,
+  }) {
     // Real plan/runtime evidence is stronger than account age. A missing or
     // delayed profile timestamp previously caused a generic first-day message
     // to replace useful guidance even after tasks had synchronized.
@@ -252,32 +264,17 @@ class AdaptiveCoachingEngine {
         evidence.lateNightMinutes >= 15 ||
         evidence.recentSportMinutes > 0;
     if (evidence.accountAgeDays < 1 && !hasActionableEvidence) {
-      return AdaptiveCoachingDecision(
-        cardKey: 'first_day_learning',
-        category: 'learning',
-        mood: CoachingMood.planning,
-        titleKey: 'coaching_learning_title',
-        bodyKey: _firstDayBodyKey(evidence.age),
-        score: 1000,
-        assumptionTags: const {'new_account_needs_orientation'},
-      );
-    }
-
-    final recentTooFrequent = feedback.any(
-      (item) =>
-          item.kind == CoachingFeedbackKind.tooFrequent &&
-          evidence.now.difference(item.submittedAt).inDays < 4,
-    );
-    if (recentTooFrequent && evidence.overdueCount < 3) {
-      return const AdaptiveCoachingDecision(
-        cardKey: 'feedback_space',
-        category: 'pacing',
-        mood: CoachingMood.supportive,
-        titleKey: 'coaching_adaptive_space_title',
-        bodyKey: 'coaching_adaptive_space_body',
-        score: 1000,
-        compact: true,
-      );
+      return [
+        AdaptiveCoachingDecision(
+          cardKey: 'first_day_learning',
+          category: 'learning',
+          mood: CoachingMood.planning,
+          titleKey: 'coaching_learning_title',
+          bodyKey: _firstDayBodyKey(evidence.age),
+          score: 1000,
+          assumptionTags: const {'new_account_needs_orientation'},
+        ),
+      ];
     }
 
     final candidates = <AdaptiveCoachingDecision>[
@@ -490,7 +487,11 @@ class AdaptiveCoachingEngine {
             )
             .toList()
           ..sort((left, right) => right.score.compareTo(left.score));
-    return adjusted.first.candidate;
+    final safeCount = maxCount.clamp(1, candidates.length);
+    return adjusted
+        .take(safeCount)
+        .map((item) => item.candidate)
+        .toList(growable: false);
   }
 
   double _adjustedScore(
@@ -550,6 +551,14 @@ class AdaptiveCoachingEngine {
           candidate.assumptionTags.any(item.assumptionTags.contains)) {
         score -= 500;
       }
+      if (item.kind == CoachingFeedbackKind.tooFrequent &&
+          age.inDays < 4 &&
+          (item.cardKey == candidate.cardKey ||
+              item.category == candidate.category)) {
+        // Lower only the repeated topic. Other timely coaching remains
+        // available and can rise ahead of it immediately.
+        score -= 90;
+      }
     }
     return score;
   }
@@ -594,6 +603,24 @@ class AdaptiveCoachingService {
     required DateTime? accountCreatedAt,
     required int? age,
     DateTime? at,
+  }) async => (await buildInsights(
+    tasks: tasks,
+    runtime: runtime,
+    settings: settings,
+    accountCreatedAt: accountCreatedAt,
+    age: age,
+    at: at,
+    maxCount: 1,
+  )).first;
+
+  Future<List<AdaptiveCoachingInsight>> buildInsights({
+    required List<LocalTask> tasks,
+    required LocalRuntime? runtime,
+    required LocalAppSetting? settings,
+    required DateTime? accountCreatedAt,
+    required int? age,
+    DateTime? at,
+    int maxCount = 4,
   }) async {
     final now = (at ?? DateTime.now()).toLocal();
     final feedback = await _loadFeedback();
@@ -650,10 +677,15 @@ class AdaptiveCoachingService {
       cycles: cycles,
       sessionEvents: sessionEvents,
     );
-    return AdaptiveCoachingInsight(
-      insightId: _uuid.v4(),
-      decision: engine.select(evidence, feedback),
-    );
+    return engine
+        .rank(evidence, feedback, maxCount: maxCount)
+        .map(
+          (decision) => AdaptiveCoachingInsight(
+            insightId: _uuid.v4(),
+            decision: decision,
+          ),
+        )
+        .toList(growable: false);
   }
 
   Future<void> submitFeedback(

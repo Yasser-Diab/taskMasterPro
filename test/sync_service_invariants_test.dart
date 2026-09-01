@@ -879,6 +879,34 @@ void main() {
     expect(payload, isNot(contains('imported_at')));
   });
 
+  test('Health wire payload repairs invalid legacy record counters', () {
+    for (final taskScoped in const [false, true]) {
+      final payload = canonicalHealthSummaryPayload(const <String, dynamic>{
+        'summary_date': '2026-08-24',
+        'source': 'Health Connect',
+        'summary_type': 'steps',
+        'value': 723,
+        'unit': 'count',
+        'record_count': 3,
+        'raw_record_count': 0,
+        'discarded_overlap_count': 4,
+      }, taskScoped: taskScoped);
+
+      expect(payload['record_count'], 3);
+      expect(payload['raw_record_count'], 4);
+      expect(payload['discarded_overlap_count'], 4);
+    }
+
+    final clamped = canonicalHealthSummaryPayload(const <String, dynamic>{
+      'record_count': -2,
+      'raw_record_count': -4,
+      'discarded_overlap_count': -1,
+    }, taskScoped: false);
+    expect(clamped['record_count'], 0);
+    expect(clamped['raw_record_count'], 0);
+    expect(clamped['discarded_overlap_count'], 0);
+  });
+
   test('Health convergence follows source-record freshness', () {
     expect(
       localHealthSummaryIsNewer(
@@ -1095,6 +1123,82 @@ void main() {
         'permission_denied',
       ),
       isFalse,
+    );
+  });
+
+  test('only complete forecast snapshots are derived roadmap projections', () {
+    final projection = <String, dynamic>{
+      'progress': 0.42,
+      'completed_effort_ms': 42000,
+      'forecast_target_date': '2026-11-19',
+      'risk_level': 'low',
+      'forecast_confidence': 'medium',
+      'data': <String, dynamic>{
+        'forecast_evidence_count': 4,
+        'forecast_active_days': 4,
+        'forecast_reasons': <String>['4 active days'],
+      },
+    };
+
+    expect(isDerivedRoadmapProjectionPayload(projection), isTrue);
+    expect(
+      isDerivedRoadmapProjectionPayload({...projection, 'title': 'New name'}),
+      isFalse,
+      reason: 'A user-authored roadmap edit must never be discarded as cache.',
+    );
+    expect(
+      isDerivedRoadmapProjectionPayload({'required_effort_ms': 42000}),
+      isFalse,
+      reason: 'Required effort alone is an independent planning edit.',
+    );
+  });
+
+  test('canonical task equality proves an idempotent stale update', () {
+    final local = <String, dynamic>{
+      'status': 'ready',
+      'scheduled_date': '2026-10-06',
+      'planned_start': '2026-09-05T16:30:00Z',
+      'planned_end': '2026-09-05T18:00:00Z',
+      'due_at': null,
+      'data': <String, dynamic>{
+        'time_zone': 'Africa/Cairo',
+        'vacation_adjustment': <String, dynamic>{
+          'policy': 'postpone',
+          'vacation_id': 'vacation-1',
+        },
+      },
+    };
+    final canonical = <String, dynamic>{
+      'status': 'ready',
+      'scheduled_date': '2026-10-06',
+      'planned_start': '2026-09-05T19:30:00+03:00',
+      'planned_end': '2026-09-05T21:00:00+03:00',
+      'due_at': null,
+      'data': <String, dynamic>{
+        'time_zone': 'Africa/Cairo',
+        'completion_method': 'duration',
+        'vacation_adjustment': <String, dynamic>{
+          'policy': 'postpone',
+          'vacation_id': 'vacation-1',
+          'schema_version': 1,
+        },
+      },
+    };
+
+    expect(
+      isTaskUpdateAlreadyCanonical(
+        localPayload: local,
+        canonicalRow: canonical,
+      ),
+      isTrue,
+    );
+    expect(
+      isTaskUpdateAlreadyCanonical(
+        localPayload: {...local, 'planned_end': '2026-09-05T19:00:00Z'},
+        canonicalRow: canonical,
+      ),
+      isFalse,
+      reason: 'A different schedule remains a real user-visible conflict.',
     );
   });
 
@@ -1786,6 +1890,82 @@ void main() {
           .getSingle();
       expect(record.revision, 2);
       expect(record.lastCommandId, 'health-command-1');
+    },
+  );
+
+  test(
+    'invalid Health counter uploads replay with server-safe evidence counts',
+    () async {
+      SharedPreferences.setMockInitialValues({});
+      final database = AppDatabase(NativeDatabase.memory());
+      addTearDown(database.close);
+      const userId = 'owner-health-counts';
+      const entityId = 'health-sleep-2026-08-24';
+      const commandId = 'health-count-command';
+      final now = DateTime.utc(2026, 8, 24, 12);
+      await database
+          .into(database.localEntityRecords)
+          .insert(
+            LocalEntityRecordsCompanion.insert(
+              id: entityId,
+              userId: userId,
+              entityType: 'health_summaries',
+              title: const Value('sleep_duration'),
+              dataJson: const Value(
+                '{"summary_type":"sleep_duration","value":621}',
+              ),
+              revision: const Value(2),
+              createdAt: now,
+              updatedAt: now,
+              lastCommandId: const Value(commandId),
+            ),
+          );
+      await database
+          .into(database.localOutboxCommands)
+          .insert(
+            LocalOutboxCommandsCompanion.insert(
+              commandId: commandId,
+              userId: userId,
+              deviceId: 'health-device',
+              deviceSequence: 1,
+              entityType: 'health_summaries',
+              entityId: entityId,
+              commandType: 'update',
+              baseRevision: 1,
+              payloadJson:
+                  '{"summary_date":"2026-08-24","source":"Health Connect",'
+                  '"summary_type":"sleep_duration","value":621,"unit":"min",'
+                  '"record_count":1,"raw_record_count":0,'
+                  '"discarded_overlap_count":0}',
+              status: const Value('conflict'),
+              lastError: const Value(
+                '{"reason":"invalid_command_payload","code":"23514",'
+                '"message":"new row violates check constraint '
+                '\\"health_summaries_record_counts_valid\\""}',
+              ),
+              clientTimestamp: now,
+              createdAt: now,
+            ),
+          );
+      final service = SyncService(
+        database: database,
+        client: SupabaseClient(
+          'https://example.supabase.co',
+          'sb_publishable_test_key',
+        ),
+      );
+
+      await service.repairInvalidHealthSummaryWireConflictsForTesting(userId);
+
+      final repaired = await database
+          .select(database.localOutboxCommands)
+          .getSingle();
+      expect(repaired.status, 'pending');
+      expect(repaired.attemptCount, 0);
+      final payload = jsonDecode(repaired.payloadJson) as Map;
+      expect(payload['record_count'], 1);
+      expect(payload['raw_record_count'], 1);
+      expect(payload['discarded_overlap_count'], 0);
     },
   );
 
@@ -2703,6 +2883,63 @@ void main() {
     expect(operation.inFlight, isNull);
   });
 
+  test(
+    'one Realtime wake restores canonical runtime after cursor pull',
+    () async {
+      final calls = <String>[];
+
+      await runRealtimeConvergencePass(
+        pullChanges: () async => calls.add('pull'),
+        restoreCanonicalRuntime: () async => calls.add('runtime'),
+        isCurrent: () => true,
+      );
+
+      expect(calls, const ['pull', 'runtime']);
+    },
+  );
+
+  test('Realtime bursts cannot postpone their convergence wake', () async {
+    final coalescer = RealtimeWakeCoalescer(delay: Duration.zero);
+    final firstWake = Completer<void>();
+    var calls = 0;
+
+    void wake() {
+      calls += 1;
+      if (!firstWake.isCompleted) firstWake.complete();
+    }
+
+    coalescer.schedule(wake);
+    coalescer.schedule(wake);
+    coalescer.schedule(wake);
+    expect(coalescer.scheduled, isTrue);
+    await firstWake.future.timeout(const Duration(seconds: 1));
+    expect(calls, 1);
+    expect(coalescer.scheduled, isFalse);
+
+    final secondWake = Completer<void>();
+    coalescer.schedule(() {
+      calls += 1;
+      secondWake.complete();
+    });
+    await secondWake.future.timeout(const Duration(seconds: 1));
+    expect(calls, 2);
+  });
+
+  test(
+    'stale account Realtime wake cannot restore into the next account',
+    () async {
+      final calls = <String>[];
+
+      await runRealtimeConvergencePass(
+        pullChanges: () async => calls.add('pull'),
+        restoreCanonicalRuntime: () async => calls.add('runtime'),
+        isCurrent: () => false,
+      );
+
+      expect(calls, const ['pull']);
+    },
+  );
+
   test('Realtime recovery finishes with one cursor catch-up per outage', () {
     expect(
       shouldRunFinalRealtimeCatchUp(
@@ -3085,5 +3322,33 @@ void main() {
       contains("raise exception 'invalid_projected_boundary_at'"),
       reason: 'malformed commands must still fail closed',
     );
+  });
+
+  test('headless controls deliver their outbox before any canonical read', () {
+    final syncSource = File(
+      'lib/core/sync/sync_service.dart',
+    ).readAsStringSync();
+    final delivery = RegExp(
+      r'Future<void> deliverPendingOutboxForHeadlessAction\(\) async \{'
+      r'(?<body>[\s\S]*?)\n  \}\n\n  Future<void> drainOutbox',
+    ).firstMatch(syncSource);
+
+    expect(delivery, isNotNull);
+    final body = delivery!.namedGroup('body')!;
+    expect(body, contains('_startedForUserId = user.id'));
+    expect(body, contains('await drainOutbox()'));
+    expect(body, isNot(contains('pullChanges')));
+    expect(body, isNot(contains('_reconcileCanonicalState')));
+    expect(body, isNot(contains('_restoreCanonicalRuntime')));
+
+    final backgroundSource = File(
+      'lib/core/platform/background_execution_action_service.dart',
+    ).readAsStringSync();
+    expect(
+      backgroundSource,
+      contains('deliverPendingOutboxForHeadlessAction()'),
+    );
+    expect(backgroundSource, contains('Duration(seconds: 20)'));
+    expect(backgroundSource, contains('await sync.dispose()'));
   });
 }

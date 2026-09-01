@@ -113,7 +113,7 @@ void main() {
       AndroidHomeWidgetState(
         mode: AndroidHomeWidgetMode.idle,
         localeCode: 'en',
-        statusLabel: 'TaskMaster Pro',
+        statusLabel: 'DayVector',
         title: 'What will you move forward?',
         message: 'Choose a task.',
         timerLabel: '2 tasks ready',
@@ -145,7 +145,7 @@ void main() {
       AndroidHomeWidgetState(
         mode: AndroidHomeWidgetMode.idle,
         localeCode: 'en',
-        statusLabel: 'TaskMaster Pro',
+        statusLabel: 'DayVector',
         title: 'Ready',
         message: 'Ready',
         timerLabel: 'Ready',

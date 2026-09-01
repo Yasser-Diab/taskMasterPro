@@ -26,6 +26,8 @@ class VaultCiphertext {
 class VaultCryptoService {
   static final _cipher = Xchacha20.poly1305Aead();
   static final _random = Random.secure();
+  // Immutable encrypted-format identity. Renaming it would make existing
+  // DayVector users' vault passwords appear invalid after the brand upgrade.
   static const _verifier = 'TaskMaster Pro Password Vault v1';
 
   Future<VaultKeyMaterial> createKey(String password) async {

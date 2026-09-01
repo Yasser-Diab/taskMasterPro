@@ -4,6 +4,7 @@ import 'package:timezone/timezone.dart' as tz;
 
 import '../../../core/database/app_database.dart';
 import '../../../core/time/time_zone_service.dart';
+import 'task_schedule_policy.dart';
 
 /// Calculates elapsed planned time for one local calendar day.
 ///
@@ -41,9 +42,16 @@ abstract final class DailyPlannedTime {
     var estimatesWithoutPositionMs = 0;
     for (final task in tasks) {
       final estimateMs = task.estimatedDurationMs.clamp(0, maximumDayMs);
+      final plannedRestMs = TaskSchedulePolicy.plannedRestDurationFromJson(
+        task.dataJson,
+      ).inMilliseconds;
+      final occupiedEstimateMs = (estimateMs + plannedRestMs).clamp(
+        0,
+        maximumDayMs,
+      );
       final interval = _intervalFor(
         task,
-        estimateMs: estimateMs,
+        estimateMs: occupiedEstimateMs,
         dayStart: dayStart,
         dayEnd: dayEnd,
       );
@@ -53,7 +61,7 @@ abstract final class DailyPlannedTime {
         if (task.plannedStart == null &&
             task.plannedEnd == null &&
             _isFloatingScheduleOn(task.scheduledDate, localDay)) {
-          estimatesWithoutPositionMs += estimateMs;
+          estimatesWithoutPositionMs += occupiedEstimateMs;
         }
       } else {
         intervals.add(interval);

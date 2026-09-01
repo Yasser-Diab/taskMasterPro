@@ -55,7 +55,7 @@ android {
             if (!keystorePropertiesFile.exists()) {
                 throw GradleException(
                     "Release builds require android/key.properties and the " +
-                        "existing TaskMaster Pro release signing key.",
+                        "existing DayVector release signing key.",
                 )
             }
             signingConfig = signingConfigs.getByName("release")
@@ -77,5 +77,9 @@ dependencies {
     // Native biometric CryptoObject support for the vault's Android Keystore
     // wrapper.  The raw vault key is never persisted by the Dart layer.
     implementation("androidx.biometric:biometric:1.1.0")
+    // DayVector reads canonical exercise sessions directly as a resilient
+    // fallback when optional workout-enrichment queries return no rows.
+    implementation("androidx.health.connect:connect-client:1.2.0-alpha02")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
 }

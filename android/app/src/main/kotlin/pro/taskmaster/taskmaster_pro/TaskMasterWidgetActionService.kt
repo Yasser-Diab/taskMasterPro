@@ -320,7 +320,7 @@ class TaskMasterBackgroundActionService : Service(), MethodChannel.MethodCallHan
         )
         return Notification.Builder(this, foregroundChannelId)
             .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle("TaskMaster Pro")
+            .setContentTitle("DayVector")
             .setContentText("Applying your task control")
             .setContentIntent(openApp)
             .setOngoing(true)

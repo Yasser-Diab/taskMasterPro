@@ -194,7 +194,7 @@ void main() {
             endedAt: now.subtract(const Duration(minutes: 4)),
             sourceType: 'windows_foreground',
             processName: const Value('Code.exe'),
-            windowTitle: const Value('TaskMaster Pro development'),
+            windowTitle: const Value('DayVector development'),
             idleState: const Value('active'),
             createdAt: now,
             updatedAt: now,

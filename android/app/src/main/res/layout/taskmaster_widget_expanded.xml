@@ -28,7 +28,7 @@
             android:fontFamily="sans-serif-medium"
             android:includeFontPadding="false"
             android:maxLines="1"
-            android:text="TaskMaster Pro"
+            android:text="DayVector"
             android:textColor="#DCE9FF"
             android:textSize="12sp" />
 

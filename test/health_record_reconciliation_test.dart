@@ -227,6 +227,39 @@ void main() {
     );
   });
 
+  test('a Health Connect exercise session remains a visible workout', () {
+    final start = DateTime.utc(2026, 8, 27, 5);
+    final workout = HealthDataPoint(
+      uuid: 'morning-strength-session',
+      value: WorkoutHealthValue(
+        workoutActivityType: HealthWorkoutActivityType.STRENGTH_TRAINING,
+        totalEnergyBurned: 180,
+        totalEnergyBurnedUnit: HealthDataUnit.KILOCALORIE,
+      ),
+      type: HealthDataType.WORKOUT,
+      unit: HealthDataUnit.NO_UNIT,
+      dateFrom: start,
+      dateTo: start.add(const Duration(minutes: 42)),
+      sourcePlatform: HealthPlatformType.googleHealthConnect,
+      sourceDeviceId: 'watch',
+      sourceId: 'com.nothing.smartcenter',
+      sourceName: 'Nothing X',
+      recordingMethod: RecordingMethod.active,
+    );
+
+    final summary = HealthSummary.fromPoints(
+      [workout],
+      window: HealthInterval(
+        DateTime.utc(2026, 8, 27),
+        DateTime.utc(2026, 8, 28),
+      ),
+    );
+
+    expect(summary.workoutCount, 1);
+    expect(summary.metricRecordCounts[HealthDataType.WORKOUT], 1);
+    expect(summary.metricSources[HealthDataType.WORKOUT], {'Nothing X'});
+  });
+
   test('sleep sessions subtract awake time instead of disappearing', () {
     final start = DateTime.utc(2026, 8, 24, 0, 27);
     final end = DateTime.utc(2026, 8, 24, 11, 31);

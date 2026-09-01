@@ -41,10 +41,11 @@ void main() {
     updatedAt: updatedAt,
   );
 
-  test('TaskMaster identities are never reportable', () {
+  test('current and legacy DayVector identities are never reportable', () {
     final rows = [
       segment('windows', r'C:\Program Files\TaskMaster\taskmaster_pro.exe'),
-      segment('windows-display-name', 'TaskMaster Pro'),
+      segment('windows-display-name', 'DayVector'),
+      segment('windows-executable', 'dayvector.exe'),
       segment('windows-compact-name', 'TaskMasterPro'),
       segment('android', 'pro.taskmaster.app'),
       segment('android-namespace', 'pro.taskmaster.taskmaster_pro'),
@@ -64,7 +65,7 @@ void main() {
     );
   });
 
-  test('TaskMaster identity in legacy metadata is never reportable', () {
+  test('DayVector identity in captured metadata is never reportable', () {
     final row = LocalActivitySegment(
       id: 'legacy-metadata',
       userId: 'user',
@@ -74,7 +75,7 @@ void main() {
       endedAt: start.add(const Duration(minutes: 5)),
       sourceType: 'android_usage_history',
       processName: 'Task manager',
-      rawMetadataJson: '{"data":{"applicationName":"TaskMaster Pro"}}',
+      rawMetadataJson: '{"data":{"applicationName":"DayVector"}}',
       revision: 1,
       createdAt: start,
       updatedAt: start,
@@ -87,14 +88,14 @@ void main() {
     );
   });
 
-  test('a title which only mentions TaskMaster Pro is not an app identity', () {
+  test('a title which only mentions DayVector is not an app identity', () {
     expect(
-      isTaskMasterActivityIdentity('TaskMaster Pro release notes - Chrome'),
+      isTaskMasterActivityIdentity('DayVector release notes - Chrome'),
       isFalse,
     );
     expect(
       isTaskMasterActivityIdentity(
-        r'C:\Users\person\TaskMaster Pro\helper-tool.exe',
+        r'C:\Users\person\DayVector\helper-tool.exe',
       ),
       isFalse,
     );

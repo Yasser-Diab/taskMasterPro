@@ -1,7 +1,7 @@
 import 'dart:io';
 
 final _visibleLiteralPatterns = <RegExp>[
-  RegExp(r'''\b(?:Text|SelectableText)\(\s*(['"])(?!TaskMaster Pro\1)'''),
+  RegExp(r'''\b(?:Text|SelectableText)\(\s*(['"])(?!DayVector\1)'''),
   RegExp(
     r'''\b(?:labelText|helperText|hintText|tooltip|semanticsLabel)\s*:\s*(['"])''',
   ),

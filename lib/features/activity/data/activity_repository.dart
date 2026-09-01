@@ -126,7 +126,7 @@ String? _sanitizeManualActivityLabel(String? value) {
 }
 
 /// A break prompt is only useful when capture found no real device usage.
-/// Technical idle rows, TaskMaster Pro itself and confirmed operating-system
+/// Technical idle rows, DayVector itself and confirmed operating-system
 /// activity are collection noise rather than evidence that the user spent the
 /// break on a device.
 bool hasMeaningfulDeviceActivityDuringBreak({

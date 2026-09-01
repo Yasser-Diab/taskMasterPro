@@ -586,11 +586,15 @@ abstract final class BackgroundExecutionActionService {
       client: context.client,
     );
     try {
-      await sync.drainOutbox().timeout(const Duration(seconds: 8));
-    } catch (_) {
+      await sync.deliverPendingOutboxForHeadlessAction().timeout(
+        const Duration(seconds: 20),
+      );
+    } catch (error, stackTrace) {
+      debugPrint('Headless task control delivery deferred: $error');
+      debugPrintStack(stackTrace: stackTrace);
       // The durable local command remains queued for the normal sync worker.
     } finally {
-      await sync.stop();
+      await sync.dispose();
     }
   }
 }

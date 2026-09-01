@@ -6,6 +6,7 @@
 #include <flutter/method_channel.h>
 #include <flutter/standard_method_codec.h>
 #include <shellapi.h>
+#include <windows.h>
 
 #include <memory>
 
@@ -17,6 +18,12 @@ class FlutterWindow : public Win32Window {
   // Creates a new FlutterWindow hosting a Flutter view running |project|.
   explicit FlutterWindow(const flutter::DartProject& project);
   virtual ~FlutterWindow();
+
+  // Handles thread-level keyboard messages before they are dispatched to the
+  // embedded Flutter child window. This is required for layout-independent
+  // accelerators such as Ctrl+B, which otherwise never reach the top-level
+  // runner window.
+  bool HandleAccelerator(const MSG& message);
 
  protected:
   // Win32Window:
@@ -65,7 +72,7 @@ class FlutterWindow : public Win32Window {
   std::wstring tray_active_task_;
   std::wstring tray_elapsed_;
   std::wstring tray_sync_label_ = L"All changes synced";
-  std::wstring tray_open_label_ = L"Open TaskMaster Pro";
+  std::wstring tray_open_label_ = L"Open DayVector";
   std::wstring tray_sign_in_label_ = L"Sign in";
   std::wstring tray_no_task_label_ = L"No task is currently running";
   std::wstring tray_start_next_label_ = L"Start next task";
@@ -77,15 +84,15 @@ class FlutterWindow : public Win32Window {
   std::wstring tray_add_interruption_label_ = L"Add interruption";
   std::wstring tray_add_note_label_ = L"Add note";
   std::wstring tray_sync_now_label_ = L"Sync now";
-  std::wstring tray_whats_new_label_ = L"What's new in v0.0.28";
+  std::wstring tray_whats_new_label_ = L"What's new in v0.0.29";
   std::wstring tray_settings_label_ = L"Settings";
   std::wstring tray_update_label_ = L"Check for updates";
-  std::wstring tray_exit_label_ = L"Exit TaskMaster Pro";
+  std::wstring tray_exit_label_ = L"Exit DayVector";
   std::wstring tray_deletion_label_ = L"Account deletion scheduled";
   std::wstring tray_tooltip_break_ = L"Break in progress";
   std::wstring tray_tooltip_paused_ = L"Task paused";
   std::wstring tray_tooltip_sync_attention_ = L"Sync needs attention";
-  std::wstring tray_still_running_title_ = L"TaskMaster Pro is still running";
+  std::wstring tray_still_running_title_ = L"DayVector is still running";
   std::wstring tray_still_running_body_ =
       L"Timers and reminders will continue in the background. Use the tray "
       L"icon to reopen or exit the app.";

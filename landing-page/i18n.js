@@ -1,21 +1,31 @@
 (() => {
-  const LANGUAGE_STORAGE_KEY = "taskmaster-pro:site-language";
-  const THEME_STORAGE_KEY = "taskmaster-pro:site-theme";
+  const LANGUAGE_STORAGE_KEY = "dayvector:site-language";
+  const THEME_STORAGE_KEY = "dayvector:site-theme";
   const LANGUAGE_ORDER = ["en", "de", "ar"];
   const SUPPORTED_LANGUAGES = new Set(LANGUAGE_ORDER);
 
   const german = {
-    "TaskMaster Pro turns goals into roadmaps, recurring tasks and daily actions, measures real effort and provides explainable coaching across Windows and Android.":
-      "TaskMaster Pro macht aus Zielen Roadmaps, wiederkehrende Aufgaben und tägliche Schritte, misst den tatsächlichen Aufwand und bietet nachvollziehbares Coaching unter Windows und Android.",
-    "TaskMaster Pro: Plan, Focus and Improve":
-      "TaskMaster Pro: Planen, fokussieren und besser werden",
+    "DayVector turns direction into daily progress with task planning, roadmaps, focus timers, activity insights and evidence-based coaching on Windows and Android.":
+      "DayVector macht aus deiner Richtung täglichen Fortschritt – mit Aufgabenplanung, Roadmaps, Fokustimern, Aktivitätseinblicken und nachvollziehbarem Coaching für Windows und Android.",
+    "DayVector — Turn direction into daily progress":
+      "DayVector – Aus Richtung wird täglicher Fortschritt",
+    "Plan meaningful goals, focus on the next task and improve with evidence-based coaching across Windows and Android.":
+      "Plane wichtige Ziele, konzentriere dich auf die nächste Aufgabe und verbessere dich mit nachvollziehbarem Coaching auf Windows und Android.",
+    "Personal planning, focused execution and evidence-based coaching on Windows and Android.":
+      "Persönliche Planung, fokussierte Umsetzung und nachvollziehbares Coaching auf Windows und Android.",
+    "DayVector — Planning, Focus Timers, Roadmaps and Coaching":
+      "DayVector – Planung, Fokustimer, Roadmaps und Coaching",
+    "DayVector turns goals into roadmaps, recurring tasks and daily actions, measures real effort and provides explainable coaching across Windows and Android.":
+      "DayVector macht aus Zielen Roadmaps, wiederkehrende Aufgaben und tägliche Schritte, misst den tatsächlichen Aufwand und bietet nachvollziehbares Coaching unter Windows und Android.",
+    "DayVector: Plan, Focus and Improve":
+      "DayVector: Planen, fokussieren und besser werden",
     "Create roadmaps, execute focused tasks, track real activity and improve through evidence-based coaching.":
       "Erstelle Roadmaps, arbeite fokussiert, erfasse echte Aktivität und verbessere dich mit nachvollziehbarem Coaching.",
-    "TaskMaster Pro: Planning, Focus and Personal Coaching":
-      "TaskMaster Pro: Planung, Fokus und persönliches Coaching",
+    "DayVector: Planning, Focus and Personal Coaching":
+      "DayVector: Planung, Fokus und persönliches Coaching",
     "Skip to main content": "Zum Hauptinhalt springen",
     "Skip to timer": "Zum Timer springen",
-    "TaskMaster Pro home": "TaskMaster-Pro-Startseite",
+    "DayVector home": "DayVector-Startseite",
     "Open navigation": "Navigation öffnen",
     "Close navigation": "Navigation schließen",
     "Main navigation": "Hauptnavigation",
@@ -32,13 +42,13 @@
     Download: "Herunterladen",
     "Download App": "App herunterladen",
     "Download app": "App herunterladen",
-    "Plan with clarity, focus and keep moving forward":
-      "Klar planen, fokussiert arbeiten und weiterkommen",
+    "Turn direction into daily progress":
+      "Aus Richtung wird täglicher Fortschritt",
     "Plan your goals": "Plane deine Ziele",
     "Execute your tasks": "Setze deine Aufgaben um",
     "Improve every day": "Werde jeden Tag besser",
-    "TaskMaster Pro combines task management, structured roadmaps, time tracking and personalized coaching to help you organize your responsibilities, improve your habits and make better use of your time":
-      "TaskMaster Pro verbindet Aufgaben, strukturierte Roadmaps, Zeiterfassung und persönliches Coaching. So organisierst du deine Verpflichtungen, stärkst deine Gewohnheiten und nutzt deine Zeit sinnvoller.",
+    "DayVector combines task management, structured roadmaps, time tracking and personalized coaching to help you organize your responsibilities, improve your habits and make better use of your time":
+      "DayVector verbindet Aufgaben, strukturierte Roadmaps, Zeiterfassung und persönliches Coaching. So organisierst du deine Verpflichtungen, stärkst deine Gewohnheiten und nutzt deine Zeit sinnvoller.",
     "It connects planned work with real activity, credits useful effort to the task it supports and turns verified patterns into clear recommendations":
       "Die App verbindet geplante Arbeit mit deiner tatsächlichen Aktivität, ordnet nützlichen Aufwand der richtigen Aufgabe zu und macht aus erkannten Mustern klare Empfehlungen.",
     "Download for Windows": "Für Windows herunterladen",
@@ -46,8 +56,8 @@
     "Explore how it works": "Entdecke, wie es funktioniert",
     "Supported platforms and capabilities":
       "Unterstützte Plattformen und Funktionen",
-    "TaskMaster Pro dashboard displaying an active task, today's schedule, roadmap progress, workload information and coaching recommendations":
-      "TaskMaster-Pro-Dashboard mit aktiver Aufgabe, heutigem Plan, Roadmap-Fortschritt, Arbeitslast und Coaching-Empfehlungen",
+    "DayVector dashboard showing task suggestions, today's schedule, workload and overdue work":
+      "DayVector-Dashboard mit Aufgabenvorschlägen, heutigem Plan, Arbeitslast und überfälligen Aufgaben",
     Windows: "Windows",
     "Android phones": "Android-Smartphones",
     "Android tablets": "Android-Tablets",
@@ -62,8 +72,8 @@
     "One connected system": "Ein System, das alles verbindet",
     "One application for planning, execution, progress and improvement":
       "Eine App zum Planen, Umsetzen und Weiterentwickeln",
-    "TaskMaster Pro connects what you plan with what you actually do. It measures real effort, recognizes useful work, identifies delays and helps you improve your future schedule":
-      "TaskMaster Pro verbindet deine Pläne mit dem, was du wirklich tust. Die App misst den tatsächlichen Aufwand, erkennt nützliche Arbeit, zeigt Verzögerungen und hilft dir, künftige Tage besser zu planen.",
+    "DayVector connects what you plan with what you actually do. It measures real effort, recognizes useful work, identifies delays and helps you improve your future schedule":
+      "DayVector verbindet deine Pläne mit dem, was du wirklich tust. Die App misst den tatsächlichen Aufwand, erkennt nützliche Arbeit, zeigt Verzögerungen und hilft dir, künftige Tage besser zu planen.",
     "Feature status legend": "Legende zum Funktionsstatus",
     Available: "Verfügbar",
     Beta: "Beta",
@@ -110,8 +120,8 @@
     "Compare the plan with actual performance and use evidence to shape the next one":
       "Vergleiche deinen Plan mit der tatsächlichen Leistung und nutze die Ergebnisse für die nächste Planung.",
     "Roadmap workspace": "Roadmap-Arbeitsbereich",
-    "TaskMaster Pro roadmap displaying phases, checkpoints and progress forecasts":
-      "TaskMaster-Pro-Roadmap mit Etappen, Prüfpunkten und Fortschrittsprognosen",
+    "DayVector roadmap displaying phases, checkpoints and progress forecasts":
+      "DayVector-Roadmap mit Etappen, Prüfpunkten und Fortschrittsprognosen",
     "Build a realistic path toward every goal":
       "Baue einen realistischen Weg zu jedem Ziel",
     "Roadmaps turn long-term direction into measurable phases and responsibilities. Every item remains editable and every percentage has an explanation":
@@ -134,8 +144,8 @@
     "Flexible execution": "Flexibel arbeiten",
     "Different responsibilities need different methods":
       "Unterschiedliche Aufgaben brauchen unterschiedliche Methoden",
-    "TaskMaster Pro is designed to match the work rather than forcing every activity into the same timer":
-      "TaskMaster Pro passt sich der Arbeit an, statt jede Aktivität in denselben Timer zu zwängen.",
+    "DayVector is designed to match the work rather than forcing every activity into the same timer":
+      "DayVector passt sich der Arbeit an, statt jede Aktivität in denselben Timer zu zwängen.",
     "Pomodoro Focus": "Pomodoro-Fokus",
     "Focus cycles, breaks, pauses and interruptions":
       "Fokuszyklen, Erholungspausen und Unterbrechungen",
@@ -161,8 +171,8 @@
     "Focus from your home screen": "Fokus direkt auf dem Startbildschirm",
     "Your running session stays visible and controllable":
       "Deine laufende Sitzung bleibt sichtbar und steuerbar",
-    "The responsive Android widget reflects the current TaskMaster Pro session. See the remaining time at a glance, pause without opening the app, move to a break or finish when the work is complete.":
-      "Das responsive Android-Widget zeigt deine aktuelle TaskMaster-Pro-Sitzung. Du siehst die Restzeit sofort, kannst ohne Öffnen der App pausieren, in eine Pause wechseln oder die Arbeit beenden.",
+    "The responsive Android widget reflects the current DayVector session. See the remaining time at a glance, pause without opening the app, move to a break or finish when the work is complete.":
+      "Das responsive Android-Widget zeigt deine aktuelle DayVector-Sitzung. Du siehst die Restzeit sofort, kannst ohne Öffnen der App pausieren, in eine Pause wechseln oder die Arbeit beenden.",
     "Live focus and break countdowns": "Live-Countdowns für Fokus und Pausen",
     "Pause, break and finish controls":
       "Steuerung für Pause, Erholung und Abschluss",
@@ -172,8 +182,8 @@
       "Ein gemeinsamer, verlässlicher Status mit der App",
     "Try the browser Pomodoro": "Browser-Pomodoro ausprobieren",
     "Get the Android widget": "Android-Widget herunterladen",
-    "Live TaskMaster Pro Android widget demonstration":
-      "Live-Demo des TaskMaster-Pro-Widgets für Android",
+    "Live DayVector Android widget demonstration":
+      "Live-Demo des DayVector-Widgets für Android",
     "Interactive widget preview controls":
       "Interaktive Steuerung der Widget-Vorschau",
     "FOCUS SESSION": "FOKUSSITZUNG",
@@ -283,10 +293,10 @@
     "Privacy and control": "Datenschutz und Kontrolle",
     "Detailed insights under your control":
       "Detaillierte Einblicke, die du kontrollierst",
-    "You choose which activity TaskMaster Pro may record and whether selected data remains local or is synchronized":
-      "Du entscheidest, welche Aktivitäten TaskMaster Pro erfassen darf und ob ausgewählte Daten lokal bleiben oder synchronisiert werden.",
-    "TaskMaster Pro does not upload browser cookies, website login tokens, clipboard contents, form contents or unencrypted passwords":
-      "TaskMaster Pro lädt keine Browser-Cookies, Anmeldedaten von Websites, Inhalte der Zwischenablage, Formularinhalte oder unverschlüsselte Passwörter hoch.",
+    "You choose which activity DayVector may record and whether selected data remains local or is synchronized":
+      "Du entscheidest, welche Aktivitäten DayVector erfassen darf und ob ausgewählte Daten lokal bleiben oder synchronisiert werden.",
+    "DayVector does not upload browser cookies, website login tokens, clipboard contents, form contents or unencrypted passwords":
+      "DayVector lädt keine Browser-Cookies, Anmeldedaten von Websites, Inhalte der Zwischenablage, Formularinhalte oder unverschlüsselte Passwörter hoch.",
     "View Privacy Policy": "Datenschutzerklärung ansehen",
     "View Terms of Use": "Nutzungsbedingungen ansehen",
     "Activity privacy": "Aktivitätsdatenschutz",
@@ -302,45 +312,47 @@
     "The operational view": "Dein Überblick",
     "Everything important, visible in one place":
       "Alles Wichtige auf einen Blick",
-    "TaskMaster Pro dashboard with active task, schedule, roadmap progress, activity review and coaching":
-      "TaskMaster-Pro-Dashboard mit aktiver Aufgabe, Zeitplan, Roadmap-Fortschritt, Aktivitätsprüfung und Coaching",
+    "DayVector dashboard showing task suggestions, schedule, workload and overdue responsibilities":
+      "DayVector-Dashboard mit Aufgabenvorschlägen, Zeitplan, Arbeitslast und überfälligen Aufgaben",
     "Today’s responsibilities, active work, roadmap progress, unresolved activity and coaching direction in one focused dashboard":
       "Heutige Aufgaben, laufende Arbeit, Roadmap-Fortschritt, ungeklärte Aktivität und Coaching-Hinweise erscheinen in einem übersichtlichen Dashboard.",
-    "Active task": "Aktive Aufgabe",
-    "Roadmap progress": "Roadmap-Fortschritt",
-    "Active task and animated timer": "Aktive Aufgabe mit laufendem Timer",
-    "Next recommended responsibility": "Nächste empfohlene Aufgabe",
-    "Daily workload and roadmap progress":
-      "Tägliche Arbeitslast und Roadmap-Fortschritt",
-    "Activity awaiting review": "Aktivität zur Prüfung",
-    "Synchronization state and coaching":
-      "Synchronisierungsstatus und Coaching",
-    "Active task workspace": "Arbeitsbereich der aktiven Aufgabe",
-    "Active task workspace with timer, applications and task progress":
-      "Arbeitsbereich der aktiven Aufgabe mit Timer, Apps und Aufgabenfortschritt",
-    "Timer, progress and actions": "Timer, Fortschritt und Aktionen",
-    "Performance reports": "Leistungsberichte",
-    "TaskMaster Pro reports with time and roadmap contribution charts":
-      "TaskMaster-Pro-Berichte mit Zeit- und Roadmap-Beitragsdiagrammen",
-    "Private, localized exports": "Private, lokalisierte Exporte",
+    "Task suggestions": "Aufgabenvorschläge",
+    "Today's workload": "Heutige Arbeitslast",
+    Schedule: "Zeitplan",
+    "Clear current task state": "Klarer Status der aktuellen Aufgabe",
+    "Next suggested responsibility": "Nächste vorgeschlagene Aufgabe",
+    "Today’s schedule and workload": "Heutiger Zeitplan und Arbeitsumfang",
+    "Overdue work and items needing attention":
+      "Überfällige Aufgaben und Punkte, die Aufmerksamkeit brauchen",
+    "Dynamic coaching and synchronization status":
+      "Dynamisches Coaching und Synchronisierungsstatus",
+    "Dynamic coaching": "Dynamisches Coaching",
+    "DayVector coaching carousel with several evidence-based suggestions":
+      "DayVector-Coaching mit mehreren nachvollziehbaren Vorschlägen",
+    "Several suggestions, always in your control":
+      "Mehrere Vorschläge, die du jederzeit steuerst",
+    "Activity insights": "Aktivitätsübersicht",
+    "DayVector Activity view grouping useful application time without losing individual periods":
+      "DayVector-Aktivitätsansicht, die nützliche App-Zeit gruppiert und einzelne Zeiträume bewahrt",
+    "Clear, editable classifications": "Klare, bearbeitbare Zuordnungen",
     "Direct contact": "Direkter Kontakt",
     "Questions, feedback or support?": "Fragen, Feedback oder Unterstützung?",
-    "Contact the creator of TaskMaster Pro for help with the app, privacy questions, feedback, bug reports, feature suggestions or general enquiries":
-      "Wende dich für Hilfe zur App, Datenschutzfragen, Feedback, Fehlermeldungen, Funktionswünsche oder allgemeine Fragen direkt an den Entwickler von TaskMaster Pro.",
+    "Contact the creator of DayVector for help with the app, privacy questions, feedback, bug reports, feature suggestions or general enquiries":
+      "Wende dich für Hilfe zur App, Datenschutzfragen, Feedback, Fehlermeldungen, Funktionswünsche oder allgemeine Fragen direkt an den Entwickler von DayVector.",
     "Created and maintained by": "Entwickelt und gepflegt von",
     "Contact Y. A. Diab": "Y. A. Diab kontaktieren",
-    "Email Y. A. Diab about TaskMaster Pro":
-      "E-Mail an Y. A. Diab zu TaskMaster Pro senden",
+    "Email Y. A. Diab about DayVector":
+      "E-Mail an Y. A. Diab zu DayVector senden",
     "Application support": "Hilfe zur App",
     "Privacy questions": "Datenschutzfragen",
     "Bug reports": "Fehlermeldungen",
     "Feature suggestions": "Funktionswünsche",
     "Build a better system for your time":
       "Baue ein besseres System für deine Zeit",
-    "Download TaskMaster Pro and begin turning long-term goals into practical, measurable daily progress":
-      "Lade TaskMaster Pro herunter und verwandle langfristige Ziele in praktische, messbare Fortschritte im Alltag.",
+    "Download DayVector and begin turning long-term goals into practical, measurable daily progress":
+      "Lade DayVector herunter und verwandle langfristige Ziele in praktische, messbare Fortschritte im Alltag.",
     "Recommended for your device": "Für dein Gerät empfohlen",
-    "TaskMaster Pro for Windows": "TaskMaster Pro für Windows",
+    "DayVector for Windows": "DayVector für Windows",
     "Designed for Windows 10 and Windows 11": "Für Windows 10 und Windows 11",
     Version: "Version",
     Installer: "Installationsdatei",
@@ -350,7 +362,7 @@
     "Checking release…": "Version wird geprüft…",
     "Release notes": "Versionshinweise",
     "Installation help": "Installationshilfe",
-    "TaskMaster Pro for Android": "TaskMaster Pro für Android",
+    "DayVector for Android": "DayVector für Android",
     "Designed for Android phones and tablets":
       "Für Android-Smartphones und -Tablets",
     Package: "Paket",
@@ -366,7 +378,7 @@
     "Installation Help": "Installationshilfe",
     "Support and feedback": "Support und Feedback",
     "Windows and Android": "Windows und Android",
-    "TaskMaster Pro Release Notes": "Versionshinweise zu TaskMaster Pro",
+    "DayVector Release Notes": "Versionshinweise zu DayVector",
     "Release date available with the notes":
       "Das Veröffentlichungsdatum erscheint mit den Hinweisen.",
     "Close release notes": "Versionshinweise schließen",
@@ -383,70 +395,70 @@
     "Available with the release": "Mit der Version verfügbar",
     "Checking…": "Wird geprüft…",
 
-    "Privacy Policy for TaskMaster Pro":
-      "Datenschutzerklärung für TaskMaster Pro",
-    "Privacy choices and data-handling information for TaskMaster Pro.":
-      "Informationen zu Datenschutzoptionen und zur Datenverarbeitung in TaskMaster Pro.",
+    "Privacy Policy for DayVector":
+      "Datenschutzerklärung für DayVector",
+    "Privacy choices and data-handling information for DayVector.":
+      "Informationen zu Datenschutzoptionen und zur Datenverarbeitung in DayVector.",
     "← Back to privacy overview": "← Zurück zur Datenschutzübersicht",
     "Privacy policy": "Datenschutzerklärung",
     "Your activity stays under your control":
       "Deine Aktivität bleibt unter deiner Kontrolle",
     "Effective 25 July 2026": "Gültig ab 25. Juli 2026",
-    "TaskMaster Pro is a planning, execution and performance-coaching application created and maintained by Y. A. Diab. This policy explains the categories of information the application may process and the choices available to you.":
-      "TaskMaster Pro ist eine von Y. A. Diab entwickelte und gepflegte App zum Planen, Umsetzen und Verbessern. Diese Erklärung beschreibt, welche Arten von Informationen die App verarbeiten kann und welche Auswahlmöglichkeiten du hast.",
+    "DayVector is a planning, execution and performance-coaching application created and maintained by Y. A. Diab. This policy explains the categories of information the application may process and the choices available to you.":
+      "DayVector ist eine von Y. A. Diab entwickelte und gepflegte App zum Planen, Umsetzen und Verbessern. Diese Erklärung beschreibt, welche Arten von Informationen die App verarbeiten kann und welche Auswahlmöglichkeiten du hast.",
     "Information you provide": "Informationen, die du angibst",
     "This may include account details, profile preferences, tasks, roadmaps, notes, reminders, resources and feedback. Authentication is provided through Supabase. Google sign-in, when selected, is processed by Google and Supabase.":
       "Dazu können Kontodaten, Profileinstellungen, Aufgaben, Roadmaps, Notizen, Erinnerungen, Materialien und Feedback gehören. Die Anmeldung erfolgt über Supabase. Wenn du die Google-Anmeldung auswählst, wird sie von Google und Supabase verarbeitet.",
     "Optional activity information": "Optionale Aktivitätsinformationen",
-    "With your permission, TaskMaster Pro may process application usage, window titles, website domains or URLs, document activity, idle state and manually recorded off-device work. Controls in the application determine which categories are enabled and whether supported activity remains local or is synchronized.":
-      "Mit deiner Erlaubnis kann TaskMaster Pro die App-Nutzung, Fenstertitel, Website-Domains oder URLs, Dokumentaktivität, Inaktivitätszeiten und manuell erfasste Arbeit außerhalb des Geräts verarbeiten. In der App legst du fest, welche Kategorien aktiv sind und ob unterstützte Aktivitäten lokal bleiben oder synchronisiert werden.",
-    "Information TaskMaster Pro does not upload":
-      "Informationen, die TaskMaster Pro nicht hochlädt",
+    "With your permission, DayVector may process application usage, window titles, website domains or URLs, document activity, idle state and manually recorded off-device work. Controls in the application determine which categories are enabled and whether supported activity remains local or is synchronized.":
+      "Mit deiner Erlaubnis kann DayVector die App-Nutzung, Fenstertitel, Website-Domains oder URLs, Dokumentaktivität, Inaktivitätszeiten und manuell erfasste Arbeit außerhalb des Geräts verarbeiten. In der App legst du fest, welche Kategorien aktiv sind und ob unterstützte Aktivitäten lokal bleiben oder synchronisiert werden.",
+    "Information DayVector does not upload":
+      "Informationen, die DayVector nicht hochlädt",
     "The application is designed not to upload browser cookies, website login tokens, clipboard contents, form contents, banking-session information, email-session tokens or unencrypted passwords.":
       "Die App ist so ausgelegt, dass sie keine Browser-Cookies, Anmeldetoken von Websites, Inhalte der Zwischenablage, Formularinhalte, Informationen aus Banking-Sitzungen, E-Mail-Sitzungstoken oder unverschlüsselte Passwörter hochlädt.",
     "Why information is used": "Wofür Informationen genutzt werden",
     "Information is used to operate requested features, synchronize connected devices, calculate progress and reports, detect unresolved activity, improve schedules, deliver notifications and generate explainable coaching. Optional data is not treated as medical diagnosis.":
       "Informationen werden genutzt, um gewünschte Funktionen bereitzustellen, verbundene Geräte zu synchronisieren, Fortschritt und Berichte zu berechnen, ungeklärte Aktivitäten zu erkennen, Zeitpläne zu verbessern, Benachrichtigungen zu senden und nachvollziehbares Coaching zu erstellen. Optionale Daten werden nicht als medizinische Diagnose behandelt.",
     "Storage and service providers": "Speicherung und Dienstanbieter",
-    "TaskMaster Pro stores working data locally on your device. When synchronization is enabled, account data may be processed by Supabase infrastructure. Platform services may also process data needed for sign-in, notifications, software downloads and operating-system integrations.":
-      "TaskMaster Pro speichert Arbeitsdaten lokal auf deinem Gerät. Wenn die Synchronisierung aktiviert ist, können Kontodaten über die Infrastruktur von Supabase verarbeitet werden. Plattformdienste können außerdem Daten verarbeiten, die für Anmeldung, Benachrichtigungen, Software-Downloads und Betriebssystemintegrationen nötig sind.",
+    "DayVector stores working data locally on your device. When synchronization is enabled, account data may be processed by Supabase infrastructure. Platform services may also process data needed for sign-in, notifications, software downloads and operating-system integrations.":
+      "DayVector speichert Arbeitsdaten lokal auf deinem Gerät. Wenn die Synchronisierung aktiviert ist, können Kontodaten über die Infrastruktur von Supabase verarbeitet werden. Plattformdienste können außerdem Daten verarbeiten, die für Anmeldung, Benachrichtigungen, Software-Downloads und Betriebssystemintegrationen nötig sind.",
     "Your controls": "Deine Einstellungen",
     "Depending on the feature status and platform, you can pause tracking, exclude applications or websites, correct classifications, remove history, keep selected information local, revoke device access, export account data and request account deletion.":
       "Je nach Funktionsstand und Plattform kannst du die Erfassung pausieren, Apps oder Websites ausschließen, Einordnungen korrigieren, Verläufe entfernen, ausgewählte Informationen lokal behalten, Gerätezugriff widerrufen, Kontodaten exportieren und die Löschung des Kontos anfordern.",
     "Security and sensitive features": "Sicherheit und sensible Funktionen",
-    "TaskMaster Pro uses platform and service security controls appropriate to each feature. Planned security-sensitive features are not represented as available until their implementation and review are complete.":
-      "TaskMaster Pro nutzt für jede Funktion passende Sicherheitsmechanismen der Plattform und der verwendeten Dienste. Geplante sicherheitsrelevante Funktionen werden erst als verfügbar dargestellt, wenn Implementierung und Prüfung abgeschlossen sind.",
+    "DayVector uses platform and service security controls appropriate to each feature. Planned security-sensitive features are not represented as available until their implementation and review are complete.":
+      "DayVector nutzt für jede Funktion passende Sicherheitsmechanismen der Plattform und der verwendeten Dienste. Geplante sicherheitsrelevante Funktionen werden erst als verfügbar dargestellt, wenn Implementierung und Prüfung abgeschlossen sind.",
     "Changes to this policy": "Änderungen an dieser Erklärung",
-    "This policy may be updated as TaskMaster Pro evolves. The effective date above will change when material revisions are published.":
-      "Diese Erklärung kann mit der Weiterentwicklung von TaskMaster Pro aktualisiert werden. Das oben genannte Datum ändert sich, wenn wesentliche Überarbeitungen veröffentlicht werden.",
+    "This policy may be updated as DayVector evolves. The effective date above will change when material revisions are published.":
+      "Diese Erklärung kann mit der Weiterentwicklung von DayVector aktualisiert werden. Das oben genannte Datum ändert sich, wenn wesentliche Überarbeitungen veröffentlicht werden.",
     "For privacy questions, email": "Bei Datenschutzfragen schreibe an",
 
-    "Terms of Service for TaskMaster Pro":
-      "Nutzungsbedingungen für TaskMaster Pro",
-    "Terms governing use of the TaskMaster Pro application.":
-      "Bedingungen für die Nutzung der TaskMaster-Pro-App.",
-    "← Back to TaskMaster Pro": "← Zurück zu TaskMaster Pro",
+    "Terms of Service for DayVector":
+      "Nutzungsbedingungen für DayVector",
+    "Terms governing use of the DayVector application.":
+      "Bedingungen für die Nutzung der DayVector-App.",
+    "← Back to DayVector": "← Zurück zu DayVector",
     "Terms of service": "Nutzungsbedingungen",
-    "Clear terms for using TaskMaster Pro":
-      "Klare Bedingungen für die Nutzung von TaskMaster Pro",
-    "These terms apply to your use of TaskMaster Pro, an application created and maintained by Y. A. Diab. By creating an account or using the application, you agree to use it lawfully and in accordance with these terms.":
-      "Diese Bedingungen gelten für deine Nutzung von TaskMaster Pro, einer von Y. A. Diab entwickelten und gepflegten App. Wenn du ein Konto erstellst oder die App nutzt, erklärst du dich damit einverstanden, sie rechtmäßig und nach diesen Bedingungen zu verwenden.",
+    "Clear terms for using DayVector":
+      "Klare Bedingungen für die Nutzung von DayVector",
+    "These terms apply to your use of DayVector, an application created and maintained by Y. A. Diab. By creating an account or using the application, you agree to use it lawfully and in accordance with these terms.":
+      "Diese Bedingungen gelten für deine Nutzung von DayVector, einer von Y. A. Diab entwickelten und gepflegten App. Wenn du ein Konto erstellst oder die App nutzt, erklärst du dich damit einverstanden, sie rechtmäßig und nach diesen Bedingungen zu verwenden.",
     "Purpose of the application": "Zweck der App",
-    "TaskMaster Pro provides tools for planning, task execution, time and activity review, roadmaps, reports and performance coaching. Features marked Beta or Planned may change, remain incomplete or be unavailable on some platforms.":
-      "TaskMaster Pro bietet Werkzeuge für Planung, Aufgabenumsetzung, Zeit- und Aktivitätsprüfung, Roadmaps, Berichte und Leistungscoaching. Als Beta oder Geplant gekennzeichnete Funktionen können sich ändern, unvollständig bleiben oder auf einzelnen Plattformen nicht verfügbar sein.",
+    "DayVector provides tools for planning, task execution, time and activity review, roadmaps, reports and performance coaching. Features marked Beta or Planned may change, remain incomplete or be unavailable on some platforms.":
+      "DayVector bietet Werkzeuge für Planung, Aufgabenumsetzung, Zeit- und Aktivitätsprüfung, Roadmaps, Berichte und Leistungscoaching. Als Beta oder Geplant gekennzeichnete Funktionen können sich ändern, unvollständig bleiben oder auf einzelnen Plattformen nicht verfügbar sein.",
     "Your account and content": "Dein Konto und deine Inhalte",
     "You are responsible for safeguarding your sign-in methods, maintaining accurate account information and keeping appropriate backups of important content. You retain responsibility for the tasks, notes, resources and other content you add.":
       "Du bist dafür verantwortlich, deine Anmeldemethoden zu schützen, korrekte Kontoinformationen zu pflegen und wichtige Inhalte angemessen zu sichern. Für Aufgaben, Notizen, Materialien und andere von dir hinzugefügte Inhalte bleibst du verantwortlich.",
     "Acceptable use": "Zulässige Nutzung",
-    "Do not use TaskMaster Pro to violate law, infringe the rights of others, attempt unauthorized access, distribute malicious software or interfere with the application and its supporting services.":
-      "Nutze TaskMaster Pro nicht für Gesetzesverstöße, Verletzungen der Rechte anderer, unbefugte Zugriffsversuche, die Verbreitung schädlicher Software oder Störungen der App und ihrer unterstützenden Dienste.",
+    "Do not use DayVector to violate law, infringe the rights of others, attempt unauthorized access, distribute malicious software or interfere with the application and its supporting services.":
+      "Nutze DayVector nicht für Gesetzesverstöße, Verletzungen der Rechte anderer, unbefugte Zugriffsversuche, die Verbreitung schädlicher Software oder Störungen der App und ihrer unterstützenden Dienste.",
     "Updates and availability": "Updates und Verfügbarkeit",
     "Software updates may add, change or remove features. You choose whether to install an offered desktop or Android package, and the operating system may require additional confirmation. Availability can be affected by device, network and third-party service conditions.":
       "Software-Updates können Funktionen hinzufügen, ändern oder entfernen. Du entscheidest, ob du ein angebotenes Desktop- oder Android-Paket installierst. Das Betriebssystem kann zusätzliche Bestätigungen verlangen. Die Verfügbarkeit kann vom Gerät, Netzwerk und von Drittanbieterdiensten abhängen.",
     "Productivity and coaching information":
       "Informationen zu Produktivität und Coaching",
-    "TaskMaster Pro provides planning, productivity and performance information. It does not provide medical, psychological, legal, financial or professional diagnosis or treatment.":
-      "TaskMaster Pro stellt Informationen zu Planung, Produktivität und Leistung bereit. Die App bietet keine medizinische, psychologische, rechtliche, finanzielle oder sonstige professionelle Diagnose oder Behandlung.",
+    "DayVector provides planning, productivity and performance information. It does not provide medical, psychological, legal, financial or professional diagnosis or treatment.":
+      "DayVector stellt Informationen zu Planung, Produktivität und Leistung bereit. Die App bietet keine medizinische, psychologische, rechtliche, finanzielle oder sonstige professionelle Diagnose oder Behandlung.",
     "No guaranteed outcome": "Kein garantiertes Ergebnis",
     "Forecasts and recommendations depend on available information and may be incomplete or inaccurate. You remain in control of decisions, classifications, schedules and progress.":
       "Prognosen und Empfehlungen hängen von den verfügbaren Informationen ab und können unvollständig oder ungenau sein. Du behältst die Kontrolle über Entscheidungen, Einordnungen, Zeitpläne und Fortschritt.",
@@ -456,45 +468,45 @@
     "For support or questions about these terms, contact Y. A. Diab at":
       "Bei Supportfragen oder Fragen zu diesen Bedingungen erreichst du Y. A. Diab unter",
 
-    "Installation Help for TaskMaster Pro":
-      "Installationshilfe für TaskMaster Pro",
-    "Install TaskMaster Pro on Windows, Android phones and Android tablets.":
-      "Installiere TaskMaster Pro unter Windows sowie auf Android-Smartphones und -Tablets.",
+    "Installation Help for DayVector":
+      "Installationshilfe für DayVector",
+    "Install DayVector on Windows, Android phones and Android tablets.":
+      "Installiere DayVector unter Windows sowie auf Android-Smartphones und -Tablets.",
     "← Back to downloads": "← Zurück zu den Downloads",
     "Installation help": "Installationshilfe",
-    "Get TaskMaster Pro running": "TaskMaster Pro installieren und starten",
+    "Get DayVector running": "DayVector installieren und starten",
     "Applies to the version shown on the download card":
       "Gilt für die auf der Download-Karte angezeigte Version",
     "Windows 10 and Windows 11": "Windows 10 und Windows 11",
     "Download the Windows installer from the official GitHub release.":
       "Lade die Windows-Installationsdatei aus der offiziellen GitHub-Version herunter.",
-    "Open the downloaded TaskMaster Pro Windows installer.":
-      "Öffne die heruntergeladene Windows-Installationsdatei von TaskMaster Pro.",
+    "Open the downloaded DayVector Windows installer.":
+      "Öffne die heruntergeladene Windows-Installationsdatei von DayVector.",
     "Review any Windows security prompt, then continue the installer.":
       "Prüfe einen möglichen Windows-Sicherheitshinweis und fahre dann mit der Installation fort.",
-    "Launch TaskMaster Pro from the Start menu or desktop shortcut.":
-      "Starte TaskMaster Pro über das Startmenü oder die Desktop-Verknüpfung.",
+    "Launch DayVector from the Start menu or desktop shortcut.":
+      "Starte DayVector über das Startmenü oder die Desktop-Verknüpfung.",
     "Android phones and tablets": "Android-Smartphones und -Tablets",
-    "Download the signed TaskMaster Pro Android package.":
-      "Lade das signierte Android-Paket von TaskMaster Pro herunter.",
+    "Download the signed DayVector Android package.":
+      "Lade das signierte Android-Paket von DayVector herunter.",
     "Open the downloaded APK from your browser or Files application.":
       "Öffne die heruntergeladene APK im Browser oder in der Dateien-App.",
     "If Android asks, allow installation from that source for this install.":
       "Wenn Android danach fragt, erlaube für diese Installation die Nutzung dieser Quelle.",
     "Review the package details and confirm installation.":
       "Prüfe die Paketdetails und bestätige die Installation.",
-    "TaskMaster Pro never starts an installation without your action. Windows may show a reputation warning for a new, unsigned release, and Android requires confirmation before installing an APK outside an app store.":
-      "TaskMaster Pro startet niemals ohne deine Aktion eine Installation. Windows kann bei einer neuen, unsignierten Version einen Reputationshinweis anzeigen. Android verlangt eine Bestätigung, bevor eine APK außerhalb eines App-Stores installiert wird.",
+    "DayVector never starts an installation without your action. Windows may show a reputation warning for a new, unsigned release, and Android requires confirmation before installing an APK outside an app store.":
+      "DayVector startet niemals ohne deine Aktion eine Installation. Windows kann bei einer neuen, unsignierten Version einen Reputationshinweis anzeigen. Android verlangt eine Bestätigung, bevor eine APK außerhalb eines App-Stores installiert wird.",
     "Check your download": "Download prüfen",
     "Every official release includes a verification file beside each installer. You can use it to confirm that the download has not changed before opening it.":
       "Zu jeder offiziellen Version gehört eine Prüfdatei. Damit kannst du vor dem Öffnen bestätigen, dass der Download unverändert ist.",
     "Need help?": "Brauchst du Hilfe?",
     "Email Y. A. Diab at": "Schreibe Y. A. Diab an",
 
-    "A free, adjustable Pomodoro timer from TaskMaster Pro that remembers the current session and settings locally in your browser.":
-      "Ein kostenloser, anpassbarer Pomodoro-Timer von TaskMaster Pro, der Sitzung und Einstellungen lokal in deinem Browser speichert.",
-    "Free Pomodoro Timer from TaskMaster Pro":
-      "Kostenloser Pomodoro-Timer von TaskMaster Pro",
+    "A free, adjustable Pomodoro timer from DayVector that remembers the current session and settings locally in your browser.":
+      "Ein kostenloser, anpassbarer Pomodoro-Timer von DayVector, der Sitzung und Einstellungen lokal in deinem Browser speichert.",
+    "Free Pomodoro Timer from DayVector":
+      "Kostenloser Pomodoro-Timer von DayVector",
     "Run an adjustable focus timer that resumes where you left off, with an accessible guide to the Pomodoro Technique.":
       "Nutze einen anpassbaren Fokustimer, der dort weitermacht, wo du aufgehört hast, samt verständlicher Einführung in die Pomodoro-Technik.",
     Timer: "Timer",
@@ -547,8 +559,8 @@
     "Start the next focus automatically": "Nächsten Fokus automatisch starten",
     "Play a gentle completion tone": "Sanften Ton am Ende abspielen",
     "Restore recommended times": "Empfohlene Zeiten wiederherstellen",
-    "Your timer stays on this device and is ready when you return. Nothing is sent to TaskMaster Pro.":
-      "Dein Timer bleibt auf diesem Gerät und ist bei deiner Rückkehr bereit. Nichts wird an TaskMaster Pro gesendet.",
+    "Your timer stays on this device and is ready when you return. Nothing is sent to DayVector.":
+      "Dein Timer bleibt auf diesem Gerät und ist bei deiner Rückkehr bereit. Nichts wird an DayVector gesendet.",
     "A gentle starting ritual": "Ein ruhiger Einstieg",
     "Use the interval to protect attention, not to race the clock":
       "Nutze den Zeitraum, um deine Aufmerksamkeit zu schützen",
@@ -612,8 +624,8 @@
       "Gesundheit im Blick, ganz ohne Unordnung",
     "See movement and recovery beside your work":
       "Bewegung und Erholung im Zusammenhang mit deiner Arbeit",
-    "With your permission, TaskMaster Pro reads the health summaries you choose to share and presents them in a calm daily view. It helps you notice when movement, rest and focused work are supporting each other.":
-      "Mit deiner Erlaubnis liest TaskMaster Pro die Gesundheitsübersichten, die du teilen möchtest, und zeigt sie in einer ruhigen Tagesansicht. So erkennst du leichter, wie Bewegung, Erholung und konzentrierte Arbeit zusammenspielen.",
+    "With your permission, DayVector reads the health summaries you choose to share and presents them in a calm daily view. It helps you notice when movement, rest and focused work are supporting each other.":
+      "Mit deiner Erlaubnis liest DayVector die Gesundheitsübersichten, die du teilen möchtest, und zeigt sie in einer ruhigen Tagesansicht. So erkennst du leichter, wie Bewegung, Erholung und konzentrierte Arbeit zusammenspielen.",
     "A clear view of today": "Ein klarer Blick auf heute",
     "Steps, distance, active energy and workouts at a glance":
       "Schritte, Strecke, Aktivkalorien und Training auf einen Blick",
@@ -629,26 +641,36 @@
     "Swipe down to refresh": "Zum Aktualisieren nach unten wischen",
     "Read-only access": "Nur Lesezugriff",
     "Captured from the Android app": "Direkt aus der Android-App aufgenommen",
-    "TaskMaster Pro Health dashboard showing today's steps, distance, active energy and a seven-day movement chart":
-      "TaskMaster-Pro-Gesundheitsübersicht mit heutigen Schritten, Strecke, Aktivkalorien und einem Bewegungsverlauf über sieben Tage",
-    "Time does not always follow the schedule. TaskMaster Pro keeps each activity period available for review and makes sure the same minute is never counted twice":
-      "Der Tag läuft nicht immer nach Plan. TaskMaster Pro hält jeden Aktivitätszeitraum zur Prüfung bereit und sorgt dafür, dass dieselbe Minute nie doppelt gezählt wird.",
+    "DayVector Health dashboard showing today's steps, distance, active energy and a seven-day movement chart":
+      "DayVector-Gesundheitsübersicht mit heutigen Schritten, Strecke, Aktivkalorien und einem Bewegungsverlauf über sieben Tage",
+    "Time does not always follow the schedule. DayVector keeps each activity period available for review and makes sure the same minute is never counted twice":
+      "Der Tag läuft nicht immer nach Plan. DayVector hält jeden Aktivitätszeitraum zur Prüfung bereit und sorgt dafür, dass dieselbe Minute nie doppelt gezählt wird.",
     "Project task": "Projektaufgabe",
     "Prepare product launch": "Produkteinführung vorbereiten",
   };
 
   const arabic = {
-    "TaskMaster Pro turns goals into roadmaps, recurring tasks and daily actions, measures real effort and provides explainable coaching across Windows and Android.":
-      "يحوّل TaskMaster Pro الأهداف إلى خرائط طريق ومهام متكررة وخطوات يومية، ويقيس الجهد الفعلي ويقدم إرشاداً واضحاً على Windows وAndroid.",
-    "TaskMaster Pro: Plan, Focus and Improve":
-      "TaskMaster Pro: التخطيط والتركيز والتحسين",
+    "DayVector turns direction into daily progress with task planning, roadmaps, focus timers, activity insights and evidence-based coaching on Windows and Android.":
+      "يحوّل DayVector اتجاهك إلى تقدّم يومي من خلال تخطيط المهام وخرائط الطريق ومؤقتات التركيز ورؤى النشاط والإرشاد المبني على أدلة على Windows وAndroid.",
+    "DayVector — Turn direction into daily progress":
+      "DayVector — حوّل اتجاهك إلى تقدّم يومي",
+    "Plan meaningful goals, focus on the next task and improve with evidence-based coaching across Windows and Android.":
+      "خطط لأهداف ذات معنى، وركّز على المهمة التالية، وتطوّر بإرشاد مبني على أدلة على Windows وAndroid.",
+    "Personal planning, focused execution and evidence-based coaching on Windows and Android.":
+      "تخطيط شخصي وتنفيذ مركّز وإرشاد مبني على أدلة على Windows وAndroid.",
+    "DayVector — Planning, Focus Timers, Roadmaps and Coaching":
+      "DayVector — التخطيط ومؤقتات التركيز وخرائط الطريق والإرشاد",
+    "DayVector turns goals into roadmaps, recurring tasks and daily actions, measures real effort and provides explainable coaching across Windows and Android.":
+      "يحوّل DayVector الأهداف إلى خرائط طريق ومهام متكررة وخطوات يومية، ويقيس الجهد الفعلي ويقدم إرشاداً واضحاً على Windows وAndroid.",
+    "DayVector: Plan, Focus and Improve":
+      "DayVector: التخطيط والتركيز والتحسين",
     "Create roadmaps, execute focused tasks, track real activity and improve through evidence-based coaching.":
       "أنشئ خرائط طريق، وقم بتنفيذ المهام المركزة، وتتبع النشاط الحقيقي، وقم بالتحسين من خلال التدريب المبني على الأدلة.",
-    "TaskMaster Pro: Planning, Focus and Personal Coaching":
-      "TaskMaster Pro: التخطيط والتركيز والتدريب الشخصي",
+    "DayVector: Planning, Focus and Personal Coaching":
+      "DayVector: التخطيط والتركيز والتدريب الشخصي",
     "Skip to main content": "انتقل إلى المحتوى الرئيسي",
     "Skip to timer": "انتقل إلى الموقت",
-    "TaskMaster Pro home": "TaskMaster Pro الصفحة الرئيسية",
+    "DayVector home": "DayVector الصفحة الرئيسية",
     "Open navigation": "افتح التنقل",
     "Close navigation": "إغلاق التنقل",
     "Main navigation": "الملاحة الرئيسية",
@@ -664,21 +686,21 @@
     Download: "تحميل",
     "Download App": "تحميل التطبيق",
     "Download app": "تنزيل التطبيق",
-    "Plan with clarity, focus and keep moving forward":
-      "خطط بوضوح وتركيز واستمر في المضي قدمًا",
+    "Turn direction into daily progress":
+      "حوّل اتجاهك إلى تقدّم يومي",
     "Plan your goals": "خطط لأهدافك",
-    "Execute your tasks": "نفذ المهام الخاصة بك",
-    "Improve every day": "تحسن كل يوم",
-    "TaskMaster Pro combines task management, structured roadmaps, time tracking and personalized coaching to help you organize your responsibilities, improve your habits and make better use of your time":
-      "يجمع TaskMaster Pro بين إدارة المهام وخرائط الطريق المنظمة وتتبع الوقت والتدريب الشخصي لمساعدتك على تنظيم مسؤولياتك وتحسين عاداتك والاستفادة بشكل أفضل من وقتك.",
+    "Execute your tasks": "أنجز مهامك",
+    "Improve every day": "تقدّم كل يوم",
+    "DayVector combines task management, structured roadmaps, time tracking and personalized coaching to help you organize your responsibilities, improve your habits and make better use of your time":
+      "يجمع DayVector بين إدارة المهام وخرائط الطريق المنظمة وتتبع الوقت والتدريب الشخصي لمساعدتك على تنظيم مسؤولياتك وتحسين عاداتك والاستفادة بشكل أفضل من وقتك.",
     "It connects planned work with real activity, credits useful effort to the task it supports and turns verified patterns into clear recommendations":
       "فهو يربط العمل المخطط له بالنشاط الحقيقي، وينسب الجهد المفيد إلى المهمة التي يدعمها، ويحول الأنماط التي تم التحقق منها إلى توصيات واضحة",
     "Download for Windows": "تحميل لنظام التشغيل ويندوز",
     "Download for Android": "تنزيل لأجهزة أندرويد",
     "Explore how it works": "اكتشف كيف يعمل",
     "Supported platforms and capabilities": "المنصات والقدرات المدعومة",
-    "TaskMaster Pro dashboard displaying an active task, today's schedule, roadmap progress, workload information and coaching recommendations":
-      "تعرض لوحة معلومات TaskMaster Pro مهمة نشطة وجدول اليوم وتقدم خريطة الطريق ومعلومات عبء العمل وتوصيات التدريب",
+    "DayVector dashboard showing task suggestions, today's schedule, workload and overdue work":
+      "لوحة DayVector تعرض اقتراحات المهام وجدول اليوم وعبء العمل والمهام المتأخرة",
     Windows: "ويندوز",
     "Android phones": "هواتف أندرويد",
     "Android tablets": "أقراص أندرويد",
@@ -693,8 +715,8 @@
     "One connected system": "نظام واحد متصل",
     "One application for planning, execution, progress and improvement":
       "تطبيق واحد للتخطيط والتنفيذ والتقدم والتحسين",
-    "TaskMaster Pro connects what you plan with what you actually do. It measures real effort, recognizes useful work, identifies delays and helps you improve your future schedule":
-      "يربط TaskMaster Pro ما تخطط له بما تفعله بالفعل. فهو يقيس الجهد الحقيقي، ويتعرف على العمل المفيد، ويحدد التأخيرات، ويساعدك على تحسين جدولك المستقبلي",
+    "DayVector connects what you plan with what you actually do. It measures real effort, recognizes useful work, identifies delays and helps you improve your future schedule":
+      "يربط DayVector ما تخطط له بما تفعله بالفعل. فهو يقيس الجهد الحقيقي، ويتعرف على العمل المفيد، ويحدد التأخيرات، ويساعدك على تحسين جدولك المستقبلي",
     "Feature status legend": "أسطورة حالة الميزة",
     Available: "متاح",
     Beta: "بيتا",
@@ -741,8 +763,8 @@
     "Compare the plan with actual performance and use evidence to shape the next one":
       "قارن الخطة بالأداء الفعلي واستخدم الأدلة لتشكيل الخطة التالية",
     "Roadmap workspace": "مساحة عمل خارطة الطريق",
-    "TaskMaster Pro roadmap displaying phases, checkpoints and progress forecasts":
-      "تعرض خريطة طريق TaskMaster Pro المراحل ونقاط التفتيش وتوقعات التقدم",
+    "DayVector roadmap displaying phases, checkpoints and progress forecasts":
+      "تعرض خريطة طريق DayVector المراحل ونقاط التفتيش وتوقعات التقدم",
     "Build a realistic path toward every goal": "بناء مسار واقعي نحو كل هدف",
     "Roadmaps turn long-term direction into measurable phases and responsibilities. Every item remains editable and every percentage has an explanation":
       "وتحول خرائط الطريق الاتجاه طويل المدى إلى مراحل ومسؤوليات قابلة للقياس. يظل كل عنصر قابلاً للتحرير وكل نسبة مئوية لها تفسير",
@@ -764,8 +786,8 @@
     "Flexible execution": "تنفيذ مرن",
     "Different responsibilities need different methods":
       "المسؤوليات المختلفة تحتاج إلى أساليب مختلفة",
-    "TaskMaster Pro is designed to match the work rather than forcing every activity into the same timer":
-      "تم تصميم TaskMaster Pro ليتناسب مع العمل بدلاً من فرض كل نشاط في نفس المؤقت",
+    "DayVector is designed to match the work rather than forcing every activity into the same timer":
+      "تم تصميم DayVector ليتناسب مع العمل بدلاً من فرض كل نشاط في نفس المؤقت",
     "Pomodoro Focus": "تركيز بومودورو",
     "Focus cycles, breaks, pauses and interruptions":
       "دورات التركيز والفواصل والتوقفات والانقطاعات",
@@ -791,8 +813,8 @@
     "Focus from your home screen": "التركيز من شاشتك الرئيسية",
     "Your running session stays visible and controllable":
       "تظل جلسة التشغيل الخاصة بك مرئية ويمكن التحكم فيها",
-    "The responsive Android widget reflects the current TaskMaster Pro session. See the remaining time at a glance, pause without opening the app, move to a break or finish when the work is complete.":
-      "تعكس أداة Android سريعة الاستجابة جلسة TaskMaster Pro الحالية. يمكنك الاطلاع على الوقت المتبقي في لمحة سريعة، أو التوقف مؤقتًا دون فتح التطبيق، أو الانتقال إلى فترة راحة أو الانتهاء عند اكتمال العمل.",
+    "The responsive Android widget reflects the current DayVector session. See the remaining time at a glance, pause without opening the app, move to a break or finish when the work is complete.":
+      "تعكس أداة Android سريعة الاستجابة جلسة DayVector الحالية. يمكنك الاطلاع على الوقت المتبقي في لمحة سريعة، أو التوقف مؤقتًا دون فتح التطبيق، أو الانتقال إلى فترة راحة أو الانتهاء عند اكتمال العمل.",
     "Live focus and break countdowns": "التركيز المباشر وكسر العد التنازلي",
     "Pause, break and finish controls": "ضوابط الإيقاف المؤقت والكسر والانتهاء",
     "Compact, medium and expanded sizes": "أحجام مدمجة ومتوسطة وموسعة",
@@ -800,8 +822,8 @@
       "تمت مشاركة الحالة الأساسية مع التطبيق",
     "Try the browser Pomodoro": "جرب متصفح بومودورو",
     "Get the Android widget": "احصل على أداة Android",
-    "Live TaskMaster Pro Android widget demonstration":
-      "العرض المباشر لأداة TaskMaster Pro Android",
+    "Live DayVector Android widget demonstration":
+      "العرض المباشر لأداة DayVector Android",
     "Interactive widget preview controls":
       "عناصر التحكم في معاينة أداة الشاشة الرئيسية",
     "FOCUS SESSION": "جلسة التركيز",
@@ -909,10 +931,10 @@
     "All changes synchronized": "تمت مزامنة كافة التغييرات",
     "Privacy and control": "الخصوصية والتحكم",
     "Detailed insights under your control": "رؤى تفصيلية تحت سيطرتك",
-    "You choose which activity TaskMaster Pro may record and whether selected data remains local or is synchronized":
-      "يمكنك اختيار النشاط الذي قد يسجله TaskMaster Pro وما إذا كانت البيانات المحددة تظل محلية أو متزامنة",
-    "TaskMaster Pro does not upload browser cookies, website login tokens, clipboard contents, form contents or unencrypted passwords":
-      "لا يقوم TaskMaster Pro بتحميل ملفات تعريف الارتباط للمتصفح أو الرموز المميزة لتسجيل الدخول إلى موقع الويب أو محتويات الحافظة أو محتويات النموذج أو كلمات المرور غير المشفرة",
+    "You choose which activity DayVector may record and whether selected data remains local or is synchronized":
+      "يمكنك اختيار النشاط الذي قد يسجله DayVector وما إذا كانت البيانات المحددة تظل محلية أو متزامنة",
+    "DayVector does not upload browser cookies, website login tokens, clipboard contents, form contents or unencrypted passwords":
+      "لا يقوم DayVector بتحميل ملفات تعريف الارتباط للمتصفح أو الرموز المميزة لتسجيل الدخول إلى موقع الويب أو محتويات الحافظة أو محتويات النموذج أو كلمات المرور غير المشفرة",
     "View Privacy Policy": "عرض سياسة الخصوصية",
     "View Terms of Use": "عرض شروط الاستخدام",
     "Activity privacy": "خصوصية النشاط",
@@ -928,43 +950,46 @@
     "The operational view": "النظرة التشغيلية",
     "Everything important, visible in one place":
       "كل شيء مهم، مرئي في مكان واحد",
-    "TaskMaster Pro dashboard with active task, schedule, roadmap progress, activity review and coaching":
-      "لوحة تحكم TaskMaster Pro تحتوي على المهام النشطة والجدول الزمني وتقدم خريطة الطريق ومراجعة النشاط والتدريب",
+    "DayVector dashboard showing task suggestions, schedule, workload and overdue responsibilities":
+      "لوحة DayVector تعرض اقتراحات المهام والجدول وعبء العمل والمسؤوليات المتأخرة",
     "Today’s responsibilities, active work, roadmap progress, unresolved activity and coaching direction in one focused dashboard":
       "مسؤوليات اليوم، والعمل النشط، والتقدم في خريطة الطريق، والأنشطة التي لم يتم حلها، وتوجيهات التدريب في لوحة تحكم واحدة مركزة",
-    "Active task": "مهمة نشطة",
-    "Roadmap progress": "تقدم خارطة الطريق",
-    "Active task and animated timer": "مهمة نشطة وتوقيت الرسوم المتحركة",
-    "Next recommended responsibility": "المسؤولية الموصى بها التالية",
-    "Daily workload and roadmap progress":
-      "عبء العمل اليومي والتقدم في خارطة الطريق",
-    "Activity awaiting review": "النشاط في انتظار المراجعة",
-    "Synchronization state and coaching": "حالة المزامنة والتدريب",
-    "Active task workspace": "مساحة عمل المهمة النشطة",
-    "Active task workspace with timer, applications and task progress":
-      "مساحة عمل مهمة نشطة مع مؤقت وتطبيقات وتقدم المهمة",
-    "Timer, progress and actions": "الموقت والتقدم والإجراءات",
-    "Performance reports": "تقارير الأداء",
-    "TaskMaster Pro reports with time and roadmap contribution charts":
-      "يقدم TaskMaster Pro تقارير مع مخططات مساهمة الوقت وخريطة الطريق",
-    "Private, localized exports": "الصادرات الخاصة والمحلية",
+    "Task suggestions": "اقتراحات المهام",
+    "Today's workload": "عبء عمل اليوم",
+    Schedule: "الجدول",
+    "Clear current task state": "حالة المهمة الحالية بوضوح",
+    "Next suggested responsibility": "المهمة التالية المقترحة",
+    "Today’s schedule and workload": "جدول اليوم وحجم العمل",
+    "Overdue work and items needing attention":
+      "المهام المتأخرة وما يحتاج إلى انتباهك",
+    "Dynamic coaching and synchronization status":
+      "إرشاد متجدد وحالة المزامنة",
+    "Dynamic coaching": "إرشاد متجدد",
+    "DayVector coaching carousel with several evidence-based suggestions":
+      "بطاقات إرشاد متحركة في DayVector تعرض عدة اقتراحات مبنية على نشاطك",
+    "Several suggestions, always in your control":
+      "عدة اقتراحات مع بقاء القرار بيدك",
+    "Activity insights": "رؤى النشاط",
+    "DayVector Activity view grouping useful application time without losing individual periods":
+      "صفحة نشاط DayVector تجمع وقت التطبيقات المفيد مع الحفاظ على كل فترة منفصلة",
+    "Clear, editable classifications": "تصنيفات واضحة وقابلة للتعديل",
     "Direct contact": "الاتصال المباشر",
     "Questions, feedback or support?": "أسئلة أو تعليقات أو دعم؟",
-    "Contact the creator of TaskMaster Pro for help with the app, privacy questions, feedback, bug reports, feature suggestions or general enquiries":
-      "اتصل بمنشئ TaskMaster Pro للحصول على مساعدة بشأن التطبيق أو أسئلة الخصوصية أو التعليقات أو تقارير الأخطاء أو اقتراحات الميزات أو الاستفسارات العامة",
+    "Contact the creator of DayVector for help with the app, privacy questions, feedback, bug reports, feature suggestions or general enquiries":
+      "اتصل بمنشئ DayVector للحصول على مساعدة بشأن التطبيق أو أسئلة الخصوصية أو التعليقات أو تقارير الأخطاء أو اقتراحات الميزات أو الاستفسارات العامة",
     "Created and maintained by": "تم إنشاؤها وصيانتها بواسطة",
     "Contact Y. A. Diab": "للتواصل مع ياسر دياب",
-    "Email Y. A. Diab about TaskMaster Pro":
-      "أرسل بريدًا إلكترونيًا إلى ياسر دياب بخصوص TaskMaster Pro",
+    "Email Y. A. Diab about DayVector":
+      "أرسل بريدًا إلكترونيًا إلى ياسر دياب بخصوص DayVector",
     "Application support": "دعم التطبيق",
     "Privacy questions": "أسئلة الخصوصية",
     "Bug reports": "تقارير الأخطاء",
     "Feature suggestions": "اقتراحات الميزات",
     "Build a better system for your time": "بناء نظام أفضل لوقتك",
-    "Download TaskMaster Pro and begin turning long-term goals into practical, measurable daily progress":
-      "قم بتنزيل TaskMaster Pro وابدأ في تحويل الأهداف طويلة المدى إلى تقدم يومي عملي وقابل للقياس",
+    "Download DayVector and begin turning long-term goals into practical, measurable daily progress":
+      "قم بتنزيل DayVector وابدأ في تحويل الأهداف طويلة المدى إلى تقدم يومي عملي وقابل للقياس",
     "Recommended for your device": "الموصى بها لجهازك",
-    "TaskMaster Pro for Windows": "برنامج تاسك ماستر برو لنظام التشغيل Windows",
+    "DayVector for Windows": "برنامج DayVector لنظام التشغيل Windows",
     "Designed for Windows 10 and Windows 11":
       "مصمم لنظامي التشغيل Windows 10 وWindows 11",
     Version: "إصدار",
@@ -975,7 +1000,7 @@
     "Checking release…": "جارٍ التحقق من الإصدار…",
     "Release notes": "ملاحظات الإصدار",
     "Installation help": "مساعدة التثبيت",
-    "TaskMaster Pro for Android": "برنامج تاسك ماستر برو للاندرويد",
+    "DayVector for Android": "برنامج DayVector للاندرويد",
     "Designed for Android phones and tablets": "مصممة للهواتف أندرويد وأقراص",
     Package: "طَرد",
     "Signed APK": "APK الموقعة",
@@ -990,7 +1015,7 @@
     "Installation Help": "مساعدة التثبيت",
     "Support and feedback": "الدعم وردود الفعل",
     "Windows and Android": "ويندوز وأندرويد",
-    "TaskMaster Pro Release Notes": "ملاحظات إصدار TaskMaster Pro",
+    "DayVector Release Notes": "ملاحظات إصدار DayVector",
     "Release date available with the notes": "تاريخ الإصدار متاح مع الملاحظات",
     "Close release notes": "إغلاق ملاحظات الإصدار",
     "Loading release notes…": "جارٍ تحميل ملاحظات الإصدار…",
@@ -1006,66 +1031,66 @@
     "Coming soon!": "قريباً!",
     "Available with the release": "متوفر مع الإصدار",
     "Checking…": "جارٍ التحقق…",
-    "Privacy Policy for TaskMaster Pro":
-      "سياسة الخصوصية لبرنامج TaskMaster Pro",
-    "Privacy choices and data-handling information for TaskMaster Pro.":
-      "خيارات الخصوصية ومعلومات التعامل مع البيانات لبرنامج TaskMaster Pro.",
+    "Privacy Policy for DayVector":
+      "سياسة الخصوصية لبرنامج DayVector",
+    "Privacy choices and data-handling information for DayVector.":
+      "خيارات الخصوصية ومعلومات التعامل مع البيانات لبرنامج DayVector.",
     "← Back to privacy overview": "← العودة إلى نظرة عامة على الخصوصية",
     "Privacy policy": "سياسة الخصوصية",
     "Your activity stays under your control": "يبقى نشاطك تحت سيطرتك",
     "Effective 25 July 2026": "اعتبارًا من 25 يوليو 2026",
-    "TaskMaster Pro is a planning, execution and performance-coaching application created and maintained by Y. A. Diab. This policy explains the categories of information the application may process and the choices available to you.":
-      "TaskMaster Pro هو تطبيق للتخطيط والتنفيذ والتدريب على الأداء تم إنشاؤه وصيانته بواسطة Y. A. Diab. تشرح هذه السياسة فئات المعلومات التي قد يعالجها التطبيق والخيارات المتاحة لك.",
+    "DayVector is a planning, execution and performance-coaching application created and maintained by Y. A. Diab. This policy explains the categories of information the application may process and the choices available to you.":
+      "DayVector هو تطبيق للتخطيط والتنفيذ والتدريب على الأداء تم إنشاؤه وصيانته بواسطة Y. A. Diab. تشرح هذه السياسة فئات المعلومات التي قد يعالجها التطبيق والخيارات المتاحة لك.",
     "Information you provide": "المعلومات التي تقدمها",
     "This may include account details, profile preferences, tasks, roadmaps, notes, reminders, resources and feedback. Authentication is provided through Supabase. Google sign-in, when selected, is processed by Google and Supabase.":
       "قد يتضمن ذلك تفاصيل الحساب وتفضيلات الملف الشخصي والمهام وخرائط الطريق والملاحظات والتذكيرات والموارد والتعليقات. يتم توفير المصادقة من خلال Supabase. تتم معالجة تسجيل الدخول إلى Google، عند تحديده، بواسطة Google وSupabase.",
     "Optional activity information": "معلومات النشاط الاختيارية",
-    "With your permission, TaskMaster Pro may process application usage, window titles, website domains or URLs, document activity, idle state and manually recorded off-device work. Controls in the application determine which categories are enabled and whether supported activity remains local or is synchronized.":
-      "بعد الحصول على إذن منك، قد يقوم TaskMaster Pro بمعالجة استخدام التطبيق، وعناوين النوافذ، ونطاقات موقع الويب أو عناوين URL، ونشاط المستند، وحالة الخمول، والعمل المسجل يدويًا خارج الجهاز. تحدد عناصر التحكم في التطبيق الفئات التي تم تمكينها وما إذا كان النشاط المدعوم يظل محليًا أو متزامنًا.",
-    "Information TaskMaster Pro does not upload":
-      "لا يتم تحميل المعلومات TaskMaster Pro",
+    "With your permission, DayVector may process application usage, window titles, website domains or URLs, document activity, idle state and manually recorded off-device work. Controls in the application determine which categories are enabled and whether supported activity remains local or is synchronized.":
+      "بعد الحصول على إذن منك، قد يقوم DayVector بمعالجة استخدام التطبيق، وعناوين النوافذ، ونطاقات موقع الويب أو عناوين URL، ونشاط المستند، وحالة الخمول، والعمل المسجل يدويًا خارج الجهاز. تحدد عناصر التحكم في التطبيق الفئات التي تم تمكينها وما إذا كان النشاط المدعوم يظل محليًا أو متزامنًا.",
+    "Information DayVector does not upload":
+      "لا يتم تحميل المعلومات DayVector",
     "The application is designed not to upload browser cookies, website login tokens, clipboard contents, form contents, banking-session information, email-session tokens or unencrypted passwords.":
       "تم تصميم التطبيق بحيث لا يقوم بتحميل ملفات تعريف الارتباط للمتصفح، أو الرموز المميزة لتسجيل الدخول إلى موقع الويب، أو محتويات الحافظة، أو محتويات النماذج، أو معلومات الجلسة المصرفية، أو الرموز المميزة لجلسة البريد الإلكتروني، أو كلمات المرور غير المشفرة.",
     "Why information is used": "لماذا يتم استخدام المعلومات",
     "Information is used to operate requested features, synchronize connected devices, calculate progress and reports, detect unresolved activity, improve schedules, deliver notifications and generate explainable coaching. Optional data is not treated as medical diagnosis.":
       "يتم استخدام المعلومات لتشغيل الميزات المطلوبة ومزامنة الأجهزة المتصلة وحساب التقدم والتقارير واكتشاف الأنشطة التي لم يتم حلها وتحسين الجداول الزمنية وتقديم الإشعارات وإنشاء تدريب قابل للتفسير. لا يتم التعامل مع البيانات الاختيارية على أنها تشخيص طبي.",
     "Storage and service providers": "مزودي التخزين والخدمات",
-    "TaskMaster Pro stores working data locally on your device. When synchronization is enabled, account data may be processed by Supabase infrastructure. Platform services may also process data needed for sign-in, notifications, software downloads and operating-system integrations.":
-      "يقوم TaskMaster Pro بتخزين بيانات العمل محليًا على جهازك. عند تمكين المزامنة، قد تتم معالجة بيانات الحساب بواسطة البنية التحتية Supabase. قد تقوم خدمات النظام الأساسي أيضًا بمعالجة البيانات اللازمة لتسجيل الدخول والإشعارات وتنزيلات البرامج وتكامل نظام التشغيل.",
+    "DayVector stores working data locally on your device. When synchronization is enabled, account data may be processed by Supabase infrastructure. Platform services may also process data needed for sign-in, notifications, software downloads and operating-system integrations.":
+      "يقوم DayVector بتخزين بيانات العمل محليًا على جهازك. عند تمكين المزامنة، قد تتم معالجة بيانات الحساب بواسطة البنية التحتية Supabase. قد تقوم خدمات النظام الأساسي أيضًا بمعالجة البيانات اللازمة لتسجيل الدخول والإشعارات وتنزيلات البرامج وتكامل نظام التشغيل.",
     "Your controls": "الضوابط الخاصة بك",
     "Depending on the feature status and platform, you can pause tracking, exclude applications or websites, correct classifications, remove history, keep selected information local, revoke device access, export account data and request account deletion.":
       "اعتمادًا على حالة الميزة والنظام الأساسي، يمكنك إيقاف التتبع مؤقتًا واستبعاد التطبيقات أو مواقع الويب وتصحيح التصنيفات وإزالة السجل والاحتفاظ بالمعلومات المحددة محليًا وإلغاء الوصول إلى الجهاز وتصدير بيانات الحساب وطلب حذف الحساب.",
     "Security and sensitive features": "الأمان والميزات الحساسة",
-    "TaskMaster Pro uses platform and service security controls appropriate to each feature. Planned security-sensitive features are not represented as available until their implementation and review are complete.":
-      "يستخدم TaskMaster Pro ضوابط أمان النظام الأساسي والخدمة المناسبة لكل ميزة. لا يتم تمثيل الميزات الحساسة للأمان المخطط لها على أنها متاحة حتى يتم الانتهاء من تنفيذها ومراجعتها.",
+    "DayVector uses platform and service security controls appropriate to each feature. Planned security-sensitive features are not represented as available until their implementation and review are complete.":
+      "يستخدم DayVector ضوابط أمان النظام الأساسي والخدمة المناسبة لكل ميزة. لا يتم تمثيل الميزات الحساسة للأمان المخطط لها على أنها متاحة حتى يتم الانتهاء من تنفيذها ومراجعتها.",
     "Changes to this policy": "التغييرات في هذه السياسة",
-    "This policy may be updated as TaskMaster Pro evolves. The effective date above will change when material revisions are published.":
-      "قد يتم تحديث هذه السياسة مع تطور TaskMaster Pro. سيتغير تاريخ السريان أعلاه عندما يتم نشر مراجعات المواد.",
+    "This policy may be updated as DayVector evolves. The effective date above will change when material revisions are published.":
+      "قد يتم تحديث هذه السياسة مع تطور DayVector. سيتغير تاريخ السريان أعلاه عندما يتم نشر مراجعات المواد.",
     "For privacy questions, email": "لأسئلة الخصوصية، البريد الإلكتروني",
-    "Terms of Service for TaskMaster Pro": "شروط الخدمة لبرنامج TaskMaster Pro",
-    "Terms governing use of the TaskMaster Pro application.":
-      "الشروط التي تحكم استخدام تطبيق TaskMaster Pro.",
-    "← Back to TaskMaster Pro": "← الرجوع إلى TaskMaster Pro",
+    "Terms of Service for DayVector": "شروط الخدمة لبرنامج DayVector",
+    "Terms governing use of the DayVector application.":
+      "الشروط التي تحكم استخدام تطبيق DayVector.",
+    "← Back to DayVector": "← الرجوع إلى DayVector",
     "Terms of service": "شروط الخدمة",
-    "Clear terms for using TaskMaster Pro":
-      "شروط واضحة لاستخدام TaskMaster Pro",
-    "These terms apply to your use of TaskMaster Pro, an application created and maintained by Y. A. Diab. By creating an account or using the application, you agree to use it lawfully and in accordance with these terms.":
-      "تنطبق هذه الشروط على استخدامك لتطبيق TaskMaster Pro، وهو تطبيق تم إنشاؤه وصيانته بواسطة يوسف أ. دياب. من خلال إنشاء حساب أو استخدام التطبيق، فإنك توافق على استخدامه بشكل قانوني ووفقًا لهذه الشروط.",
+    "Clear terms for using DayVector":
+      "شروط واضحة لاستخدام DayVector",
+    "These terms apply to your use of DayVector, an application created and maintained by Y. A. Diab. By creating an account or using the application, you agree to use it lawfully and in accordance with these terms.":
+      "تنطبق هذه الشروط على استخدامك لتطبيق DayVector، وهو تطبيق تم إنشاؤه وصيانته بواسطة يوسف أ. دياب. من خلال إنشاء حساب أو استخدام التطبيق، فإنك توافق على استخدامه بشكل قانوني ووفقًا لهذه الشروط.",
     "Purpose of the application": "الغرض من التطبيق",
-    "TaskMaster Pro provides tools for planning, task execution, time and activity review, roadmaps, reports and performance coaching. Features marked Beta or Planned may change, remain incomplete or be unavailable on some platforms.":
-      "يوفر TaskMaster Pro أدوات للتخطيط وتنفيذ المهام ومراجعة الوقت والنشاط وخرائط الطريق والتقارير والتدريب على الأداء. قد تتغير الميزات المميزة بعلامة Beta أو المخطط لها، أو تظل غير مكتملة أو غير متوفرة على بعض الأنظمة الأساسية.",
+    "DayVector provides tools for planning, task execution, time and activity review, roadmaps, reports and performance coaching. Features marked Beta or Planned may change, remain incomplete or be unavailable on some platforms.":
+      "يوفر DayVector أدوات للتخطيط وتنفيذ المهام ومراجعة الوقت والنشاط وخرائط الطريق والتقارير والتدريب على الأداء. قد تتغير الميزات المميزة بعلامة Beta أو المخطط لها، أو تظل غير مكتملة أو غير متوفرة على بعض الأنظمة الأساسية.",
     "Your account and content": "حسابك والمحتوى الخاص بك",
     "You are responsible for safeguarding your sign-in methods, maintaining accurate account information and keeping appropriate backups of important content. You retain responsibility for the tasks, notes, resources and other content you add.":
       "أنت مسؤول عن حماية طرق تسجيل الدخول الخاصة بك، والحفاظ على معلومات الحساب الدقيقة والاحتفاظ بنسخ احتياطية مناسبة من المحتوى المهم. أنت تحتفظ بالمسؤولية عن المهام والملاحظات والموارد والمحتويات الأخرى التي تضيفها.",
     "Acceptable use": "الاستخدام المقبول",
-    "Do not use TaskMaster Pro to violate law, infringe the rights of others, attempt unauthorized access, distribute malicious software or interfere with the application and its supporting services.":
-      "لا تستخدم TaskMaster Pro لانتهاك القانون أو انتهاك حقوق الآخرين أو محاولة الوصول غير المصرح به أو توزيع البرامج الضارة أو التدخل في التطبيق والخدمات الداعمة له.",
+    "Do not use DayVector to violate law, infringe the rights of others, attempt unauthorized access, distribute malicious software or interfere with the application and its supporting services.":
+      "لا تستخدم DayVector لانتهاك القانون أو انتهاك حقوق الآخرين أو محاولة الوصول غير المصرح به أو توزيع البرامج الضارة أو التدخل في التطبيق والخدمات الداعمة له.",
     "Updates and availability": "التحديثات والتوافر",
     "Software updates may add, change or remove features. You choose whether to install an offered desktop or Android package, and the operating system may require additional confirmation. Availability can be affected by device, network and third-party service conditions.":
       "قد تضيف تحديثات البرامج ميزات أو تغيرها أو تزيلها. أنت تختار ما إذا كنت تريد تثبيت حزمة سطح المكتب أو Android المعروضة، وقد يتطلب نظام التشغيل تأكيدًا إضافيًا. يمكن أن يتأثر التوفر بظروف الجهاز والشبكة وخدمة الطرف الثالث.",
     "Productivity and coaching information": "معلومات الإنتاجية والتدريب",
-    "TaskMaster Pro provides planning, productivity and performance information. It does not provide medical, psychological, legal, financial or professional diagnosis or treatment.":
-      "يوفر TaskMaster Pro معلومات التخطيط والإنتاجية والأداء. ولا يقدم تشخيصًا أو علاجًا طبيًا أو نفسيًا أو قانونيًا أو ماليًا أو مهنيًا.",
+    "DayVector provides planning, productivity and performance information. It does not provide medical, psychological, legal, financial or professional diagnosis or treatment.":
+      "يوفر DayVector معلومات التخطيط والإنتاجية والأداء. ولا يقدم تشخيصًا أو علاجًا طبيًا أو نفسيًا أو قانونيًا أو ماليًا أو مهنيًا.",
     "No guaranteed outcome": "لا توجد نتيجة مضمونة",
     "Forecasts and recommendations depend on available information and may be incomplete or inaccurate. You remain in control of decisions, classifications, schedules and progress.":
       "تعتمد التوقعات والتوصيات على المعلومات المتاحة وقد تكون غير كاملة أو غير دقيقة. ستظل متحكمًا في القرارات والتصنيفات والجداول الزمنية والتقدم.",
@@ -1074,44 +1099,44 @@
       "يمكنك التوقف عن استخدام التطبيق، وعندما يكون ذلك متاحًا في عناصر التحكم في الحساب، يمكنك طلب حذف معلومات الحساب المتزامنة. قد يتم الاحتفاظ ببعض السجلات مؤقتًا عندما يكون ذلك مطلوبًا لأسباب تتعلق بالأمن أو النزاهة أو لأسباب قانونية.",
     "For support or questions about these terms, contact Y. A. Diab at":
       "للحصول على الدعم أو الأسئلة حول هذه الشروط، اتصل بـ Y. A. Diab على",
-    "Installation Help for TaskMaster Pro":
-      "تعليمات التثبيت لبرنامج TaskMaster Pro",
-    "Install TaskMaster Pro on Windows, Android phones and Android tablets.":
-      "قم بتثبيت TaskMaster Pro على أجهزة Windows وهواتف Android والأجهزة اللوحية التي تعمل بنظام Android.",
+    "Installation Help for DayVector":
+      "تعليمات التثبيت لبرنامج DayVector",
+    "Install DayVector on Windows, Android phones and Android tablets.":
+      "قم بتثبيت DayVector على أجهزة Windows وهواتف Android والأجهزة اللوحية التي تعمل بنظام Android.",
     "← Back to downloads": "← العودة إلى التنزيلات",
-    "Get TaskMaster Pro running": "قم بتشغيل TaskMaster Pro",
+    "Get DayVector running": "قم بتشغيل DayVector",
     "Applies to the version shown on the download card":
       "ينطبق على الإصدار الموضح على بطاقة التنزيل",
     "Windows 10 and Windows 11": "ويندوز 10 وويندوز 11",
     "Download the Windows installer from the official GitHub release.":
       "قم بتنزيل مثبت Windows من إصدار GitHub الرسمي.",
-    "Open the downloaded TaskMaster Pro Windows installer.":
-      "افتح برنامج تثبيت TaskMaster Pro Windows الذي تم تنزيله.",
+    "Open the downloaded DayVector Windows installer.":
+      "افتح برنامج تثبيت DayVector Windows الذي تم تنزيله.",
     "Review any Windows security prompt, then continue the installer.":
       "قم بمراجعة أي مطالبة أمان لنظام التشغيل Windows، ثم تابع عملية التثبيت.",
-    "Launch TaskMaster Pro from the Start menu or desktop shortcut.":
-      'قم بتشغيل TaskMaster Pro من قائمة "ابدأ" أو من اختصار سطح المكتب.',
+    "Launch DayVector from the Start menu or desktop shortcut.":
+      'قم بتشغيل DayVector من قائمة "ابدأ" أو من اختصار سطح المكتب.',
     "Android phones and tablets":
       "الهواتف والأجهزة اللوحية التي تعمل بنظام Android",
-    "Download the signed TaskMaster Pro Android package.":
-      "قم بتنزيل حزمة TaskMaster Pro Android الموقعة.",
+    "Download the signed DayVector Android package.":
+      "قم بتنزيل حزمة DayVector Android الموقعة.",
     "Open the downloaded APK from your browser or Files application.":
       "افتح ملف APK الذي تم تنزيله من متصفحك أو تطبيق الملفات.",
     "If Android asks, allow installation from that source for this install.":
       "إذا طلب Android ذلك، فاسمح بالتثبيت من هذا المصدر لهذا التثبيت.",
     "Review the package details and confirm installation.":
       "قم بمراجعة تفاصيل الحزمة وتأكيد التثبيت.",
-    "TaskMaster Pro never starts an installation without your action. Windows may show a reputation warning for a new, unsigned release, and Android requires confirmation before installing an APK outside an app store.":
-      "لا يبدأ TaskMaster Pro عملية التثبيت مطلقًا بدون إجراء من جانبك. قد يعرض Windows تحذيرًا بشأن السمعة لإصدار جديد غير موقّع، ويتطلب Android التأكيد قبل تثبيت APK خارج متجر التطبيقات.",
+    "DayVector never starts an installation without your action. Windows may show a reputation warning for a new, unsigned release, and Android requires confirmation before installing an APK outside an app store.":
+      "لا يبدأ DayVector عملية التثبيت مطلقًا بدون إجراء من جانبك. قد يعرض Windows تحذيرًا بشأن السمعة لإصدار جديد غير موقّع، ويتطلب Android التأكيد قبل تثبيت APK خارج متجر التطبيقات.",
     "Check your download": "تحقق من التنزيل الخاص بك",
     "Every official release includes a verification file beside each installer. You can use it to confirm that the download has not changed before opening it.":
       "يتضمن كل إصدار رسمي ملف تحقق بجانب كل أداة تثبيت. يمكنك استخدامه للتأكد من أن التنزيل لم يتغير قبل فتحه.",
     "Need help?": "بحاجة الى مساعدة؟",
     "Email Y. A. Diab at": "البريد الإلكتروني ي. أ. دياب على",
-    "A free, adjustable Pomodoro timer from TaskMaster Pro that remembers the current session and settings locally in your browser.":
-      "مؤقت بومودورو مجاني وقابل للتعديل من TaskMaster Pro يتذكر الجلسة الحالية والإعدادات محليًا في متصفحك.",
-    "Free Pomodoro Timer from TaskMaster Pro":
-      "مؤقت بومودورو مجاني من TaskMaster Pro",
+    "A free, adjustable Pomodoro timer from DayVector that remembers the current session and settings locally in your browser.":
+      "مؤقت بومودورو مجاني وقابل للتعديل من DayVector يتذكر الجلسة الحالية والإعدادات محليًا في متصفحك.",
+    "Free Pomodoro Timer from DayVector":
+      "مؤقت بومودورو مجاني من DayVector",
     "Run an adjustable focus timer that resumes where you left off, with an accessible guide to the Pomodoro Technique.":
       "قم بتشغيل مؤقت التركيز القابل للتعديل والذي يستأنف من حيث توقفت، مع دليل يمكن الوصول إليه لتقنية بومودورو.",
     Timer: "الموقت",
@@ -1163,8 +1188,8 @@
     "Start the next focus automatically": "ابدأ التركيز التالي تلقائيًا",
     "Play a gentle completion tone": "قم بتشغيل نغمة إكمال لطيفة",
     "Restore recommended times": "استعادة الأوقات الموصى بها",
-    "Your timer stays on this device and is ready when you return. Nothing is sent to TaskMaster Pro.":
-      "يبقى المؤقت الخاص بك على هذا الجهاز ويكون جاهزًا عند عودتك. لا يتم إرسال أي شيء إلى TaskMaster Pro.",
+    "Your timer stays on this device and is ready when you return. Nothing is sent to DayVector.":
+      "يبقى المؤقت الخاص بك على هذا الجهاز ويكون جاهزًا عند عودتك. لا يتم إرسال أي شيء إلى DayVector.",
     "A gentle starting ritual": "طقوس البداية اللطيفة",
     "Use the interval to protect attention, not to race the clock":
       "استخدم الفاصل الزمني لحماية الانتباه، وليس لسباق الزمن",
@@ -1315,8 +1340,8 @@
     "Health context without clutter": "صحتك بوضوح ومن دون ازدحام",
     "See movement and recovery beside your work":
       "شاهد الحركة والتعافي بجانب يوم عملك",
-    "With your permission, TaskMaster Pro reads the health summaries you choose to share and presents them in a calm daily view. It helps you notice when movement, rest and focused work are supporting each other.":
-      "بعد إذنك، يقرأ TaskMaster Pro ملخصات الصحة التي تختار مشاركتها ويعرضها في صفحة يومية هادئة. ويساعدك ذلك على ملاحظة كيف تدعم الحركة والراحة والعمل المركّز بعضها بعضاً.",
+    "With your permission, DayVector reads the health summaries you choose to share and presents them in a calm daily view. It helps you notice when movement, rest and focused work are supporting each other.":
+      "بعد إذنك، يقرأ DayVector ملخصات الصحة التي تختار مشاركتها ويعرضها في صفحة يومية هادئة. ويساعدك ذلك على ملاحظة كيف تدعم الحركة والراحة والعمل المركّز بعضها بعضاً.",
     "A clear view of today": "نظرة واضحة على يومك",
     "Steps, distance, active energy and workouts at a glance":
       "الخطوات والمسافة والطاقة النشطة والتمارين في لمحة واحدة",
@@ -1332,10 +1357,10 @@
     "Swipe down to refresh": "اسحب إلى أسفل للتحديث",
     "Read-only access": "وصول للقراءة فقط",
     "Captured from the Android app": "لقطة حقيقية من تطبيق Android",
-    "TaskMaster Pro Health dashboard showing today's steps, distance, active energy and a seven-day movement chart":
-      "لوحة الصحة في TaskMaster Pro تعرض خطوات اليوم والمسافة والطاقة النشطة ورسم الحركة خلال سبعة أيام",
-    "Time does not always follow the schedule. TaskMaster Pro keeps each activity period available for review and makes sure the same minute is never counted twice":
-      "لا يسير اليوم دائماً حسب الجدول. يحتفظ TaskMaster Pro بكل فترة نشاط للمراجعة ويضمن عدم احتساب الدقيقة نفسها مرتين.",
+    "DayVector Health dashboard showing today's steps, distance, active energy and a seven-day movement chart":
+      "لوحة الصحة في DayVector تعرض خطوات اليوم والمسافة والطاقة النشطة ورسم الحركة خلال سبعة أيام",
+    "Time does not always follow the schedule. DayVector keeps each activity period available for review and makes sure the same minute is never counted twice":
+      "لا يسير اليوم دائماً حسب الجدول. يحتفظ DayVector بكل فترة نشاط للمراجعة ويضمن عدم احتساب الدقيقة نفسها مرتين.",
     "Project task": "مهمة المشروع",
     "Prepare product launch": "الاستعداد لإطلاق المنتج",
     "Activity reports": "تقارير النشاط",
@@ -1382,17 +1407,17 @@
     "Start on Windows": "ابدأ على ويندوز",
     "View on Android": "تابع على أندرويد",
     "Continue on Windows": "أكمل على ويندوز",
-    "You choose which activity TaskMaster Pro may record and whether selected data remains local or is synchronized":
+    "You choose which activity DayVector may record and whether selected data remains local or is synchronized":
       "أنت تحدد النشاط الذي يمكن للتطبيق تسجيله، وما إذا كانت البيانات المختارة ستبقى على جهازك أو تتم مزامنتها.",
-    "TaskMaster Pro does not upload browser cookies, website login tokens, clipboard contents, form contents or unencrypted passwords":
+    "DayVector does not upload browser cookies, website login tokens, clipboard contents, form contents or unencrypted passwords":
       "لا يرفع التطبيق ملفات تعريف الارتباط أو رموز تسجيل الدخول للمواقع أو محتوى الحافظة أو النماذج أو كلمات المرور غير المشفرة.",
-    "TaskMaster Pro v": "الإصدار",
-    "Download TaskMaster Pro and begin turning long-term goals into practical, measurable daily progress":
+    "DayVector v": "الإصدار",
+    "Download DayVector and begin turning long-term goals into practical, measurable daily progress":
       "نزّل التطبيق وابدأ في تحويل أهدافك طويلة المدى إلى تقدم يومي عملي يمكنك قياسه.",
-    "TaskMaster Pro for Windows": "تاسك ماستر برو لويندوز",
+    "DayVector for Windows": "DayVector لويندوز",
     "Designed for Windows 10 and Windows 11": "مصمم لويندوز 10 وويندوز 11",
     "64-bit EXE": "ملف تثبيت 64 بت",
-    "TaskMaster Pro for Android": "تاسك ماستر برو لأندرويد",
+    "DayVector for Android": "DayVector لأندرويد",
     "Designed for Android phones and tablets":
       "مصمم لهواتف أندرويد وأجهزته اللوحية",
     "Signed APK": "حزمة تثبيت موثوقة لأندرويد",
@@ -1406,7 +1431,7 @@
       "مصممة لتبدو طبيعية على شاشة أندرويد الرئيسية",
     "Books, PDFs, duration, saved position and notes":
       "الكتب والمستندات والمدة والموضع المحفوظ والملاحظات",
-    "The responsive Android widget reflects the current TaskMaster Pro session. See the remaining time at a glance, pause without opening the app, move to a break or finish when the work is complete.":
+    "The responsive Android widget reflects the current DayVector session. See the remaining time at a glance, pause without opening the app, move to a break or finish when the work is complete.":
       "تعرض أداة الشاشة الرئيسية لأندرويد جلستك الحالية بوضوح. شاهد الوقت المتبقي، وأوقف الجلسة أو ابدأ استراحة أو أنهِ المهمة من دون فتح التطبيق.",
     "Useful on Windows too": "مفيد على ويندوز أيضاً",
     "Track full URLs": "تتبع الروابط كاملة",
@@ -1421,6 +1446,8 @@
   let observer = null;
 
   function readLanguage() {
+    const requested = new URLSearchParams(window.location.search).get("lang");
+    if (SUPPORTED_LANGUAGES.has(requested)) return requested;
     try {
       const saved = localStorage.getItem(LANGUAGE_STORAGE_KEY);
       return SUPPORTED_LANGUAGES.has(saved) ? saved : "en";
@@ -1466,10 +1493,10 @@
       if (match) return `${arabic[match[1]] || match[1]} جاهزة.`;
 
       match = value.match(
-        /^(\d{2}:\d{2}) (Focus|Short break|Long break), TaskMaster Pro$/,
+        /^(\d{2}:\d{2}) (Focus|Short break|Long break), DayVector$/,
       );
       if (match)
-        return `${match[1]} ${arabic[match[2]] || match[2]}، TaskMaster Pro`;
+        return `${match[1]} ${arabic[match[2]] || match[2]}، DayVector`;
 
       match = value.match(/^Version (.+)$/);
       if (match) return `الإصدار ${match[1]}`;
@@ -1508,10 +1535,10 @@
     if (match) return `${german[match[1]] || match[1]} ist bereit.`;
 
     match = value.match(
-      /^(\d{2}:\d{2}) (Focus|Short break|Long break), TaskMaster Pro$/,
+      /^(\d{2}:\d{2}) (Focus|Short break|Long break), DayVector$/,
     );
     if (match)
-      return `${match[1]} ${german[match[2]] || match[2]}, TaskMaster Pro`;
+      return `${match[1]} ${german[match[2]] || match[2]}, DayVector`;
 
     match = value.match(/^Version (.+)$/);
     if (match) return `Version ${match[1]}`;
@@ -1665,7 +1692,7 @@
     if (themeColor)
       themeColor.setAttribute(
         "content",
-        theme === "light" ? "#f4f8fc" : "#07111f",
+        theme === "light" ? "#f7f9fc" : "#101828",
       );
     updateThemeToggle();
     if (persist) {
@@ -1737,10 +1764,13 @@
       } catch {
         // The page still switches when storage is unavailable.
       }
+      const url = new URL(window.location.href);
+      url.searchParams.set("lang", language);
+      window.history.replaceState(null, "", url);
     }
     startObserver();
     window.dispatchEvent(
-      new CustomEvent("taskmaster:languagechange", {
+      new CustomEvent("dayvector:languagechange", {
         detail: { language },
       }),
     );
@@ -1756,7 +1786,7 @@
     });
   });
 
-  window.TaskMasterI18n = {
+  window.DayVectorI18n = {
     get language() {
       return language;
     },
@@ -1773,7 +1803,7 @@
     },
   };
 
-  window.TaskMasterTheme = {
+  window.DayVectorTheme = {
     get theme() {
       return theme;
     },

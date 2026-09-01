@@ -3,7 +3,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('authentication emails carry TaskMaster Pro identity', () {
+  test('authentication emails carry DayVector identity', () {
     final config = File('supabase/config.toml').readAsStringSync();
     final templates = <String, String>{
       'confirmation': 'ConfirmationURL',
@@ -27,7 +27,7 @@ void main() {
       final html = File(
         'supabase/templates/${entry.key}.html',
       ).readAsStringSync();
-      expect(html, contains('TaskMaster Pro'));
+      expect(html, contains('DayVector'));
       expect(html, contains('name="viewport"'));
       expect(html, contains('{{ .${entry.value} }}'));
       expect(html.toLowerCase(), isNot(contains('supabase')));

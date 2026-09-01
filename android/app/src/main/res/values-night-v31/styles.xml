@@ -2,8 +2,8 @@
 <resources>
     <style name="LaunchTheme" parent="@android:style/Theme.Black.NoTitleBar">
         <item name="android:windowBackground">@drawable/launch_background</item>
-        <item name="android:windowSplashScreenBackground">@color/taskmaster_splash_background</item>
-        <item name="android:windowSplashScreenAnimatedIcon">@drawable/taskmaster_splash</item>
+        <item name="android:windowSplashScreenBackground">@color/dayvector_splash_background</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/dayvector_splash</item>
         <item name="android:windowSplashScreenIconBackgroundColor">@android:color/transparent</item>
     </style>
 </resources>

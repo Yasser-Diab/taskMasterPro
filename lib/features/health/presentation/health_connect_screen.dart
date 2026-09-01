@@ -12,6 +12,7 @@ import 'package:permission_handler/permission_handler.dart';
 import '../../../core/data/entity_record_repository.dart';
 import '../../../core/localization/app_localizations.dart';
 import '../../../core/providers.dart';
+import '../data/android_health_workout_reader.dart';
 import '../data/health_record_processing.dart';
 import '../data/health_source_discovery.dart';
 
@@ -30,7 +31,7 @@ class _HealthConnectScreenState extends ConsumerState<HealthConnectScreen> {
   static const _platformCallTimeout = Duration(seconds: 10);
   static const _healthReadTimeout = Duration(seconds: 10);
   static const _healthRefreshDeadline = Duration(seconds: 30);
-  static const _types = [
+  static const _readTypes = [
     HealthDataType.STEPS,
     HealthDataType.DISTANCE_DELTA,
     HealthDataType.HEART_RATE,
@@ -39,7 +40,20 @@ class _HealthConnectScreenState extends ConsumerState<HealthConnectScreen> {
     HealthDataType.WORKOUT,
   ];
 
+  // The Android health plugin enriches every exercise session by reading
+  // TotalCaloriesBurnedRecord. Since health 12.0.0 that permission is no
+  // longer added automatically for WORKOUT. Keep it in the permission set,
+  // but not in [_readTypes], so exercise sessions cannot disappear after the
+  // enrichment read fails and total calories are not duplicated as a second
+  // DayVector energy metric.
+  static const _authorizationTypes = [
+    ..._readTypes,
+    HealthDataType.TOTAL_CALORIES_BURNED,
+  ];
+
   final Health _health = Health();
+  final AndroidHealthWorkoutReader _androidWorkoutReader =
+      const AndroidHealthWorkoutReader();
   bool _checking = true;
   bool _available = false;
   bool _authorized = false;
@@ -111,9 +125,9 @@ class _HealthConnectScreenState extends ConsumerState<HealthConnectScreen> {
       final permission = available
           ? await _health
                     .hasPermissions(
-                      _types,
+                      _authorizationTypes,
                       permissions: List.filled(
-                        _types.length,
+                        _authorizationTypes.length,
                         HealthDataAccess.READ,
                       ),
                     )
@@ -391,8 +405,11 @@ class _HealthConnectScreenState extends ConsumerState<HealthConnectScreen> {
         throw StateError('activity_permission_denied');
       }
       final granted = await _health.requestAuthorization(
-        _types,
-        permissions: List.filled(_types.length, HealthDataAccess.READ),
+        _authorizationTypes,
+        permissions: List.filled(
+          _authorizationTypes.length,
+          HealthDataAccess.READ,
+        ),
       );
       if (!mounted) return;
       setState(() => _authorized = granted);
@@ -440,15 +457,17 @@ class _HealthConnectScreenState extends ConsumerState<HealthConnectScreen> {
       final points = <HealthDataPoint>[];
       _unavailableTypes.clear();
       final typeReads = await Future.wait(
-        _types.map((type) async {
+        _readTypes.map((type) async {
           try {
-            final values = await _health
-                .getHealthDataFromTypes(
-                  startTime: start,
-                  endTime: end,
-                  types: [type],
-                )
-                .timeout(_healthReadTimeout);
+            final values = type == HealthDataType.WORKOUT && Platform.isAndroid
+                ? await _readAndroidWorkoutSessions(start, end)
+                : await _health
+                      .getHealthDataFromTypes(
+                        startTime: start,
+                        endTime: end,
+                        types: [type],
+                      )
+                      .timeout(_healthReadTimeout);
             return (type: type, points: values, failed: false);
           } catch (_) {
             return (
@@ -613,6 +632,25 @@ class _HealthConnectScreenState extends ConsumerState<HealthConnectScreen> {
         setState(() => _loading = false);
       }
     }
+  }
+
+  Future<List<HealthDataPoint>> _readAndroidWorkoutSessions(
+    DateTime start,
+    DateTime end,
+  ) async {
+    final direct = await _androidWorkoutReader
+        .readSessions(start: start, end: end)
+        .timeout(_healthReadTimeout);
+    if (direct.isNotEmpty) return direct;
+    // Keep the package adapter as a compatibility fallback for Android
+    // Health Connect implementations that do not expose the direct client.
+    return _health
+        .getHealthDataFromTypes(
+          startTime: start,
+          endTime: end,
+          types: const [HealthDataType.WORKOUT],
+        )
+        .timeout(_healthReadTimeout);
   }
 
   Future<List<TaskHealthSummary>> _buildTaskHealthSummaries({
@@ -880,6 +918,10 @@ class _HealthConnectScreenState extends ConsumerState<HealthConnectScreen> {
           : metric.$2 == HealthDataType.STEPS
           ? 'health_connect_daily_aggregate'
           : 'health_connect_record';
+      final rawRecordCount = math.max(
+        summary.rawRecordCount,
+        math.max(metricRecordCount, summary.discardedOverlapCount),
+      );
       final data = <String, Object?>{
         'summary_date': date,
         'source': metricSources.join(', '),
@@ -903,7 +945,7 @@ class _HealthConnectScreenState extends ConsumerState<HealthConnectScreen> {
         'imported_at': summary.importedAt?.toUtc().toIso8601String(),
         'window_start_at': windowStart.toUtc().toIso8601String(),
         'window_end_at': windowEnd.toUtc().toIso8601String(),
-        'raw_record_count': summary.rawRecordCount,
+        'raw_record_count': rawRecordCount,
         'discarded_overlap_count': summary.discardedOverlapCount,
         'estimated': estimated,
         'provenance': provenance,
@@ -1062,6 +1104,15 @@ class _HealthConnectScreenState extends ConsumerState<HealthConnectScreen> {
     final todayComparedWithWeek = weeklyPeakSteps == 0
         ? 0.0
         : (_summary.steps / weeklyPeakSteps).clamp(0.0, 1.0);
+    final weeklyWorkoutCount = _weeklySummaries.fold<int>(
+      0,
+      (sum, day) => sum + day.summary.workoutCount,
+    );
+    final workoutsValue = hasMetric(HealthDataType.WORKOUT)
+        ? NumberFormat.decimalPattern(locale).format(_summary.workoutCount)
+        : weeklyWorkoutCount > 0
+        ? '${NumberFormat.decimalPattern(locale).format(weeklyWorkoutCount)} ${context.l10n.text('health_this_week')}'
+        : '—';
     final colorScheme = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(
@@ -1169,11 +1220,7 @@ class _HealthConnectScreenState extends ConsumerState<HealthConnectScreen> {
                             ? '${NumberFormat('0', locale).format(_summary.activeCalories)} kcal'
                             : '—',
                         workoutsLabel: context.l10n.text('health_workouts'),
-                        workouts: hasMetric(HealthDataType.WORKOUT)
-                            ? NumberFormat.decimalPattern(
-                                locale,
-                              ).format(_summary.workoutCount)
-                            : '—',
+                        workouts: workoutsValue,
                       ),
                       const SizedBox(height: 14),
                       _WeeklyStepsCard(

@@ -4,7 +4,7 @@ import '../../../core/database/app_database.dart';
 
 /// One eligibility policy for every derived Activity metric.
 ///
-/// Raw rows remain available for diagnostics, but TaskMaster Pro's own usage
+/// Raw rows remain available for diagnostics, but DayVector's own usage
 /// and periods whose latest user decision is `system_activity` must never be
 /// credited to work, coaching, reports, or roadmap forecasts.
 bool isSystemActivityClassification(String? classification) =>
@@ -22,16 +22,18 @@ bool isTaskMasterActivityIdentity(String? value) {
   // product name. Android history has likewise existed with the application
   // id and the Kotlin namespace. Compare exact normalized identity tokens so
   // those legacy spellings are recognized without treating a window title
-  // which merely mentions TaskMaster Pro as the app itself.
+  // which merely mentions DayVector as the app itself.
   final pathParts = normalizedPath.split('/');
   // A process identity may be either a visible product name or a full
   // executable path. Only compare the complete value and its basename: a
-  // different executable living inside a folder named "TaskMaster Pro" must
+  // different executable living inside a folder named "DayVector" must
   // not be mistaken for this application.
   final candidates = <String>{normalizedPath, pathParts.last};
   for (final candidate in candidates) {
     final token = candidate.replaceAll(RegExp('[^a-z0-9]'), '');
     if (const {
+      'dayvector',
+      'dayvectorexe',
       'taskmasterpro',
       'taskmasterproexe',
       'protaskmasterapp',

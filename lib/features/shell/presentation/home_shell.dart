@@ -29,6 +29,7 @@ import '../../activity/presentation/break_activity_check_in.dart';
 import '../../calendar/presentation/planning_calendar_screen.dart';
 import '../../dashboard/presentation/dashboard_screen.dart';
 import '../../health/presentation/health_connect_screen.dart';
+import '../../health/presentation/windows_health_summary_screen.dart';
 import '../../roadmaps/presentation/roadmaps_screen.dart';
 import '../../settings/presentation/settings_screen.dart';
 import '../../settings/presentation/notifications_sounds_screen.dart';
@@ -87,6 +88,31 @@ Stream<SyncHealth> synchronizedSyncHealthStream({
 /// compact handset. Keep semantic names and tooltips while switching to a
 /// horizontally scrollable icon-first navigation bar before labels wrap.
 bool usesCompactBottomNavigation(double maxWidth) => maxWidth < 600;
+
+@visibleForTesting
+bool showsHealthShellDestination(TargetPlatform platform) =>
+    platform == TargetPlatform.android || platform == TargetPlatform.windows;
+
+@visibleForTesting
+bool acceptsDesktopSidebarShortcut({
+  required KeyEvent event,
+  required Set<PhysicalKeyboardKey> pressedKeys,
+}) {
+  final controlPressed =
+      pressedKeys.contains(PhysicalKeyboardKey.controlLeft) ||
+      pressedKeys.contains(PhysicalKeyboardKey.controlRight);
+  final otherModifierPressed =
+      pressedKeys.contains(PhysicalKeyboardKey.shiftLeft) ||
+      pressedKeys.contains(PhysicalKeyboardKey.shiftRight) ||
+      pressedKeys.contains(PhysicalKeyboardKey.altLeft) ||
+      pressedKeys.contains(PhysicalKeyboardKey.altRight) ||
+      pressedKeys.contains(PhysicalKeyboardKey.metaLeft) ||
+      pressedKeys.contains(PhysicalKeyboardKey.metaRight);
+  return event is KeyDownEvent &&
+      event.physicalKey == PhysicalKeyboardKey.keyB &&
+      controlPressed &&
+      !otherModifierPressed;
+}
 
 enum ShellSyncVisualState { offline, syncing, waiting, synced, attention }
 
@@ -278,6 +304,7 @@ class _HomeShellState extends ConsumerState<HomeShell>
     with RouteAware, WidgetsBindingObserver {
   static const _dashboardIndex = 0;
   int _selectedIndex = 0;
+  bool _desktopSidebarExpanded = true;
   final _backNavigation = HomeShellBackNavigation();
   TaskListFilter _taskFilter = TaskListFilter.all;
   String _activityFilter = 'all';
@@ -325,6 +352,7 @@ class _HomeShellState extends ConsumerState<HomeShell>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    HardwareKeyboard.instance.addHandler(_handleDesktopSidebarKeyEvent);
     final androidWidgetService = AndroidHomeWidgetService.instance;
     if (androidWidgetService.isSupported) {
       _androidWidgetActionSubscription = androidWidgetService.actions.listen(
@@ -499,6 +527,7 @@ class _HomeShellState extends ConsumerState<HomeShell>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    HardwareKeyboard.instance.removeHandler(_handleDesktopSidebarKeyEvent);
     appRouteObserver.unsubscribe(this);
     for (final subscription in _notificationResponses) {
       unawaited(subscription.cancel());
@@ -1451,6 +1480,10 @@ class _HomeShellState extends ConsumerState<HomeShell>
 
   Future<void> _handleTrayCommand(String command) async {
     if (!mounted) return;
+    if (command == 'toggleSidebar') {
+      _toggleDesktopSidebar();
+      return;
+    }
     final repository = ref.read(taskRepositoryProvider);
     final runtime = await repository.getRuntime();
     final activeTask = runtime?.activeTaskId == null
@@ -1683,6 +1716,10 @@ class _HomeShellState extends ConsumerState<HomeShell>
           builder: (_) => const StandalonePomodoroScreen(),
         ),
       );
+      return;
+    }
+    if (route == 'coaching') {
+      if (mounted && actionId != 'dismiss') _selectDestination(0);
       return;
     }
     if (route.startsWith('activity/')) {
@@ -1998,6 +2035,25 @@ class _HomeShellState extends ConsumerState<HomeShell>
     setState(() => _selectedIndex = index);
   }
 
+  void _toggleDesktopSidebar() {
+    if (Theme.of(context).platform != TargetPlatform.windows) return;
+    setState(() => _desktopSidebarExpanded = !_desktopSidebarExpanded);
+  }
+
+  bool _handleDesktopSidebarKeyEvent(KeyEvent event) {
+    if (!mounted || Theme.of(context).platform != TargetPlatform.windows) {
+      return false;
+    }
+    if (!acceptsDesktopSidebarShortcut(
+      event: event,
+      pressedKeys: HardwareKeyboard.instance.physicalKeysPressed,
+    )) {
+      return false;
+    }
+    _toggleDesktopSidebar();
+    return true;
+  }
+
   void _applyBackDestination(int index) {
     _backNavigation.cancelExit();
     if (_selectedIndex == index) return;
@@ -2089,8 +2145,8 @@ class _HomeShellState extends ConsumerState<HomeShell>
       }
     });
     final l10n = context.l10n;
-    final showHealthDestination =
-        Theme.of(context).platform == TargetPlatform.android;
+    final platform = Theme.of(context).platform;
+    final showHealthDestination = showsHealthShellDestination(platform);
     final destinations = [
       (Icons.dashboard_outlined, Icons.dashboard, l10n.text('dashboard')),
       (Icons.task_alt_outlined, Icons.task_alt, l10n.text('tasks')),
@@ -2143,7 +2199,10 @@ class _HomeShellState extends ConsumerState<HomeShell>
         initialFilter: _activityFilter,
         onBack: () => unawaited(_handleBackRequested()),
       ),
-      if (showHealthDestination) const HealthConnectScreen(),
+      if (showHealthDestination)
+        platform == TargetPlatform.windows
+            ? const WindowsHealthSummaryScreen()
+            : const HealthConnectScreen(),
       SettingsScreen(user: widget.user),
     ];
 
@@ -2191,69 +2250,18 @@ class _HomeShellState extends ConsumerState<HomeShell>
           body: SafeArea(
             child: Row(
               children: [
-                Container(
-                  width: 248,
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).cardColor,
-                    border: BorderDirectional(
-                      end: BorderSide(color: Theme.of(context).dividerColor),
-                    ),
-                  ),
-                  child: Column(
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(18, 18, 18, 8),
-                        child: BrandLogo(themeKey: widget.themeKey, height: 54),
-                      ),
-                      _SidebarProfile(
-                        user: widget.user,
-                        onTap: () =>
-                            _selectDestination(destinations.length - 1),
-                      ),
-                      Expanded(
-                        child: NavigationRail(
-                          extended: true,
-                          minExtendedWidth: 248,
-                          selectedIndex: _selectedIndex,
-                          onDestinationSelected: _selectDestination,
-                          leading: const SizedBox(height: 12),
-                          destinations: [
-                            for (final destination in destinations)
-                              NavigationRailDestination(
-                                icon: Icon(destination.$1),
-                                selectedIcon: Icon(destination.$2),
-                                label: Text(destination.$3),
-                              ),
-                          ],
-                        ),
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-                        child: Material(
-                          color: Colors.transparent,
-                          child: ListTile(
-                            key: const ValueKey<String>(
-                              'sidebar-standalone-pomodoro-destination',
-                            ),
-                            dense: true,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(16),
-                            ),
-                            leading: const Icon(Icons.timer_outlined),
-                            title: Text(l10n.text('standalone_pomodoro')),
-                            onTap: () => Navigator.of(context).push(
-                              MaterialPageRoute<void>(
-                                builder: (_) =>
-                                    const StandalonePomodoroScreen(),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                      const _CompactActiveTaskBar(),
-                      const _SyncFooter(),
-                    ],
-                  ),
+                _DesktopSidebar(
+                  expanded: platform == TargetPlatform.windows
+                      ? _desktopSidebarExpanded
+                      : true,
+                  themeKey: widget.themeKey,
+                  user: widget.user,
+                  destinations: destinations,
+                  selectedIndex: _selectedIndex,
+                  onDestinationSelected: _selectDestination,
+                  onOpenProfile: () =>
+                      _selectDestination(destinations.length - 1),
+                  onToggle: _toggleDesktopSidebar,
                 ),
                 Expanded(
                   child: _ShellPageStack(
@@ -2329,6 +2337,245 @@ class _HomeShellState extends ConsumerState<HomeShell>
         if (!didPop) unawaited(_handleBackRequested());
       },
       child: content,
+    );
+  }
+}
+
+class _DesktopSidebar extends StatelessWidget {
+  const _DesktopSidebar({
+    required this.expanded,
+    required this.themeKey,
+    required this.user,
+    required this.destinations,
+    required this.selectedIndex,
+    required this.onDestinationSelected,
+    required this.onOpenProfile,
+    required this.onToggle,
+  });
+
+  final bool expanded;
+  final TaskMasterThemeKey themeKey;
+  final User user;
+  final List<(IconData, IconData, String)> destinations;
+  final int selectedIndex;
+  final ValueChanged<int> onDestinationSelected;
+  final VoidCallback onOpenProfile;
+  final VoidCallback onToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = context.l10n;
+    final width = expanded ? 248.0 : 80.0;
+    final divider = Theme.of(context).dividerColor;
+    final scheme = Theme.of(context).colorScheme;
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        AnimatedContainer(
+          key: const ValueKey<String>('desktop-sidebar'),
+          width: width,
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOutCubic,
+          decoration: BoxDecoration(
+            color: Theme.of(context).cardColor,
+            border: Border(right: BorderSide(color: divider)),
+          ),
+          child: Column(
+            children: [
+              SizedBox(
+                height: 78,
+                child: Center(
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: expanded ? 18 : 14,
+                      vertical: 12,
+                    ),
+                    child: BrandLogo(
+                      themeKey: themeKey,
+                      height: expanded ? 48 : 46,
+                      symbolOnly: !expanded,
+                    ),
+                  ),
+                ),
+              ),
+              _SidebarProfile(
+                user: user,
+                expanded: expanded,
+                onTap: onOpenProfile,
+              ),
+              Expanded(
+                child: ListView.separated(
+                  padding: const EdgeInsets.fromLTRB(10, 12, 10, 8),
+                  itemCount: destinations.length,
+                  separatorBuilder: (_, _) => const SizedBox(height: 4),
+                  itemBuilder: (context, index) {
+                    final destination = destinations[index];
+                    return _SidebarDestinationButton(
+                      expanded: expanded,
+                      selected: selectedIndex == index,
+                      icon: destination.$1,
+                      selectedIcon: destination.$2,
+                      label: destination.$3,
+                      onTap: () => onDestinationSelected(index),
+                    );
+                  },
+                ),
+              ),
+              Padding(
+                padding: EdgeInsets.fromLTRB(
+                  expanded ? 12 : 10,
+                  0,
+                  expanded ? 12 : 10,
+                  8,
+                ),
+                child: Material(
+                  color: Colors.transparent,
+                  child: expanded
+                      ? ListTile(
+                          key: const ValueKey<String>(
+                            'sidebar-standalone-pomodoro-destination',
+                          ),
+                          dense: true,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          leading: const Icon(Icons.timer_outlined),
+                          title: Text(l10n.text('standalone_pomodoro')),
+                          onTap: () => _openStandalonePomodoro(context),
+                        )
+                      : Tooltip(
+                          message: l10n.text('standalone_pomodoro'),
+                          child: IconButton(
+                            key: const ValueKey<String>(
+                              'sidebar-standalone-pomodoro-destination',
+                            ),
+                            onPressed: () => _openStandalonePomodoro(context),
+                            icon: const Icon(Icons.timer_outlined),
+                          ),
+                        ),
+                ),
+              ),
+              _CompactActiveTaskBar(expanded: expanded),
+              _SyncFooter(expanded: expanded),
+            ],
+          ),
+        ),
+        PositionedDirectional(
+          end: 8,
+          bottom: 16,
+          child: Tooltip(
+            message: l10n.text(
+              expanded ? 'collapse_navigation' : 'expand_navigation',
+            ),
+            child: Material(
+              color: scheme.surfaceContainerHighest,
+              elevation: 2,
+              shadowColor: scheme.shadow.withValues(alpha: 0.2),
+              shape: CircleBorder(
+                side: BorderSide(
+                  color: scheme.outlineVariant.withValues(alpha: 0.9),
+                ),
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: InkWell(
+                key: const ValueKey<String>('desktop-sidebar-toggle'),
+                customBorder: const CircleBorder(),
+                onTap: onToggle,
+                child: SizedBox.square(
+                  dimension: 38,
+                  child: Center(
+                    child: Icon(
+                      expanded
+                          ? Icons.chevron_left_rounded
+                          : Icons.chevron_right_rounded,
+                      color: scheme.onSurfaceVariant,
+                      size: 23,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  void _openStandalonePomodoro(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(builder: (_) => const StandalonePomodoroScreen()),
+    );
+  }
+}
+
+class _SidebarDestinationButton extends StatelessWidget {
+  const _SidebarDestinationButton({
+    required this.expanded,
+    required this.selected,
+    required this.icon,
+    required this.selectedIcon,
+    required this.label,
+    required this.onTap,
+  });
+
+  final bool expanded;
+  final bool selected;
+  final IconData icon;
+  final IconData selectedIcon;
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final foreground = selected
+        ? scheme.onSecondaryContainer
+        : scheme.onSurfaceVariant;
+    final content = SizedBox(
+      height: 44,
+      child: Row(
+        mainAxisAlignment: expanded
+            ? MainAxisAlignment.start
+            : MainAxisAlignment.center,
+        children: [
+          Icon(selected ? selectedIcon : icon, size: 22, color: foreground),
+          if (expanded) ...[
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                  color: foreground,
+                  fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+
+    return Tooltip(
+      message: label,
+      child: Semantics(
+        selected: selected,
+        button: true,
+        label: label,
+        child: Material(
+          color: selected ? scheme.secondaryContainer : Colors.transparent,
+          borderRadius: BorderRadius.circular(15),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: onTap,
+            child: Padding(
+              padding: EdgeInsets.symmetric(horizontal: expanded ? 14 : 0),
+              child: content,
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -2506,7 +2753,9 @@ class _ShellPageStack extends StatelessWidget {
 }
 
 class _SyncFooter extends ConsumerStatefulWidget {
-  const _SyncFooter();
+  const _SyncFooter({required this.expanded});
+
+  final bool expanded;
 
   @override
   ConsumerState<_SyncFooter> createState() => _SyncFooterState();
@@ -2567,7 +2816,8 @@ class _SyncFooterState extends ConsumerState<_SyncFooter>
           label: context.l10n.text(presentation.labelKey),
           child: Tooltip(
             message: context.l10n.text(presentation.labelKey),
-            child: visualState == ShellSyncVisualState.offline
+            child:
+                visualState == ShellSyncVisualState.offline && widget.expanded
                 ? TextButton(
                     key: const ValueKey('sync-offline-indicator'),
                     onPressed: () => SynchronizationPanel.show(context),
@@ -2599,7 +2849,8 @@ class _SyncFooterState extends ConsumerState<_SyncFooter>
                     ),
                     icon: presentation.animate
                         ? RotationTransition(turns: _rotation, child: syncIcon!)
-                        : syncIcon!,
+                        : syncIcon ??
+                              Icon(Icons.cloud_off_outlined, color: color),
                   ),
           ),
         ),
@@ -2609,9 +2860,14 @@ class _SyncFooterState extends ConsumerState<_SyncFooter>
 }
 
 class _SidebarProfile extends ConsumerWidget {
-  const _SidebarProfile({required this.user, required this.onTap});
+  const _SidebarProfile({
+    required this.user,
+    required this.expanded,
+    required this.onTap,
+  });
 
   final User user;
+  final bool expanded;
   final VoidCallback onTap;
 
   @override
@@ -2624,6 +2880,34 @@ class _SidebarProfile extends ConsumerWidget {
         final name = profile.displayName.trim().isEmpty
             ? user.email?.split('@').first ?? context.l10n.text('profile')
             : profile.displayName;
+        if (!expanded) {
+          return Padding(
+            padding: const EdgeInsets.fromLTRB(10, 8, 10, 4),
+            child: Tooltip(
+              message: name,
+              child: Material(
+                color: Theme.of(
+                  context,
+                ).colorScheme.surfaceContainerHighest.withValues(alpha: 0.55),
+                borderRadius: BorderRadius.circular(16),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(16),
+                  onTap: onTap,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: Center(
+                      child: ProfileAvatar(
+                        name: name,
+                        imagePath: profile.imagePath,
+                        radius: 20,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          );
+        }
         return Padding(
           padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
           child: Material(
@@ -2673,7 +2957,9 @@ class _SidebarProfile extends ConsumerWidget {
 }
 
 class _CompactActiveTaskBar extends ConsumerWidget {
-  const _CompactActiveTaskBar();
+  const _CompactActiveTaskBar({required this.expanded});
+
+  final bool expanded;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -2684,6 +2970,29 @@ class _CompactActiveTaskBar extends ConsumerWidget {
     final task = ref
         .watch(taskExecutionTaskProvider(runtime.activeTaskId!))
         .value;
+    if (!expanded) {
+      final icon = switch (runtime.state) {
+        'running' => Icons.play_circle,
+        'break' => Icons.coffee_rounded,
+        _ => Icons.pause_circle,
+      };
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(10, 8, 10, 0),
+        child: Tooltip(
+          message: task?.title ?? context.l10n.text('active_execution'),
+          child: IconButton.filledTonal(
+            onPressed: task == null
+                ? null
+                : () => TaskWorkspaceScreen.open(
+                    context,
+                    task,
+                    initialSection: 1,
+                  ),
+            icon: Icon(icon),
+          ),
+        ),
+      );
+    }
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
       child: Material(

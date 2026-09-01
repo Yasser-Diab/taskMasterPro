@@ -99,9 +99,13 @@ int? effectiveRoadmapRequiredEffortMs(
       task.plannedStart,
       task.plannedEnd,
     );
-    final taskEffortMs =
-        window?.duration.inMilliseconds ??
-        (task.estimatedDurationMs > 0 ? task.estimatedDurationMs : 0);
+    final plannedRest = TaskSchedulePolicy.plannedRestDurationFromJson(
+      task.dataJson,
+    );
+    final taskEffortMs = plannedRest > Duration.zero
+        ? (task.estimatedDurationMs > 0 ? task.estimatedDurationMs : 0)
+        : window?.duration.inMilliseconds ??
+              (task.estimatedDurationMs > 0 ? task.estimatedDurationMs : 0);
     total += taskEffortMs;
   }
   return total > 0 ? total : null;
@@ -1332,7 +1336,11 @@ class RoadmapRepository {
 
   Future<void> recalculateProgress(
     String roadmapId, {
-    bool synchronize = true,
+    // Progress and forecasts are deterministic projections of synchronized
+    // source rows. Each device refreshes this cache after pulls; publishing
+    // the cache itself made devices race on the roadmap revision and produced
+    // chains whose local base revision never existed on the server.
+    bool synchronize = false,
   }) async {
     final roadmap = await (database.select(
       database.localRoadmaps,
