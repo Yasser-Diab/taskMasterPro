@@ -79,6 +79,25 @@ void main() {
     expect(source, contains('launchGoogleOAuthUrl('));
     expect(source, isNot(contains('authScreenLaunchMode:')));
     expect(source, isNot(contains('signInWithOAuth(')));
+    expect(source, contains('_googlePending = true'));
+    expect(source, contains("text('auth_google_browser_opened')"));
+    expect(source, contains('Timer(const Duration(minutes: 2)'));
+  });
+
+  test('DayVector owns one visible callback exchange path', () {
+    final mainSource = File('lib/main.dart').readAsStringSync();
+    final backgroundSource = File(
+      'lib/core/platform/background_execution_action_service.dart',
+    ).readAsStringSync();
+
+    expect(mainSource, contains('detectSessionInUri: false'));
+    expect(
+      mainSource,
+      contains(
+        'AuthCallbackService.instance.start(Supabase.instance.client.auth)',
+      ),
+    );
+    expect(backgroundSource, contains('detectSessionInUri: false'));
   });
 
   test('Android and Windows both route the OAuth callback back to the app', () {
@@ -101,5 +120,12 @@ void main() {
       'windows/runner/win32_window.cpp',
     ).readAsStringSync();
     expect(windowsRunner, contains('SendAppLinkToInstance()'));
+
+    final windowsMain = File('windows/runner/main.cpp').readAsStringSync();
+    expect(
+      windowsMain,
+      contains('#include <app_links/app_links_plugin_c_api.h>'),
+    );
+    expect(windowsMain, contains('SendAppLinkToInstance()'));
   });
 }

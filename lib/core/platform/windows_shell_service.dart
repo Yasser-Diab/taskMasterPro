@@ -87,7 +87,15 @@ class WindowsShellService {
     if (Platform.isWindows) {
       _channel.setMethodCallHandler((call) async {
         if (call.method == 'trayCommand' && call.arguments is String) {
-          _commands.add(call.arguments as String);
+          final command = call.arguments as String;
+          // Auth and startup screens do not mount HomeShell, so they have no
+          // tray-command listener. Exit must remain available there instead of
+          // silently disappearing into an unobserved broadcast stream.
+          if (command == 'exit' && !_commands.hasListener) {
+            await exitApplication();
+            return;
+          }
+          _commands.add(command);
         }
       });
     }

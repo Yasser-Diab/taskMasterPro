@@ -419,6 +419,79 @@ void main() {
     },
   );
 
+  test(
+    'explicitly deleted and user-managed routines are never restored',
+    () async {
+      final userId = client.auth.currentUser!.id;
+      await _insertImportedRoadmaps(database, userId);
+      await _insertRequiredDomains(database, userId);
+      await installer.ensureInstalled();
+
+      final deletedRoutine = OwnerRoutineCatalog.routines.first;
+      final deletedTemplateId = OwnerRoutineCatalog.stableId(
+        userId: userId,
+        routineKey: deletedRoutine.key,
+        recordKind: 'template',
+      );
+      final deletedRuleId = OwnerRoutineCatalog.stableId(
+        userId: userId,
+        routineKey: deletedRoutine.key,
+        recordKind: 'rule',
+      );
+      await entities.softDelete((await entities.get(deletedRuleId))!);
+      await entities.softDelete((await entities.get(deletedTemplateId))!);
+
+      final managedRoutine = OwnerRoutineCatalog.routines[1];
+      final managedTemplateId = OwnerRoutineCatalog.stableId(
+        userId: userId,
+        routineKey: managedRoutine.key,
+        recordKind: 'template',
+      );
+      final managedRuleId = OwnerRoutineCatalog.stableId(
+        userId: userId,
+        routineKey: managedRoutine.key,
+        recordKind: 'rule',
+      );
+      final managedTemplate = (await entities.get(managedTemplateId))!;
+      final managedRule = (await entities.get(managedRuleId))!;
+      final templateData = entities.decode(managedTemplate)
+        ..['title'] = 'My custom routine'
+        ..['user_managed'] = true;
+      final ruleData = entities.decode(managedRule)
+        ..['frequency'] = 'monthly'
+        ..['user_managed'] = true;
+      await (database.update(
+        database.localEntityRecords,
+      )..where((row) => row.id.equals(managedTemplateId))).write(
+        LocalEntityRecordsCompanion(dataJson: Value(jsonEncode(templateData))),
+      );
+      await (database.update(
+        database.localEntityRecords,
+      )..where((row) => row.id.equals(managedRuleId))).write(
+        LocalEntityRecordsCompanion(dataJson: Value(jsonEncode(ruleData))),
+      );
+
+      await installer.ensureInstalled();
+
+      expect(
+        (await entities.getIncludingDeleted(deletedRuleId))!.deletedAt,
+        isNotNull,
+      );
+      expect(
+        (await entities.getIncludingDeleted(deletedTemplateId))!.deletedAt,
+        isNotNull,
+      );
+      expect(
+        entities.decode((await entities.get(managedRuleId))!)['frequency'],
+        'monthly',
+      );
+      expect(
+        entities.decode((await entities.get(managedTemplateId))!)['title'],
+        'My custom routine',
+      );
+    },
+  );
+
   test('one generator path creates linked deterministic occurrences', () async {
     final userId = client.auth.currentUser!.id;
     await _insertImportedRoadmaps(database, userId);

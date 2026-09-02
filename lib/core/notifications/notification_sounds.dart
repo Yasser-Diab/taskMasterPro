@@ -1130,10 +1130,10 @@ class LocalNotificationService {
     return switch (category) {
       'focus_completed' ||
       'short_break_completed' ||
-      'long_break_completed' => Importance.max,
+      'long_break_completed' ||
       'task_reminders' ||
       'scheduled_starts' ||
-      'overdue_tasks' ||
+      'overdue_tasks' => Importance.max,
       'roadmaps' ||
       'activity_review' ||
       'coaching' ||
@@ -1873,6 +1873,8 @@ class LocalNotificationService {
           ),
           windows: WindowsNotificationDetails(
             audio: _windowsAudio(sound),
+            duration: WindowsNotificationDuration.long,
+            scenario: WindowsNotificationScenario.reminder,
             actions: [
               for (final action in windowsReminderActionSpecs)
                 WindowsAction(

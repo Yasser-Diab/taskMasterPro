@@ -113,6 +113,27 @@ void main() {
     expect(result.every((entry) => !entry.isRecurringTemplate), isTrue);
   });
 
+  test('Overdue filter keeps every occurrence independently actionable', () {
+    const templateId = '00000000-0000-4000-8000-000000000010';
+    final tasks = [
+      task(
+        '00000000-0000-4000-8000-000000000011',
+        templateId: templateId,
+        dueAt: now.subtract(const Duration(hours: 2)),
+      ),
+      task(
+        '00000000-0000-4000-8000-000000000012',
+        templateId: templateId,
+        dueAt: now.subtract(const Duration(hours: 1)),
+      ),
+    ];
+    final result = const TaskListQuery(
+      filter: TaskListFilter.overdue,
+    ).apply(tasks, now: now, timeZone: 'Africa/Cairo');
+    expect(result, hasLength(2));
+    expect(result.every((entry) => !entry.isRecurringTemplate), isTrue);
+  });
+
   test('filter dimensions use UUID relationships rather than labels', () {
     const domainId = '00000000-0000-4000-8000-000000000020';
     const roadmapId = '00000000-0000-4000-8000-000000000030';

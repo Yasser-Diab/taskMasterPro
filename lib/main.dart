@@ -15,6 +15,7 @@ import 'core/platform/background_execution_action_service.dart';
 import 'core/platform/windows_shell_service.dart';
 import 'core/sync/sync_service.dart';
 import 'features/auth/presentation/password_recovery_controller.dart';
+import 'features/auth/data/auth_callback_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -43,6 +44,9 @@ Future<void> main() async {
     publishableKey: SupabaseConfig.publishableKey,
     authOptions: FlutterAuthClientOptions(
       authFlowType: AuthFlowType.pkce,
+      // DayVector owns the callback exchange so repeated Windows protocol
+      // deliveries are deduplicated and failures reach the visible auth UI.
+      detectSessionInUri: false,
       localStorage: SharedPreferencesLocalStorage(
         persistSessionKey: BackendTargetCutover.sessionStorageKeyForProject(
           SupabaseConfig.projectRef,
@@ -54,6 +58,7 @@ Future<void> main() async {
       ),
     ),
   );
+  AuthCallbackService.instance.start(Supabase.instance.client.auth);
   passwordRecoveryController.start(Supabase.instance.client.auth);
   Supabase.instance.client.auth.onAuthStateChange.listen((state) {
     if (state.event == AuthChangeEvent.signedOut) {

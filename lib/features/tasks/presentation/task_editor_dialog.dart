@@ -4,7 +4,6 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../core/data/entity_record_repository.dart';
 import '../../../core/database/app_database.dart';
 import '../../../core/localization/app_localizations.dart';
 import '../../../core/providers.dart';
@@ -82,6 +81,7 @@ class _TaskEditorDialogState extends ConsumerState<TaskEditorDialog> {
   DateTime? _dueAt;
   String _recurrence = 'none';
   final Set<int> _weekdays = {};
+  DateTime? _recurrenceStart;
   DateTime? _recurrenceEnd;
   bool _automaticTransitions = false;
   bool _automaticFocus = false;
@@ -91,6 +91,7 @@ class _TaskEditorDialogState extends ConsumerState<TaskEditorDialog> {
   final List<_UrlResourceDraft> _discardedResources = [];
   final Set<String> _removedResourceIds = {};
   Future<void>? _resourceLoad;
+  Future<void>? _recurrenceLoad;
 
   bool get _editing => widget.task != null;
   TaskScheduleWindow? get _scheduleWindow =>
@@ -254,6 +255,11 @@ class _TaskEditorDialogState extends ConsumerState<TaskEditorDialog> {
     _priority = task?.priority ?? 2;
     _scheduledDate =
         task?.scheduledDate?.toLocal() ?? widget.initialDate ?? DateTime.now();
+    _recurrenceStart = DateTime(
+      _scheduledDate.year,
+      _scheduledDate.month,
+      _scheduledDate.day,
+    );
     _plannedStart = task?.plannedStart?.toLocal();
     _plannedEnd = task?.plannedEnd?.toLocal();
     _dueAt = task?.dueAt?.toLocal();
@@ -268,6 +274,24 @@ class _TaskEditorDialogState extends ConsumerState<TaskEditorDialog> {
       unawaited(_loadRoadmapHierarchyLink());
     });
     _resourceLoad = _loadResources();
+    _recurrenceLoad = _loadRecurrence();
+  }
+
+  Future<void> _loadRecurrence() async {
+    final task = widget.task;
+    if (task == null || task.templateId == null) return;
+    final definition = await ref
+        .read(recurrenceServiceProvider)
+        .definitionForTask(task);
+    if (!mounted || definition == null) return;
+    setState(() {
+      _recurrence = definition.frequency;
+      _weekdays
+        ..clear()
+        ..addAll(definition.weekdays);
+      _recurrenceStart = definition.startsOn;
+      _recurrenceEnd = definition.endsOn;
+    });
   }
 
   Future<void> _loadResources() async {
@@ -368,6 +392,7 @@ class _TaskEditorDialogState extends ConsumerState<TaskEditorDialog> {
     setState(() => _busy = true);
     try {
       await _resourceLoad;
+      await _recurrenceLoad;
       final scheduleWindow = _scheduleWindow;
       final configuration = <String, Object?>{
         plannedTaskRestDurationMsKey: _plannedRest.milliseconds,
@@ -437,7 +462,26 @@ class _TaskEditorDialogState extends ConsumerState<TaskEditorDialog> {
             .recalculateProgress(_roadmapId!);
       }
       if (_recurrence != 'none') {
-        await _saveRecurrence(taskId);
+        await ref
+            .read(recurrenceServiceProvider)
+            .saveSeries(
+              taskId: taskId,
+              frequency: _recurrence,
+              weekdays: _weekdays,
+              startsOn: _recurrenceStart ?? _scheduledDate,
+              endsOn: _recurrenceEnd,
+              localTime: _plannedStart == null
+                  ? null
+                  : '${_plannedStart!.hour.toString().padLeft(2, '0')}:'
+                        '${_plannedStart!.minute.toString().padLeft(2, '0')}',
+            );
+      } else if (widget.task?.templateId != null) {
+        final latest = await ref.read(taskRepositoryProvider).getTask(taskId);
+        if (latest != null) {
+          await ref
+              .read(recurrenceServiceProvider)
+              .stopSeriesKeepingTask(latest);
+        }
       }
       await _saveResources(taskId);
       unawaited(ref.read(syncServiceProvider).drainOutbox());
@@ -476,143 +520,6 @@ class _TaskEditorDialogState extends ConsumerState<TaskEditorDialog> {
       final record = await entities.get(resourceId);
       if (record != null) await entities.softDelete(record);
     }
-  }
-
-  Future<void> _saveRecurrence(String taskId) async {
-    final entities = ref.read(entityRecordRepositoryProvider);
-    final savedTask = await ref.read(taskRepositoryProvider).getTask(taskId);
-    if (savedTask == null) return;
-    final now = DateTime.now();
-    final starts = DateTime(
-      _scheduledDate.year,
-      _scheduledDate.month,
-      _scheduledDate.day,
-    );
-    var templateId = savedTask.templateId;
-    LocalEntityRecord? template;
-    if (templateId != null) template = await entities.get(templateId);
-    if (template == null) {
-      templateId = await entities.create(
-        EntityRecordDraft(
-          entityType: 'task_templates',
-          parentId: taskId,
-          title: savedTask.title,
-          status: 'active',
-          data: {
-            'source_task_occurrence_id': taskId,
-            'title': savedTask.title,
-            'description': savedTask.description,
-            'domain_id': savedTask.domainId,
-            'priority': savedTask.priority,
-            'execution_mode': savedTask.executionMode,
-            'default_duration_ms': savedTask.estimatedDurationMs,
-            'roadmap_id': savedTask.roadmapId,
-            'roadmap_phase_id': savedTask.roadmapPhaseId,
-            'execution_settings': _decodeConfiguration(savedTask.dataJson),
-          },
-          syncPayload: {
-            'title': savedTask.title,
-            'description': savedTask.description,
-            'domain_id': savedTask.domainId,
-            'category_id': null,
-            'priority': savedTask.priority,
-            'execution_mode': savedTask.executionMode,
-            'default_duration_ms': savedTask.estimatedDurationMs,
-            'minimum_duration_ms': _minimumDuration.milliseconds,
-            'maximum_duration_ms': _maximumDuration.milliseconds,
-            'recurrence_rule_id': null,
-            'roadmap_id': savedTask.roadmapId,
-            'roadmap_phase_id': savedTask.roadmapPhaseId,
-            'reminder_defaults': <Object?>[],
-            'execution_settings': _decodeConfiguration(savedTask.dataJson),
-            'progress_settings': {'completion_method': _completionMethod},
-            'data': {'source_task_occurrence_id': taskId},
-          },
-        ),
-      );
-      template = await entities.get(templateId);
-    }
-    final ruleData = <String, Object?>{
-      'template_id': templateId,
-      'source_task_occurrence_id': taskId,
-      'frequency': _recurrence,
-      'interval_value': 1,
-      'weekdays': _weekdays.toList()..sort(),
-      'starts_on': _dateOnly(starts),
-      'ends_on': _recurrenceEnd == null ? null : _dateOnly(_recurrenceEnd!),
-      'created_from_occurrence': true,
-      'local_time': _plannedStart == null
-          ? null
-          : '${_plannedStart!.hour.toString().padLeft(2, '0')}:'
-                '${_plannedStart!.minute.toString().padLeft(2, '0')}',
-      'created_at': now.toUtc().toIso8601String(),
-    };
-    final rulePayload = <String, Object?>{
-      'frequency': _recurrence,
-      'interval_value': 1,
-      'weekdays': _weekdays.toList()..sort(),
-      'starts_on': _dateOnly(starts),
-      'ends_on': _recurrenceEnd == null ? null : _dateOnly(_recurrenceEnd!),
-      'maximum_occurrences': null,
-      'paused_at': null,
-      'rule_data': {
-        'template_id': templateId,
-        'source_task_occurrence_id': taskId,
-        'created_from_occurrence': true,
-        'local_time': _plannedStart == null
-            ? null
-            : '${_plannedStart!.hour.toString().padLeft(2, '0')}:'
-                  '${_plannedStart!.minute.toString().padLeft(2, '0')}',
-      },
-    };
-    final allRules = await entities.list(entityType: 'recurrence_rules');
-    final existingRule = allRules.where((record) {
-      final data = entities.decode(record);
-      final remoteRuleData = data['rule_data'];
-      final remoteTemplateId = remoteRuleData is Map
-          ? remoteRuleData['template_id']
-          : data['template_id'];
-      return record.parentId == templateId || remoteTemplateId == templateId;
-    }).firstOrNull;
-    late final String ruleId;
-    if (existingRule == null) {
-      ruleId = await entities.create(
-        EntityRecordDraft(
-          entityType: 'recurrence_rules',
-          parentId: templateId,
-          secondaryParentId: taskId,
-          title: '${_titleCase(_recurrence)} recurrence',
-          status: 'active',
-          data: ruleData,
-          syncPayload: rulePayload,
-        ),
-      );
-    } else {
-      ruleId = existingRule.id;
-      await entities.update(
-        existingRule,
-        title: '${_titleCase(_recurrence)} recurrence',
-        status: 'active',
-        data: ruleData,
-        syncPayload: rulePayload,
-      );
-    }
-    if (template != null) {
-      final templateData = entities.decode(template);
-      templateData['recurrence_rule_id'] = ruleId;
-      await entities.update(
-        template,
-        data: templateData,
-        syncPayload: {'recurrence_rule_id': ruleId},
-      );
-    }
-    await ref
-        .read(taskRepositoryProvider)
-        .attachTemplate(
-          taskId: taskId,
-          templateId: templateId!,
-          occurrenceKey: _dateOnly(starts),
-        );
   }
 
   @override
@@ -2025,15 +1932,4 @@ Map<String, Object?> _decodeConfiguration(String? value) {
 
 Widget _dropdownLabel(String value) {
   return Text(value, maxLines: 1, overflow: TextOverflow.ellipsis);
-}
-
-String _dateOnly(DateTime value) {
-  return '${value.year.toString().padLeft(4, '0')}-'
-      '${value.month.toString().padLeft(2, '0')}-'
-      '${value.day.toString().padLeft(2, '0')}';
-}
-
-String _titleCase(String input) {
-  if (input.isEmpty) return input;
-  return '${input[0].toUpperCase()}${input.substring(1)}';
 }

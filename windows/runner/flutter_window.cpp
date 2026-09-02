@@ -723,5 +723,10 @@ void FlutterWindow::ExitApplication() {
   SaveWindowPlacement();
   exit_requested_ = true;
   RemoveTrayIcon();
+  // The normal close button deliberately hides DayVector to the tray, so the
+  // runner starts with quit-on-close disabled. An explicit tray Exit must
+  // reverse that policy before destroying the window or the Win32 message loop
+  // remains alive with no visible window or tray icon.
+  SetQuitOnClose(true);
   DestroyWindow(GetHandle());
 }

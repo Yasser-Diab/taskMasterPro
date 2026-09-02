@@ -14,6 +14,7 @@ import '../domain/task_occurrence_policy.dart';
 import '../domain/task_schedule_policy.dart';
 import 'task_completion_flow.dart';
 import 'task_editor_dialog.dart';
+import 'task_management_flows.dart';
 import 'task_start_flow.dart';
 import 'stale_paused_task_recovery.dart';
 import 'task_workspace_screen.dart';
@@ -193,12 +194,7 @@ class TaskCard extends ConsumerWidget {
                         case 'reopen':
                           await reopenTask(context, ref, task);
                         case 'delete':
-                          await _run(
-                            ref,
-                            () => ref
-                                .read(taskRepositoryProvider)
-                                .softDelete(task),
-                          );
+                          await deleteTaskOrSeries(context, ref, task);
                       }
                     },
                     itemBuilder: (context) => [
@@ -265,6 +261,19 @@ class TaskCard extends ConsumerWidget {
                   ),
                 ],
               ),
+              if (effectiveStatus == 'overdue') ...[
+                const SizedBox(height: 12),
+                Align(
+                  alignment: AlignmentDirectional.centerEnd,
+                  child: OutlinedButton.icon(
+                    key: ValueKey('task-postpone-${task.id}'),
+                    onPressed: () =>
+                        postponeTaskWithChoices(context, ref, task),
+                    icon: const Icon(Icons.event_repeat_rounded),
+                    label: Text(context.l10n.text('task_postpone')),
+                  ),
+                ),
+              ],
               if (effectiveStatus == 'paused') ...[
                 const SizedBox(height: 10),
                 StalePausedTaskRecovery(

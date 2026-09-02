@@ -171,6 +171,11 @@ class OwnerRoutineInstaller {
       // while task_templates points at recurrence_rules. Enqueueing the rule
       // first preserves dependency order when both share the same priority.
       final rule = await entities.getIncludingDeleted(ruleId);
+      final template = await entities.getIncludingDeleted(templateId);
+      // A tombstone is an explicit series-level user decision. Restoring these
+      // deterministic records on every launch made built-in routines
+      // impossible to delete permanently.
+      if (rule?.deletedAt != null || template?.deletedAt != null) continue;
       final desiredRuleData = _ruleLocalData(routine, templateId);
       final desiredRulePayload = _rulePayload(routine, templateId);
       if (rule == null) {
@@ -185,14 +190,6 @@ class OwnerRoutineInstaller {
           ),
         );
         rulesCreated++;
-      } else if (rule.deletedAt != null) {
-        await entities.restore(
-          rule.id,
-          title: '${routine.title} recurrence',
-          parentId: templateId,
-          data: desiredRuleData,
-          syncPayload: desiredRulePayload,
-        );
       } else if (_ruleNeedsRepair(entities.decode(rule), routine)) {
         await entities.update(
           rule,
@@ -204,7 +201,6 @@ class OwnerRoutineInstaller {
         rulesUpdated++;
       }
 
-      final template = await entities.getIncludingDeleted(templateId);
       final desiredTemplateData = _templateLocalData(
         routine: routine,
         roadmapId: roadmapId,
@@ -232,15 +228,6 @@ class OwnerRoutineInstaller {
           ),
         );
         templatesCreated++;
-      } else if (template.deletedAt != null) {
-        await entities.restore(
-          template.id,
-          title: routine.title,
-          parentId: roadmapId,
-          secondaryParentId: phaseId,
-          data: desiredTemplateData,
-          syncPayload: desiredTemplatePayload,
-        );
       } else if (_templateNeedsRepair(entities.decode(template), routine)) {
         await entities.update(
           template,
@@ -296,6 +283,9 @@ class OwnerRoutineInstaller {
     final nested = actual['rule_data'] is Map
         ? Map<String, Object?>.from(actual['rule_data'] as Map)
         : const <String, Object?>{};
+    if (actual['user_managed'] == true || nested['user_managed'] == true) {
+      return false;
+    }
     return actual['frequency'] != routine.frequency ||
         (actual['interval_value'] as num?)?.toInt() != 1 ||
         !_sameIntegerList(actual['weekdays'], routine.weekdays) ||
@@ -310,6 +300,12 @@ class OwnerRoutineInstaller {
     final settings = actual['execution_settings'] is Map
         ? Map<String, Object?>.from(actual['execution_settings'] as Map)
         : const <String, Object?>{};
+    final nested = actual['data'] is Map
+        ? Map<String, Object?>.from(actual['data'] as Map)
+        : const <String, Object?>{};
+    if (actual['user_managed'] == true || nested['user_managed'] == true) {
+      return false;
+    }
     return actual['title'] != routine.title ||
         actual['execution_mode'] != routine.executionMode ||
         (actual['default_duration_ms'] as num?)?.toInt() !=

@@ -1414,6 +1414,19 @@ class AppLocalizations {
         'We couldn’t finish preparing this device. Your account data remains safe. Try again shortly.',
     'auth_connection_failed':
         'We couldn’t connect just now. Your saved session and offline work are safe.',
+    'auth_google_browser_opened':
+        'Finish signing in in your browser. DayVector will continue automatically.',
+    'auth_google_completing': 'Google confirmed you. Opening DayVector…',
+    'auth_google_cancelled':
+        'Google sign-in was cancelled. You can try again whenever you’re ready.',
+    'auth_google_expired':
+        'That Google sign-in attempt expired. Close older sign-in tabs, then try once more from DayVector.',
+    'auth_google_rejected':
+        'Google couldn’t finish this sign-in. Return to DayVector and try once more.',
+    'auth_google_connection_failed':
+        'DayVector received the sign-in response but couldn’t connect. Check your connection and try again.',
+    'auth_google_wait_timeout':
+        'Still waiting for Google. If you closed the browser tab, try again from here.',
     'auth_link_recently_sent':
         'A link was sent recently. Give it a moment, then try again.',
     'auth_signin_rejected':
@@ -1881,12 +1894,23 @@ class AppLocalizations {
     'workspace_notes': 'Notes',
     'workspace_history': 'History',
     'task_duplicate': 'Duplicate task',
-    'task_postpone': 'Postpone to another day',
+    'task_postpone': 'Postpone',
+    'task_postpone_title': 'Postpone until',
+    'task_postpone_tomorrow': 'Tomorrow',
+    'task_postpone_week': 'In one week',
+    'task_postpone_month': 'In one month',
+    'task_postpone_pick_date': 'Pick another date',
+    'task_postpone_unavailable':
+        'A task that has already started or finished cannot be postponed.',
+    'task_postponed_confirmation': 'Postponed to {date}.',
     'task_mark_complete': 'Mark complete',
     'task_delete': 'Delete task',
     'task_delete_title': 'Delete this task?',
     'task_delete_description':
         'This task will be removed from your devices. Your other tasks and history will not be affected.',
+    'task_delete_series_title': 'Delete this recurring task completely?',
+    'task_delete_series_description':
+        'This stops the recurrence and removes every occurrence of this task from your devices.',
     'progress': 'Progress',
     'planned_effort': 'Planned effort',
     'recorded_work': 'Recorded work',
@@ -3509,6 +3533,19 @@ class AppLocalizations {
         'تعذر إكمال إعداد هذا الجهاز. تظل بيانات حسابك آمنة. حاول مرة أخرى بعد قليل.',
     'auth_connection_failed':
         'تعذر الاتصال الآن. جلستك المحفوظة وعملك دون اتصال آمنان.',
+    'auth_google_browser_opened':
+        'أكمل تسجيل الدخول في المتصفح. سيتابع DayVector تلقائيًا.',
+    'auth_google_completing': 'أكد Google هويتك. جارٍ فتح DayVector…',
+    'auth_google_cancelled':
+        'تم إلغاء تسجيل الدخول عبر Google. يمكنك المحاولة مجددًا عندما تكون مستعدًا.',
+    'auth_google_expired':
+        'انتهت صلاحية محاولة تسجيل الدخول هذه. أغلق علامات التبويب القديمة ثم حاول مرة واحدة من DayVector.',
+    'auth_google_rejected':
+        'تعذر على Google إكمال تسجيل الدخول. عُد إلى DayVector وحاول مرة أخرى.',
+    'auth_google_connection_failed':
+        'استلم DayVector استجابة تسجيل الدخول لكن تعذر الاتصال. تحقق من اتصالك وحاول مرة أخرى.',
+    'auth_google_wait_timeout':
+        'ما زلنا ننتظر Google. إذا أغلقت علامة تبويب المتصفح، فحاول مرة أخرى من هنا.',
     'auth_link_recently_sent':
         'تم إرسال رابط مؤخرًا. انتظر قليلًا ثم حاول مرة أخرى.',
     'auth_signin_rejected':
@@ -3971,12 +4008,22 @@ class AppLocalizations {
     'workspace_notes': 'الملاحظات',
     'workspace_history': 'السجل',
     'task_duplicate': 'تكرار المهمة',
-    'task_postpone': 'تأجيل إلى يوم آخر',
+    'task_postpone': 'تأجيل',
+    'task_postpone_title': 'تأجيل المهمة حتى',
+    'task_postpone_tomorrow': 'غدًا',
+    'task_postpone_week': 'بعد أسبوع',
+    'task_postpone_month': 'بعد شهر',
+    'task_postpone_pick_date': 'اختيار تاريخ آخر',
+    'task_postpone_unavailable': 'لا يمكن تأجيل مهمة بدأت بالفعل أو اكتملت.',
+    'task_postponed_confirmation': 'تم تأجيل المهمة إلى {date}.',
     'task_mark_complete': 'تحديد كمكتملة',
     'task_delete': 'حذف المهمة',
     'task_delete_title': 'هل تريد حذف هذه المهمة؟',
     'task_delete_description':
         'ستُحذف هذه المهمة من أجهزتك. لن تتأثر مهامك الأخرى أو سجلاتها.',
+    'task_delete_series_title': 'حذف المهمة المتكررة بالكامل؟',
+    'task_delete_series_description':
+        'سيؤدي ذلك إلى إيقاف التكرار وحذف جميع مرات حدوث هذه المهمة من أجهزتك.',
     'progress': 'التقدم',
     'planned_effort': 'الجهد المخطط',
     'recorded_work': 'العمل المسجل',
@@ -5656,6 +5703,20 @@ class AppLocalizations {
         'Dieses Gerät konnte nicht vollständig vorbereitet werden. Deine Kontodaten bleiben sicher. Versuche es gleich erneut.',
     'auth_connection_failed':
         'Die Verbindung ist gerade nicht möglich. Deine gespeicherte Sitzung und Offline-Arbeit sind sicher.',
+    'auth_google_browser_opened':
+        'Schließe die Anmeldung im Browser ab. DayVector macht danach automatisch weiter.',
+    'auth_google_completing':
+        'Google hat dich bestätigt. DayVector wird geöffnet…',
+    'auth_google_cancelled':
+        'Die Google-Anmeldung wurde abgebrochen. Du kannst es jederzeit erneut versuchen.',
+    'auth_google_expired':
+        'Dieser Google-Anmeldeversuch ist abgelaufen. Schließe ältere Anmelde-Tabs und versuche es einmal erneut in DayVector.',
+    'auth_google_rejected':
+        'Google konnte diese Anmeldung nicht abschließen. Kehre zu DayVector zurück und versuche es erneut.',
+    'auth_google_connection_failed':
+        'DayVector hat die Anmeldeantwort erhalten, konnte aber keine Verbindung herstellen. Prüfe deine Verbindung und versuche es erneut.',
+    'auth_google_wait_timeout':
+        'Google hat noch nicht geantwortet. Falls du den Browser-Tab geschlossen hast, versuche es hier erneut.',
     'auth_link_recently_sent':
         'Vor Kurzem wurde ein Link gesendet. Warte einen Moment und versuche es erneut.',
     'auth_signin_rejected':
@@ -6134,12 +6195,24 @@ class AppLocalizations {
     'workspace_notes': 'Notizen',
     'workspace_history': 'Verlauf',
     'task_duplicate': 'Aufgabe duplizieren',
-    'task_postpone': 'Auf einen anderen Tag verschieben',
+    'task_postpone': 'Verschieben',
+    'task_postpone_title': 'Verschieben bis',
+    'task_postpone_tomorrow': 'Morgen',
+    'task_postpone_week': 'In einer Woche',
+    'task_postpone_month': 'In einem Monat',
+    'task_postpone_pick_date': 'Anderes Datum auswählen',
+    'task_postpone_unavailable':
+        'Eine bereits gestartete oder erledigte Aufgabe kann nicht verschoben werden.',
+    'task_postponed_confirmation': 'Auf {date} verschoben.',
     'task_mark_complete': 'Als erledigt markieren',
     'task_delete': 'Aufgabe löschen',
     'task_delete_title': 'Diese Aufgabe löschen?',
     'task_delete_description':
         'Diese Aufgabe wird von deinen Geräten entfernt. Deine anderen Aufgaben und Verläufe bleiben unverändert.',
+    'task_delete_series_title':
+        'Diese wiederkehrende Aufgabe vollständig löschen?',
+    'task_delete_series_description':
+        'Dadurch wird die Wiederholung beendet und jedes Vorkommen dieser Aufgabe von deinen Geräten entfernt.',
     'progress': 'Fortschritt',
     'planned_effort': 'Geplanter Aufwand',
     'recorded_work': 'Erfasste Arbeit',

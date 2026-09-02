@@ -1,3 +1,4 @@
+#include <app_links/app_links_plugin_c_api.h>
 #include <flutter/dart_project.h>
 #include <flutter/flutter_view_controller.h>
 #include <windows.h>
@@ -14,10 +15,16 @@ constexpr wchar_t kActivateExistingInstanceMessageName[] =
 void ActivateRunningInstance() {
   const UINT activation_message =
       ::RegisterWindowMessageW(kActivateExistingInstanceMessageName);
-  // Broadcast reaches a hidden-to-tray window as well as a visible one. A
-  // short retry window also covers two nearly simultaneous launches where the
-  // first process owns the mutex but has not created its HWND yet.
+  // Forward protocol URLs (including the OAuth callback) before activating the
+  // existing window. The single-instance mutex otherwise exits this process
+  // before app_links can deliver its command-line argument to Flutter.
+  //
+  // A short retry window also covers two nearly simultaneous launches where
+  // the first process owns the mutex but has not created its HWND yet.
   for (int attempt = 0; attempt < 20; ++attempt) {
+    if (SendAppLinkToInstance()) {
+      return;
+    }
     ::PostMessageW(HWND_BROADCAST, activation_message, 0, 0);
     if (::FindWindowW(nullptr, L"DayVector") != nullptr) {
       return;

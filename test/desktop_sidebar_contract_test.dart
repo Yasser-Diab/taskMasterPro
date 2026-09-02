@@ -62,6 +62,32 @@ void main() {
     final windowsMain = await File('windows/runner/main.cpp').readAsString();
     expect(windowsMain, contains('YADiab.DayVector.SingleInstance.v1'));
     expect(windowsMain, contains('ActivateRunningInstance()'));
+    expect(windowsMain, contains('SendAppLinkToInstance()'));
     expect(windowsMain, contains('window.HandleAccelerator(msg)'));
+  });
+
+  test('tray Exit terminates the native loop from every app state', () async {
+    final windowsRunner = await File(
+      'windows/runner/flutter_window.cpp',
+    ).readAsString();
+    final exitStart = windowsRunner.indexOf(
+      'void FlutterWindow::ExitApplication()',
+    );
+    expect(exitStart, greaterThanOrEqualTo(0));
+    final exitBody = windowsRunner.substring(exitStart);
+    expect(exitBody, contains('SetQuitOnClose(true);'));
+    expect(exitBody, contains('DestroyWindow(GetHandle());'));
+    expect(
+      exitBody.indexOf('SetQuitOnClose(true);'),
+      lessThan(exitBody.indexOf('DestroyWindow(GetHandle());')),
+    );
+
+    final shellService = await File(
+      'lib/core/platform/windows_shell_service.dart',
+    ).readAsString();
+    expect(
+      shellService,
+      contains("command == 'exit' && !_commands.hasListener"),
+    );
   });
 }

@@ -140,4 +140,29 @@ void main() {
     expect(find.text('17 hours 21 min'), findsOneWidget);
     expect(find.text('1041 min'), findsNothing);
   });
+
+  testWidgets('overdue task card exposes the one-tap postpone action', (
+    tester,
+  ) async {
+    final overdue = task(
+      id: 'overdue-work',
+      start: DateTime.utc(2026, 7, 1, 8),
+      end: DateTime.utc(2026, 7, 1, 9),
+    );
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp(
+          localizationsDelegates: const [AppLocalizations.delegate],
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Scaffold(
+            body: TaskCard(task: overdue, hideExecutionControl: true),
+          ),
+        ),
+      ),
+    );
+
+    expect(find.byKey(const ValueKey('task-postpone-overdue-work')), findsOne);
+    expect(find.byIcon(Icons.event_repeat_rounded), findsOne);
+    expect(find.text('Postpone'), findsOne);
+  });
 }

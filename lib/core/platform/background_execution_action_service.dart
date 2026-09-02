@@ -187,6 +187,9 @@ abstract final class BackgroundExecutionActionService {
       publishableKey: SupabaseConfig.publishableKey,
       authOptions: FlutterAuthClientOptions(
         authFlowType: AuthFlowType.pkce,
+        // A service-owned engine must never compete with the foreground app
+        // for an OAuth or recovery callback.
+        detectSessionInUri: false,
         localStorage: SharedPreferencesLocalStorage(
           persistSessionKey: BackendTargetCutover.sessionStorageKeyForProject(
             SupabaseConfig.projectRef,

@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:taskmaster_pro/features/auth/data/auth_callback_service.dart';
 import 'package:taskmaster_pro/features/auth/presentation/auth_screen.dart';
 
 void main() {
@@ -53,6 +54,21 @@ void main() {
         code: 'over_email_send_rate_limit',
       ),
       'auth_link_recently_sent',
+    );
+  });
+
+  test('OAuth callback outcomes always map to friendly visible messages', () {
+    expect(
+      authCallbackMessageKey(AuthCallbackEventKind.cancelled),
+      'auth_google_cancelled',
+    );
+    expect(
+      authCallbackMessageKey(AuthCallbackEventKind.expired),
+      'auth_google_expired',
+    );
+    expect(
+      authCallbackMessageKey(AuthCallbackEventKind.connectionFailed),
+      'auth_google_connection_failed',
     );
   });
 }

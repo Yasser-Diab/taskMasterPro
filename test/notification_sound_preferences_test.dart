@@ -604,6 +604,32 @@ void main() {
     },
   );
 
+  test('task reminders use maximum Android and persistent Windows urgency', () {
+    final source = File(
+      'lib/core/notifications/notification_sounds.dart',
+    ).readAsStringSync();
+    final importance = source.substring(
+      source.indexOf('Importance _notificationImportance'),
+      source.indexOf('Priority _notificationPriority'),
+    );
+    final reminder = source.substring(
+      source.indexOf('Future<void> scheduleTaskReminder'),
+      source.indexOf(
+        'Future<ExecutionAlarmScheduleResult> scheduleExecutionCompletion',
+        source.indexOf('Future<void> scheduleTaskReminder'),
+      ),
+    );
+
+    expect(importance, contains("'task_reminders' ||"));
+    expect(importance, contains("'overdue_tasks' => Importance.max"));
+    expect(reminder, contains('AndroidScheduleMode.exactAllowWhileIdle'));
+    expect(reminder, contains('duration: WindowsNotificationDuration.long'));
+    expect(
+      reminder,
+      contains('scenario: WindowsNotificationScenario.reminder'),
+    );
+  });
+
   test('Windows execution retention requires the exact interval payload', () {
     final boundary = DateTime.utc(2026, 8, 23, 10, 29);
     const taskId = 'task-1';

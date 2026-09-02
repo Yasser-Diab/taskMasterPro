@@ -41,6 +41,7 @@ class TaskDraft {
     this.roadmapPhaseId,
     this.templateId,
     this.occurrenceKey,
+    this.clearRecurrenceIdentity = false,
     this.configuration = const {},
   });
 
@@ -61,6 +62,13 @@ class TaskDraft {
   final String? roadmapPhaseId;
   final String? templateId;
   final String? occurrenceKey;
+
+  /// Explicitly detaches an occurrence from its recurrence series.
+  ///
+  /// Nullable draft fields normally mean "preserve the existing value". This
+  /// flag distinguishes that from the intentional nulls required when a user
+  /// changes a recurring task to "Does not repeat".
+  final bool clearRecurrenceIdentity;
   final Map<String, Object?> configuration;
 
   TaskScheduleWindow? get scheduleWindow =>
@@ -819,6 +827,12 @@ class TaskRepository {
     final sequence = await DeviceIdentity.nextSequence(_userId);
     final commandId = _uuid.v4();
     final scheduled = draft.scheduledDate ?? task.scheduledDate;
+    final templateId = draft.clearRecurrenceIdentity
+        ? null
+        : draft.templateId ?? task.templateId;
+    final occurrenceKey = draft.clearRecurrenceIdentity
+        ? null
+        : draft.occurrenceKey ?? task.occurrenceKey;
     final payload = <String, Object?>{
       'title': draft.title.trim(),
       'description': draft.description.trim(),
@@ -832,8 +846,8 @@ class TaskRepository {
       'estimated_duration_ms': draft.effectiveEstimatedDuration.inMilliseconds,
       'roadmap_id': draft.roadmapId,
       'roadmap_phase_id': draft.roadmapPhaseId,
-      'template_id': draft.templateId ?? task.templateId,
-      'occurrence_key': draft.occurrenceKey ?? task.occurrenceKey,
+      'template_id': templateId,
+      'occurrence_key': occurrenceKey,
       'data': draft.configuration,
     };
     await database.transaction(() async {
@@ -855,8 +869,8 @@ class TaskRepository {
           ),
           roadmapId: Value(draft.roadmapId),
           roadmapPhaseId: Value(draft.roadmapPhaseId),
-          templateId: Value(draft.templateId ?? task.templateId),
-          occurrenceKey: Value(draft.occurrenceKey ?? task.occurrenceKey),
+          templateId: Value(templateId),
+          occurrenceKey: Value(occurrenceKey),
           dataJson: Value(jsonEncode(draft.configuration)),
           revision: Value(task.revision + 1),
           updatedAt: Value(now),
@@ -974,6 +988,33 @@ class TaskRepository {
     );
   }
 
+  Future<void> detachTemplate(String taskId) async {
+    final task = await getTask(taskId);
+    if (task == null ||
+        (task.templateId == null && task.occurrenceKey == null)) {
+      return;
+    }
+    await updateTask(
+      task,
+      TaskDraft(
+        title: task.title,
+        description: task.description,
+        domainId: task.domainId,
+        priority: task.priority,
+        executionMode: task.executionMode,
+        scheduledDate: task.scheduledDate,
+        plannedStart: task.plannedStart,
+        plannedEnd: task.plannedEnd,
+        dueAt: task.dueAt,
+        estimatedDuration: Duration(milliseconds: task.estimatedDurationMs),
+        roadmapId: task.roadmapId,
+        roadmapPhaseId: task.roadmapPhaseId,
+        clearRecurrenceIdentity: true,
+        configuration: _configuration(task),
+      ),
+    );
+  }
+
   Future<String> duplicate(LocalTask task) {
     return createTask(
       TaskDraft(
@@ -1020,6 +1061,101 @@ class TaskRepository {
         configuration: _configuration(latest),
       ),
     );
+  }
+
+  /// Moves the whole scheduling window to [date] as one synchronized update.
+  ///
+  /// Updating only `scheduled_date` leaves an old `planned_end`/`due_at` in
+  /// the past, so every overdue projection immediately marks the task overdue
+  /// again. Postponement must shift every authoritative time together.
+  Future<bool> postpone(LocalTask task, DateTime date) async {
+    final latest = await getTask(task.id);
+    if (latest == null ||
+        latest.status == 'completed' ||
+        latest.actualStart != null) {
+      return false;
+    }
+    final target = DateTime(date.year, date.month, date.day);
+    final anchorValue =
+        latest.scheduledDate ??
+        latest.plannedStart?.toLocal() ??
+        latest.dueAt?.toLocal() ??
+        _clock().toLocal();
+    final anchor = DateTime(
+      anchorValue.year,
+      anchorValue.month,
+      anchorValue.day,
+    );
+    final dayDelta = target.difference(anchor).inDays;
+    DateTime? shift(DateTime? value) {
+      if (value == null) return null;
+      final local = value.toLocal();
+      final shifted = DateTime(
+        local.year,
+        local.month,
+        local.day + dayDelta,
+        local.hour,
+        local.minute,
+        local.second,
+        local.millisecond,
+        local.microsecond,
+      );
+      return value.isUtc ? shifted.toUtc() : shifted;
+    }
+
+    final now = _clock();
+    final deviceId = await DeviceIdentity.accountId(_userId);
+    final sequence = await DeviceIdentity.nextSequence(_userId);
+    final commandId = _uuid.v4();
+    final nextStatus = latest.status == 'overdue' ? 'ready' : latest.status;
+    final plannedStart = shift(latest.plannedStart);
+    final plannedEnd = shift(latest.plannedEnd);
+    final dueAt = shift(latest.dueAt);
+    final payload = <String, Object?>{
+      'status': nextStatus,
+      'scheduled_date': _dateOnly(target),
+      'planned_start': plannedStart?.toUtc().toIso8601String(),
+      'planned_end': plannedEnd?.toUtc().toIso8601String(),
+      'due_at': dueAt?.toUtc().toIso8601String(),
+    };
+    var changed = false;
+    await database.transaction(() async {
+      final updated =
+          await (database.update(database.localTasks)..where(
+                (row) =>
+                    row.id.equals(latest.id) &
+                    row.userId.equals(_userId) &
+                    row.revision.equals(latest.revision) &
+                    row.actualStart.isNull() &
+                    row.status.equals('completed').not(),
+              ))
+              .write(
+                LocalTasksCompanion(
+                  status: Value(nextStatus),
+                  scheduledDate: Value(target),
+                  plannedStart: Value(plannedStart),
+                  plannedEnd: Value(plannedEnd),
+                  dueAt: Value(dueAt),
+                  revision: Value(latest.revision + 1),
+                  updatedAt: Value(now),
+                  updatedByDeviceId: Value(deviceId),
+                  lastCommandId: Value(commandId),
+                ),
+              );
+      if (updated != 1) return;
+      changed = true;
+      await _enqueue(
+        commandId: commandId,
+        deviceId: deviceId,
+        sequence: sequence,
+        entityId: latest.id,
+        commandType: 'update',
+        baseRevision: latest.revision,
+        payload: payload,
+        now: now,
+      );
+    });
+    return changed;
   }
 
   /// Applies or removes an automatic vacation adjustment as one canonical

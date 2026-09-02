@@ -123,6 +123,16 @@ class TaskListQuery {
       };
     }).toList();
 
+    if (filter == TaskListFilter.overdue) {
+      selected.sort(
+        (left, right) => (left.dueAt ?? left.plannedEnd ?? _sortDate(left))
+            .compareTo(right.dueAt ?? right.plannedEnd ?? _sortDate(right)),
+      );
+      return selected
+          .map((task) => TaskListEntry(task: task))
+          .toList(growable: false);
+    }
+
     if (filter == TaskListFilter.completed ||
         filter == TaskListFilter.completedToday) {
       selected.sort(

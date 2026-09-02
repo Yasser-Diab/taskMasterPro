@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -6,6 +8,7 @@ import '../../../core/localization/app_localizations.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/theme/brand_logo.dart';
 import '../data/google_oauth_launcher.dart';
+import '../data/auth_callback_service.dart';
 
 enum _AuthMode { signIn, createAccount }
 
@@ -26,6 +29,15 @@ String authFailureMessageKey({
     _ => 'auth_signup_failed',
   };
 }
+
+@visibleForTesting
+String authCallbackMessageKey(AuthCallbackEventKind kind) => switch (kind) {
+  AuthCallbackEventKind.completed => 'auth_google_completing',
+  AuthCallbackEventKind.cancelled => 'auth_google_cancelled',
+  AuthCallbackEventKind.expired => 'auth_google_expired',
+  AuthCallbackEventKind.rejected => 'auth_google_rejected',
+  AuthCallbackEventKind.connectionFailed => 'auth_google_connection_failed',
+};
 
 class AuthScreen extends StatefulWidget {
   const AuthScreen({required this.themeKey, super.key});
@@ -48,17 +60,52 @@ class _AuthScreenState extends State<AuthScreen> {
   bool _acceptPolicies = false;
   bool _obscurePassword = true;
   bool _busy = false;
+  bool _googlePending = false;
   String? _message;
+  Timer? _googleTimeout;
+  StreamSubscription<AuthCallbackEvent>? _callbackSubscription;
 
   GoTrueClient get _auth => Supabase.instance.client.auth;
 
   @override
+  void initState() {
+    super.initState();
+    _callbackSubscription = AuthCallbackService.instance.events.listen(
+      _onAuthCallback,
+    );
+    final latest = AuthCallbackService.instance.latestEvent;
+    if (latest != null &&
+        DateTime.now().difference(latest.occurredAt) <
+            const Duration(seconds: 15)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _onAuthCallback(latest);
+      });
+    }
+  }
+
+  @override
   void dispose() {
+    _googleTimeout?.cancel();
+    unawaited(_callbackSubscription?.cancel());
     _displayName.dispose();
     _email.dispose();
     _password.dispose();
     _confirmPassword.dispose();
     super.dispose();
+  }
+
+  void _onAuthCallback(AuthCallbackEvent event) {
+    if (!mounted) return;
+    _googleTimeout?.cancel();
+    setState(() {
+      _message = context.l10n.text(authCallbackMessageKey(event.kind));
+      if (event.kind == AuthCallbackEventKind.completed) {
+        _busy = true;
+      } else {
+        _busy = false;
+        _googlePending = false;
+      }
+    });
   }
 
   Future<void> _run(Future<void> Function() action) async {
@@ -121,8 +168,14 @@ class _AuthScreenState extends State<AuthScreen> {
     });
   }
 
-  Future<void> _google() {
-    return _run(() async {
+  Future<void> _google() async {
+    if (_busy) return;
+    setState(() {
+      _busy = true;
+      _googlePending = true;
+      _message = null;
+    });
+    try {
       // Obtain the PKCE URL through GoTrue, then launch it ourselves. The
       // Supabase Flutter convenience helper unconditionally sends Google on
       // Android to a full external browser, which can leave a browser surface
@@ -136,7 +189,34 @@ class _AuthScreenState extends State<AuthScreen> {
       if (!opened) {
         throw const AuthException('Could not open the Google sign-in page');
       }
-    });
+      if (!mounted) return;
+      setState(() {
+        _message = context.l10n.text('auth_google_browser_opened');
+      });
+      _googleTimeout?.cancel();
+      _googleTimeout = Timer(const Duration(minutes: 2), () {
+        if (!mounted || !_googlePending) return;
+        setState(() {
+          _busy = false;
+          _googlePending = false;
+          _message = context.l10n.text('auth_google_wait_timeout');
+        });
+      });
+    } on AuthException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _googlePending = false;
+        _message = _friendlyAuthMessage(error);
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _googlePending = false;
+        _message = context.l10n.text('auth_connection_failed');
+      });
+    }
   }
 
   Future<void> _resendConfirmation() {

@@ -1,79 +1,99 @@
-# DayVector 0.0.29 — Updates and features
+# DayVector 0.0.29 — What's new
 
-DayVector 0.0.29 brings the new DayVector identity to the complete experience while preserving existing accounts, tasks, progress, schedules, and local data.
+Version 0.0.29 brings the new **DayVector** identity and a smoother experience across Windows, Android, the home-screen widget, notifications, and the website.
 
-## DayVector identity
+Your existing account, tasks, schedules, progress, settings, and local data stay with you—there is no need to start over.
 
-- New DayVector name and approved logo across Windows, Android, the home-screen widget, notifications, reports, splash screens, installers, and the website.
-- Updated app icons, tray icon, notification icon, favicons, social sharing artwork, product metadata, and release information.
-- Cleaner in-app logo rendering at compact sizes, using the purpose-made assets from the approved branding package.
+## Highlights
 
-## Faster cross-device updates
+- Your active task now follows you between Windows and Android automatically.
+- You can add planned rest, such as a lunch break, inside a task.
+- Health and workout information is clearer and more reliable.
+- Coaching stays helpful and varied instead of disappearing after one piece of feedback.
+- Windows navigation, layouts, and controls feel cleaner and more polished.
+- The Android widget and notifications now show the correct task and task count.
+- Google sign-in returns to DayVector reliably, and **Exit DayVector** now closes the Windows app completely.
+- Recurring tasks can be edited or removed as one clear series, and overdue work is easier to postpone.
+- Task reminders now use the strongest supported reminder priority on Windows and Android.
 
-- Starting a task now publishes its running state immediately, so another signed-in device can show the same task without waiting for a later pause or resume.
-- Start, pause, resume, break, finish, and Pomodoro changes use the same authoritative account state across Windows and Android.
-- Realtime updates restore the latest task timer after a change arrives, without continuous background polling; bursts of unrelated updates can no longer keep postponing a task-state refresh.
-- Returning to DayVector after Android suspended it performs one bounded catch-up, so a task started while the phone was asleep appears automatically.
-- Roadmap progress and forecast snapshots are rebuilt locally from synchronized source data instead of competing for the roadmap revision; stale projection commands are retired automatically.
-- If another device has already committed every field in a task update, DayVector proves the canonical match and clears the redundant command without asking the user to resolve a false conflict.
-- Synchronization diagnostics distinguish temporary connection problems from changes that genuinely need attention.
+## Welcome to DayVector
 
-## Planned rest inside a task
+- The DayVector name and new logo now appear throughout the apps, installers, widget, notifications, reports, and website.
+- App icons, splash screens, the Windows tray icon, Android notification icon, browser icons, and sharing images have all been updated.
+- The logo stays crisp and clean, including in compact areas such as the Windows sidebar and title bar.
 
-- A task can now include optional planned rest, such as a 30-minute lunch during a work block.
-- Planned rest is stored with the task and synchronized through the existing task history rather than a separate fragile record.
-- Work estimates, roadmap effort, recurrence, and calendar occupancy keep working time and planned rest clearly separated.
+## Your task follows you across devices
 
-## Android widget and notification controls
+- Start, pause, resume, take a break, or finish a task on one device and the other device updates automatically—usually within a few seconds.
+- A task started while your phone is asleep appears when you return to DayVector, without needing to pause and start it again.
+- Pomodoro sessions and their focus or break phase stay aligned across Windows and Android.
+- Temporary connection interruptions recover more smoothly, and changes that are already saved no longer keep returning as false conflicts.
+- Roadmap progress and forecasts stay up to date without interfering with task synchronization.
 
-- Widget and notification buttons perform their actions directly without opening the full application.
-- The widget reads the same session, phase, and timing authority as the app, preventing an old task or timer from continuing on the home screen.
-- Responsive widget sizes show the running task and useful controls, or suitable suggestions when no task is active.
-- The idle widget reports the real number of available tasks while keeping its compact preview limited to the three best suggestions.
-- Focus, pause, resume, break, extend-break, continue, and finish controls use guarded actions so a stale button cannot complete the wrong task.
+## Plan rest inside a task
 
-## Breaks, activity, and coaching
+- Tasks can now include planned rest, such as a 30-minute lunch during a long work block.
+- Working time and resting time remain separate, so estimates and progress stay honest.
+- Planned rest works with recurring tasks, calendars, and roadmaps, and follows the task across your devices.
 
-- After an inactive break, the user can optionally record reading, exercise, relaxation, a drink, or another activity.
-- Useful break activity can be linked to an existing task without counting the same time twice.
-- Coaching can recognize exercise and other constructive recovery activity and respond with appropriate encouragement.
-- Coaching now keeps several useful suggestions available at once, rotates them in a calm carousel, and can surface the current recommendations in notifications.
-- Marking one suggestion as too frequent only reduces similar advice; it no longer silences unrelated coaching.
-- Activity review totals, cross-task counts, and attention cards now use the same filters and classifications.
+## Recurring tasks, overdue work, and reminders
 
-## Health and recovery
+- Opening a recurring task now shows its real repeat pattern, weekdays, and end date instead of incorrectly saying **Does not repeat**.
+- Editing a recurring task updates its shared schedule and upcoming occurrences from one place.
+- Deleting a recurring task can remove the complete series and stop future occurrences; intentionally deleted built-in routines stay deleted.
+- Changing a series to **Does not repeat** keeps the task you are editing, removes its future repetitions, and preserves completed history.
+- Every overdue occurrence has a visible **Postpone** action with choices for tomorrow, one week, one month, or another date from the calendar.
+- Postponement moves the scheduled date, planned time, and due time together, so the task does not immediately become overdue again.
+- Task reminders use maximum Android importance and a longer, persistent Windows reminder presentation, while keeping Start, Complete, and Snooze actions close at hand.
 
-- Health Connect presents steps, distance, energy, heart rate, sleep, workouts, weekly movement, and connected sources in a clearer responsive layout.
-- Exercise sessions are now read from their canonical Health Connect records even when optional calorie, distance, or step enrichment is unavailable, so workouts shared by Nothing X and other providers no longer disappear.
-- If there is no workout today, the health card shows the recent seven-day workout total instead of hiding valid exercise behind a dash; Windows receives the same weekly total from synchronized daily summaries.
-- Sleep summaries can be read when the source application has shared the supported records through Health Connect.
-- Phone health summaries can provide read-only planning context on Windows while detailed records remain on Android.
-- The Windows Health sidebar button now opens the synchronized read-only Health and rest dashboard directly, rather than showing Android-only connection controls.
-- Pull-to-refresh, connected-source details, and watch capability messages are designed for a modern phone interface.
-- Health values use friendly rounding and practical units instead of long raw decimals.
-- Legacy health summaries with inconsistent evidence counters are repaired automatically and uploaded once with valid counters instead of remaining as repeated synchronization errors.
-- Health source names remain readable in reports and synchronized cards while internal Android package identifiers stay hidden.
+## A more useful Android widget
 
-## Windows navigation and layout
+- Widget and notification buttons can pause, resume, start a break, continue, extend a break, or finish a task without opening the full app.
+- The widget follows the same current task and timer shown inside DayVector, so an old session should no longer remain on the home screen.
+- When no task is running, the widget shows the real number of available tasks and previews up to three useful suggestions.
+- Widget layouts adapt more naturally to compact and wide sizes.
 
-- Health is now available directly from the Windows sidebar.
-- The sidebar can collapse to a compact icon rail and expand again with the edge control or Ctrl+B.
-- Ctrl+B follows the physical B key, so the shortcut remains reliable with Arabic, German, and other keyboard layouts.
-- Compact navigation keeps profile, active-task, Pomodoro, and synchronization access without crowding the workspace.
-- Task controls, health cards, coaching cards, spacing, and responsive sizing have been refined across desktop widths.
-- DayVector now permits only one Windows instance; launching it again restores and focuses the already-running window.
-- Overdue tasks are derived from their due time or planned end and remain visible even when older synchronized records have not yet stored the newer status explicitly.
+## Smarter coaching and better breaks
 
-## Notifications and reliability
+- DayVector can show several relevant coaching suggestions and gently rotate between them.
+- Current suggestions can also appear in notifications when useful.
+- Choosing **Too frequent** reduces similar advice only; it no longer turns off unrelated coaching.
+- After an inactive break, you can optionally record what helped you recharge, such as reading, exercise, relaxation, or getting a drink.
+- Helpful break activity can support another task without counting the same time twice.
+- Activity totals and attention cards now agree more consistently across the app.
 
-- Session and Pomodoro notifications use the active task state and retire superseded controls safely.
-- Notification actions no longer rely on opening the app before applying a supported command.
-- Account creation and branded authentication templates use DayVector wording and visual identity.
-- Application-resource links, task completion timing, activity classifications, and stale runtime cleanup now follow guarded synchronization paths to avoid recurring conflict entries.
+## Clearer health and recovery information
 
-## Website
+- Health Connect now presents steps, distance, active energy, heart rate, sleep, workouts, weekly movement, and connected sources in a cleaner phone-friendly layout.
+- Workouts can appear even when the health provider did not include optional calories, distance, or step details.
+- When there is no workout today, DayVector can show your recent seven-day workout total instead of an unhelpful dash.
+- Sleep appears when your health app has shared a supported sleep record with Health Connect.
+- Read-only health summaries from Android can now be viewed in the Windows **Health and rest** page, while detailed health records remain on your phone.
+- The Windows Health button opens this summary directly instead of showing Android-only setup options.
+- Health values use practical units and friendly rounding instead of long decimal numbers.
+- Refreshing and viewing connected health sources is clearer, and source names remain readable without exposing technical app identifiers.
 
-- The official site uses the DayVector identity, updated app interface previews, and release metadata for version 0.0.29.
-- English, German, and Arabic navigation and page direction have been refined.
-- Light and dark themes, mobile menus, responsive spacing, health information, the Android widget, and the free browser Pomodoro are presented in user-friendly language.
-- Search, sharing, sitemap, manifest, and page metadata now describe DayVector consistently.
+## Windows improvements
+
+- Health now has its own place in the Windows sidebar.
+- The sidebar can collapse into a compact icon rail and expand again using its edge button or **Ctrl+B**.
+- **Ctrl+B** works with different keyboard languages and layouts.
+- Task controls, health cards, coaching cards, button sizes, and spacing have been refined across different window widths.
+- Opening DayVector again now brings the existing window to the front instead of creating a second copy.
+- Google sign-in uses one secure browser attempt at a time, returns to the already-running window, and clearly explains a cancelled or expired attempt instead of appearing to loop.
+- **Exit DayVector** in the tray menu now closes the process from both the sign-in screen and the main app.
+- Overdue tasks are marked reliably from their due time or planned end.
+
+## Website improvements
+
+- The website now uses the DayVector identity and current DayVector interface previews.
+- Light and dark themes, mobile navigation, spacing, and color contrast have been improved.
+- English, German, and Arabic navigation have been refined, including better right-to-left layout for Arabic.
+- Health, coaching, the Android widget, and the free browser Pomodoro are explained in clearer everyday language.
+- Search and sharing information now consistently uses the DayVector name and version 0.0.29 details.
+
+## Good to know
+
+- This update keeps your existing account and data.
+- Health access remains read-only and under your control.
+- Cross-device updates require both devices to be signed in to the same account and connected to the internet.

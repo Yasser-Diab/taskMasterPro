@@ -146,10 +146,7 @@ Set<String> observedHealthApplicationSources(Iterable<String> sources) {
 /// Produces a concise source label for health summaries that may have been
 /// stored before provider package identifiers were filtered. This keeps old
 /// synchronized records safe to display without requiring a data migration.
-String healthSourceSummaryLabel(
-  String rawSource, {
-  String fallback = '',
-}) {
+String healthSourceSummaryLabel(String rawSource, {String fallback = ''}) {
   final labels = observedHealthApplicationSources([rawSource]);
   return labels.isEmpty ? fallback : labels.join(', ');
 }

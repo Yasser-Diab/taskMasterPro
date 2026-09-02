@@ -29,6 +29,7 @@ import 'task_browser_workspace.dart';
 import 'task_completion_flow.dart';
 import 'task_document_workspace.dart';
 import 'task_editor_dialog.dart';
+import 'task_management_flows.dart';
 import 'installed_application_picker_dialog.dart';
 import 'interruption_editor_dialog.dart';
 import 'task_start_flow.dart';
@@ -334,15 +335,8 @@ class _TaskWorkspaceScreenState extends ConsumerState<TaskWorkspaceScreen> {
       case 'duplicate':
         await repository.duplicate(task);
       case 'postpone':
-        final date = await showDatePicker(
-          context: context,
-          initialDate: (task.scheduledDate ?? DateTime.now()).add(
-            const Duration(days: 1),
-          ),
-          firstDate: DateTime.now().subtract(const Duration(days: 365)),
-          lastDate: DateTime.now().add(const Duration(days: 3650)),
-        );
-        if (date != null) await repository.reschedule(task, date);
+        await postponeTaskWithChoices(context, ref, task);
+        return;
       case 'complete':
         await completeTaskWithUndo(context, ref, task);
         return;
@@ -350,16 +344,11 @@ class _TaskWorkspaceScreenState extends ConsumerState<TaskWorkspaceScreen> {
         await reopenTask(context, ref, task);
         return;
       case 'delete':
-        final confirmed = await _confirm(
-          context,
-          title: context.l10n.text('task_delete_title'),
-          body: context.l10n.text('task_delete_description'),
-          confirmLabel: context.l10n.text('delete'),
-        );
-        if (confirmed) {
-          await repository.softDelete(task);
+        final deleted = await deleteTaskOrSeries(context, ref, task);
+        if (deleted) {
           if (mounted) Navigator.pop(context);
         }
+        return;
     }
     unawaited(ref.read(syncServiceProvider).drainOutbox());
   }
@@ -4666,32 +4655,6 @@ Future<(String, bool)?> _textAndToggleDialog(
   );
   controller.dispose();
   return result;
-}
-
-Future<bool> _confirm(
-  BuildContext context, {
-  required String title,
-  required String body,
-  required String confirmLabel,
-}) async {
-  return await showDialog<bool>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: Text(title),
-          content: Text(body),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: Text(context.l10n.text('cancel')),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: Text(confirmLabel),
-            ),
-          ],
-        ),
-      ) ??
-      false;
 }
 
 String _formatReminder(Map<String, Object?> data, BuildContext context) {
