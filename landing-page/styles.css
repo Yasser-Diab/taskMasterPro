@@ -3984,6 +3984,29 @@ body.release-modal-open {
   color: var(--text-primary);
 }
 
+.release-markdown-details {
+  margin: 14px 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--surface) 82%, transparent);
+}
+
+.release-markdown-details summary {
+  cursor: pointer;
+  padding: 13px 15px;
+  color: var(--text-primary);
+  font-weight: 800;
+}
+
+.release-markdown-details[open] summary {
+  border-bottom: 1px solid var(--border);
+}
+
+.release-markdown-details-body {
+  padding: 0 15px 4px;
+}
+
 .release-modal-footer {
   display: flex;
   align-items: center;

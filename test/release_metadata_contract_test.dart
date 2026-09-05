@@ -86,6 +86,10 @@ void main() {
     );
     expect(site, isNot(contains('setReleaseUnavailable(currentVersion)')));
     expect(releaseConfig, isNot(contains('currentVersion:')));
+    expect(releaseConfig, contains('releases/latest'));
+    expect(site, contains("label.textContent = 'View official release'"));
+    expect(site, contains("document.createElement('details')"));
+    expect(site, contains('cleanReleaseNoteHtml'));
   });
 
   test('Windows tray reveal preserves a maximized window placement', () {

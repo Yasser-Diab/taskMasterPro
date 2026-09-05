@@ -393,6 +393,8 @@
     "Size unavailable": "Größe nicht verfügbar",
     "Coming soon!": "Demnächst verfügbar",
     "Available with the release": "Mit der Version verfügbar",
+    "View official release": "Offizielle Version öffnen",
+    "Installer available on GitHub": "Installationsdatei auf GitHub verfügbar",
     "Checking…": "Wird geprüft…",
 
     "Privacy Policy for DayVector":
@@ -1030,6 +1032,8 @@
     "Size unavailable": "الحجم غير متوفر",
     "Coming soon!": "قريباً!",
     "Available with the release": "متوفر مع الإصدار",
+    "View official release": "عرض الإصدار الرسمي",
+    "Installer available on GitHub": "المُثبّت متاح على GitHub",
     "Checking…": "جارٍ التحقق…",
     "Privacy Policy for DayVector":
       "سياسة الخصوصية لبرنامج DayVector",
@@ -1830,6 +1834,8 @@
     "Size unavailable": "Rozmiar niedostępny",
     "Coming soon!": "Wkrótce!",
     "Available with the release": "Dostępne wraz z wydaniem",
+    "View official release": "Otwórz oficjalne wydanie",
+    "Installer available on GitHub": "Instalator jest dostępny na GitHubie",
     "Checking…": "Sprawdzanie…",
     "Privacy Policy for DayVector": "Polityka prywatności DayVector",
     "Privacy choices and data-handling information for DayVector.":

@@ -2,6 +2,11 @@ window.DAYVECTOR_RELEASES = Object.freeze({
   repository: 'Yasser-Diab/taskMasterPro',
   tagPrefix: 'v',
   releasesPage: 'https://github.com/Yasser-Diab/taskMasterPro/releases',
+  // This endpoint is maintained by GitHub and redirects only to a published
+  // release. It is the safe download-page fallback when the public API has
+  // exhausted its unauthenticated rate limit.
+  latestReleasePage:
+    'https://github.com/Yasser-Diab/taskMasterPro/releases/latest',
   latestApiUrl:
     'https://api.github.com/repos/Yasser-Diab/taskMasterPro/releases/latest',
   apiBase:

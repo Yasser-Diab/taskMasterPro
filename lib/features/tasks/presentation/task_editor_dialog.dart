@@ -9,6 +9,7 @@ import '../../../core/localization/app_localizations.dart';
 import '../../../core/providers.dart';
 import '../data/task_repository.dart';
 import '../data/task_resource_service.dart';
+import '../domain/day_schedule_capacity.dart';
 import '../domain/task_domain_catalog.dart';
 import '../domain/task_resource_launch.dart';
 import '../domain/task_schedule_policy.dart';
@@ -436,9 +437,13 @@ class _TaskEditorDialogState extends ConsumerState<TaskEditorDialog> {
       late final String taskId;
       if (_editing) {
         taskId = widget.task!.id;
-        await ref.read(taskRepositoryProvider).updateTask(widget.task!, draft);
+        await ref
+            .read(taskRepositoryProvider)
+            .updateTask(widget.task!, draft, enforceDailyCapacity: true);
       } else {
-        taskId = await ref.read(taskRepositoryProvider).createTask(draft);
+        taskId = await ref
+            .read(taskRepositoryProvider)
+            .createTask(draft, enforceDailyCapacity: true);
       }
       final previousRoadmapId = widget.task?.roadmapId;
       if (previousRoadmapId != null && previousRoadmapId != _roadmapId) {
@@ -486,6 +491,28 @@ class _TaskEditorDialogState extends ConsumerState<TaskEditorDialog> {
       await _saveResources(taskId);
       unawaited(ref.read(syncServiceProvider).drainOutbox());
       if (mounted) Navigator.of(context).pop();
+    } on DayScheduleCapacityExceeded catch (error) {
+      if (!mounted) return;
+      _setStep(1);
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: Text(context.l10n.text('schedule_capacity_exceeded_title')),
+          content: Text(
+            context.l10n.format('schedule_capacity_exceeded_body', {
+              'planned': context.l10n.duration(error.capacity.planned),
+              'available': context.l10n.duration(error.capacity.available),
+            }),
+          ),
+          actions: [
+            FilledButton.icon(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              icon: const Icon(Icons.event_repeat_outlined),
+              label: Text(context.l10n.text('schedule_capacity_reschedule')),
+            ),
+          ],
+        ),
+      );
     } finally {
       if (mounted) setState(() => _busy = false);
     }

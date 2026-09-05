@@ -3,13 +3,13 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../localization/app_localizations.dart';
 import 'app_update_service.dart';
+import 'release_notes_markdown.dart';
 
 Future<void> showAppUpdateDialog(
   BuildContext context, {
@@ -327,12 +327,11 @@ class _WhatsNewDialogState extends State<_WhatsNewDialog> {
               ),
               const Divider(height: 1),
               Expanded(
-                child: Markdown(
+                child: ReleaseNotesMarkdown(
                   data: widget.release.notes.trim().isEmpty
                       ? '# DayVector v${widget.release.version}\n\n'
                             '${context.l10n.text('update_notes_unavailable')}'
                       : widget.release.notes,
-                  selectable: true,
                   onTapLink: (_, href, _) async {
                     final uri = Uri.tryParse(href ?? '');
                     if (uri != null &&

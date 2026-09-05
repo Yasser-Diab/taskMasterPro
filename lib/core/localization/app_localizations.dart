@@ -7,10 +7,8 @@ class AppLocalizations {
   final Locale locale;
 
   /// Keep this list in step with the selectable locales in Settings and the
-  /// public site.  Polish intentionally uses the complete English catalogue
-  /// as a safe fallback while its DayVector-facing copy is translated below;
-  /// no surface should ever expose a missing-key token during a staged
-  /// localization rollout.
+  /// public site. Polish has its own complete catalogue: an unmapped key must
+  /// be visible in debug rather than silently falling back to English.
   static const supportedLocales = [
     Locale('en'),
     Locale('ar'),
@@ -28,10 +26,9 @@ class AppLocalizations {
   /// caller has a complete localized fallback.
   String? optionalText(String key) {
     final languageCode = locale.languageCode;
-    return _translations[languageCode]?[key] ??
-        (languageCode == 'pl'
-            ? (_polishOverrides[key] ?? _translations['en']?[key])
-            : null);
+    return languageCode == 'pl'
+        ? _polishOverrides[key]
+        : _translations[languageCode]?[key];
   }
 
   String text(String key) {
@@ -131,123 +128,2343 @@ class AppLocalizations {
               entry.value.keys.toSet().containsAll(english) &&
               english.containsAll(entry.value.keys),
         ) &&
-        english.every((key) => optionalTextFor('pl', key) != null);
+        _polishOverrides.keys.toSet().containsAll(english) &&
+        english.containsAll(_polishOverrides.keys);
   }
 
   static String? optionalTextFor(String localeCode, String key) =>
-      _translations[localeCode]?[key] ??
-      (localeCode == 'pl'
-          ? (_polishOverrides[key] ?? _translations['en']?[key])
-          : null);
+      localeCode == 'pl'
+      ? _polishOverrides[key]
+      : _translations[localeCode]?[key];
 
-  /// Core Polish product copy.  Less-frequent screens deliberately fall back
-  /// to the reviewed English catalogue above until their dedicated Polish copy
-  /// is ready, which keeps offline notifications and rarely opened settings
-  /// pages intelligible instead of showing an error token.
+  /// Complete Polish client catalogue.
+  /// Complete reviewed Polish client catalogue.
+  /// Complete reviewed Polish client catalogue.
   static const _polishOverrides = <String, String>{
-    'app_name': 'DayVector',
-    'dashboard': 'Panel',
-    'tasks': 'Zadania',
-    'task_filters': 'Filtruj zadania',
-    'task_subheading_note': 'Notatka',
-    'task_subheading_note_hint': 'Krótki opis wyświetlany pod tytułem zadania',
-    'task_subheading_note_detail':
-        'Użyj jako krótkiego podtytułu. Pozostaje oddzielony od notatek w obszarze zadania.',
-    'task_notes_detail':
-        'Jeśli dwa urządzenia edytują tę samą notatkę offline, możesz wybrać wersję do zachowania.',
-    'sound_system_default': 'Domyślne ustawienie urządzenia',
-    'calendar': 'Kalendarz',
-    'roadmaps': 'Plany',
-    'activity': 'Aktywność',
-    'health': 'Zdrowie',
-    'settings': 'Ustawienia',
-    'language': 'Język',
-    'appearance': 'Wygląd',
-    'today': 'Dzisiaj',
-    'tomorrow': 'Jutro',
-    'start': 'Rozpocznij',
-    'pause': 'Wstrzymaj',
-    'resume': 'Wznów',
-    'complete': 'Zakończ',
-    'cancel': 'Anuluj',
-    'save': 'Zapisz',
-    'delete': 'Usuń',
-    'edit': 'Edytuj',
-    'close': 'Zamknij',
-    'back': 'Wstecz',
-    'open': 'Otwórz',
-    'retry': 'Spróbuj ponownie',
-    'quick_add': 'Szybkie dodawanie',
-    'active_task': 'Aktywne zadanie',
-    'next_task': 'Następne zadanie',
-    'overdue': 'Zaległe',
-    'remaining': 'Pozostało',
-    'status_ready': 'Gotowe',
-    'status_running': 'W trakcie',
-    'status_paused': 'Wstrzymane',
-    'status_completed': 'Ukończone',
-    'status_overdue': 'Zaległe',
-    'schedule_wellbeing': 'Harmonogram i dobrostan',
-    'schedule_daily_rhythm': 'Codzienny rytm',
-    'schedule_wake_time': 'Godzina pobudki',
-    'schedule_sleep_time': 'Godzina snu',
-    'schedule_working_days': 'Dni pracy',
-    'schedule_work_starts': 'Początek pracy',
-    'schedule_work_ends': 'Koniec pracy',
-    'schedule_rest_coaching': 'Odpoczynek i coaching',
-    'schedule_reminder_offset': 'Przypomnienie przed rozpoczęciem',
-    'schedule_sleep_reminder': 'Przypomnienie o śnie',
-    'schedule_native_work_title': 'Wbudowany harmonogram pracy',
-    'schedule_native_work_description':
-        'DayVector przypomina o pracy bez tworzenia sztucznego zadania.',
-    'schedule_rotation_title': 'Zmienne zmiany',
-    'schedule_rotation_description':
-        'Ustaw kolejne tygodnie z różnymi godzinami rozpoczęcia.',
-    'schedule_add_rotation_week': 'Dodaj tydzień zmiany',
-    'schedule_remove_rotation_week': 'Usuń tydzień zmiany',
-    'schedule_work_reminder': 'Przypomnienie przed pracą',
-    'schedule_work_reminder_description':
-        'Wysyłaj alarm przed kolejnym zaplanowanym rozpoczęciem pracy.',
-    'schedule_work_pomodoro': 'Zaproponuj Pomodoro przy rozpoczęciu pracy',
-    'schedule_work_activity_credit': 'Oznaczaj użyteczny czas pracy',
-    'schedule_work_activity_credit_description':
-        'Porównuj zarejestrowaną aktywność z kategoriami produktywnymi.',
-    'work_schedule_reminder_title': 'Czas przygotować się do pracy',
-    'work_schedule_reminder_body':
-        'Następna zmiana zaczyna się za {minutes} min.',
-    'activity_classification': 'Klasyfikacja aktywności',
-    'classification_productive': 'Produktywne',
-    'classification_research': 'Badania',
-    'classification_communication': 'Komunikacja',
-    'activity_needs_review': 'Wymaga sprawdzenia',
-    'activity_mark_distraction': 'Rozproszenie',
-    'activity_generally_unrelated': 'Zwykle nieprzydatne',
-    'activity_learned_from_usage': 'Nauczono na podstawie użycia',
-    'activity_suggested_by_taskmaster': 'Sugestia DayVector',
-    'community_system_learning': 'Pomóż kategoryzować aplikacje',
-    'community_system_learning_description':
-        'Opcjonalnie. Po sklasyfikowaniu aplikacji udostępnij anonimową kategorię i ocenę przydatności, aby DayVector mógł podpowiadać prawdopodobne typy aplikacji innym osobom. Twoje konto, zadania, tytuły, strony, ścieżki ani historia aktywności nigdy nie są udostępniane.',
-    'community_system_learning_consent':
-        'Udostępniany jest wyłącznie chroniony identyfikator aplikacji oraz anonimowa kategoria i ocena przydatności. Wybór nie może wskazać Twojego konta ani połączyć głosów między aplikacjami. Sugestie nigdy nie zastępują Twojej decyzji.',
-    'notification_category_scheduled_starts': 'Planowane rozpoczęcia',
-    'notification_category_task_reminders': 'Przypomnienia o zadaniach',
-    'notification_test_body': 'To jest przykładowe powiadomienie DayVector.',
-    'standalone_pomodoro': 'Samodzielny Pomodoro',
-    'collapse_navigation': 'Zwiń nawigację (Ctrl+B)',
-    'expand_navigation': 'Rozwiń nawigację (Ctrl+B)',
-    'weekday_mon': 'Pon',
-    'weekday_tue': 'Wt',
-    'weekday_wed': 'Śr',
-    'weekday_thu': 'Czw',
-    'weekday_fri': 'Pt',
-    'weekday_sat': 'Sob',
-    'weekday_sun': 'Niedz',
-    'duration_hour': '1 godz.',
-    'duration_hours': '{count} godz.',
-    'duration_minutes': '{count} min',
-    'duration_seconds': '{count} s',
+    "app_name": "DayVector",
+    "dashboard": "Panel",
+    "tasks": "Zadania",
+    "calendar": "Kalendarz",
+    "roadmaps": "Plany",
+    "activity": "Aktywność",
+    "settings": "Ustawienia",
+    "collapse_navigation": "Zwiń nawigację (Ctrl+B)",
+    "expand_navigation": "Rozwiń nawigację (Ctrl+B)",
+    "today": "Dzisiaj",
+    "quick_add": "Szybkie dodawanie",
+    "active_task": "Aktywne zadanie",
+    "next_task": "Następne zadanie",
+    "daily_performance": "Dzienna wydajność",
+    "planned": "Planowane",
+    "active_work": "Aktywna praca",
+    "completed": "Ukończone",
+    "overdue": "Zaległe",
+    "start": "Rozpocznij",
+    "pause": "Wstrzymaj",
+    "resume": "Wznów",
+    "complete": "Zakończ",
+    "delete": "Usuń",
+    "cancel": "Anuluj",
+    "save": "Zapisz",
+    "add_task": "Dodaj zadanie",
+    "task_title": "Tytuł zadania",
+    "description": "Opis",
+    "task_subheading_note": "Notatka",
+    "task_subheading_note_hint": "Krótki opis wyświetlany pod tytułem zadania",
+    "task_subheading_note_detail":
+        "Użyj jako krótkiego podtytułu. Pozostaje oddzielony od notatek w obszarze zadania.",
+    "execution_mode": "Styl pracy",
+    "duration": "Czas trwania",
+    "priority": "Priorytet",
+    "empty_tasks": "Twój lokalny plan jest jasny.",
+    "empty_tasks_hint": "Dodaj odpowiedzialność, gdy jesteś gotowy.",
+    "sync_offline": "Offline — zmiany są bezpieczne na tym urządzeniu",
+    "sync_idle": "Aktualnie",
+    "sync_syncing": "Synchronizacja",
+    "sync_attention": "Synchronizacja wymaga uwagi",
+    "continue_google": "Kontynuuj korzystanie z Google",
+    "email": "E-mail",
+    "password": "Hasło",
+    "sign_in": "Zaloguj się",
+    "create_account": "Utwórz konto",
+    "forgot_password": "Zapomniałeś hasła?",
+    "auth_reset_password_title": "Wybierz nowe hasło",
+    "auth_reset_password_detail":
+        "Twój link odzyskiwania został potwierdzony. Wybierz nowe hasło dla tego konta.",
+    "auth_new_password": "Nowe hasło",
+    "auth_confirm_new_password": "Potwierdź nowe hasło",
+    "auth_update_password": "Aktualizuj hasło",
+    "auth_cancel_recovery": "Anuluj i wyloguj się",
+    "auth_password_reset_done": "Twoje hasło zostało zaktualizowane.",
+    "auth_password_reset_failed":
+        "Nie mogliśmy zaktualizować Twojego hasła. Poproś o nowy link do odzyskiwania i spróbuj ponownie.",
+    "generic_email_response":
+        "Sprawdź pocztę e-mail, aby przejść do następnego kroku.",
+    "display_name": "Nazwa wyświetlana",
+    "confirm_password": "Potwierdź hasło",
+    "accept_terms":
+        "Akceptuję Warunki świadczenia usług i Politykę prywatności",
+    "onboarding_title": "Stwórz system wokół Twojego życia",
+    "onboarding_subtitle":
+        "Brak uniwersalnego harmonogramu. Ty wybierasz strukturę i styl coachingu.",
+    "language": "Język",
+    "theme": "Temat",
+    "goal": "Główny cel",
+    "finish_setup": "Zakończ konfigurację",
+    "light": "Jasno",
+    "dark": "Ciemność",
+    "golden": "Złoty",
+    "system": "System",
+    "notification_sound": "Dźwięk powiadomienia",
+    "activity_attribution": "Przypisanie aktywności",
+    "unreviewed_activity": "Niesprawdzona aktywność",
+    "review_empty": "Żadna aktywność nie wymaga sprawdzenia.",
+    "credit_suggestion": "Propozycja kredytu",
+    "mark_unrelated": "Oznacz jako niepowiązane",
+    "mark_distraction": "Oznacz rozproszenie uwagi",
+    "roadmap_progress": "Postęp planu działania",
+    "forecast": "Prognoza",
+    "risk": "Ryzyko",
+    "no_roadmaps": "Nie ma jeszcze planu działania",
+    "no_roadmaps_hint":
+        "W trakcie wdrażania można utworzyć edytowalny początkowy plan działania.",
+    "sign_out": "Wyloguj się",
+    "profile": "Profil",
+    "offline_first": "Twoje zmiany",
+    "offline_first_detail":
+        "Zmiany są najpierw zapisywane na tym urządzeniu, a następnie synchronizowane, gdy połączenie będzie dostępne.",
+    "appearance": "Wygląd",
+    "notifications": "Powiadomienia",
+    "privacy": "Prywatność",
+    "search": "Wyszukiwanie",
+    "notifications_and_sounds": "Powiadomienia i dźwięki",
+    "notifications_and_sounds_description":
+        "Zarządzaj kategoriami powiadomień, dźwiękami, wibracjami, testami i godzinami ciszy.",
+    "stop_sound_preview": "Zatrzymaj podgląd dźwięku",
+    "vibration": "Wibracje",
+    "enabled": "Włączone",
+    "disabled": "Wyłączone",
+    "notification_keep_visible": "Zachowaj widoczność do czasu działania",
+    "notification_category_focus": "Skupienie i Pomodoro",
+    "notification_category_breaks": "Przerwy",
+    "notification_category_tasks": "Przypomnienia o zadaniach",
+    "notification_category_roadmaps": "Przypomnienia o planach działania",
+    "notification_category_coaching": "Coaching",
+    "notification_category_activity": "Przegląd aktywności",
+    "notification_category_sync": "Synchronizacja",
+    "notification_category_security": "Konto i bezpieczeństwo",
+    "notification_category_health": "Zdrowie i dobre samopoczucie",
+    "notification_category_task_reminders": "Przypomnienia o zadaniach",
+    "notification_category_scheduled_starts": "Planowane rozpoczęcia",
+    "notification_category_overdue_tasks": "Zaległe zadania",
+    "notification_category_focus_completed": "Skupienie zakończone",
+    "notification_category_short_break_completed": "Krótka przerwa zakończona",
+    "notification_category_long_break_completed": "Długa przerwa zakończona",
+    "notification_category_activity_review": "Przegląd aktywności",
+    "notification_category_sleep_health": "Sen i zdrowie",
+    "notification_category_synchronization": "Synchronizacja",
+    "device_sound_sources": "Dźwięki z tego urządzenia",
+    "device_notification_sounds": "Dźwięki powiadomień",
+    "device_alarm_sounds": "Dźwięki alarmów",
+    "device_ringtone_sounds": "Dźwięki dzwonka",
+    "sound_device_selected": "Urządzenie — {name}",
+    "notification_test_verified":
+        "Wysłano powiadomienie testowe ze skonfigurowanym dźwiękiem.",
+    "notification_test_sound_mismatch":
+        "Wysłano powiadomienie testowe, ale system użył innego dźwięku. Sprawdź ustawienia powiadomień.",
+    "quiet_hours": "Ciche godziny",
+    "quiet_hours_value": "{start}–{end}",
+    "open_system_settings": "Otwórz ustawienia systemu",
+    "time_zone": "Strefa czasowa",
+    "time_zone_auto": "Automatycznie używaj strefy czasowej urządzenia",
+    "time_zone_detected": "Wykryta strefa czasowa",
+    "time_zone_manual": "Wybierz strefę czasową",
+    "time_zone_search": "Wyszukaj miasto, kraj, strefę lub przesunięcie UTC",
+    "time_zone_no_results": "Brak pasujących stref czasowych",
+    "time_zone_all_cities": "Inne miasta z tym przesunięciem UTC",
+    "include_health_summaries": "Dołącz podsumowania stanu zdrowia",
+    "health_reports_never": "Nigdy",
+    "health_reports_ask": "Pytaj przed każdym raportem",
+    "health_reports_private": "Uwzględniaj w raportach prywatnych",
+    "health_reports_selected": "Uwzględniaj w wybranych typach raportów",
+    "health_reports_disabled":
+        "Podsumowania stanu są wyłączone w raportach i ustawieniach danych.",
+    "health_report_include_warning":
+        "Informacje zdrowotne są prywatne. Uwzględnić to w tym raporcie?",
+    "health_report_share_warning":
+        "Ten raport zawiera informacje o stanie zdrowia. Kontynuować drukowanie, udostępnianie lub eksportowanie?",
+    "continue_action": "Kontynuuj",
+    "include": "Dołącz",
+    "coaching_tone": "Ton coachingu",
+    "coaching_tone_gentle": "Delikatny i zachęcający",
+    "coaching_tone_balanced": "Zrównoważony",
+    "coaching_tone_direct": "Bezpośrednie i zwięzłe",
+    "coaching_tone_detailed": "Szczegółowe wskazówki",
+    "coaching_learning_body_child":
+        "Wykonaj kilka zadań, a ja zaproponuję krótkie, pozytywne kroki, które równoważą koncentrację i przerwy.",
+    "coaching_learning_body_teen":
+        "Wykonaj kilka zadań, a ja przedstawię pełne szacunku sugestie, które równoważą cele, szkołę, i odpocznij.",
+    "coaching_learning_body_adult":
+        "Wykonaj kilka zadań, a zacznę wyświetlać sugestie zorientowane na cel na podstawie tego, jak pracujesz.",
+    "coaching_learning_body_older_adult":
+        "Wykonaj kilka zadań, a przedstawię pełne szacunku sugestie, które uwzględnią Twoje cele, wygodę i preferencje dotyczące regeneracji.",
+    "add": "Dodaj",
+    "close": "Zamknij",
+    "open": "Otwórz",
+    "more": "Więcej",
+    "retry": "Spróbuj ponownie",
+    "done": "Gotowe",
+    "loading": "Ładowanie…",
+    "status_ready": "Gotowe",
+    "status_ready_compact": "Gotowe",
+    "status_in_progress": "W toku",
+    "status_running": "W trakcie",
+    "currently_running": "Aktualnie działa",
+    "status_paused": "Wstrzymane",
+    "status_completed": "Ukończone",
+    "status_overdue": "Zaległe",
+    "status_waiting_review": "Oczekiwanie na sprawdzenie",
+    "status_skipped": "Pominięte",
+    "stale_pause_title": "Wstrzymane na ponad 12 godzin",
+    "stale_pause_body":
+        "Czas wstrzymania nie jest liczony. Wznów je, wróć na listę zadań lub pomiń.",
+    "stale_pause_needs_attention": "Wróć do listy zadań",
+    "stale_pause_skip": "Pomiń to zadanie",
+    "stale_pause_resolved": "Wstrzymane zadanie zostało zaktualizowane.",
+    "status_interrupted": "Przerwane",
+    "status_scheduled": "Zaplanowane",
+    "status_cancelled": "Anulowane",
+    "mode_pomodoro": "Pomodoro",
+    "mode_continuous": "Ciągły licznik czasu",
+    "mode_checklist": "Lista kontrolna",
+    "mode_reading": "Czytanie",
+    "mode_habit": "Nawyk",
+    "mode_event": "Wydarzenie",
+    "mode_hybrid": "Hybryda",
+    "mode_manual": "Instrukcja",
+    "duration_minutes": "{count} min",
+    "duration_hour": "1 godz.",
+    "duration_hours": "{count} godz.",
+    "duration_seconds": "{count} s",
+    "dashboard_greeting_morning": "Dzień dobry, {userName}",
+    "dashboard_greeting_afternoon": "Dzień dobry, {userName}",
+    "dashboard_greeting_evening": "Dobry wieczór, {userName}",
+    "dashboard_no_active_task": "Żadne zadanie nie jest uruchomione",
+    "dashboard_start_suggestion":
+        "Rozpocznij od dzisiejszego harmonogramu lub dodaj nowe zadanie.",
+    "widget_focus_message": "Jeden wyraźny krok na raz — utrzymuj dynamikę.",
+    "widget_break_message":
+        "Naładuj teraz. Czeka Cię następna runda skupienia.",
+    "widget_paused_message":
+        "Twoje postępy są bezpieczne. Kontynuuj, gdy będziesz gotowy.",
+    "widget_idle_title": "Co będziesz robić dalej?",
+    "widget_idle_message": "Wybierz sugerowane zadanie i nabierz rozpędu.",
+    "widget_no_suggestions":
+        "Zaplanuj jeden przydatny kolejny krok w DayVector.",
+    "widget_open_task": "Otwórz zadanie",
+    "widget_open_app": "Otwórz aplikację",
+    "widget_tasks_ready": "{count} zadania gotowe",
+    "widget_focus_complete": "Skupienie zakończone — wybierz następny krok.",
+    "widget_break_complete":
+        "Przerwa zakończona — gotowy do ponownego skupienia?",
+    "widget_action_pause": "Wstrzymaj",
+    "widget_action_break": "Przerwij",
+    "widget_action_finish": "Zakończ",
+    "widget_action_continue": "Kontynuuj",
+    "widget_action_focus": "Skup się",
+    "widget_action_extend": "+5 min",
+    "widget_action_review": "Przejrzyj",
+    "dashboard_needs_attention": "Wymaga uwagi",
+    "dashboard_next_suggested_task": "Następne sugerowane zadanie",
+    "dashboard_today_performance": "Dzisiejsze wyniki",
+    "dashboard_today_schedule": "Dzisiejszy harmonogram",
+    "schedule_suggested": "Sugerowane",
+    "dashboard_actual_work": "Rzeczywista praca",
+    "dashboard_no_tasks_scheduled": "Brak zaplanowanych zadań",
+    "dashboard_no_ready_task": "Żadne gotowe zadanie nie wymaga uwagi.",
+    "dashboard_cross_task_review": "Aktywność między zadaniami do sprawdzenia",
+    "dashboard_inactive_review": "Nieaktywny czas na przeglądanie",
+    "dashboard_other_activity_review": "Inna aktywność do sprawdzenia",
+    "dashboard_nothing_review": "Dzisiaj nic nie wymaga przeglądu",
+    "dashboard_items_review": "{count} grupy wymagają przeglądu dzisiaj",
+    "dashboard_item_review": "1 grupa wymaga dzisiaj przeglądu",
+    "dashboard_items_review_zero": "Żadna grupa nie wymaga dzisiaj przeglądu",
+    "dashboard_items_review_two": "2 grupy wymagają dzisiaj przeglądu",
+    "activity_pending_cross_task": "Przegląd międzyzadaniowy",
+    "activity_pending_idle": "Nieaktywna recenzja",
+    "activity_pending_other": "Inna recenzja",
+    "active_time": "Czas aktywności",
+    "planned_duration": "{mode} · planowany {duration}",
+    "add_interruption": "Dodaj przerwanie",
+    "edit_interruption": "Edytuj przerwanie",
+    "interruption_deleted": "Przerwanie usunięte",
+    "report_record_unavailable": "Powiązana aktywność nie jest już dostępna",
+    "record_interruption": "Przerwanie nagrywania",
+    "interruption_question": "Co przerwało to zadanie?",
+    "interruption_type": "Typ",
+    "interruption_custom_type": "Niestandardowy typ przerwania",
+    "interruption_start": "Czas rozpoczęcia",
+    "interruption_end": "Czas zakończenia",
+    "interruption_enter_duration": "Wprowadź czas trwania",
+    "interruption_enter_end": "Wybierz czas zakończenia",
+    "interruption_necessary": "Konieczne",
+    "interruption_avoidable": "Możliwe do uniknięcia",
+    "interruption_counts_current_task":
+        "Odlicz ten czas na poczet bieżącego zadania",
+    "interruption_related_task": "Związane z innym zadaniem",
+    "interruption_related_responsibility": "Inna powiązana odpowiedzialność",
+    "interruption_activity_link": "Powiązany okres aktywności (opcjonalnie)",
+    "interruption_duration_error":
+        "Wprowadź czas trwania przerwy większy niż zero.",
+    "interruption_type_phone_call": "Rozmowa telefoniczna",
+    "interruption_type_family_need": "Potrzeby rodzinne",
+    "interruption_type_work_problem": "Problem związany z pracą",
+    "interruption_type_visitor": "Gość",
+    "interruption_type_meeting": "Spotkanie",
+    "interruption_type_personal_need": "Potrzeba osobista",
+    "interruption_type_device_problem": "Problem z urządzeniem lub internetem",
+    "interruption_type_emergency": "Nagły wypadek",
+    "interruption_type_distraction": "Rozproszenie uwagi",
+    "interruption_type_other": "Inne",
+    "none": "Brak",
+    "required_field": "To pole jest wymagane.",
+    "note_prompt": "Uwaga, decyzja lub następny krok",
+    "coaching_learning_title":
+        "Ukształtujemy to w oparciu o Twój sposób pracy, {userName}",
+    "coaching_learning_body":
+        "Zacznij od kilku realnych zadań. Dowiem się, które tempo, podpowiedzi i kolejne kroki naprawdę Ci pomogą.",
+    "coaching_day_two_active_title": "Nabierasz przydatnego impetu, {userName}",
+    "coaching_day_two_active_body":
+        "Twoje obecne zadanie jest w ruchu. Zadbaj o to, aby następna akcja była widoczna i niech ten skupiony odcinek się liczy.",
+    "coaching_day_two_attention_title":
+        "Sprawmy, aby lista była łatwa do zarządzania, {userName}",
+    "coaching_day_two_attention_body":
+        "Niektóre prace są zaległe, ale nie wszystkie wymagają uwagi na raz. Wybierz jedno zadanie do wykonania, przeniesienia lub zamknięcia.",
+    "coaching_day_two_paused_title": "Ułatw ponowne uruchomienie",
+    "coaching_day_two_paused_body":
+        "Kontynuuj od miejsca wstrzymania lub zmniejsz następną czynność, aż będzie wystarczająco jasna, aby ją rozpocząć.",
+    "coaching_day_two_ready_title":
+        "Mała, przydatna wygrana jest gotowa, {userName}",
+    "coaching_day_two_ready_body":
+        "Twoje następne zaplanowane zadanie jest gotowe. Wystarczy jeden ukierunkowany pierwszy krok, aby nabrać rozpędu.",
+    "coaching_day_two_momentum_title": "Twój plan ma jasny punkt wyjścia",
+    "coaching_day_two_momentum_body":
+        "Wybierz zadanie, które jest teraz najważniejsze i określ pierwsze działanie przed jego rozpoczęciem.",
+    "coaching_adaptive_space_title": "Masz kontrolę nad tempem",
+    "coaching_adaptive_space_body":
+        "Prosiłeś o mniej podpowiedzi. Będę prowadzić szkolenia w sposób cichy i zwięzły, chyba że coś zasługuje na uwagę w odpowiednim czasie.",
+    "coaching_adaptive_late_title": "Zacznij jutro spokojniej",
+    "coaching_adaptive_late_body":
+        "Zauważyłem {duration} aktywności urządzenia podczas planowanego okna snu. Jeśli Ci odpowiada, przesuń jedno zadanie wcześniej i zapewnij sobie krótki odpoczynek bez ekranu.",
+    "coaching_adaptive_late_body_with_summary":
+        "Twoje zatwierdzone podsumowanie snu i {duration} aktywności w późnych godzinach sprawią, że warto spróbować dziś wieczorem stabilniejszego odpoczynku. Traktuj to jako rutynową wskazówkę, a nie medyczną konkluzję.",
+    "coaching_adaptive_late_body_youth":
+        "Zauważyłem {duration} aktywności urządzenia w zaplanowanym oknie snu. Spokojny odpoczynek bez ekranu może sprawić, że jutro będzie łatwiej.",
+    "coaching_adaptive_late_body_older_adult":
+        "Zauważyłem {duration} późnej aktywności urządzenia. Niespieszna, konsekwentna przerwa może lepiej chronić zaplanowaną resztę.",
+    "coaching_adaptive_roadmap_risk_title":
+        "Sprawmy, aby plan działania znów był możliwy do zrealizowania",
+    "coaching_adaptive_roadmap_risk_body":
+        "Część planu działania jest zagrożona. Ustaw „{task}” jako etap odzyskiwania, a resztę zostaw poza tą sesją.",
+    "coaching_adaptive_overdue_title": "Usuń presję, jedna decyzja na raz",
+    "coaching_adaptive_overdue_body":
+        "Zadania {count} są zaległe. Wybierz to, co nadal jest ważne, przełóż to, co jest realistyczne, i zamknij to, czego już nie ma w Twoim planie.",
+    "coaching_adaptive_active_title": "Masz dobry wątek – trzymaj go",
+    "coaching_adaptive_active_body":
+        "„{task}” już się porusza. Zadbaj o widoczność następnej akcji i zaplanuj niepowiązane prace do czasu zakończenia tego skupienia.",
+    "coaching_adaptive_paused_title": "Ułatw ponowne uruchamianie",
+    "coaching_adaptive_paused_body":
+        "Zadania {count} są wstrzymane. Wybierz tę, która ma najwyraźniejszą następną akcję — lub zmniejsz ją — i wznów.",
+    "coaching_adaptive_paused_task_body":
+        "„{task}” jest wstrzymane. Otwórz go, sprawdź następny niedokończony krok i wznów, gdy ten krok będzie gotowy. Łącznie masz {count} wstrzymanych zadań.",
+    "coaching_adaptive_roadmap_title":
+        "Jeden wyraźny krok posunie sprawę do przodu",
+    "coaching_adaptive_roadmap_body":
+        "„{task}” jest gotowy w Twoim planie działania. Krótka, chroniona sesja wystarczy, aby przenieść większy plan.",
+    "coaching_adaptive_focus_title": "Ten wzorzec skupienia działa",
+    "coaching_adaptive_focus_body":
+        "Ukończyłeś w tym tygodniu {count} cykle skupienia. Wykorzystaj ponownie czas, który wydawał się zrównoważony, i oprzyj się na tym, co już zadziałało.",
+    "coaching_adaptive_sport_title":
+        "Ta aktywna przerwa była prawdziwą wygraną",
+    "coaching_adaptive_sport_body":
+        "Zarejestrowałeś {duration} sportu lub ćwiczeń podczas ostatnich przerw. Ten ruch wspiera Twoją energię — wybieraj dalej formę, która zapewnia dobre samopoczucie i trwałość.",
+    "coaching_adaptive_session_body":
+        "Ukończyłeś w tym tygodniu sesje robocze {count}. Powtórz konfigurację, która pomogła Ci zakończyć, nie zakładając, że każda sesja wymaga Pomodoro.",
+    "coaching_adaptive_rest_title": "Niech dzisiaj nabierze energii",
+    "coaching_adaptive_rest_body":
+        "Dostępne jest Twoje zatwierdzone podsumowanie stanu zdrowia. Używaj go jako prywatnego kontekstu do elastycznego obciążenia pracą, a nie jako diagnozy.",
+    "coaching_adaptive_schedule_title":
+        "Twój kolejny przydatny krok jest gotowy",
+    "coaching_adaptive_schedule_body":
+        "„{task}” jest gotowy, a zaplanowane zadania {count} są nadal otwarte dzisiaj. Wymień jedno konkretne działanie i zacznij od niego.",
+    "coaching_adaptive_baseline_title": "Stwórzmy jedno przydatne zwycięstwo",
+    "coaching_adaptive_baseline_body":
+        "Wciąż się uczę, co Ci pomaga. Na razie wybierz jedno znaczące zadanie i spraw, aby jego kolejne działanie było wyraźnie jasne.",
+    "coaching_evidence_late_activity": "{duration} późna aktywność urządzenia",
+    "coaching_evidence_health_summary": "Zatwierdzone podsumowanie stanu",
+    "coaching_evidence_roadmap_tasks":
+        "{count} otwarte zadania planu działania",
+    "coaching_evidence_overdue": "{count} zaległe zadania",
+    "coaching_evidence_active_task": "Zadanie obecnie aktywne",
+    "coaching_evidence_paused": "{count} wstrzymane zadania",
+    "coaching_evidence_focus_cycles": "{count} ostatnie cykle skupienia",
+    "coaching_evidence_sport_activity":
+        "{duration} sportu podczas ostatnich przerw",
+    "coaching_evidence_completed_sessions":
+        "{count} ostatnio zakończone sesje robocze",
+    "coaching_evidence_ready_tasks": "{count} zaplanowane zadania gotowe",
+    "coaching_feedback": "Opinie trenerskie",
+    "coaching_feedback_saved":
+        "Twoja opinia będzie miała wpływ na przyszły coaching.",
+    "coaching_feedback_failed": "Nie można zapisać opinii na temat coachingu.",
+    "coaching_illustration_label": "Wizualny trener na kolejny przydatny krok",
+    "coaching_mood_celebrating": "Moment warty uwagi",
+    "coaching_mood_supportive": "Stały wsparcie",
+    "coaching_mood_firm": "Potrzebuje jasnej decyzji",
+    "coaching_mood_recovery": "Regeneracja i odpoczynek",
+    "coaching_mood_planning": "Planowanie kolejnych kroków",
+    "coaching_mood_celebrating_label": "Coach świętuje z Tobą postępy",
+    "coaching_mood_supportive_label":
+        "Coach oferujący spokój i stabilność wsparcie",
+    "coaching_mood_firm_label":
+        "Trener skupił się na wyraźnej decyzji dotyczącej zaległego zadania",
+    "coaching_mood_recovery_label":
+        "Trener sugeruje łagodniejszy rytm regeneracji",
+    "coaching_mood_planning_label": "Trener wyznacza jasny następny krok",
+    "coaching_expression_overwhelmed": "Przytłoczony",
+    "coaching_expression_overwhelmed_label":
+        "Coach przyznaje, że obecne obciążenie pracą wydaje się duże",
+    "coaching_expression_happy": "Szczęśliwy",
+    "coaching_expression_happy_label": "Coach gorąco docenia znaczący postęp",
+    "coaching_expression_encouraging": "Zachęcający",
+    "coaching_expression_encouraging_label":
+        "Coach oferujący spokój zachęta do wykonania następnego kroku",
+    "coaching_expression_unconvinced": "Nieprzekonany",
+    "coaching_expression_unconvinced_label":
+        "Coach zachęcający do ponownego rozważenia obecnego podejścia",
+    "coaching_expression_confident": "Pewny siebie",
+    "coaching_expression_confident_label":
+        "Coach wyrażający cichą wiarę w jasny plan",
+    "coaching_expression_quiet": "Cichy",
+    "coaching_expression_quiet_label":
+        "Trener tworzy spokojną pauzę bez zwiększania presji",
+    "coaching_expression_tired": "Zmęczony",
+    "coaching_expression_tired_label":
+        "Trener dostrzega zmęczenie i sugeruje łagodniejsze tempo",
+    "coaching_expression_sad": "Smutny",
+    "coaching_expression_sad_label":
+        "Coach ostrożnie reagujący na trudny moment",
+    "coaching_expression_frustrated": "Sfrustrowany",
+    "coaching_expression_frustrated_label":
+        "Coach dostrzegający frustrację i skupiający się na jednej decyzji",
+    "coaching_expression_confused": "Niepewny",
+    "coaching_expression_confused_label":
+        "Coach zauważający więcej dowodów jest potrzebny przed udzieleniem porady",
+    "coaching_expression_exhausted": "Wyczerpany",
+    "coaching_expression_exhausted_label":
+        "Trener dostrzegający potrzebę zmniejszenia ciśnienia i regeneracji",
+    "coaching_expression_unwell": "Nie w najlepszej formie",
+    "coaching_expression_unwell_label":
+        "Coach sugerujący opiekę i elastyczność bez stawiania diagnozy",
+    "coaching_expression_hurt": "Boli",
+    "coaching_expression_hurt_label":
+        "Trener delikatnie reaguje na niepowodzenie",
+    "coaching_expression_surprised": "Zaskoczony",
+    "coaching_expression_surprised_label":
+        "Trener zauważa nieoczekiwaną zmianę w Twoim planie",
+    "not_useful": "Nieprzydatne",
+    "wrong_timing": "Zły moment",
+    "wrong_assumption": "Błędne założenie",
+    "too_frequent": "Zbyt często",
+    "activity_title": "Aktywność",
+    "activity_subtitle":
+        "Sprawdź, co faktycznie się wydarzyło, bez utraty poszczególnych okresów aktywności.",
+    "activity_previous_day": "Poprzedni dzień",
+    "activity_next_day": "Następnego dnia",
+    "activity_daily_range": "Zakres dzienny",
+    "activity_now": "Teraz",
+    "activity_all": "Wszystkie",
+    "activity_related": "Powiązane",
+    "activity_breaks": "Przerwy",
+    "activity_cross_task": "Różne zadania",
+    "activity_inactive": "Nieaktywne",
+    "activity_needs_review": "Wymaga sprawdzenia",
+    "activity_total_observed": "Łącznie zaobserwowane",
+    "activity_active": "Aktywne",
+    "activity_uncertain": "Niepewne",
+    "activity_grouped_message":
+        "Twoja aktywność została pogrupowana, aby ułatwić przeglądanie dnia.",
+    "activity_total_today": "Łącznie dzisiaj",
+    "activity_total_recorded": "Łącznie zarejestrowana",
+    "activity_periods": "okresy aktywności",
+    "activity_last_used": "Ostatnie użycie",
+    "activity_classification": "Klasyfikacja aktywności",
+    "activity_first_detected": "Pierwszy wykryty",
+    "activity_last_detected": "Ostatnio wykryty",
+    "activity_review": "Przejrzyj aktywność",
+    "activity_load_more": "Załaduj więcej okresów",
+    "activity_assign_task": "Przypisz do innego zadania",
+    "activity_credit_to_tasks": "Przypisz zadania",
+    "activity_allocation_help":
+        "Wybierz jedno lub więcej zadań i przeznacz do 100% tego okresu aktywności.",
+    "activity_allocated_total": "Przydzielone: {percentage}%",
+    "activity_apply_allocation": "Zastosuj przydział",
+    "activity_learned_from_usage": "Nauczono na podstawie użycia",
+    "activity_suggested_by_taskmaster": "Sugestia DayVector",
+    "activity_useful_reading": "Przydatna lektura",
+    "break_activity_title": "Co robiłeś podczas przerwy?",
+    "break_activity_prompt":
+        "Nie wykryto żadnej aktywności urządzenia. Opcjonalnie możesz nagrywać czytanie, ćwiczenia, relaks, napój lub coś innego.",
+    "break_activity_reading": "Czytanie",
+    "break_activity_sport": "Ćwiczenia lub sport",
+    "break_activity_relaxing": "Relaks lub relaks",
+    "break_activity_drink": "Napój lub przekąska",
+    "break_activity_other": "Coś innego",
+    "break_activity_other_label": "Opisz działanie",
+    "break_activity_other_required": "Opisz, co zrobiłeś.",
+    "break_activity_assign_task": "Link do istniejącego zadania (opcjonalnie)",
+    "break_activity_assign_task_help":
+        "Wybierz zadanie tylko wtedy, gdy to działanie powinno się wliczać it.",
+    "break_activity_no_task": "Nie łącz zadania",
+    "break_activity_saved": "Przerwa została zapisana.",
+    "break_activity_save_failed": "Nie można zapisać przerwy.",
+    "activity_supporting_work": "Praca pomocnicza",
+    "activity_mark_distraction": "Rozproszenie",
+    "activity_not_related": "Niezwiązane z tym zadanie",
+    "activity_apply_scope":
+        "Zastosować to tylko do wybranego działania czy zapamiętać na potrzeby przyszłej aktywności?",
+    "activity_selected_only": "Tylko wybrane działanie",
+    "activity_remember_future": "Zapamiętać na potrzeby przyszłej aktywności",
+    "activity_multi_task_selected_only":
+        "Podział procentowy dotyczy tylko tego działania. Zapamiętana reguła aplikacji może być skierowana tylko na jedno zadanie.",
+    "activity_review_saved": "Przegląd aktywności został zapisany.",
+    "activity_save_failed": "Nie mogliśmy zapisać tego przeglądu aktywności.",
+    "activity_load_failed": "Nie mogliśmy załadować aktywności.",
+    "activity_no_task_targets": "Nie znaleziono dostępnego zadania.",
+    "activity_none_day": "W tym dniu nie zarejestrowano żadnej aktywności.",
+    "activity_none_review": "Żadna aktywność nie wymaga Twojego sprawdzenia",
+    "activity_none_review_detail":
+        "Twoja ostatnia aktywność jest już zorganizowana.",
+    "classification_related": "Związane z zadaniem",
+    "classification_productive": "Produktywne",
+    "classification_research": "Badania",
+    "classification_communication": "Komunikacja",
+    "classification_learning": "Nauka",
+    "classification_not_related": "Niepowiązane",
+    "tracking_active_windows": "Aktywne aplikacje Windows",
+    "tracking_active_windows_description":
+        "Rejestruje okresy użytkowania aplikacji, aby pomóc Ci zrozumieć, jak spędzasz czas.",
+    "tracking_android_apps": "Korzystanie z aplikacji na Androida",
+    "tracking_android_apps_description":
+        "Korzysta z aktywności dozwolonej w systemie Android historia po zatwierdzeniu dostępu.",
+    "tracking_window_titles": "Dołącz tytuły okien",
+    "tracking_window_titles_description":
+        "Opcjonalnie. Wyłącz tę opcję, aby rejestrować tylko nazwy aplikacji.",
+    "tracking_inactive": "Wykryj czas nieaktywności",
+    "tracking_inactive_description":
+        "Po {seconds} sekundach bez interakcji czas jest oznaczany do sprawdzenia.",
+    "detect_break_activity": "Rozpoznaj przydatną aktywność podczas przerw",
+    "detect_cross_task": "Rozpoznaj pracuj między zadaniami",
+    "automatic_trusted_rules": "Automatycznie stosuj zaufane reguły",
+    "retain_unclassified": "Zachowaj niesklasyfikowaną aktywność",
+    "retain_idle": "Zachowaj czas nieaktywności do sprawdzenia",
+    "tracking_rule_description":
+        "Aktywność jest przypisywana automatycznie tylko na podstawie zatwierdzonych przez Ciebie reguł.",
+    "tracking_sync": "Synchronizuj historię aktywności",
+    "tracking_sync_description":
+        "Zsynchronizuj zatwierdzoną historię aktywności z innymi urządzeniami.",
+    "tracking_local_description":
+        "Nowa aktywność pozostaje tylko na tym urządzeniu.",
+    "activity_and_privacy": "Aktywność i prywatność",
+    "privacy_and_vault": "Prywatność i przechowalnia haseł",
+    "activity_stays_on_device":
+        "Twoja szczegółowa aktywność pozostaje na tym urządzeniu",
+    "activity_stays_on_device_description":
+        "DayVector synchronizuje się tylko aktywność, którą połączysz z zadaniami lub aktywność sklasyfikowana według zatwierdzonych reguł.",
+    "synchronize_confirmed_contributions": "Synchronizuj potwierdzone wpisy",
+    "synchronize_confirmed_contributions_description":
+        "Udostępniaj innym urządzeniom małe zatwierdzone sumy zadań. Pozostały szczegółowe obserwacje.",
+    "synchronize_classification_rules": "Synchronizuj reguły klasyfikacji",
+    "synchronize_classification_rules_description":
+        "Korzystaj z spójnie zatwierdzonych reguł na swoich urządzeniach.",
+    "synchronize_detailed_activity": "Synchronizuj szczegółową aktywność",
+    "synchronize_detailed_activity_description":
+        "Domyślnie wyłączone. Szczegóły aplikacji, stron internetowych i dokumentów pozostają na tym urządzeniu.",
+    "detailed_activity_sync_question":
+        "Zsynchronizować szczegółową aktywność między urządzeniami?",
+    "detailed_activity_sync_warning":
+        "Może to obejmować nazwy aplikacji, strony internetowe i aktywność w dokumentach, w zależności od ustawień prywatności. Może również zwiększyć wykorzystanie sieci i pamięci.",
+    "review_privacy_settings": "Przejrzyj ustawienia prywatności",
+    "enable_sync": "Włącz synchronizację",
+    "local_activity_retention": "Przechowywanie aktywności lokalnej",
+    "local_activity_retention_description":
+        "Wybierz, jak długo szczegółowe obserwacje mają pozostać na tym urządzeniu.",
+    "retention_days": "{days} dni",
+    "retention_until_deleted": "Zachowaj do ręcznego usunięcia",
+    "hide_confirmed_system_activity": "Ukryj potwierdzoną aktywność systemu",
+    "show_possible_system_activity": "Pokaż możliwą aktywność systemu",
+    "community_system_learning": "Pomóż kategoryzować aplikacje",
+    "community_system_learning_description":
+        "Opcjonalnie. Po sklasyfikowaniu aplikacji udostępnij anonimową kategorię i ocenę przydatności, aby DayVector mógł podpowiadać prawdopodobne typy aplikacji innym osobom. Twoje konto, zadania, tytuły, strony, ścieżki ani historia aktywności nigdy nie są udostępniane.",
+    "community_system_learning_consent":
+        "Udostępniany jest wyłącznie chroniony identyfikator aplikacji oraz anonimowa kategoria i ocena przydatności. Wybór nie może wskazać Twojego konta ani połączyć głosów między aplikacjami. Sugestie nigdy nie zastępują Twojej decyzji.",
+    "share_anonymous_votes": "Zezwalaj na anonimowe głosy",
+    "review_hidden_system_activity": "Przejrzyj ukrytą aktywność systemu",
+    "clear_local_unclassified_activity":
+        "Wyczyść niesklasyfikowaną aktywność lokalną",
+    "clear_local_system_activity": "Wyczyść aktywność systemu lokalnego",
+    "clear_all_local_activity_details":
+        "Wyczyść wszystkie szczegóły aktywności lokalnej",
+    "export_local_activity": "Eksportuj aktywność lokalną",
+    "clear_local_activity_question": "Wyczyścić szczegóły aktywności lokalnej?",
+    "clear_local_activity_explanation":
+        "Potwierdzone sumy zadań, postęp planu działania i zapamiętane reguły pozostaną dostępne.",
+    "local_activity_cleared":
+        "{count} lokalne rekordy aktywności zostały wyczyszczone.",
+    "local_activity_exported": "Twój lokalny eksport aktywności jest gotowy.",
+    "possible_system_activity": "Możliwa aktywność systemu",
+    "system_activity": "Aktywność systemu",
+    "hidden_system_activity": "Ukryta aktywność systemu",
+    "user_application": "Aplikacja użytkownika",
+    "stored_on_this_device": "Przechowywane na tym urządzeniu",
+    "contribution_synchronized": "Wkład zsynchronizowany",
+    "activity_generally_unrelated": "Zwykle nieprzydatne",
+    "activity_treat_as_system": "Traktuj jako aktywność systemu",
+    "activity_this_is_user_application": "To jest aplikacja użytkownika",
+    "vault_title": "Sejf haseł",
+    "vault_create": "Utwórz magazyn haseł",
+    "vault_unlock": "Odblokuj",
+    "vault_lock_now": "Zablokuj teraz",
+    "vault_saved_accounts": "Zapisane konta",
+    "vault_not_configured_title": "Chroń swoje zapisane konta",
+    "vault_not_configured_body":
+        "Utwórz jedno hasło prywatności, aby bezpiecznie zapisywać i synchronizować dane logowania.",
+    "vault_locked_title": "Twój Magazyn haseł jest zablokowany",
+    "vault_locked_body":
+        "Odblokuj go, aby przeglądać zapisane konta lub z nich korzystać.",
+    "vault_settings": "Ustawienia Vault",
+    "vault_add_account": "Dodaj konto",
+    "vault_sync_problem": "Twoje zapisane konta nie zakończyły synchronizacji",
+    "vault_sync_problem_body":
+        "Twoje chronione dane pozostają bezpieczne na tym urządzeniu. Sprawdź połączenie lub spróbuj ponownie.",
+    "export_account_data": "Eksportuj dane konta",
+    "delete_account": "Usuń konto",
+    "recovery_30_days": "30-dniowy okres przywracania",
+    "sync_all_changes": "Wszystkie zmiany zsynchronizowane",
+    "sync_latest": "Synchronizacja zmiany…",
+    "sync_needs_attention": "Niektóre zmiany wymagają uwagi",
+    "sync_now": "Synchronizuj teraz",
+    "sync_last_now": "Ostatnia synchronizacja przed chwilą",
+    "sync_you_offline": "Offline — zmiany są bezpieczne na tym urządzeniu",
+    "sync_offline_compact": "Offline",
+    "sync_waiting_changes": "Zmiany czekają na synchronizację",
+    "notification_sound_description":
+        "Domyślnie system używa dźwięku powiadomienia wybranego na urządzeniu z Androidem. Niestandardowe dźwięki DayVector są również dostępne w trybie offline.",
+    "choose_android_sound": "Wybierz dźwięk systemu Android",
+    "preview_sound": "Podgląd wybranego dźwięku",
+    "send_test_notification": "Wyślij powiadomienie testowe",
+    "edit_profile": "Edytuj profil",
+    "choose_device_photo": "Wybierz z tego urządzenia",
+    "take_photo": "Zrób zdjęcie",
+    "app_updates": "Aktualizacje aplikacji",
+    "check_now": "Sprawdź teraz",
+    "whats_new": "Co nowego",
+    "release_notes_for": "Przeczytaj informacje o wersji v{version}",
+    "helpful": "Pomocne",
+    "task_actions": "Działania zadań",
+    "open_task_workspace": "Otwórz obszar roboczy zadania",
+    "edit_task": "Edytuj zadanie",
+    "duplicate": "Duplikuj",
+    "edit": "Edytuj",
+    "vault_create_failed":
+        "My nie można utworzyć magazynu haseł. Dane Twojego konta nie zostały zmienione. Spróbuj ponownie.",
+    "vault_wrong_password": "To hasło do skarbca jest nieprawidłowe.",
+    "vault_device_auth_failed":
+        "Uwierzytelnianie urządzenia nie odblokowało skarbca.",
+    "vault_unlock_title": "Odblokuj swój Magazyn haseł",
+    "vault_password": "Hasło do skarbca",
+    "vault_delete_saved_title": "Usuń to zapisane konto?",
+    "vault_delete_saved_body":
+        "{name} zostanie usunięte z Twojego zsynchronizowanego skarbca.",
+    "vault_protected_title": "Twoje zapisane konta są chronione",
+    "vault_protected_body":
+        "Odblokuj skarbiec przed wyświetleniem lub użyciem zapisanych danych logowania.",
+    "vault_search": "Przeszukaj zapisane konta",
+    "vault_empty":
+        "Nie ma jeszcze zapisanych kont. Dodaj go, gdy będziesz gotowy.",
+    "vault_status": "Stan skarbca",
+    "vault_unlocked_device": "Odblokowano na tym urządzeniu",
+    "last_successful_sync": "Ostatnia pomyślna synchronizacja",
+    "sync_not_completed_device": "Jeszcze nie ukończono na tym urządzeniu",
+    "vault_trusted_devices": "Zaufane urządzenia",
+    "registered_devices": "{count} zarejestrowane urządzenia",
+    "vault_automatic_lock": "Automatyczna blokada",
+    "vault_automatic_lock_detail":
+        "Po 5 minutach lub gdy aplikacja działa w tle",
+    "vault_automatic_lock_minutes": "Po {minutes} minutach",
+    "vault_lock_on_background": "Zablokuj, gdy aplikacja przechodzi w tło",
+    "vault_use_device_auth": "Użyj uwierzytelniania urządzenia",
+    "vault_device_auth_reason": "Odblokuj magazyn haseł DayVector",
+    "vault_change_password": "Zmień hasło skarbca",
+    "vault_current_password": "Aktualny skarbiec hasło",
+    "vault_new_password": "Nowe hasło do skarbca",
+    "vault_password_changed": "Twoje hasło do skarbca zostało zmienione.",
+    "vault_password_change_failed":
+        "Nie mogliśmy zmienić Twojego hasła do skarbca. Twoje zapisane konta są nadal dostępne.",
+    "vault_credential_saving": "Oferuj zapisywanie danych logowania do witryny",
+    "vault_credential_saving_detail":
+        "Pokaż opcję Magazynu haseł z obszarów roboczych przeglądarki zadań",
+    "vault_autofill": "Oferuj automatyczne uzupełnianie skarbca",
+    "vault_autofill_detail":
+        "Wymagaj odblokowania skarbca przed użyciem zapisanego logowania",
+    "vault_select_autofill_account":
+        "Wybierz zapisane konto, które chcesz wypełnić na tej stronie. DayVector nie prześle formularza.",
+    "vault_no_matching_account":
+        "Żadne zapisane konto nie pasuje do tej witryny. Najpierw dodaj dokładnie ten adres witryny.",
+    "vault_fill_sign_in": "Wypełnij dane logowania",
+    "vault_clear_local": "Wyczyść lokalne dane odblokowanego skarbca",
+    "vault_clear_local_detail":
+        "Usuwa zapamiętany klucz urządzenia bez usuwania zapisanych kont",
+    "vault_recovery_options": "Opcje odzyskiwania skarbca",
+    "vault_recovery_body":
+        "Twoje hasło do skarbca jest metodą odzyskiwania. Odblokowanie urządzenia działa tylko na tym urządzeniu. DayVector nie może odczytać ani zresetować chronionych zapisanych kont.",
+    "vault_learn_title": "Jak działa Magazyn haseł",
+    "vault_learn_body":
+        "Twoje hasło do skarbca odblokowuje zapisane konta na Twoim urządzeniu. Chronione dane skarbca można synchronizować, ale czytelne nazwy użytkowników i hasła nigdy nie są przesyłane.",
+    "got_it": "Rozumiem",
+    "learn_how": "Dowiedz się, jak to działa",
+    "vault_open_recovery": "Otwórz opcje odzyskiwania",
+    "vault_conflict": "Kopia powodująca konflikt wymaga sprawdzenia",
+    "username": "Nazwa użytkownika",
+    "copy_username": "Kopiuj nazwę użytkownika",
+    "hide_password": "Ukryj hasło",
+    "show_password": "Pokaż hasło",
+    "copy_password": "Kopiuj hasło",
+    "open_website": "Otwórz witryna internetowa",
+    "vault_create_title": "Utwórz skarbiec haseł",
+    "vault_create_body":
+        "Wybierz hasło do skarbca, które będziesz pamiętać. Wymagane jest odblokowanie chronionych kont na nowym urządzeniu.",
+    "confirm_vault_password": "Potwierdź hasło do skarbca",
+    "vault_allow_device_auth": "Użyj tego urządzenia, aby odblokować",
+    "vault_device_key_detail":
+        "Korzystaj z zabezpieczeń urządzenia, takich jak dane biometryczne lub Windows Hello, jeśli są dostępne. Chroniony klucz urządzenia nigdy nie opuszcza tego urządzenia.",
+    "vault_create_action": "Utwórz skarbiec",
+    "vault_password_length": "Użyj co najmniej 10 znaków.",
+    "vault_password_mismatch": "Hasła nie pasują.",
+    "vault_add_saved": "Dodaj zapisane konto",
+    "vault_edit_account": "Edytuj konto",
+    "vault_account_name": "Nazwa konta",
+    "website": "Strona internetowa",
+    "private_notes": "Notatki prywatne",
+    "vault_save_account": "Zapisz konto",
+    "vault_review_captured_sign_in":
+        "Przejrzyj to logowanie przed jego zapisaniem. Nic nie zostanie zapisane, dopóki nie wybierzesz opcji Zapisz konto.",
+    "synchronization": "Synchronizacja",
+    "sync_close_panel": "Zamknij panel synchronizacji",
+    "sync_connection": "Połączenie",
+    "sync_connected": "Połączono",
+    "sync_changes_waiting": "Zmiany oczekujące",
+    "sync_changes_attention": "Zmiany wymagające uwagi",
+    "sync_current_device": "Aktualne urządzenie",
+    "sync_connected_account": "Połączone konto",
+    "signed_out": "Wylogowano",
+    "sync_registered_devices": "Zarejestrowane urządzenia",
+    "taskmaster_device": "Urządzenie DayVector",
+    "version_label": "Wersja {version}",
+    "connected_devices": "Połączone urządzenia",
+    "profile_and_account": "Profil i konto",
+    "connected_devices_description":
+        "Przejrzyj zalogowane urządzenia i usuń dostęp z innego urządzenie.",
+    "refresh_connected_devices": "Odśwież urządzenia",
+    "connected_devices_empty": "Nie znaleziono zalogowanych urządzeń",
+    "connected_devices_empty_detail":
+        "Odśwież po zalogowaniu się na innym telefonie lub komputerze.",
+    "connected_devices_load_failed": "Nie można załadować urządzeń",
+    "connected_devices_load_failed_detail":
+        "Sprawdź połączenie i odśwież tę stronę.",
+    "this_device": "To urządzenie",
+    "last_active": "Ostatnia aktywność",
+    "device_platform_android": "Android",
+    "device_platform_windows": "Windows",
+    "sign_out_device": "Wyloguj urządzenie",
+    "sign_out_device_question": "Wyloguj się z tego urządzenia?",
+    "sign_out_device_explanation":
+        "DayVector odbierze mu dostęp do konta. Niezsynchronizowane zmiany zapisane tylko na tym urządzeniu mogą nie być dostępne gdzie indziej.",
+    "device_signed_out": "Urządzenie zostało wylogowane.",
+    "show_technical_details": "Otwórz szczegóły techniczne",
+    "hide_technical_details": "Ukryj szczegóły techniczne",
+    "sync_everything_up_to_date": "Wszystko jest aktualne.",
+    "sync_offline_saved":
+        "Twoje zmiany zostały zapisane i zostaną zsynchronizowane automatycznie po przywróceniu połączenia.",
+    "sync_most_completed":
+        "Większość zmian została zsynchronizowana. Elementy {count} nadal wymagają uwagi.",
+    "sync_failed_saved":
+        "Nie udało się ukończyć synchronizacji. Twoje zmiany są nadal zapisane na tym urządzeniu. Spróbuj ponownie wkrótce.",
+    "sync_waiting_count": "Zmiany {count} czekają na synchronizację.",
+    "sync_last_just_now": "Ostatnia synchronizacja właśnie teraz.",
+    "sync_offline_reconnect":
+        "Twoje zmiany zostały zapisane i zostaną zsynchronizowane po ponownym połączeniu.",
+    "sync_some_attention": "Niektóre zmiany wymagają Twojej uwagi",
+    "sync_items_failed":
+        "Nie udało się jeszcze zsynchronizować elementów {count}.",
+    "syncing_latest": "Synchronizacja najnowszych zmian…",
+    "sync_auto_retry_message":
+        "Przejrzyj wymienione zmiany. Automatyczna ponowna próba jest zarezerwowana w przypadku tymczasowych błędów połączenia.",
+    "sync_diagnostics": "Diagnostyka synchronizacji",
+    "sync_realtime_state": "Stan połączenia w czasie rzeczywistym",
+    "sync_active_realtime_connections":
+        "Aktywne połączenia w czasie rzeczywistym",
+    "sync_active_account_channels": "Aktywne kanały konta",
+    "sync_registered_event_handlers":
+        "Zarejestrowane procedury obsługi zdarzeń",
+    "sync_duplicate_handlers_detected":
+        "Wykryto zduplikowane procedury obsługi",
+    "sync_disconnected": "Rozłączono",
+    "sync_failed_commands": "Nieudane polecenia",
+    "sync_traffic_diagnostics": "Ruch synchronizacyjny",
+    "sync_no_traffic_yet":
+        "Nie zarejestrowano jeszcze ruchu synchronizacyjnego.",
+    "sync_traffic_values":
+        "Żądania: {requests} · Pobrano: {downloaded} B · Przesłano: {uploaded} B · Czas rzeczywisty: {realtime} · Powtórzono: {repeated} · Największy: {largest} B",
+    "sync_copy_diagnostics": "Kopiuj diagnostykę",
+    "sync_diagnostics_copied": "Diagnostyka synchronizacji została skopiowana.",
+    "sync_retry_failed_changes": "Sprawdź synchronizację ponownie",
+    "sync_conflicts_title": "Decyzje dotyczące synchronizacji",
+    "sync_resolve_automatically": "Rozwiąż automatycznie",
+    "sync_dismiss_conflict": "Zamknij konflikt",
+    "sync_discard_local_change": "Odrzuć zmianę lokalną",
+    "sync_keep_server_version": "Zachowaj wersję serwera",
+    "sync_keep_device_version": "Zachowaj wersję tego urządzenia",
+    "sync_review_differences": "Przejrzyj różnice",
+    "sync_clear_resolved_conflicts": "Wyczyść rozwiązane konflikty",
+    "sync_decide_later": "Zdecyduj później",
+    "sync_server_version": "Wersja serwera",
+    "sync_this_device_version": "To urządzenie",
+    "sync_server_version_available":
+        "Wykorzystana zostanie wersja już zapisana na Twoim koncie.",
+    "sync_discard_local_question": "Odrzucić tę lokalną zmianę?",
+    "sync_discard_local_explanation":
+        "Wersja już zapisana na Twoim koncie zostanie zachowana. Oczekująca zmiana na tym urządzeniu zostanie usunięta.",
+    "sync_no_conflicts": "Żadne zmiany nie wymagają decyzji o synchronizacji.",
+    "sync_conflict_already_resolved": "Już rozwiązane",
+    "sync_conflict_duplicate": "Zduplikowana zmiana",
+    "sync_conflict_superseded": "Zastąpiona nowszą zmianą",
+    "sync_conflict_permanent_failure": "Nie można zastosować zmiany",
+    "sync_conflict_revision": "Zmieniono na innym urządzeniu",
+    "sync_conflict_discarded": "Zmiana lokalna odrzucona",
+    "sync_conflict_needs_review": "Wymaga Twojej decyzji",
+    "task_activity": "Aktywność zadania",
+    "task_total_time": "Całkowity czas zadania",
+    "task_related_activity": "Powiązana aktywność",
+    "task_distracting": "Rozpraszanie",
+    "task_activity_empty":
+        "Nie zarejestrowano jeszcze żadnej aktywności dla tego zadania",
+    "task_activity_empty_detail":
+        "Aplikacje, strony internetowe, dokumenty, czas nieaktywności i praca między zadaniami pojawią się tutaj po ich wykryciu.",
+    "range_current_session": "Bieżąca sesja",
+    "range_this_week": "W tym tygodniu",
+    "range_task_history": "Cała historia zadań",
+    "range_custom": "Niestandardowy zakres dat",
+    "activity_review_recommended": "Zalecany przegląd aktywności",
+    "activity_review_over_half":
+        "Ponad połowa tej sesji nie została jeszcze połączona z zadaniem. Przeglądaj aktywność, aby zachować dokładność swoich postępów.",
+    "view_profile": "Wyświetl profil",
+    "active_execution": "Aktywne zadanie",
+    "snooze": "Odłóż",
+    "dismiss": "Zamknij",
+    "notification_test_body": "To jest przykładowe powiadomienie DayVector.",
+    "notification_test_failed":
+        "Nie można wysłać powiadomienia testowego. Sprawdź uprawnienia powiadomień i wybrany dźwięk.",
+    "notification_channel_system": "DayVector — ustawienie domyślne systemu",
+    "notification_channel_system_description":
+        "Przypomnienia o zadaniach wykorzystujące dźwięk wybrany na tym urządzeniu",
+    "notification_channel_tasks": "DayVector — przypomnienia o zadaniach",
+    "notification_channel_tasks_description":
+        "Przypomnienia o zadaniach i zdarzenia wykonania",
+    "notification_channel_activity": "DayVector — przegląd aktywności",
+    "notification_channel_activity_description":
+        "Aktywność wymagająca sprawdzenia",
+    "reminder_before_start":
+        "Przygotuj się teraz, aby móc rozpocząć punktualnie",
+    "reminder_start": "Nadszedł planowany czas rozpoczęcia",
+    "reminder_planned_end":
+        "Sprawdź postęp i zdecyduj, czy zakończyć, czy kontynuować",
+    "reminder_due": "To zadanie jest zakończone",
+    "reminder_overdue": "To zadanie jest spóźnione i wymaga decyzji",
+    "reminder_missed": "To zadanie nie zostało rozpoczęte zgodnie z planem",
+    "reminder_open_task": "Open DayVector, aby sprawdzić to zadanie",
+    "activity_review_notification_title": "Sprawdź aktywność w tej sesji",
+    "sound_system": "Domyślne ustawienia systemu",
+    "sound_silent": "Cichy",
+    "sound_alert": "Delikatny dzwonek",
+    "sound_alarm": "Wyczyść przypomnienie",
+    "sound_app_notification": "Cichy sygnał dźwiękowy",
+    "sound_click": "Cichy puls",
+    "sound_done": "Dźwięk zakończenia",
+    "sound_notification": "Skupione przypomnienie",
+    "sound_ui_tone": "Sygnał spokoju",
+    "exit": "Wyjdź",
+    "exit_app_question": "Wyjdź z DayVector?",
+    "exit_active_timer_saved":
+        "Twój aktywny licznik czasu pozostanie zapisany i zostanie przywrócony, gdy ponownie otworzysz aplikację.",
+    "back_exit_hint": "Przesuń palcem lub naciśnij ponownie, aby wyjść",
+    "update_close_notes": "Zamknij informacje o aktualizacji",
+    "update_got_it": "Rozumiem — zacznij korzystać z DayVector",
+    "update_welcome": "Witamy w DayVector",
+    "update_installed": "DayVector został zaktualizowany",
+    "update_version": "Wersja {version}",
+    "update_notes_unavailable":
+        "Informacje o aktualizacji nie są w tej chwili dostępne.",
+    "update_view_full_notes": "Wyświetl pełne informacje o wersji",
+    "update_copy_notes_link": "Skopiuj link do informacji o wersji",
+    "update_ready": "DayVector {version} jest gotowy",
+    "update_newer_available": "Dostępna jest nowsza wersja dla tego urządzenia",
+    "update_download_progress": "Pobieranie {percent}%",
+    "update_open_failed":
+        "Nie można otworzyć aktualizacji. Nadal możesz pobrać ją ze strony wydania.",
+    "not_now": "Nie teraz",
+    "release_notes": "Informacje o wersji",
+    "download_update": "Pobierz aktualizację",
+    "size_on_github": "Rozmiar wyświetlany w GitHub",
+    "account_confirm_identity": "Potwierdź to Ty",
+    "account_confirmation_code_sent":
+        "Wysłaliśmy kod potwierdzający na adres e-mail Twojego konta. Wprowadź go przed zmianą statusu usunięcia konta.",
+    "account_confirmation_code": "Kod potwierdzający",
+    "account_confirm": "Potwierdź",
+    "account_identity_confirmation_failed":
+        "Nie mogliśmy potwierdzić Twojej tożsamości. Sprawdź kod i spróbuj ponownie.",
+    "account_schedule_deletion_title": "Zaplanować usunięcie konta?",
+    "account_schedule_deletion_warning":
+        "Twoje konto zostanie zaplanowane do usunięcia. Będziesz miał 30 dni na anulowanie. Następnie Twoje konto i zsynchronizowane dane zostaną trwale usunięte.",
+    "account_deletion_includes":
+        "Dotyczy to zadań, planów działania, chronionych danych skarbca, zsynchronizowanej aktywności, multimediów profilowych i zarejestrowanych urządzeń.",
+    "account_type_delete": "Wpisz DELETE, aby kontynuować",
+    "account_keep": "Zachowaj moje konto",
+    "account_continue": "Kontynuuj konto",
+    "account_schedule_deletion_failed":
+        "Nie mogliśmy zaplanować usunięcia konta. Twoje konto pozostaje aktywne.",
+    "account_deletion_cancelled":
+        "Usunięcie konta anulowane. Twoje konto i dane pozostaną dostępne.",
+    "account_deletion_countdown": "Twoje konto zostanie usunięte za {days} dni",
+    "account_deletion_signin_warning":
+        "Zalogowanie się nie anuluje usunięcia. Anuluj je wyraźnie przed zakończeniem okresu odzyskiwania.",
+    "account_cancel_deletion": "Anuluj usunięcie konta",
+    "account_delete_heading": "Usuń swoje konto DayVector",
+    "account_delete_recovery_detail":
+        "Usunięcie rozpoczyna się od 30-dniowego okresu odzyskiwania. Możesz anulować w tym okresie po potwierdzeniu swojej tożsamości.",
+    "account_schedule_deletion": "Zaplanuj usunięcie konta",
+    "schedule_wellbeing": "Harmonogram i dobrostan",
+    "schedule_daily_rhythm": "Codzienny rytm",
+    "schedule_wake_time": "Godzina pobudki",
+    "schedule_sleep_time": "Godzina snu",
+    "schedule_working_days": "Dni pracy",
+    "schedule_native_work_title": "Wbudowany harmonogram pracy",
+    "schedule_native_work_description":
+        "DayVector przypomina o pracy bez tworzenia sztucznego zadania.",
+    "schedule_rotation_title": "Zmienne zmiany",
+    "schedule_rotation_description":
+        "Ustaw kolejne tygodnie z różnymi godzinami rozpoczęcia.",
+    "schedule_add_rotation_week": "Dodaj tydzień zmiany",
+    "schedule_remove_rotation_week": "Usuń tydzień zmiany",
+    "schedule_work_reminder": "Przypomnienie przed pracą",
+    "schedule_work_reminder_description":
+        "Wysyłaj alarm przed kolejnym zaplanowanym rozpoczęciem pracy.",
+    "schedule_work_pomodoro": "Zaproponuj Pomodoro przy rozpoczęciu pracy",
+    "schedule_work_activity_credit": "Oznaczaj użyteczny czas pracy",
+    "schedule_work_activity_credit_description":
+        "Porównuj zarejestrowaną aktywność z kategoriami produktywnymi.",
+    "work_schedule_reminder_title": "Czas przygotować się do pracy",
+    "work_schedule_reminder_body":
+        "Następna zmiana zaczyna się za {minutes} min.",
+    "schedule_work_starts": "Początek pracy",
+    "schedule_work_ends": "Koniec pracy",
+    "schedule_quiet_starts": "Początek ciszy nocnej",
+    "schedule_quiet_ends": "Koniec ciszy nocnej",
+    "schedule_rest_coaching": "Odpoczynek i coaching",
+    "schedule_sleep_reminder": "Przypomnienie o śnie",
+    "schedule_sleep_reminder_description":
+        "Delikatne przypomnienie przed planowaną porą snu",
+    "schedule_reminder_offset": "Przypomnienie przed rozpoczęciem",
+    "schedule_phone_analysis": "Analiza użytkowania telefonu",
+    "schedule_phone_analysis_description":
+        "Używaj dozwolonej aktywności telefonu jako kontekstu pomocniczego, a nie jako wniosku medycznego",
+    "schedule_coaching_sensitivity": "Czułość coachingowa",
+    "coaching_quiet": "Cichy",
+    "coaching_standard": "Standardowy",
+    "coaching_active": "Aktywny",
+    "coaching_persistent": "Trwały",
+    "health_data": "Dane dotyczące zdrowia",
+    "health_connected_sources": "Połączone źródła zdrowia",
+    "health_connected_sources_description":
+        "Importuj autoryzowane kroki, sen, ćwiczenia, dystans, aktywne kalorie i tętno podsumowania",
+    "health_sync_summaries": "Synchronizuj zatwierdzone podsumowania",
+    "health_sync_summaries_description":
+        "Szczegółowe, nieprzetworzone dane dotyczące stanu zdrowia pozostają na Androidzie",
+    "schedule_health_disclaimer":
+        "Statystyki dotyczące snu i korzystania z telefonu pomagają tylko w planowaniu. DayVector nie diagnozuje warunków snu ani stanu zdrowia i możesz poprawić zaimportowane interpretacje.",
+    "weekday_mon": "Pon",
+    "weekday_tue": "Wt",
+    "weekday_wed": "Śr",
+    "weekday_thu": "Czw",
+    "weekday_fri": "Pt",
+    "weekday_sat": "Sob",
+    "weekday_sun": "Niedz",
+    "health_connect": "Health Connect",
+    "health_android_only":
+        "Health Connect jest dostępny w wersji DayVector na Androida.",
+    "health_check_failed":
+        "Nie mogliśmy sprawdzić Health Connect. Spróbuj ponownie wkrótce.",
+    "health_permission_failed":
+        "Żądane zezwolenie dotyczące stanu zdrowia nie zostało przyznane.",
+    "health_read_failed":
+        "Nie udało się odczytać danych dotyczących stanu zdrowia. Sprawdź swoje uprawnienia i spróbuj ponownie.",
+    "health_summaries_removed":
+        "Zaimportowane podsumowania stanu zdrowia zostały usunięte z tego urządzenia.",
+    "health_connected": "Połączono",
+    "health_data_received_popup": "Dane odebrane",
+    "health_permission_required_state": "Wymagane pozwolenie",
+    "health_connected_no_recent": "Połączono — brak ostatnich rekordów",
+    "health_connected_no_recent_detail":
+        "Dostęp jest dostępny, ale w ciągu ostatnich dwóch dni nie odebrano obsługiwanego rekordu.",
+    "health_connection_needs_attention": "Połączenie wymaga uwagi",
+    "health_connection_needs_attention_detail":
+        "DayVector nie mógł odczytać autoryzowanych zapisów zdrowotnych. Sprawdź dostęp i spróbuj ponownie.",
+    "health_connect_context": "Połącz kontekst zdrowotny",
+    "health_read_only_active": "Dostęp tylko do odczytu jest aktywny",
+    "health_permission_explanation":
+        "DayVector wyjaśnia uprawnienia, zanim Android otworzy panel systemowy.",
+    "health_permission_detail":
+        "Za Twoją zgodą aplikacja może odczytywać kroki, ćwiczenia, dystans i tętno tętno, sen i aktywne kalorie. Dane dotyczące zdrowia są wykorzystywane wyłącznie w kontekście produktywności i nigdy nie stanowią diagnozy medycznej.",
+    "health_continue_permissions": "Przejdź do uprawnień Androida",
+    "health_install_connect": "Zainstaluj lub zaktualizuj Health Connect",
+    "health_refresh_seven_days": "Odśwież dane dotyczące zdrowia",
+    "health_manage_access": "Zarządzaj dostępem Health Connect",
+    "health_operation_timed_out":
+        "Udzielenie odpowiedzi przez Health Connect trwało zbyt długo. Żadne dane nie zostały zmienione. Sprawdź dostęp w Health Connect, a następnie spróbuj ponownie.",
+    "health_disconnect": "Rozłącz",
+    "health_recent_context": "Dzisiejszy kontekst zdrowotny",
+    "health_weekly_steps": "Twój tydzień w ruchu",
+    "health_weekly_steps_detail":
+        "Kroki udostępnione w ciągu ostatnich siedmiu dni.",
+    "health_pull_to_refresh":
+        "Przesuń palcem w dół od góry, aby zaktualizować stan zdrowia i oglądać połączenia.",
+    "health_steps": "Kroki",
+    "health_distance": "Dystans",
+    "health_average_heart_rate": "Średnie tętno",
+    "health_sleep": "Sen",
+    "health_active_energy": "Energia aktywna",
+    "health_workouts": "Treningi",
+    "health_this_week": "w tym tygodniu",
+    "health_available_sources": "Połączone źródła zdrowia",
+    "health_no_records": "Nie zwrócono żadnych rekordów",
+    "health_permissions_ready": "Pozwolenie udzielone — oczekiwanie na dane",
+    "health_permissions_no_source":
+        "DayVector może odczytać Health Connect, ale żadna aplikacja dotycząca zdrowia nie udostępniła jeszcze obsługiwanego rekordu.",
+    "health_no_records_explanation":
+        "Nie znaleziono obsługiwanych rekordów zdrowotnych. W aplikacji zdrowotnej włącz udostępnianie za pomocą Health Connect i odśwież stronę ponownie.",
+    "health_no_recent_records_explanation":
+        "W ciągu ostatnich dwóch dni nie otrzymano żadnej dokumentacji zdrowotnej. Otwórz aplikację rejestrującą Twoje dane zdrowotne, pozwól jej zsynchronizować, potwierdź, że może udostępnić Health Connect, a następnie odśwież tutaj.",
+    "health_no_records_today_explanation":
+        "Health Connect udostępnił najnowsze dane, ale jeszcze nic na dzisiaj. Poniższe karty pokazują tylko dzisiaj. Otwórz aplikację rejestrującą Twoje dane dotyczące zdrowia, pozwól jej zsynchronizować, a następnie odśwież tutaj.",
+    "health_on_device_steps_waiting":
+        "Nie znaleziono żadnych ostatnio udostępnionych rekordów. Po przyznaniu dostępu Android może zacząć liczyć kroki tego telefonu. Noś telefon podczas spaceru, odczekaj kilka minut, a następnie odśwież. W przypadku snu, tętna, treningów i kalorii włącz udostępnianie Health Connect w aplikacji, która je rejestruje.",
+    "health_partial_import":
+        "Zaimportowano dostępne dane zdrowotne. Nie można odczytać co najmniej jednej kategorii i można spróbować ponownie.",
+    "health_delete_summaries": "Usuń zaimportowane podsumowania stanu zdrowia",
+    "health_and_rest": "Zdrowie i odpoczynek",
+    "health_stale":
+        "Dane dotyczące zdrowia nie były ostatnio aktualizowane. Otwórz DayVector na telefonie z Androidem, aby go odświeżyć.",
+    "health_updated_from_android":
+        "Zaktualizowano z Twojego telefonu z Androidem",
+    "health_windows_privacy_detail":
+        "Te podsumowania tylko do odczytu zapewniają kontekst planowania. Szczegółowe nieprzetworzone dane dotyczące stanu zdrowia pozostają w systemie Android, chyba że wyraźnie zezwolisz na szerszą synchronizację.",
+    "update_up_to_date": "DayVector {version} jest aktualny.",
+    "update_check_failed":
+        "Nie można teraz sprawdzić aktualizacji. Spróbuj ponownie w trybie online.",
+    "account_export_success": "Dane konta zostały wyeksportowane pomyślnie.",
+    "account_export_path": "Dane konta zostały wyeksportowane do {path}",
+    "account_export_failed":
+        "Nie mogliśmy wyeksportować danych Twojego konta. Spróbuj ponownie wkrótce.",
+    "usage_access_title": "Zezwalaj na dostęp do użytkowania systemu Android?",
+    "usage_access_description":
+        "Android może udostępniać informacje o ostatnim użyciu aplikacji i aktywności na ekranie po włączeniu DayVector na stronie Dostęp do wykorzystania systemu. Nie udostępnia tych samych szczegółów tytułu okna, co w systemie Windows.",
+    "usage_open_settings": "Otwórz ustawienia Androida",
+    "schedule_wellbeing_description":
+        "Godziny budzenia i snu, dni pracy, godziny ciszy, uprawnienia zdrowotne i wrażliwość na coaching",
+    "cycle_optional": "Opcjonalne śledzenie cyklu",
+    "cycle_optional_description":
+        "Domyślnie wyłączone i nigdy nie wynika z płci",
+    "cycle_storage": "Przechowywanie danych cyklu",
+    "cycle_local_only": "Tylko to urządzenie",
+    "cycle_encrypted_sync": "Szyfrowana synchronizacja",
+    "cycle_open_calendar": "Otwórz kalendarz cyklu",
+    "app_version": "DayVector {version}",
+    "app_update_security_detail":
+        "Przed pobraniem sprawdź, czy jest nowsza wersja DayVector i sprawdź, co się zmieniło.",
+    "view_privacy_policy": "Wyświetl Politykę prywatności",
+    "view_terms_of_use": "Wyświetl Warunki korzystania",
+    "gender": "Płeć",
+    "gender_profile_only":
+        "Używane tylko w Twoim profilu. Śledzenie cyklu jest kontrolowane osobno.",
+    "gender_not_set": "Nie ustawiono",
+    "gender_woman": "Kobieta",
+    "gender_man": "Mężczyzna",
+    "gender_non_binary": "Niebinarny",
+    "gender_self_described": "Opisany samodzielnie",
+    "gender_prefer_not": "Wolę nie mówić",
+    "profile_uploading_picture": "Przesyłanie zdjęcia…",
+    "profile_saving": "Zapisywanie Twojego profilu...",
+    "profile_picture_update_failed":
+        "Nie mogliśmy zaktualizować Twojego zdjęcia. Twoje poprzednie zdjęcie jest nadal dostępne. Spróbuj ponownie.",
+    "profile_picture_select_failed":
+        "Nie mogliśmy otworzyć tego zdjęcia. Wybierz inne zdjęcie i spróbuj ponownie.",
+    "profile_updated": "Twój profil został zaktualizowany.",
+    "profile_picture_updated":
+        "Twoje zdjęcie profilowe zostało zaktualizowane.",
+    "profile_choose_picture": "Wybierz zdjęcie profilowe",
+    "profile_save": "Zapisz profil",
+    "sync_working_offline": "Jesteś praca w trybie offline",
+    "sync_latest_available":
+        "Twoje najnowsze zmiany są dostępne na podłączonych urządzeniach.",
+    "sync_review_detail":
+        "Przejrzyj oczekujące zmiany, połącz urządzenia lub spróbuj ponownie.",
+    "sync_last_synced_value": "Ostatnia synchronizacja {time}",
+    "health_android_phone": "Telefon z Androidem",
+    "health_android_summaries":
+        "Podsumowania stanu zdrowia z Twojego telefonu z Androidem",
+    "health_source_updated": "{source} · ostatnia aktualizacja {time}",
+    "calendar_history": "Kalendarz i historia",
+    "calendar_month": "Miesiąc",
+    "calendar_two_weeks": "2 tygodnie",
+    "calendar_week": "Tydzień",
+    "calendar_previous_range": "Poprzedni {range}",
+    "calendar_next_range": "Następny {range}",
+    "calendar_view": "Widok kalendarza: {range}",
+    "calendar_history_filter": "Historia",
+    "calendar_task": "Zadanie",
+    "calendar_task_history": "Zadania i historia zadań",
+    "calendar_empty_day":
+        "Brak zaplanowanych prac ani zapisanej historii na ten dzień",
+    "cycle_entry": "Cykl wpis",
+    "cycle_delete_title": "Usunąć wpis cyklu?",
+    "cycle_delete_description":
+        "To usuwa wybrane dane cyklu bez usuwania zadań lub danych konta.",
+    "cycle_delete_entry": "Usuń wpis",
+    "cycle_calendar": "Kalendarz cyklu",
+    "cycle_add_for_day": "Dodaj wpis cyklu dla tego dnia",
+    "cycle_period_started": "Rozpoczęty okres",
+    "cycle_period_ended": "Okres zakończony",
+    "cycle_note": "Notatka cyklu",
+    "cycle_flow_value": "Przepływ: {value}",
+    "cycle_energy_value": "Energia: {value}",
+    "cycle_protect_sync": "Chroń zsynchronizowane dane dotyczące cykli",
+    "cycle_passphrase_description":
+        "Wybierz hasło używane wyłącznie do szyfrowania i odszyfrowywania danych dotyczących cykli na Twoich urządzeniach. Nigdy nie jest przesyłane.",
+    "cycle_passphrase": "Hasło",
+    "cycle_confirm_passphrase": "Potwierdź hasło",
+    "cycle_enable_encryption": "Włącz szyfrowanie",
+    "cycle_entry_date": "Cykl wpis · {date}",
+    "cycle_flow": "Przepływ",
+    "cycle_energy": "Energia",
+    "cycle_value_not_recorded": "Nie zarejestrowano",
+    "cycle_value_light": "Mały",
+    "cycle_value_medium": "Średni",
+    "cycle_value_heavy": "Ciężki",
+    "cycle_value_low": "Niski",
+    "cycle_value_steady": "Stały",
+    "cycle_value_high": "Wysoki",
+    "cycle_symptoms": "Objawy",
+    "cycle_symptoms_hint": "Opcjonalnie, oddziel przecinkami",
+    "cycle_private_notes": "Prywatne notatki",
+    "cycle_entry_encrypted": "Ten wpis jest zaszyfrowany przed synchronizacją",
+    "cycle_entry_local": "Ten wpis pozostaje na tym urządzeniu",
+    "cycle_save_entry": "Zapisz wpis",
+    "auth_preparation_attention": "Twoje konto wymaga uwagi",
+    "auth_preparation_detail":
+        "Nie mogliśmy dokończyć przygotowywania tego urządzenia. Dane Twojego konta pozostają bezpieczne. Spróbuj ponownie wkrótce.",
+    "auth_connection_failed":
+        "W tej chwili nie mogliśmy się połączyć. Twoja zapisana sesja i praca offline są bezpieczne.",
+    "auth_google_browser_opened":
+        "Zakończ logowanie w przeglądarce. DayVector będzie kontynuować automatycznie.",
+    "auth_google_completing": "Google Cię potwierdził. Opening DayVector…",
+    "auth_google_cancelled":
+        "Logowanie Google zostało anulowane. Możesz spróbować ponownie, kiedy tylko będziesz gotowy.",
+    "auth_google_expired":
+        "Próba zalogowania się przez Google wygasła. Zamknij starsze karty logowania, a następnie spróbuj jeszcze raz w DayVector.",
+    "auth_google_rejected":
+        "Google nie może dokończyć tego logowania. Wróć do DayVector i spróbuj jeszcze raz.",
+    "auth_google_connection_failed":
+        "DayVector otrzymał odpowiedź na logowanie, ale nie mógł się połączyć. Sprawdź połączenie i spróbuj ponownie.",
+    "auth_google_wait_timeout":
+        "Nadal czekam na Google. Jeśli zamknąłeś kartę przeglądarki, spróbuj ponownie tutaj.",
+    "auth_link_recently_sent":
+        "Link został niedawno wysłany. Daj chwilę, a następnie spróbuj ponownie.",
+    "auth_signin_rejected":
+        "Te dane logowania nie zostały zaakceptowane. Sprawdź je lub wybierz Google.",
+    "auth_signup_failed":
+        "Nie mogliśmy dokończyć tworzenia konta. Przejrzyj szczegóły i spróbuj ponownie.",
+    "auth_signup_email_invalid":
+        "Użyj adresu e-mail, na który można odbierać wiadomości. Zarezerwowane lub tymczasowe adresy testowe nie są akceptowane.",
+    "auth_signup_password_weak":
+        "Wybierz silniejsze hasło, a następnie spróbuj ponownie utworzyć konto.",
+    "auth_signup_account_exists":
+        "Konto używa już tego adresu e-mail. Zamiast tego zaloguj się lub zresetuj hasło.",
+    "auth_signup_unavailable":
+        "Utworzenie nowego konta jest tymczasowo niedostępne. Spróbuj ponownie później.",
+    "auth_accept_policies_required":
+        "Zaakceptuj Warunki korzystania z usługi i Politykę prywatności, aby kontynuować.",
+    "auth_confirmation_resent": "Nowy link potwierdzający jest już w drodze.",
+    "auth_enter_email_reset":
+        "Wpisz swój adres e-mail, aby otrzymać link resetujący.",
+    "auth_reset_link_sent":
+        "Sprawdź pocztę, aby uzyskać link do bezpiecznego resetowania.",
+    "auth_marketing_badge": "PLANUJ · WYKONAJ · UCZ SIĘ",
+    "auth_marketing_headline_compact": "Skoncentruj się na każdym celu",
+    "auth_marketing_headline": "Skoncentruj się na każdym celu\\\\\\\\n",
+    "auth_marketing_description":
+        "Ukształtuj ambitne cele w jasne plany działania, każdego dnia kieruj się celowością i pozwól, aby prawdziwy wysiłek kierował tym, co będzie dalej – online lub offline.",
+    "auth_feature_roadmaps": "Jasna ścieżka od celu do działania",
+    "auth_feature_offline_title": "Możliwość pracy w trybie offline",
+    "auth_feature_offline": "Pracuj bez przerwy połączenie",
+    "auth_feature_coaching_title": "Przejrzyste wskazówki",
+    "auth_feature_coaching": "Zalecenia poparte dowodami",
+    "auth_feature_devices_title": "Twoje urządzenia",
+    "auth_feature_devices": "Kontynuuj, gdziekolwiek zaprowadzi Cię dzień",
+    "auth_welcome_back": "Witamy ponownie",
+    "auth_create_workspace": "Utwórz swoje miejsce do pracy",
+    "auth_continue_progress": "Kontynuuj tam, gdzie skończyłeś swoje postępy",
+    "auth_workspace_description":
+        "Tu zaczyna się spokojniejszy system do ambitnej pracy",
+    "auth_or_email": "lub użyj adresu e-mail",
+    "auth_name_required": "Dodaj nazwę, którą chcesz zobacz",
+    "auth_email_invalid": "Wpisz prawidłowy adres e-mail",
+    "auth_show_password": "Pokaż hasło",
+    "auth_hide_password": "Ukryj hasło",
+    "auth_password_length": "Użyj co najmniej ośmiu znaków",
+    "auth_passwords_mismatch": "Hasła nie pasują",
+    "auth_privacy_note":
+        "Prywatny z założenia · zwykłe problemy z siecią nigdy Cię nie wylogowują",
+    "auth_confirmation_title": "Jedno kliknięcie i gotowe",
+    "auth_confirmation_sent_to": "Wysłaliśmy link potwierdzający na adres",
+    "auth_confirmation_instructions":
+        "Otwórz wiadomość na tym urządzeniu i wybierz Potwierdź adres e-mail. DayVector otworzy się ponownie i automatycznie zakończy logowanie.",
+    "auth_resend_confirmation": "Wyślij ponownie link potwierdzający",
+    "auth_return_signin": "Wróć, aby się zalogować",
+    "language_english": "Angielski",
+    "language_arabic": "العربية",
+    "language_german": "Deutsch",
+    "language_polish": "Polski",
+    "onboarding_goal_work_performance": "Wydajność w pracy",
+    "onboarding_goal_programming": "Programowanie",
+    "onboarding_goal_language_learning": "Nauka języków",
+    "onboarding_goal_reading": "Czytanie",
+    "onboarding_goal_exercise": "Ćwiczenia",
+    "onboarding_goal_personal_organization": "Organizacja osobista",
+    "onboarding_preferred_execution": "Jak wolisz pracować?",
+    "onboarding_execution_pomodoro": "Pomodoro",
+    "onboarding_execution_continuous": "Ciągłe bloki robocze",
+    "onboarding_execution_checklist": "Listy kontrolne",
+    "onboarding_execution_manual": "Elastyczne uzupełnianie ręczne",
+    "onboarding_execution_mixed": "Metody mieszane",
+    "onboarding_execution_unsure": "Nie wiem",
+    "onboarding_coaching_preference": "Preferencje coachingowe",
+    "roadmap_new": "Nowy plan działania",
+    "roadmap_intro":
+        "Przekształć długoterminowe wyniki w fazy, kamienie milowe, punkty kontrolne i powiązane pliki wykonywalne.",
+    "roadmap_load_failed":
+        "Nie mogliśmy załadować Twoich planów działania. Spróbuj ponownie wkrótce.",
+    "roadmap_edit": "Edytuj plan działania",
+    "roadmap_resume": "Wznów plan działania",
+    "roadmap_pause": "Wstrzymaj plan działania",
+    "roadmap_archive": "Archiwizuj plan działania",
+    "roadmap_delete": "Usuń plan działania",
+    "roadmap_no_description": "Brak jeszcze opisu",
+    "roadmap_no_target": "Brak celu",
+    "roadmap_risk_value": "{risk} ryzyko",
+    "roadmap_progress_risk": "{progress}% ukończone · {risk} ryzyko",
+    "roadmap_risk_low": "Niskie",
+    "roadmap_risk_medium": "Średni",
+    "roadmap_risk_high": "Wysoki",
+    "roadmap_recalculate": "Przelicz postęp i prognozę",
+    "roadmap_overview": "Przegląd",
+    "roadmap_timeline": "Oś czasu",
+    "roadmap_phases": "Fazy",
+    "roadmap_linked_work": "Prace połączone",
+    "roadmap_phase_count": "{count} fazy",
+    "roadmap_milestone_progress": "{completed}/{total} kamienie milowe",
+    "roadmap_checkpoint_progress": "{completed}/{total} punkty kontrolne",
+    "roadmap_task_progress": "{completed}/{total} połączone zadania",
+    "roadmap_timeline_empty": "Dodaj fazę, aby zbudować oś czasu",
+    "roadmap_milestone_count": "{count} kamienie milowe",
+    "roadmap_checkpoint_count": "{count} punkty kontrolne",
+    "roadmap_task_count": "{count} zadania",
+    "roadmap_reorder_help":
+        "Przeciągnij fazy, aby zmienić ich kolejność. Otwórz fazę, aby zarządzać jej kamieniami milowymi, punktami kontrolnymi i połączonymi zadaniami.",
+    "roadmap_add_phase": "Dodaj fazę",
+    "roadmap_no_phases": "Nie ma jeszcze faz",
+    "roadmap_phase_summary":
+        "{milestones} kamienie milowe · {checkpoints} punkty kontrolne · {tasks} zadania",
+    "roadmap_milestone": "Kamień milowy",
+    "roadmap_checkpoint": "Punkt kontrolny",
+    "roadmap_link_task": "Połącz zadanie",
+    "roadmap_no_linked_tasks":
+        "Żadne zadania nie są jeszcze powiązane z tym planem działania",
+    "roadmap_explainable_forecast": "Wyjaśniona prognoza",
+    "roadmap_forecast_missing":
+        "Dodaj daty docelowe i zarejestrowany wysiłek, aby obliczyć prognozę",
+    "roadmap_forecast_insufficient":
+        "Jeszcze za mało danych — wykonaj więcej połączonych prac w ciągu kilku dni, aby uzyskać wiarygodną prognozę.",
+    "roadmap_forecast_range": "Prawdopodobne zakończenie: {start}–{end}",
+    "roadmap_forecast_early_estimate":
+        "Wczesne szacunki: {start}–{end}. Aby prognoza była wiarygodna, potrzebna jest większa aktywność.",
+    "roadmap_forecast_unchanged": "Obecna prognoza pozostaje {date}",
+    "roadmap_forecast_later":
+        "Oczekiwane zakończenie to {days} dni później niż pierwotny cel",
+    "roadmap_forecast_earlier":
+        "Oczekiwane zakończenie to {days} dni wcześniej niż pierwotny cel",
+    "roadmap_no_original_target": "Brak oryginału cel",
+    "roadmap_original_target": "Oryginalny {date}",
+    "roadmap_forecast_unavailable": "Prognoza niedostępna",
+    "roadmap_forecast_date": "Prognoza {date}",
+    "roadmap_forecast_confidence": "{confidence} pewność",
+    "roadmap_confidence_low": "Niski",
+    "roadmap_confidence_medium": "Średni",
+    "roadmap_confidence_high": "Wysoki",
+    "roadmap_confidence_insufficient": "Jeszcze za mało danych",
+    "roadmap_confidence_not_rated": "Brak oceny",
+    "roadmap_evidence_used": "Dowody użyte",
+    "roadmap_evidence_summary":
+        "{phases} fazy · {milestones} kamienie milowe · {checkpoints} punkty kontrolne · {tasks} połączone zadania",
+    "roadmap_effort_summary": "{recorded} zarejestrowane {planned} zaplanowane",
+    "roadmap_effort_summary_unavailable":
+        "{recorded} zarejestrowane · zaplanowany wysiłek niedostępny",
+    "roadmap_progress_explanation": "Skąd ten odsetek?",
+    "roadmap_milestones": "Kamienie milowe",
+    "roadmap_checkpoints": "Punkty kontrolne",
+    "roadmap_linked_tasks": "Połączone zadania",
+    "roadmap_count_of": "{completed} z {total}",
+    "roadmap_first_heading": "Utwórz swój pierwszy plan działania",
+    "roadmap_first_description":
+        "Określ wynik, a następnie dodaj edytowalne fazy, kamienie milowe, punkty kontrolne i połączone zadania.",
+    "roadmap_create": "Utwórz plan działania",
+    "roadmap_title": "Tytuł planu działania",
+    "roadmap_final_outcome": "Końcowy mierzalny wynik",
+    "roadmap_start_date": "Data rozpoczęcia",
+    "roadmap_target_date": "Data docelowa",
+    "roadmap_estimated_effort": "Szacowany całkowity wysiłek",
+    "unit_hours": "godziny",
+    "roadmap_phase_title": "Tytuł etapu",
+    "roadmap_add_milestone": "Dodaj kamień milowy",
+    "roadmap_milestone_title": "Tytuł kamienia milowego",
+    "roadmap_add_checkpoint": "Dodaj punkt kontrolny",
+    "roadmap_checkpoint_objective": "Cel punktu kontrolnego",
+    "roadmap_link_existing_task": "Połącz istniejące zadanie",
+    "roadmap_link_existing_tasks": "Połącz istniejące zadania",
+    "roadmap_create_new_task": "Utwórz nowe zadanie",
+    "roadmap_add_to_roadmap": "Dodaj do planu działania",
+    "roadmap_complete_programming_plan":
+        "Ukończ dziewięciofazowy plan programowania",
+    "roadmap_complete_programming_plan_detail":
+        "Dodawaj znaczące zadania, kamienie milowe, punkty kontrolne i zasoby edukacyjne w ramach normalnego przepływu pracy.",
+    "roadmap_programming_plan_completed":
+        "Gotowy plan programowania: {phases} fazy, {milestones} nowe kamienie milowe, {checkpoints} nowe punkty kontrolne i {tasks} nowe zadania.",
+    "roadmap_add_to_this_phase": "Dodaj do tej fazy",
+    "roadmap_level_tasks": "Zadania na poziomie planu działania",
+    "roadmap_phase_tasks": "Zadania przypisane do faz",
+    "roadmap_search_tasks": "Wyszukaj zadania",
+    "roadmap_filter_status": "Filtruj według stanu",
+    "roadmap_selected_task_count": "Wybrane zadania {count}",
+    "roadmap_link_selected_tasks": "Połącz {count} zadania",
+    "roadmap_no_matching_tasks": "Brak pasujących zadań",
+    "roadmap_already_linked_phase": "Już połączone z tym etapem",
+    "roadmap_linked_another_phase":
+        "Połączone z innym etapem w tym planie działania",
+    "roadmap_move_tasks_title":
+        "Przenieść istniejące połączenia w planie działania?",
+    "roadmap_move_tasks_description":
+        "Niektóre wybrane zadania są już połączone gdzie indziej. Ich zadania i historia pozostaną niezmienione; przesunie się tylko położenie planu działania.",
+    "roadmap_move_selected_tasks": "Przenieś wybrane zadania",
+    "roadmap_no_milestone": "Brak kamienia milowego",
+    "roadmap_no_checkpoint": "Brak punktu kontrolnego",
+    "roadmap_no_milestones":
+        "Nie ma jeszcze kamieni milowych. Dodaj ważny wynik, który oznacza znaczący postęp.",
+    "roadmap_no_checkpoints":
+        "Nie ma jeszcze punktów kontrolnych. Dodaj mniejsze punkty przeglądu, aby utrzymać ten plan działania na właściwej drodze.",
+    "roadmap_contribution_rule": "Wkład w postęp",
+    "roadmap_contribution_rule_none": "Brak automatycznego uznania za postęp",
+    "roadmap_contribution_rule_completion_only":
+        "Zakończenie zadania kredytowego",
+    "roadmap_contribution_rule_approved_effort":
+        "Wysiłek zatwierdzony przez kredyt",
+    "roadmap_contribution_rule_configured_percentage":
+        "Przypisz skonfigurowany procent",
+    "roadmap_contribution_rule_manual_review": "Wymagany ręczny przegląd",
+    "notes": "Uwagi",
+    "roadmap_checkpoint_title": "Tytuł punktu kontrolnego",
+    "roadmap_checkpoint_required": "Wymagany punkt kontrolny",
+    "roadmap_completion_rule": "Reguła zakończenia",
+    "roadmap_milestone_status_not_started": "Nie rozpoczęto",
+    "roadmap_milestone_status_in_progress": "W toku",
+    "roadmap_milestone_status_at_risk": "Zagrożone",
+    "roadmap_milestone_status_completed": "Ukończono",
+    "roadmap_milestone_status_missed": "Nieudane",
+    "roadmap_milestone_status_paused": "Wstrzymane",
+    "roadmap_milestone_rule_manual": "Ukończenie ręczne",
+    "roadmap_milestone_rule_all_checkpoints":
+        "Ukończono, gdy wszystkie połączone punkty kontrolne zostaną ukończone",
+    "roadmap_milestone_rule_all_required_tasks":
+        "Ukończono, gdy wszystkie wymagane połączone zadania zostaną ukończone ukończone",
+    "roadmap_milestone_rule_progress_threshold":
+        "Ukończono zgodnie ze skonfigurowanym progiem postępu",
+    "roadmap_checkpoint_status_not_started": "Nie rozpoczęto",
+    "roadmap_checkpoint_status_in_progress": "W toku",
+    "roadmap_checkpoint_status_ready_for_review": "Gotowe do sprawdzenia",
+    "roadmap_checkpoint_status_completed": "Ukończono",
+    "roadmap_checkpoint_status_blocked": "Zablokowano",
+    "roadmap_checkpoint_status_missed": "Nieodebrane",
+    "roadmap_checkpoint_rule_manual": "Ukończenie ręczne",
+    "roadmap_checkpoint_rule_linked_tasks": "Ukończ poprzez połączone zadania",
+    "roadmap_checkpoint_rule_user_review": "Ukończ po sprawdzeniu",
+    "roadmap_checkpoint_rule_approved_rule":
+        "Wykonaj zgodnie z zatwierdzoną mierzalną regułą",
+    "roadmap_create_task_first": "Najpierw utwórz zadanie",
+    "roadmap_not_linked": "Niepołączone",
+    "roadmap_already_linked": "Już powiązane z tym planem działania",
+    "roadmap_linked_other": "Połączone z kolejny plan działania",
+    "roadmap_delete_title": "Usunąć plan działania?",
+    "roadmap_delete_description":
+        "Plan działania zostanie usunięty z Twoich urządzeń. Połączone zadania pozostają dostępne i można je ponownie przypisać.",
+    "back": "Wstecz",
+    "continue": "Kontynuuj",
+    "clear": "Wyczyść",
+    "not_set": "Nie ustawiono",
+    "filter_all": "Wszystkie",
+    "tasks_load_failed":
+        "Nie mogliśmy załadować Twojego zadania. Spróbuj ponownie wkrótce.",
+    "task_edit": "Edytuj zadanie",
+    "task_editor_basics": "Podstawy",
+    "task_editor_schedule": "Harmonogram",
+    "task_editor_execution": "Jak będziesz pracować",
+    "task_editor_repeat": "Powtórz",
+    "task_title_required": "Zadanie wymaga tytułu",
+    "task_domain": "Domena zadania",
+    "task_no_domain": "Brak domeny",
+    "task_domain_create": "Utwórz domenę zadania",
+    "task_domain_name": "Nazwa domeny",
+    "task_domain_builtin_work": "Praca",
+    "task_domain_builtin_learning": "Nauka",
+    "task_domain_builtin_reading": "Czytanie",
+    "task_domain_builtin_health": "Zdrowie",
+    "task_domain_builtin_personal": "Osobiste",
+    "task_domain_builtin_family": "Rodzina",
+    "task_domain_builtin_household": "Gospodarstwo domowe",
+    "task_domain_builtin_finance": "Finanse",
+    "task_domain_builtin_fitness": "Fitness",
+    "task_domain_builtin_projects": "Projekty",
+    "task_domain_builtin_errands": "Zadania",
+    "task_filter_status": "Widok zadań",
+    "task_filters": "Filtruj zadania",
+    "task_filter_today": "Dziś",
+    "task_filter_tomorrow": "Jutro",
+    "task_filter_upcoming": "Nadchodzące",
+    "task_filter_active": "Aktywne",
+    "task_filter_paused": "Wstrzymane",
+    "task_filter_overdue": "Zaległe",
+    "task_filter_recurring": "Powtarzające się",
+    "task_filter_completed": "Zakończone",
+    "task_filter_completed_today": "Ukończono dzisiaj",
+    "task_filter_all_domains": "Wszystkie domeny zadań",
+    "task_filter_all_roadmaps": "Wszystkie plany działania",
+    "task_filter_all_methods": "Wszystkie style pracy",
+    "task_filter_all_priorities": "Wszystkie priorytety",
+    "task_recurring": "Cykliczny",
+    "task_recurring_next": "Cykliczny · Następny: {date}",
+    "task_calculated_duration": "Obliczony czas trwania",
+    "task_calculated_duration_help":
+        "Obliczany automatycznie na podstawie planowanego początku i końca.",
+    "task_calculated_duration_with_rest":
+        "{window} jest zarezerwowany od początku do końca, łącznie z {rest} odpoczynku.",
+    "task_crosses_midnight": "To zadanie kończy się po północy.",
+    "task_time_window_invalid":
+        "Wybierz zakończenie co najmniej minutę po rozpoczęciu.",
+    "task_minimum_duration_exceeds_planned":
+        "Minimalny użyteczny czas trwania nie może przekroczyć planowanego czasu trwania.",
+    "task_maximum_duration_below_planned":
+        "Maksymalny zamierzony czas trwania nie może być krótszy niż planowany czas trwania.",
+    "task_minimum_duration_exceeds_maximum":
+        "Minimalny użyteczny czas trwania nie może przekraczać maksymalnego zamierzonego czasu trwania.",
+    "task_resources": "Zasoby",
+    "task_resources_editor_detail":
+        "Zapisz jeden lub więcej linków do nauki i wybierz sposób każdego z nich jeden się otwiera.",
+    "resource_label": "Etykieta zasobu",
+    "resource_url_required": "Wpisz adres strony internetowej zasobu.",
+    "task_resource_removed_pending": "Zasób zostanie usunięty po zapisaniu.",
+    "move_up": "Przesuń w górę",
+    "move_down": "Przenieś dół",
+    "create": "Utwórz",
+    "priority_low": "Niski",
+    "priority_normal": "Normalny",
+    "priority_important": "Ważne",
+    "priority_high": "Wysoki",
+    "priority_critical": "Krytyczny",
+    "task_scheduled_day": "Planowany dzień",
+    "task_planned_start_local": "Planowany początek (czas lokalny)",
+    "task_planned_end_local": "Planowany koniec (czas lokalny)",
+    "task_due_date_time": "Termin i czas",
+    "task_estimated_duration": "Szacowany czas trwania",
+    "task_planned_rest": "Planowany odpoczynek",
+    "task_planned_rest_summary": "{duration} odpoczynek",
+    "task_planned_rest_help":
+        "Opcjonalny czas w ramach tego zadania, np. 30-minutowy lunch. Nie liczy się to jako oczekiwana praca.",
+    "task_planned_rest_too_long":
+        "Planowany odpoczynek musi być krótszy niż okno czasowe zadania.",
+    "task_another_running_title": "Inne zadanie jest już uruchomione",
+    "task_another_running_detail":
+        "{currentTask} jest aktywne. Co chcesz zrobić przed rozpoczęciem {selectedTask}?",
+    "task_pause_and_start": "Wstrzymaj bieżące i rozpocznij wybrane",
+    "task_finish_and_start": "Zakończ bieżące i rozpocznij wybrane",
+    "task_keep_current_running": "Kontynuuj bieżące zadanie",
+    "task_start_rejected":
+        "To zadanie nie zostało rozpoczęte. Sprawdź aktualnie aktywne zadanie i spróbuj ponownie.",
+    "undo": "Cofnij",
+    "task_completed_message": "Zadanie ukończone",
+    "completion_undone": "Zakończenie cofnięte",
+    "completion_undo_unavailable":
+        "Cofnięcie nie jest już dostępne. Zamiast tego otwórz zadanie ponownie.",
+    "completion_reopen_too_early":
+        "W przypadku tego zakończenia nadal można cofnąć.",
+    "completion_restore_failed":
+        "Zadanie zostało zmienione na innym urządzeniu i nie można go przywrócić.",
+    "reopen_task": "Otwórz ponownie zadanie",
+    "task_reopened": "Zadanie zostało ponownie otwarte",
+    "checklist_item_completed": "Element listy kontrolnej ukończony",
+    "task_history_event": "Historia zadań wydarzenie",
+    "task_minimum_useful": "Minimalnie przydatne",
+    "task_maximum_intended": "Maksymalnie zamierzone",
+    "task_preparation": "Przygotowanie",
+    "task_local_scheduling": "Planowanie w czasie lokalnym",
+    "task_local_scheduling_detail":
+        "Wybierz godziny w swoim lokalna strefa czasowa. DayVector utrzymuje ten sam moment z dokładnością na każdym urządzeniu.",
+    "task_focus_length": "Długość ostrości",
+    "task_short_break": "Krótka przerwa",
+    "task_long_break": "Długa przerwa",
+    "pomodoro_long_break_after": "Długa przerwa po sesjach skupienia",
+    "pomodoro_long_break_after_help": "Wybierz liczbę od 2 do 12.",
+    "pomodoro_long_break_after_error": "Wybierz liczbę od 2 do 12.",
+    "pomodoro_auto_start_breaks": "Automatycznie rozpoczynaj przerwy",
+    "pomodoro_auto_start_breaks_detail":
+        "Rozpocznij skonfigurowaną przerwę po zakończeniu sesji fokusowej.",
+    "pomodoro_auto_start_focus":
+        "Automatycznie rozpocznij następną sesję fokusową",
+    "pomodoro_auto_start_focus_detail":
+        "Rozpocznij następną sesję fokusową po zakończeniu przerwy.",
+    "pomodoro_focus_session": "Sesja fokusowa",
+    "pomodoro_break_session": "Przerwa",
+    "pomodoro_session_progress": "Sesja {current} z około {total}",
+    "pomodoro_task_progress": "{focused} z {planned} skupiony",
+    "pomodoro_focus_complete_waiting":
+        "Skupienie zakończone — gotowy na przerwę {duration}?",
+    "pomodoro_break_complete_waiting":
+        "Przerwa zakończona — chcesz rozpocząć następną rundę skupienia?",
+    "pomodoro_skip_break": "Pomiń przerwę",
+    "pomodoro_waiting": "Czekam na następny wybór",
+    "task_automatic_transitions": "Automatyczne przejścia",
+    "disabled_by_default": "Domyślnie wyłączone",
+    "task_completion_rule": "Reguła zakończenia",
+    "task_manual_approval": "Zatwierdzenie ręczne",
+    "task_all_required_items": "Wszystkie wymagane elementy listy kontrolnej",
+    "task_required_duration": "Wymagany czas użytkowania",
+    "task_evidence_required": "Wymagane dowody",
+    "task_idle_behavior": "Zachowanie w czasie nieaktywności",
+    "task_idle_detect": "Wykryj i zapytaj",
+    "task_idle_count": "Licz podczas sesji",
+    "task_idle_exclude": "Wyklucz z aktywnej pracy",
+    "task_overtime_behavior": "Zachowanie w godzinach nadliczbowych",
+    "task_overtime_ask": "Powiadamiaj i pytaj",
+    "task_overtime_continue": "Kontynuuj nagrywanie",
+    "task_overtime_stop": "Zatrzymaj w zaplanowanym czasie",
+    "task_no_roadmap": "Brak planu działania",
+    "task_roadmap_phase": "Faza planu działania",
+    "task_roadmap_level": "Poziom planu działania",
+    "task_bidirectional_relationship":
+        "Dwukierunkowe połączenie w planie działania",
+    "task_bidirectional_detail":
+        "To zadanie pojawia się w wybranym planie działania i fazie. Zaakceptowany wysiłek zmienia postęp w planie działania tylko wtedy, gdy pozwala na to zatwierdzona reguła postępu.",
+    "task_recurrence": "Powtarzanie",
+    "task_recurrence_none": "Nie powtarza się",
+    "task_recurrence_daily": "Codziennie",
+    "task_recurrence_weekly": "Co tydzień",
+    "task_recurrence_monthly": "Miesięcznie",
+    "task_selected_weekdays": "Wybrane dni tygodnia",
+    "task_recurrence_end": "Koniec powtarzania (opcjonalnie)",
+    "task_history_preserved": "Historia zdarzeń jest zachowywana",
+    "task_history_preserved_detail":
+        "Wykorzystania przyszłej generacji tę zasadę. Wystąpienia zadań z przeszłości nie są ponownie zapisywane w przypadku zmiany powtarzania.",
+    "unit_minutes_short": "min",
+    "task_enter_duration": "Wprowadź czas trwania większy niż zero",
+    "task_minutes_range": "Użyj 0–59 minut",
+    "task_enter_minutes": "Wprowadź minuty",
+    "browser_workspace_unavailable":
+        "Przeglądarka zadań jest obecnie niedostępna.",
+    "browser_page_failed":
+        "Nie można załadować tej strony. Sprawdź adres lub otwórz go w przeglądarce systemowej.",
+    "browser_platform_unavailable":
+        "Wbudowana przeglądarka zadań jest dostępna w systemach Windows i Android.",
+    "browser_open_system": "Otwórz w przeglądarce systemowej",
+    "browser_close_pinned": "Zamknij przypiętą kartę?",
+    "browser_pinned_detail":
+        "Ta karta jest oznaczona jako pozostająca z zadanie.",
+    "browser_keep_tab": "Zachowaj kartę",
+    "browser_closed_tab": "Zamknięta karta",
+    "browser_rename_task_tab": "Zmień nazwę karty zadań",
+    "browser_custom_title": "Tytuł niestandardowy",
+    "browser_no_closed_tab": "Brak ostatnio zamkniętej karty",
+    "browser_move_tab": "Przenieś kartę do innego zadania",
+    "browser_no_bookmarks": "Brak jeszcze zakładek zadań",
+    "browser_delete_bookmark": "Usuń zakładkę",
+    "browser_new_tab": "Nowa karta",
+    "browser_forward": "Przejdź dalej",
+    "browser_refresh": "Odśwież",
+    "browser_search_address": "Wyszukaj lub wprowadź adres",
+    "browser_bookmark_task": "Dodaj do zakładek dla tego zadania",
+    "browser_task_bookmarks": "Zakładki zadań",
+    "browser_tab_actions": "Karta i akcje przeglądarki zadań",
+    "browser_unpin_tab": "Odepnij kartę",
+    "browser_pin_tab": "Przypnij kartę",
+    "browser_rename_tab": "Zmień nazwę karty",
+    "browser_duplicate_tab": "Zduplikuj kartę",
+    "browser_close_others": "Zamknij inne karty",
+    "browser_reopen_tab": "Otwórz ponownie zamkniętą kartę",
+    "browser_connect_website": "Połącz stronę internetową z tym zadaniem",
+    "browser_save_sign_in_vault": "Zapisz to logowanie w Magazynie haseł",
+    "browser_fill_sign_in_vault": "Wypełnij dane logowania z magazynu haseł",
+    "browser_vault_saving_disabled":
+        "Zapisywanie logowania do witryny internetowej jest wyłączone w ustawieniach Magazynu haseł.",
+    "browser_vault_autofill_disabled":
+        "Automatyczne uzupełnianie magazynu haseł jest wyłączone w ustawieniach magazynu.",
+    "browser_vault_origin_changed":
+        "Witryna internetowa została zmieniona przed wypełnieniem. Nie wprowadzono danych logowania.",
+    "browser_vault_fields_filled":
+        "Pola logowania zostały wypełnione. Przejrzyj je, a następnie prześlij formularz samodzielnie.",
+    "browser_vault_fields_not_found":
+        "Na tej stronie nie znaleziono żadnych zgodnych widocznych pól logowania.",
+    "browser_vault_capture_fields_not_found":
+        "Najpierw wpisz swój login na tej bezpiecznej stronie, a następnie wybierz opcję Zapisz logowanie ponownie.",
+    "browser_open_external": "Otwórz zewnętrznie",
+    "browser_full_screen": "Włącz pełny ekran",
+    "browser_exit_full_screen": "Wyjdź z pełnego ekranu",
+    "browser_task_tracking": "Śledzenie zadań pozostaje aktywne",
+    "browser_close_tab": "Zamknij kartę",
+    "document_last_position": "Ostatnia pozycja",
+    "document_bookmark_page": "Dodaj stronę do zakładek {page}",
+    "document_bookmark_name": "Nazwa lub notatka",
+    "document_bookmark_reason": "Dlaczego ta strona jest ważna?",
+    "document_save_bookmark": "Zapisz zakładkę",
+    "document_page": "Strona {page}",
+    "document_no_bookmarks": "Brak jeszcze zakładek w tym dokumencie",
+    "document_add_bookmark": "Dodaj zakładkę strony",
+    "document_show_bookmarks": "Pokaż zakładki",
+    "document_open_other_app": "Otwórz w innej aplikacji",
+    "document_unavailable":
+        "Ten dokument nie jest dostępny na tym urządzeniu. Pobierz zsynchronizowany zasób lub dołącz go ponownie.",
+    "workspace_overview": "Przegląd",
+    "workspace_execute": "Focus",
+    "workspace_checklist": "Lista kontrolna",
+    "workspace_browser": "Przeglądarka",
+    "workspace_resources": "Zasoby",
+    "workspace_connections": "Połączenia",
+    "workspace_notes": "Notatki",
+    "workspace_history": "Historia",
+    "task_duplicate": "Zduplikowane zadanie",
+    "task_postpone": "Przełóż",
+    "task_postpone_title": "Przełóż do",
+    "task_postpone_tomorrow": "Jutro",
+    "task_postpone_week": "Za tydzień",
+    "task_postpone_month": "Za miesiąc",
+    "task_postpone_pick_date": "Wybierz inny termin",
+    "task_postpone_unavailable":
+        "Nie można odłożyć zadania, które już się rozpoczęło lub zakończyło.",
+    "task_postponed_confirmation": "Przełożono na {date}.",
+    "task_mark_complete": "Oznacz jako ukończone",
+    "task_delete": "Usuń zadanie",
+    "task_delete_title": "Usunąć to zadanie?",
+    "task_delete_description":
+        "To zadanie zostanie usunięte z Twoich urządzeń. Nie będzie to miało wpływu na Twoje inne zadania i historię.",
+    "task_delete_series_title":
+        "Usunąć całkowicie to powtarzające się zadanie?",
+    "task_delete_series_description":
+        "To zatrzymuje powtarzanie i usuwa każde wystąpienie tego zadania z Twoich urządzeń.",
+    "progress": "Postęp",
+    "planned_effort": "Planowane wysiłek",
+    "recorded_work": "Nagrana praca",
+    "remaining": "Pozostało",
+    "plan": "Plan",
+    "flexible": "Elastyczny",
+    "local_start": "Lokalny start",
+    "not_fixed": "Nie naprawiono",
+    "due": "Termin",
+    "no_deadline": "Brak terminu",
+    "local_time": "Czas lokalny",
+    "local_time_detail":
+        "Czasy są wyświetlane w Twojej lokalnej strefie czasowej i pozostają spójne na wszystkich urządzeniach.",
+    "task_workspace": "Przestrzeń robocza zadań",
+    "workspace_execute_detail": "Licznik czasu i bieżący postęp",
+    "task_browser": "Przeglądarka zadań",
+    "task_browser_detail": "Trwałe karty i zakładki",
+    "task_resources_detail": "Pliki, pliki PDF, adresy URL i książki",
+    "task_connections_detail":
+        "Plan działania, aplikacje, strony internetowe i zadania",
+    "requirements": "Wymagania",
+    "requirements_detail": "Elementy wymagane i opcjonalne",
+    "evidence_history": "Historia postępu",
+    "evidence_history_detail": "Stan, notatki, skupienie i przerwy",
+    "planned_remaining": "{duration} planowane pozostałe",
+    "overtime_duration": "{duration} nadgodziny",
+    "overtime_label": "PRACA",
+    "finish_task": "Zakończ zadanie",
+    "checklist_requirements": "Lista kontrolna i wymagania",
+    "required_items_complete":
+        "{completed} z {total} wymagane elementy ukończone",
+    "add_item": "Dodaj element",
+    "no_requirements": "Nie ma jeszcze wymagań",
+    "no_requirements_detail":
+        "Dodaj wymagane lub opcjonalne elementy. Ukończenie listy kontrolnej nie powoduje zmiany postępu niepowiązanych zadań.",
+    "optional": "Opcjonalnie",
+    "required": "Wymagane",
+    "delete_item": "Usuń element",
+    "resources_attachments": "Zasoby i załączniki",
+    "resources_attachments_detail":
+        "Do tego zadania dołącz pliki, zasoby internetowe i książki. Zsynchronizowane pliki prywatne pozostają chronione.",
+    "task_no_resources": "To zadanie nie ma zasobów",
+    "task_no_resources_detail":
+        "Dołącz pliki PDF, dokumenty, arkusze kalkulacyjne, obrazy, audio, wideo, inny plik, adres URL lub książkę fizyczną.",
+    "resource_type_file": "Plik",
+    "resource_type_pdf": "PDF",
+    "resource_type_book": "Książka",
+    "resource_type_url": "URL",
+    "resource_type_image": "Obraz",
+    "resource_type_audio": "Dźwięk",
+    "resource_type_video": "Wideo",
+    "resource_type_spreadsheet": "Arkusz kalkulacyjny",
+    "resource_type_document": "Dokument",
+    "waiting_to_upload": "Oczekiwanie na przesłanie",
+    "unavailable_device": "Niedostępny na tym urządzeniu",
+    "open_externally": "Otwórz zewnętrznie",
+    "resource_open_in_app": "Otwórz w przeglądarce DayVector",
+    "resource_open_installed_app": "Otwórz w zainstalowanej aplikacji",
+    "resource_open_external_browser": "Otwórz w zewnętrznej przeglądarce",
+    "resource_auto_open": "Otwórz zasób podstawowy po uruchomieniu",
+    "resource_auto_open_detail":
+        "DayVector uruchamia licznik czasu przed otwarciem zasobu, dzięki czemu Twoja praca będzie odliczana w innej aplikacji lub przeglądarce.",
+    "resource_launch_behavior": "Domyślne miejsce docelowe zasobu",
+    "resource_launch_behavior_detail":
+        "Zainstalowana aplikacja wraca bezpiecznie do przeglądarki, gdy nie może obsłużyć adresu URL.",
+    "remove": "Usuń",
+    "task_connections": "Połączenia zadań",
+    "task_connections_description":
+        "Zobacz powiązane plany działania, aplikacje, strony internetowe i zadania w jednym miejscu.",
+    "dependency_tasks": "Zadania zależności",
+    "dependency_tasks_detail":
+        "Zadania, od których ta praca zależy lub je blokuje",
+    "connect_task": "Połącz zadanie",
+    "applications": "Aplikacje",
+    "application_connections_detail":
+        "Zatwierdzone reguły mogą rozpoznawać aktywność bez automatycznego kończenia pracy.",
+    "add_application": "Dodaj aplikację",
+    "application_available_this_device": "Dostępne na tym urządzeniu",
+    "application_android_device_required": "Wymagane urządzenie z Androidem",
+    "application_windows_device_required":
+        "Urządzenie z systemem Windows wymagane",
+    "websites": "Witryny internetowe",
+    "website_connections_detail":
+        "Reguły witryn internetowych dotyczące konkretnych zadań mają pierwszeństwo przed zasadami szerszymi.",
+    "add_website": "Dodaj witrynę",
+    "website_rule_scope_title": "Zastosuj tę regułę witryny do",
+    "website_rule_scope_page": "To tylko strona",
+    "website_rule_scope_section": "Ta sekcja",
+    "website_rule_scope_host": "Ten host",
+    "website_rule_scope_site": "Cała witryna",
+    "task_notes": "Notatki do zadań",
+    "task_notes_detail":
+        "Jeśli dwa urządzenia edytują tę samą notatkę offline, możesz wybrać wersję do zachowania.",
+    "add_note": "Dodaj notatkę",
+    "no_notes": "Brak jeszcze notatek",
+    "no_notes_detail": "Zapisz decyzje, kontekst, dowody lub kolejne kroki.",
+    "version_number": "Wersja {version}",
+    "delete_note": "Usuń notatkę",
+    "execution_history": "Aktywność i postęp",
+    "execution_history_detail":
+        "Sprawdź, kiedy się skupiłeś, wstrzymałeś, zrobiłeś sobie przerwę, dodałeś notatkę lub przypisałeś powiązaną czynność.",
+    "task_created": "Zadanie zostało utworzone",
+    "history_scheduled": "Zaplanowane",
+    "history_planned_until": "Planowane do {time}",
+    "history_session_started": "Sesja rozpoczęta",
+    "history_focus_started": "Skupienie rozpoczęte",
+    "history_paused": "Wstrzymane",
+    "history_resumed": "Wznowione",
+    "history_focus_completed": "Skupienie zakończone",
+    "history_break_started": "Rozpoczęcie przerwy",
+    "history_break_extended": "Przerwa przedłużona",
+    "history_break_skipped": "Przerwa pominięta",
+    "history_overtime_started": "Rozpoczęcie dogrywki",
+    "history_pomodoro_cycle": "Cykl Pomodoro",
+    "history_application_connected": "Aplikacja podłączona",
+    "history_website_credited": "Witryna zapisana",
+    "history_resource_opened": "Zasób otwarty",
+    "history_duration": "Czas trwania {duration}",
+    "history_device": "Urządzenie {device}",
+    "history_resource": "Zasób {resource}",
+    "first_started": "Pierwsze uruchomienie",
+    "interruptions": "Przerwy",
+    "activity_contributions": "Wkład w działania",
+    "session_events": "Zdarzenia sesji",
+    "task_settings": "Ustawienia zadań",
+    "task_settings_detail":
+        "Planowanie, przypomnienia, zakończenie i zachowanie obszaru roboczego pozostają edytowalne w przypadku tego zdarzenia.",
+    "keep_browser_workspace": "Zachowaj obszar roboczy przeglądarki",
+    "keep_browser_workspace_detail":
+        "Przypięte karty i informacje o przeglądarce dotyczące poszczególnych zadań pozostają dostępne.",
+    "reminders": "Przypomnienia",
+    "task_reminders_detail":
+        "Przypomnienia lokalne są nadal dostępne w trybie offline i używają wybranego dźwięku.",
+    "no_task_reminders": "Brak przypomnień o zadaniach",
+    "no_task_reminders_detail":
+        "Dodawaj przypomnienia przed rozpoczęciem, na początku lub na końcu, o terminie, opóźnieniu lub nieodebraniu.",
+    "roadmap_and_phase": "Plan działania i faza",
+    "open_roadmap": "Otwórz plan działania",
+    "roadmap_title_short": "Mapa drogowa",
+    "remove_connection": "Usuń połączenie",
+    "unknown_application": "Nieznana aplikacja",
+    "unknown_connection": "Nieznane połączenie",
+    "mode_pomodoro_detail":
+        "Francesco Cirillo stworzył Technikę Pomodoro, aby ułatwić rozruch i chronić uwagę. Wybierz jedno jasne zadanie, skoncentruj się na około 25 minut, a następnie zrób prawdziwą przerwę. Krótkie przerwy mogą odświeżyć uwagę, a DayVector oddziela przerwy, dzięki czemu Twoje skupienie pozostaje uczciwe.",
+    "mode_continuous_detail":
+        "Wybierz tę opcję do pracy, która wymaga jednego elastycznego timera zamiast stałych cykli. Zatrzymaj się, kiedy zajdzie taka potrzeba, a następnie kontynuuj w tym samym miejscu, a DayVector zachowa Twój skupiony czas.",
+    "mode_checklist_detail":
+        "Wybierz tę opcję, jeśli wykonanie właściwych kroków jest ważniejsze niż oglądanie minutnika. Zaznacz każdą wymaganą pozycję i zakończ, gdy praca zostanie naprawdę ukończona.",
+    "mode_reading_detail":
+        "Wybierz tę opcję w przypadku książek i materiałów do nauki. Zachowaj swoje miejsce, zapisuj strony i notatki i sprawdzaj, jak bardzo skupiłeś się na czytaniu.",
+    "mode_habit_detail":
+        "Wybierz tę opcję, jeśli chcesz powtarzać czynności. Uczciwie oznaczaj każdą próbę, łącznie z opuszczonymi lub opuszczonymi dniami, i korzystaj ze wzorca, aby ułatwić utrzymanie nawyku.",
+    "mode_event_detail":
+        "Wybierz tę opcję w przypadku spotkań, zajęć i zaplanowanych wydarzeń. DayVector pomaga Ci zapamiętać, kiedy przybyć, co się stało i o wszystkim, co wymaga dalszych działań.",
+    "mode_hybrid_detail":
+        "Wybierz tę opcję, jeśli zadanie wymaga więcej niż jednego rodzaju postępu. Połącz stoper z krokami, punktami kontrolnymi, zasobami i dowodem ukończenia w jednym miejscu.",
+    "mode_manual_detail":
+        "Wybierz tę opcję do prostych zadań, które nie wymagają timera. Dodaj notatki lub zasoby, jeśli okażą się pomocne, a następnie oznacz zadanie jako zakończone.",
+    "mode_execution_title": "Jak {mode} pomaga",
+    "add_checklist_item": "Dodaj element listy kontrolnej",
+    "requirement": "Wymaganie",
+    "required_for_completion": "Wymagane do wykonania",
+    "attach_files": "Dołącz pliki",
+    "attach_files_detail":
+        "PDF, dokument, arkusz kalkulacyjny, obraz, dźwięk, wideo lub dowolny plik",
+    "add_url": "Dodaj adres URL",
+    "add_url_detail": "Otwórz w przeglądarce zadań lub zewnętrznie",
+    "resource_invalid_website_url":
+        "Wpisz prawidłowy adres witryny internetowej HTTP lub HTTPS.",
+    "add_web_resource": "Dodaj zasób internetowy",
+    "url": "URL",
+    "add_book_target": "Dodaj książkę lub cel czytelniczy",
+    "add_book_target_detail":
+        "Może śledzić książki fizyczne strony, czas trwania i ostatnia pozycja.",
+    "add_book": "Dodaj książkę",
+    "title": "Tytuł",
+    "author": "Autor",
+    "total_pages_optional": "Łączna liczba stron (opcjonalnie)",
+    "update_resource": "Aktualizacja {resource}",
+    "current_page": "Bieżąca strona",
+    "save_progress": "Zapisz postęp",
+    "resource_page": "{resource} · strona {page}",
+    "connect_another_task": "Połącz kolejne zadanie",
+    "relationship": "Relacja",
+    "task_depends_on": "To zadanie zależy od",
+    "related_work": "Prace pokrewne",
+    "connect_application": "Połącz aplikację",
+    "application_name_executable": "Nazwę aplikacji lub plik wykonywalny",
+    "choose_installed_application": "Wybierz zainstalowaną aplikację",
+    "search_installed_applications": "Wyszukaj zainstalowane aplikacje",
+    "no_installed_applications":
+        "Na tym urządzeniu nie są dostępne żadne zainstalowane aplikacje.",
+    "no_applications_match":
+        "Żadne zainstalowane aplikacje nie odpowiadają Twojemu wyszukiwaniu.",
+    "clear_search": "Wyczyść search",
+    "application_already_connected":
+        "Ta aplikacja jest już połączona z zadaniem.",
+    "application_links_title": "Użyj {application} do łączy do zadań?",
+    "application_links_detail":
+        "DayVector najpierw wypróbuje wybraną aplikację, gdy otworzysz zasoby internetowe tego zadania. Jeśli nie może otworzyć konkretnej strony, nadal możesz skorzystać z przeglądarki zewnętrznej.",
+    "application_links_keep_current": "Zachowaj dotychczasowe zachowanie",
+    "application_links_use_app": "Użyj zainstalowanej aplikacji",
+    "connect_website": "Połącz witrynę",
+    "domain_or_url": "Domena lub adres URL",
+    "add_task_note": "Dodaj notatkę o zadaniu",
+    "note": "Notatka",
+    "note_hint": "Decyzja, dowód, kontekst lub następny krok",
+    "add_task_reminder": "Dodaj przypomnienie o zadaniu",
+    "reminder_type": "Typ przypomnienia",
+    "before_start": "Przed rozpoczęciem",
+    "at_planned_start": "Przy planowanym rozpoczęciu",
+    "at_planned_end": "Na zaplanowanym końcu",
+    "due_reminder": "Przypomnienie o terminie",
+    "overdue_reminder": "Przypomnienie o zaległym terminie",
+    "missed_task_reminder": "Przypomnienie o opuszczonym zadaniu",
+    "local_date_time": "Lokalna data i godzina",
+    "sound": "Dźwięk",
+    "sound_system_default": "Domyślne ustawienie urządzenia",
+    "sound_selected": "Wybrany dźwięk DayVector",
+    "silent": "Cichy",
+    "schedule": "Harmonogram",
+    "no_time": "Brak czasu",
+    "automatic_credit": "Automatyczny kredyt",
+    "confirmation_required": "Wymagane potwierdzenie",
+    "activity_class_direct": "Związane z tym zadaniem",
+    "activity_class_supporting": "Prace pomocnicze",
+    "activity_class_research": "Badania",
+    "activity_class_communication": "Komunikacja",
+    "activity_class_distracting": "Rozpraszanie",
+    "activity_class_idle": "Nieaktywne",
+    "activity_class_unclassified": "Niesklasyfikowane",
+    "reports_and_data": "Raporty i dane",
+    "reports_and_data_detail":
+        "Przeglądaj, drukuj i eksportuj raporty przy użyciu wybranego zakresu dat.",
+    "overall_performance_report": "Ogólny raport wyników",
+    "overall_performance_report_detail":
+        "Przejrzyj zadania, plany działania, działania, coaching i zatwierdzone podsumowania dobrego samopoczucia.",
+    "roadmap_analyze": "Przeanalizuj plan działania",
+    "report_account_title": "Ogólny raport wyników",
+    "report_task_title": "Raport z wykonania zadania",
+    "report_household_title": "Raport z zadania domowego",
+    "report_roadmap_title": "Raport z analizy planu działania",
+    "report_generated": "Wygenerowano {date}",
+    "report_page_number": "Strona {page} z {pages}",
+    "report_summary": "Podsumowanie",
+    "report_sections": "sekcje raportu",
+    "report_planned_effort": "Planowany wysiłek",
+    "report_active_work": "Aktywna praca",
+    "report_productive_work": "Produktywna praca",
+    "report_focus_time": "Czas skupienia",
+    "report_break_time": "Czas przerwy",
+    "report_continuous_work": "Ciągła praca nad zadaniami",
+    "report_interruptions": "Przerwy",
+    "report_interruption_value": "{count} · {duration}",
+    "report_no_interruptions_short": "Nie zarejestrowano",
+    "report_active_activity": "Aktywna aktywność",
+    "report_idle_activity": "Aktywność bezczynności",
+    "report_application_usage": "Wykorzystanie aplikacji",
+    "report_website_usage": "Wykorzystanie witryny",
+    "report_task_domain_distribution": "Dystrybucja domeny zadań",
+    "report_focus_vs_continuous": "Skupienie a praca ciągła",
+    "report_focus_vs_break": "Skupienie a przerwa",
+    "report_work_by_area": "Praca według obszaru",
+    "report_interruption_distribution": "Rozkład przerw",
+    "report_phase_progress": "Praca według faz",
+    "report_phase_unavailable": "Faza nie jest już dostępna",
+    "report_occurrences": "Zdarzenia",
+    "report_upcoming": "Nadchodzące",
+    "report_recorded": "Zarejestrowano",
+    "report_recurring_task": "Zadanie cykliczne",
+    "report_no_application_usage":
+        "W tym okresie nie zarejestrowano żadnego użycia aplikacji.",
+    "report_no_website_usage":
+        "W tym okresie nie zarejestrowano żadnego użycia witryny.",
+    "report_no_domain_data":
+        "Żadna zarejestrowana praca nie jest przypisana do domena zadania dla tego okresu.",
+    "report_no_task_domain": "Brak domeny zadania",
+    "report_domain_unavailable": "Domena zadania nie jest już dostępna",
+    "report_no_chart_data":
+        "Brak rekordów dla tego wykresu w wybranym okresie.",
+    "report_planned_and_productive_by_day":
+        "Planowana i wydajna praca według dnia",
+    "report_daily_work_value":
+        "Planowane {planned} · produktywne {actual} · zakończone {completed}",
+    "report_interactive_preview": "Raport interaktywny",
+    "report_pdf_preview": "Podgląd PDF",
+    "report_orientation": "Orientacja strony",
+    "report_preview_type": "Typ podglądu",
+    "report_open_records": "Rekordy Open Source",
+    "report_source_records": "Rekordy źródłowe",
+    "report_record_basis":
+        "Na podstawie {count} prawdziwych rekordów źródłowych",
+    "report_task_unavailable": "Zadanie już nie istnieje dostępny",
+    "report_empty_title": "Brak jeszcze danych raportu",
+    "report_empty_body":
+        "DayVector pokaże wykresy po tym, jak w tym okresie istnieją rzeczywiste zadania, działania, plany działania lub zatwierdzone zapisy dotyczące stanu zdrowia.",
+    "report_completed_tasks": "Ukończone zadania",
+    "report_overdue_tasks": "Zadania zaległe",
+    "report_roadmap_contribution": "Wkład w plan działania",
+    "report_completion_trend": "Tendencja ukończenia",
+    "report_idle_time": "Czas bezczynności",
+    "report_paused_time": "Czas wstrzymania",
+    "report_completion_rate": "Wskaźnik ukończenia",
+    "report_average_start_delay": "Średnie opóźnienie rozpoczęcia",
+    "report_remaining_tasks": "Pozostałe zadania",
+    "report_roadmap_progress": "Postęp planu działania",
+    "report_linked_roadmap_id": "Połączony plan działania: {id}",
+    "report_linked_roadmap_name": "Połączony plan działania: {name}",
+    "report_roadmap_unavailable": "Plan działania nie jest już dostępny",
+    "report_tasks": "Zadania",
+    "report_activity": "Aktywność",
+    "report_coaching": "Obserwacje coachingowe",
+    "report_no_coaching":
+        "Nie są uwzględniane żadne obserwacje coachingowe dostępne w tym okresie.",
+    "report_health_context": "Kontekst snu i dobrego samopoczucia",
+    "report_no_health":
+        "Brak zatwierdzonych podsumowań dobrego samopoczucia w tym okresie.",
+    "report_no_tasks": "W tym okresie nie zarejestrowano żadnych zadań.",
+    "report_overall_progress": "Ogólny postęp",
+    "report_roadmap_effort":
+        "Rzeczywisty nakład {actual} · planowany {planned}",
+    "report_forecast_completion": "Zakończenie prognozy: {date}",
+    "report_milestones_checkpoints":
+        "Kamienie milowe {milestones} z {milestoneTotal} · punkty kontrolne {checkpoints} z {checkpointTotal}",
+    "report_no_activity": "W tym okresie nie zarejestrowano żadnej aktywności.",
+    "report_cross_task_contributions":
+        "Zatwierdzony wkład międzyzadaniowy: {duration}",
+    "report_export_pdf": "Eksportuj plik PDF",
+    "report_exported": "Raport w formacie PDF został wyeksportowany.",
+    "report_print": "Drukuj raport",
+    "report_share": "Udostępnij raport",
+    "report_language": "Raport język",
+    "report_portrait": "Portret",
+    "report_landscape": "Krajobraz",
+    "report_generation_failed":
+        "Nie mogliśmy przygotować tego raportu. Twoje dane nie zostały zmienione.",
+    "status": "Stan",
+    "status_missed": "Nieodebrane",
+    "notification_channel_execution": "DayVector — Wykonanie zadania",
+    "notification_channel_execution_description":
+        "Zdarzenia dotyczące skupienia, przerwy i czasu trwania zadania",
+    "notification_focus_completed_title": "Sesja skupienia zakończona",
+    "notification_focus_completed_body":
+        "{task} osiągnęła koniec okresu skupienia.",
+    "notification_break_completed_title": "Przerwa zakończona",
+    "notification_break_completed_body":
+        "Twoja przerwa na {task} dobiegła końca.",
+    "notification_duration_completed_title": "Zakończono planowany czas",
+    "notification_duration_completed_body":
+        "{task} osiągnął planowany czas trwania.",
+    "notification_start_break": "Rozpocznij przerwę",
+    "notification_continue_working": "Kontynuuj pracę",
+    "notification_start_focus": "Rozpocznij koncentrację",
+    "notification_extend_break": "Przedłuż przerwę",
+    "notification_review_break": "Przejrzyj aktywność w przerwie",
+    "notification_continue_task": "Kontynuuj zadanie",
+    "notification_add_time": "Dodaj więcej czasu",
+    "notification_action_break_compact": "Przerwa",
+    "notification_action_continue_compact": "Kontynuuj",
+    "notification_action_extend_compact": "+5 min",
+    "notification_action_review_compact": "Przejrzyj",
+    "notification_action_finish_compact": "Zakończ",
+    "notification_channel_wellbeing": "DayVector — Dobre samopoczucie",
+    "notification_channel_wellbeing_description":
+        "Plan snu i przypomnienia o dobrym samopoczuciu",
+    "sleep_reminder_title": "Już prawie czas na odpoczynek 🌙",
+    "sleep_reminder_body":
+        "Spójny harmonogram snu może pomóc Ci jutro poczuć się bardziej skupionym.",
+    "notification_view_schedule": "Wyświetl harmonogram",
+    "break_in_progress": "Trwa przerwa",
+    "break_extended_five": "Przerwa została przedłużona o 5 minut.",
+    "tray_still_running_title": "DayVector nadal działa",
+    "tray_still_running_body":
+        "Timery i przypomnienia będą nadal działać w tle. Użyj ikony na pasku zadań, aby ponownie otworzyć lub zamknąć aplikację.",
+    "tray_open": "Open DayVector",
+    "tray_no_task": "Żadne zadanie nie jest obecnie uruchomione",
+    "tray_start_next": "Rozpocznij następne zadanie",
+    "tray_pause_task": "Wstrzymaj zadanie",
+    "tray_resume_task": "Wznów zadanie",
+    "tray_start_break": "Rozpocznij przerwę",
+    "tray_finish_break": "Zakończ przerwę",
+    "tray_whats_new_version": "Co nowego w v{version}",
+    "tray_check_updates": "Sprawdź dostępność aktualizacji",
+    "tray_update_available": "Dostępna aktualizacja",
+    "tray_exit": "Dzień wyjścia",
+    "tray_deletion_scheduled": "Zaplanowano usunięcie konta",
+    "tray_tooltip_break": "Przerwa w toku",
+    "tray_tooltip_paused": "Zadanie wstrzymane",
+    "edit_email": "Edytuj adres e-mail",
+    "email_open_to_edit":
+        "Otwórz ustawienia poczty e-mail, aby wyświetlić lub zmienić adres.",
+    "change_email_address": "Zmień adres e-mail",
+    "current_email": "Aktualny adres e-mail",
+    "new_email": "Nowy adres e-mail",
+    "requested_email": "Żądany adres e-mail",
+    "confirm_new_email": "Potwierdź nowy adres e-mail",
+    "email_change_awaiting_confirmation":
+        "Zmiana adresu e-mail oczekuje na potwierdzenie",
+    "email_change_pending_compact": "Oczekiwanie na potwierdzenie {email}",
+    "email_change_security_explanation":
+        "Dla Twojego bezpieczeństwa nowy adres musi zostać potwierdzony, zanim stanie się aktywny.",
+    "email_reauth_code_sent":
+        "Wysłaliśmy kod zabezpieczający na Twój aktualny adres e-mail. Wpisz go, aby kontynuować.",
+    "email_reauth_code_required":
+        "Wprowadź sześciocyfrowy kod zabezpieczający.",
+    "email_verification_code": "Kod zabezpieczający",
+    "email_change_invalid": "Wpisz inny, prawidłowy adres e-mail.",
+    "email_change_confirmation_sent":
+        "Instrukcje potwierdzające zostały wysłane na adres {email}. Twój obecny adres e-mail pozostanie aktywny do czasu potwierdzenia zmiany.",
+    "email_current_remains_active":
+        "Twój bieżący adres e-mail pozostanie aktywny do czasu potwierdzenia żądanego adresu.",
+    "email_confirmation_resent":
+        "Instrukcje dotyczące potwierdzenia zostały wysłane ponownie.",
+    "resend_confirmation": "Wyślij potwierdzenie ponownie",
+    "cancel_email_change": "Anuluj zmianę adresu e-mail",
+    "email_change_cancelled":
+        "Prośba o zmianę adresu e-mail została anulowana.",
+    "email_change_failed":
+        "Nie mogliśmy zaktualizować Twojego adresu e-mail. Twój aktualny adres e-mail i dane konta nie uległy zmianie.",
+    "email_change_already_used":
+        "Ten adres e-mail jest już połączony z innym kontem. Użyj innego adresu lub zaloguj się na istniejące konto.",
+    "date_of_birth": "Data urodzenia",
+    "date_of_birth_not_set": "Nie ustawiono",
+    "remove_date_of_birth": "Usuń datę urodzenia",
+    "age_value": "Wiek: {age}",
+    "height": "Wzrost",
+    "height_cm": "Wzrost (cm)",
+    "height_required":
+        "Wpisz swój wzrost, aby szacunki odległości były dokładne.",
+    "height_invalid": "Wpisz wzrost w przedziale od 50 do 250 cm.",
+    "profile_height_value": "{height} cm",
+    "profile_height_missing": "Dodaj wysokość, aby oszacować odległość",
+    "settings_sections": "Ustawienia",
+    "settings_sections_description": "Wybierz, co chcesz dostosować.",
+    "routine_and_vacations": "Rutynowe i wakacje",
+    "settings_routine_vacations_description":
+        "Wstrzymaj lub przenieś wybrane powtarzające się zadania na czas nieobecności, bez zmiany wcześniejszej pracy.",
+    "vacations_title": "Wakacje",
+    "vacations_description":
+        "Dodaj tyle okresów wolnych, ile potrzebujesz. Dostosowywane są tylko przyszłe zadania cykliczne.",
+    "vacation_add": "Dodaj wakacje",
+    "vacation_edit": "Edytuj wakacje",
+    "vacation_empty": "Nie dodano jeszcze żadnych wakacji.",
+    "vacation_name": "Nazwa wakacji",
+    "vacation_starts": "Rozpoczyna się",
+    "vacation_ends": "Kończy",
+    "vacation_repeats": "Powtarza się",
+    "vacation_repeat_none": "Nie powtarza się",
+    "vacation_repeat_yearly": "Co roku",
+    "vacation_handling": "Zadania powtarzające się podczas wakacji",
+    "vacation_handling_postpone": "Przenieś je na po wakacjach",
+    "vacation_handling_skip": "Pomiń te zdarzenia",
+    "vacation_scope": "Zadania do dostosowania",
+    "vacation_scope_all": "Wszystkie powtarzające się zadania",
+    "vacation_scope_selected": "Tylko wybrane zadania cykliczne",
+    "vacation_choose_tasks": "Wybierz zadania cykliczne",
+    "vacation_selected_count": "{count} wybrane",
+    "vacation_select_one_task": "Wybierz co najmniej jedno zadanie cykliczne.",
+    "vacation_invalid_range":
+        "Data zakończenia musi przypadać w dniu rozpoczęcia lub później.",
+    "vacation_delete_question": "Usunąć te wakacje?",
+    "vacation_delete_explanation":
+        "Przyszłe zarządzane przez nie zadania powrócą do pierwotnego harmonogramu.",
+    "vacation_saved": "Wakacje zapisane.",
+    "show_all_settings": "Pokaż wszystkie ustawienia na jednej stronie",
+    "hide_all_settings": "Ukryj rozszerzone ustawienia",
+    "settings_tasks_execution_description":
+        "Wybierz, kiedy każde zadanie ma się odbywać, jak działa jego licznik czasu i jak jest zakończone.",
+    "manage_task_settings": "Zarządzaj ustawieniami zadania",
+    "task_settings_per_task_description":
+        "Otwórz zadanie, aby ustawić jego harmonogram, licznik czasu, przypomnienia i przewidywany czas trwania.",
+    "settings_pomodoro_description":
+        "Czas skupienia i przerwy są zapisywane przy każdym zadaniu Pomodoro, dzięki czemu to samo zadanie działa spójnie na każdym urządzeniu.",
+    "manage_pomodoro_settings": "Zarządzaj ustawieniami Pomodoro",
+    "pomodoro_settings_per_task_description":
+        "Otwórz zadanie Pomodoro, aby ustawić fokus, krótką przerwę, długą przerwę i preferencje automatycznego uruchamiania.",
+    "standalone_pomodoro": "Samodzielny Pomodoro",
+    "standalone_pomodoro_description":
+        "Uruchom prywatny timer bez łączenia go z zadaniem. Pozostaje na tym urządzeniu i nigdy nie nakłada się na uruchomione zadanie.",
+    "standalone_pomodoro_ready": "Gotowy do skupienia",
+    "standalone_pomodoro_load_failed": "Nie można przywrócić licznika czasu.",
+    "standalone_pomodoro_task_active_title": "Zadanie jest już uruchomione",
+    "standalone_pomodoro_task_active_detail":
+        "„{task}” już korzysta z zadania minutnik. Otwórz je, aby wstrzymać lub zakończyć je przed uruchomieniem samodzielnego licznika czasu.",
+    "standalone_pomodoro_task_active_banner":
+        "Zadanie już korzysta z licznika czasu. Samodzielny Pomodoro będzie czekać.",
+    "standalone_pomodoro_open_task": "Otwórz aktywne zadanie",
+    "standalone_pomodoro_active_title": "Samodzielny Pomodoro jest aktywny",
+    "standalone_pomodoro_active_detail":
+        "Zatrzymaj samodzielny licznik czasu przed rozpoczęciem zadania. Bieżący interwał nie zostanie zarejestrowany jako praca zadania.",
+    "standalone_pomodoro_open_timer": "Otwórz licznik czasu",
+    "standalone_pomodoro_stop_and_start_task":
+        "Zatrzymaj licznik czasu i rozpocznij zadanie",
+    "standalone_pomodoro_reset_title": "Zatrzymaj ten licznik czasu?",
+    "standalone_pomodoro_reset_detail":
+        "Bieżący samodzielny interwał zakończy się i nie zostanie dodany do zadanie.",
+    "standalone_pomodoro_time_remaining": "{time} pozostałe",
+    "standalone_pomodoro_sessions_completed":
+        "{count} sesje fokusu zakończone na tym urządzeniu",
+    "focus_duration": "Czas trwania fokusu",
+    "break_duration": "Czas trwania przerwy",
+    "start_focus": "Rozpocznij fokus",
+    "standalone_pomodoro_skip_focus": "Zakończ fokus i rozpocznij przerwę",
+    "stop_and_reset": "Zatrzymaj i zresetuj",
+    "settings_activity_privacy_description":
+        "Wybierz, co ma rejestrować to urządzenie i co może być udostępniane innym Twoim urządzeniom.",
+    "settings_reports_description":
+        "Wybierz raport dotyczący prywatności i otwórz raporty wydajności swojego konta.",
+    "settings_appearance_description":
+        "Wybierz motyw, język i strefę czasową dla tego konta.",
+    "settings_sync_description":
+        "Sprawdź, czy zmiany dotarły do innych Twoich urządzeń i napraw wszystko, co wymaga uwagi.",
+    "settings_connected_devices_description":
+        "Przejrzyj zalogowane telefony i komputery i w razie potrzeby usuń dostęp do konta.",
+    "review_connected_devices": "Sprawdź podłączone urządzenia",
+    "settings_help_diagnostics_description":
+        "Sprawdź problemy z połączeniem lub uzyskaj pomoc w instalowaniu aplikacji.",
+    "review_sync_status": "Przejrzyj stan synchronizacji",
+    "installation_help": "Pomoc w instalacji",
+    "settings_about_legal_description":
+        "Przejrzyj zainstalowaną wersję, informacje o wersji, aktualizacje i informacje prawne.",
+    "tasks_and_execution": "Zadania i cel",
+    "pomodoro": "Pomodoro",
+    "health": "Zdrowie",
+    "coaching": "Coaching",
+    "reports": "Raporty",
+    "help_and_diagnostics": "Pomoc i rozwiązywanie problemów",
+    "about_and_legal": "Informacje i kwestie prawne",
+    "update_windows_installer": "Instalator Windows",
+    "update_android_installer": "Instalator Androida",
+    "update_size_unavailable": "Rozmiar pliku niedostępny",
+    "legal_information": "Informacje prawne",
+    "health_connected_data_received": "Połączono — dane odebrane",
+    "health_no_service_available": "Brak dostępnej usługi zdrowotnej.",
+    "health_latest_record": "Najnowszy rekord stanu zdrowia",
+    "health_last_successful_import": "Ostatni pomyślny import",
+    "health_source_latest_record": "{source} · najnowszy rekord {time}",
+    "health_distance_estimated": "Szacowana odległość",
+    "health_distance_estimate_provenance":
+        "Oszacowana na podstawie codziennych kroków i wysokości profilu {height} cm.",
+    "health_huawei_not_available":
+        "Dane Huawei Health nie są dostępne dla DayVector za pośrednictwem zatwierdzonego połączenia na tym urządzeniu.",
+    "health_nothing_not_available":
+        "Dane DayVector nie są dostępne na tym urządzeniu.",
+    "health_last_updated": "Ostatnia aktualizacja",
+    "health_sources": "Źródła zdrowia",
+    "health_sources_detail":
+        "Pokazywane są tylko Health Connect, aplikacje, które faktycznie przekazały dane, oraz sparowane urządzenia zdrowotne.",
+    "health_source_applications": "Aplikacje zdrowotne",
+    "health_source_applications_empty":
+        "Aplikacje pojawiają się tutaj dopiero po przesłaniu danych za pośrednictwem Health Connect.",
+    "health_wearables": "Sparowane zegarki i opaski",
+    "health_wearables_detail":
+        "Pokazywane są tylko zegarki i opaski zdrowotne już sparowane z tym telefonem. Pobliskie urządzenia Bluetooth nie są skanowane ani wyświetlane.",
+    "health_wearables_refresh": "Odśwież sparowane urządzenia",
+    "health_wearables_settings": "Ustawienia Bluetooth",
+    "health_wearables_bluetooth_disabled":
+        "Włącz Bluetooth, aby wyświetlić sparowane zdrowotne urządzenia do noszenia.",
+    "health_wearables_permission_required":
+        "Do odczytania sparowanego stanu zdrowia wymagane są uprawnienia Bluetooth urządzenia do noszenia.",
+    "health_wearables_refresh_failed":
+        "Nie można odświeżyć sparowanych urządzeń zdrowotnych.",
+    "health_wearables_none":
+        "Nie znaleziono sparowanego zegarka zdrowotnego ani opaski.",
+    "health_wearables_none_connected":
+        "Żaden zegarek zdrowotny nie jest obecnie połączony z tym telefonem.",
+    "health_connected_watches": "Połączone zegarki",
+    "health_connected_watches_detail":
+        "Tutaj pojawiają się tylko zegarki podłączone obecnie do tego telefonu.",
+    "health_wearables_history_notice":
+        "Funkcje na żywo pojawiają się tylko wtedy, gdy zegarek potwierdza, że je obsługuje. Wcześniejsze dane pozostają w aplikacji towarzyszącej i Health Connect.",
+    "health_wearables_unnamed": "Nienazwane urządzenie do noszenia zdrowotnego",
+    "health_wearables_not_checked":
+        "Bezpośrednie funkcje zdrowotne nie zostały sprawdzone",
+    "health_wearables_check_live": "Sprawdź funkcje na żywo",
+    "health_wearables_inspecting":
+        "Sprawdzanie bezpośrednich funkcji zdrowotnych…",
+    "health_wearables_inspection_failed":
+        "Bezpośrednia kontrola funkcji nie powiodła się — spróbuj ponownie",
+    "health_wearables_no_direct_service":
+        "Ten zegarek nie oferował obsługiwanej funkcji monitorowania stanu zdrowia na żywo. Wcześniejsze dane mogą być nadal dostępne w aplikacji towarzyszącej i Health Connect.",
+    "health_wearables_direct_available":
+        "Bezpośrednie połączenie z zegarkiem · {capabilities}",
+    "health_wearables_connected": "Połączono teraz",
+    "health_wearables_paired": "Sparowano z tym telefonem",
+    "health_wearables_capability_live_heart_rate": "Tętno na żywo",
+    "health_wearables_capability_battery": "Poziom baterii",
+    "health_wearables_battery_value": "Bateria {value}%",
+    "health_wearables_capability_running_speed_cadence":
+        "Prędkość i kadencja biegu",
+    "health_wearables_capability_cycling_speed_cadence":
+        "Prędkość i rytm jazdy na rowerze",
+    "health_wearables_capability_pulse_oximetry": "Pulsoksymetria",
+    "health_wearables_capability_available": "{capability}: Dostępne",
+    "health_ble_discovery": "Znajdź zegarek zdrowotny",
+    "health_ble_discovery_detail":
+        "Znajdź pobliskie lub sparowane zegarki. DayVector pokazuje tylko funkcje zdrowotne, które zegarek potwierdza.",
+    "health_ble_scan": "Odkryj zegarki",
+    "health_ble_settings": "Ustawienia Bluetooth",
+    "health_ble_disabled": "Włącz Bluetooth, aby odkryć zegarki w pobliżu.",
+    "health_ble_permission_required":
+        "Zegarek wymaga pozwolenia na Bluetooth wykrywanie.",
+    "health_ble_no_devices":
+        "Nie wykryto żadnych urządzeń Bluetooth w pobliżu.",
+    "health_ble_scan_failed": "Nie można ukończyć wykrywania zegarka.",
+    "health_ble_history_notice":
+        "To sprawdzenie obejmuje funkcje dostępne obecnie. Wcześniejsze dane zegarka pozostają w aplikacji towarzyszącej zegarkowi lub Health Connect.",
+    "health_ble_unnamed_device": "Nienazwane urządzenie Bluetooth",
+    "health_ble_no_supported_capabilities":
+        "Nie znaleziono obsługiwanej funkcji kondycji na żywo. Zegarek może nadal udostępniać dane o stanie zdrowia za pośrednictwem aplikacji towarzyszącej.",
+    "health_ble_capabilities_unknown":
+        "Dostępne funkcje zegarka nie zostały sprawdzone",
+    "health_ble_inspect": "Sprawdź dostępne funkcje",
+    "health_ble_inspecting": "Sprawdzanie funkcji zegarka...",
+    "health_ble_inspection_failed":
+        "Nie można sprawdzić funkcji zegarka — spróbuj ponownie",
+    "health_ble_bonded": "Sparowane",
+    "health_ble_capability_live_heart_rate": "Tętno na żywo",
+    "health_ble_capability_battery": "Poziom baterii",
+    "health_ble_capability_running_speed_cadence": "Prędkość i kadencja biegu",
+    "health_ble_capability_cycling_speed_cadence":
+        "Prędkość i rytm jazdy na rowerze",
+    "health_ble_capability_pulse_oximetry": "Pulsoksymetria",
+    "health_ble_capability_available": "{capability}: Dostępne",
+    "permission_setup_title": "Skonfiguruj dostęp do Androida",
+    "permission_setup_subtitle":
+        "Wybierz, z jakich funkcji DayVector może korzystać ten telefon. Każdy wybór możesz zmienić później.",
+    "permission_setup_privacy":
+        "Nic nie jest przyznawane automatycznie. Android pyta dopiero po wybraniu pasującej akcji.",
+    "permission_setup_notifications_title": "Powiadomienia",
+    "permission_setup_notifications_detail":
+        "Wymagane do przypomnień o zadaniach, kontroli koncentracji i przerw oraz alertów o terminowym ukończeniu.",
+    "permission_setup_activity_title": "Rozpoznawanie aktywności",
+    "permission_setup_activity_detail":
+        "Pozwala Androidowi na wnoszenie wkładu kontekście związanym z ruchem, gdy korzystasz z funkcji Aktywność i zdrowie.",
+    "permission_setup_bluetooth_title":
+        "Sparowane zdrowotne urządzenia do noszenia",
+    "permission_setup_bluetooth_detail":
+        "Pozwala aplikacji odczytywać zegarki i opaski już sparowane z tym telefonem. Nie skanuje urządzeń w pobliżu.",
+    "permission_setup_usage_title": "Dostęp do wykorzystania",
+    "permission_setup_usage_detail":
+        "Opcjonalnie. Pozwala aplikacji Activity pokazać lokalnie działanie Twojej aplikacji i witryny, dzięki czemu możesz je sprawdzić i przypisać.",
+    "permission_setup_exact_alarm_title": "Dokładne alarmy",
+    "permission_setup_exact_alarm_detail":
+        "Pozwala Androidowi na wykonywanie zaplanowanych zadań, koncentrację i przekraczanie granic z taką dokładnością, na jaką pozwala urządzenie.",
+    "permission_setup_health_title": "Health Connect",
+    "permission_setup_health_detail":
+        "Opcjonalne i inicjowane przez użytkownika. Na ekranie Zdrowie wybierz dane zdrowotne, które chcesz udostępnić; DayVector nigdy nie żąda ich automatycznie.",
+    "permission_setup_allowed": "Dozwolone",
+    "permission_setup_needs_permission": "Wymagane pozwolenie",
+    "permission_setup_needs_settings": "Zezwalaj w ustawieniach Androida",
+    "permission_setup_unavailable": "Niedostępne na tym urządzeniu",
+    "permission_setup_checking": "Sprawdzanie dostępu Androida…",
+    "permission_setup_allow": "Zezwól",
+    "permission_setup_open_app_settings": "Otwórz ustawienia aplikacji",
+    "permission_setup_open_usage_settings": "Otwórz dostęp do użytkowania",
+    "permission_setup_open_exact_alarm_settings": "Otwórz dostęp do alarmów",
+    "permission_setup_set_up_health": "Skonfiguruj Health Connect",
+    "permission_setup_continue": "Zapisz wybory i kontynuuj",
+    "permission_setup_skip": "Nie teraz",
+    "permission_setup_revisit":
+        "Aby sprawdzić odmowę wyboru później, otwórz Ustawienia → Powiadomienia i dźwięki, Aktywność i prywatność lub Zdrowie. Ekrany specjalnego dostępu do Androida pozostają dostępne w odpowiednich elementach sterujących.",
+    "permission_setup_storage_error":
+        "DayVector nie mógł zapisać sprawdzenia uprawnień tego urządzenia. Spróbuj ponownie, zanim będziesz kontynuować.",
+    "schedule_capacity_exceeded_title": "Ten dzień jest przepełniony",
+    "schedule_capacity_exceeded_body":
+        "Ten plan zarezerwowałby {planned} w dniu, w którym masz {available} dostępnego czasu. Zmień termin przed zapisaniem.",
+    "schedule_capacity_reschedule": "Zmień termin",
+    "schedule_capacity_overview":
+        "Twój plan przekracza dzisiejszy dostępny czas.",
   };
-
   static const delegate = _AppLocalizationsDelegate();
 
   static const _translations = <String, Map<String, String>>{
@@ -2706,6 +4923,11 @@ class AppLocalizations {
         'To review a denied choice later, open Settings → Notifications & sounds, Activity & privacy, or Health. Android special-access screens remain available from their matching controls.',
     'permission_setup_storage_error':
         'DayVector could not save this device’s permission review. Try again before continuing.',
+    'schedule_capacity_exceeded_title': 'This day is overplanned',
+    'schedule_capacity_exceeded_body':
+        'This would reserve {planned} in a {available} available-day window. Reschedule before saving.',
+    'schedule_capacity_reschedule': 'Reschedule',
+    'schedule_capacity_overview': 'Your plan exceeds today’s available time.',
   };
 
   static const _v26Ar = <String, String>{
@@ -4825,6 +7047,11 @@ class AppLocalizations {
         'لمراجعة اختيار مرفوض لاحقًا، افتح الإعدادات ← الإشعارات والأصوات أو النشاط والخصوصية أو الصحة. وتبقى شاشات الوصول الخاص في Android متاحة من عناصر التحكم المطابقة.',
     'permission_setup_storage_error':
         'تعذر على DayVector حفظ مراجعة أذونات هذا الهاتف. حاول مجددًا قبل المتابعة.',
+    'schedule_capacity_exceeded_title': 'هذا اليوم مخطط له أكثر من اللازم',
+    'schedule_capacity_exceeded_body':
+        'سيحجز هذا {planned} ضمن نافذة يوم متاحة مدتها {available}. أعد الجدولة قبل الحفظ.',
+    'schedule_capacity_reschedule': 'إعادة الجدولة',
+    'schedule_capacity_overview': 'خطتك تتجاوز وقت اليوم المتاح.',
   };
 
   static const _v26De = <String, String>{
@@ -7064,6 +9291,12 @@ class AppLocalizations {
         'Um eine abgelehnte Auswahl später zu prüfen, öffne Einstellungen → Benachrichtigungen und Töne, Aktivität und Datenschutz oder Gesundheit. Android-Spezialzugriffe bleiben über die jeweilige Steuerung erreichbar.',
     'permission_setup_storage_error':
         'DayVector konnte die Berechtigungsprüfung dieses Geräts nicht speichern. Versuche es erneut, bevor du fortfährst.',
+    'schedule_capacity_exceeded_title': 'Dieser Tag ist überplant',
+    'schedule_capacity_exceeded_body':
+        'Dadurch würden {planned} in einem verfügbaren Tagesfenster von {available} belegt. Vor dem Speichern neu planen.',
+    'schedule_capacity_reschedule': 'Neu planen',
+    'schedule_capacity_overview':
+        'Dein Plan überschreitet die verfügbare Tageszeit.',
   };
 }
 

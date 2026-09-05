@@ -12,6 +12,7 @@ import 'package:uuid/uuid.dart';
 import '../database/app_database.dart';
 import '../platform/device_identity.dart';
 import '../time/time_zone_service.dart';
+import 'user_settings_payload.dart';
 import '../../features/activity/data/activity_privacy_policy.dart';
 import '../../features/roadmaps/data/roadmap_repository.dart';
 import '../../features/tasks/data/installed_application_service.dart';
@@ -1220,6 +1221,44 @@ bool shouldRestoreSanitizedCanonicalRuntime({
       marker['state'] == incomingState &&
       marker['revision'] == incomingRevision &&
       marker['command_id'] == incomingCommandId;
+}
+
+/// A direct read of the singleton runtime is authoritative, unlike an
+/// out-of-order Realtime envelope. An older client can retain an idle cache
+/// row at the same revision as the server's now-active row but with a stale
+/// command identity. Without this narrow recovery, that receiver can show a
+/// task status without its timer until another action happens.
+///
+/// Active local work keeps the normal revision/identity protections. This
+/// applies only to an idle, reference-free cache, never while a local
+/// transition is pending, and never to a lower incoming revision.
+@visibleForTesting
+bool shouldRestoreIdleCanonicalRuntimeFromDirectRead({
+  required String localState,
+  required String? localTaskId,
+  required String? localSessionId,
+  required int? localRevision,
+  required int incomingRevision,
+  required String? incomingCommandId,
+  required String incomingState,
+  required String? incomingTaskId,
+  required String? incomingSessionId,
+  required bool hasPendingRuntimeCommand,
+  required bool exactTaskReferenceExists,
+  required bool exactSessionReferenceExists,
+}) {
+  return !hasPendingRuntimeCommand &&
+      localState == 'idle' &&
+      localTaskId == null &&
+      localSessionId == null &&
+      (localRevision == null || incomingRevision >= localRevision) &&
+      incomingCommandId != null &&
+      incomingCommandId.isNotEmpty &&
+      const {'running', 'paused', 'break'}.contains(incomingState) &&
+      incomingTaskId != null &&
+      incomingSessionId != null &&
+      exactTaskReferenceExists &&
+      exactSessionReferenceExists;
 }
 
 @visibleForTesting
@@ -3606,6 +3645,11 @@ class SyncService {
     String userId,
   ) => _repairInvalidHealthSummaryWireConflicts(userId);
 
+  @visibleForTesting
+  Future<bool> repairInvalidUserSettingsPayloadConflictsForTesting(
+    String userId,
+  ) => _repairInvalidUserSettingsPayloadConflicts(userId);
+
   /// Delivers commands created by an Android headless control without first
   /// downloading canonical state. A widget or notification action has already
   /// committed its optimistic command locally; pulling here could replace that
@@ -3773,6 +3817,17 @@ class SyncService {
     _ensureCurrentOperation(generation, userId);
     await _runBestEffort(() => _compactLegacyOutbox(user.id));
     _ensureCurrentOperation(generation, userId);
+    final requiresSettingsSnapshot =
+        await _repairInvalidUserSettingsPayloadConflicts(user.id);
+    _ensureCurrentOperation(generation, userId);
+    if (requiresSettingsSnapshot) {
+      // The rejected mutation no longer owns a local row. Force one bounded
+      // authoritative read so an unchanged server settings row can replace
+      // the optimistic value instead of being skipped by the change cursor.
+      _snapshotRetryRequired = true;
+      await _runBestEffort(_reconcileCanonicalState);
+      _ensureCurrentOperation(generation, userId);
+    }
     await _runBestEffort(
       () => _repairInvalidHealthSummaryWireConflicts(user.id),
     );
@@ -4945,6 +5000,14 @@ class SyncService {
         }
         payload = _mergePayloadMaps(payload, _payloadMap(command.payloadJson));
       }
+      if (retained.entityType == 'user_settings' &&
+          normalizedUserSettingsUpdatePayload(
+                Map<String, dynamic>.from(payload),
+              ) ==
+              null) {
+        await _supersedeCommands(group);
+        continue;
+      }
       payload = _normalizePayloadForWire(retained.entityType, payload);
       if (delete != null && create == null) {
         payload = <String, Object?>{};
@@ -5009,6 +5072,11 @@ class SyncService {
   ) {
     final normalized = entityType == 'vacation_periods'
         ? normalizedVacationCommandPayload(Map<String, dynamic>.from(payload))
+        : entityType == 'user_settings'
+        ? normalizedUserSettingsUpdatePayload(
+                Map<String, dynamic>.from(payload),
+              ) ??
+              <String, Object?>{}
         : <String, Object?>{...payload};
     if (entityType == 'recurrence_rules') {
       final weekdays = normalized['weekdays'];
@@ -5023,6 +5091,63 @@ class SyncService {
       );
     }
     return normalized;
+  }
+
+  /// Repairs the one legacy settings-command defect that otherwise leaves an
+  /// account permanently in "needs attention". A changed, valid payload gets
+  /// one replay. If there is no safe repaired intent, the command is retired
+  /// and the caller performs an authoritative server read; we never invent a
+  /// settings value or retry an already-repaired rejection forever.
+  Future<bool> _repairInvalidUserSettingsPayloadConflicts(String userId) async {
+    final conflicts =
+        await (database.select(database.localOutboxCommands)..where(
+              (row) =>
+                  row.userId.equals(userId) &
+                  row.entityType.equals('user_settings') &
+                  row.commandType.equals('update') &
+                  row.status.equals('conflict'),
+            ))
+            .get();
+    if (conflicts.isEmpty) return false;
+
+    var needsCanonicalSnapshot = false;
+    final now = DateTime.now().toUtc();
+    for (final command in conflicts) {
+      final error = _payloadMap(command.lastError ?? '');
+      if (error['reason'] != 'invalid_command_payload') continue;
+
+      final original = _payloadMap(command.payloadJson);
+      final repaired = normalizedUserSettingsUpdatePayload(
+        Map<String, dynamic>.from(original),
+      );
+      final changed =
+          repaired != null && jsonEncode(repaired) != jsonEncode(original);
+      if (repaired != null && changed && command.attemptCount < 2) {
+        await (database.update(
+          database.localOutboxCommands,
+        )..where((row) => row.commandId.equals(command.commandId))).write(
+          LocalOutboxCommandsCompanion(
+            payloadJson: Value(jsonEncode(repaired)),
+            status: const Value('pending'),
+            // Preserve the proof that this is the sole repair replay.
+            // A second server rejection increments this to two and is
+            // retired below on the next automatic pass.
+            attemptCount: const Value(1),
+            nextAttemptAt: Value(now),
+            lastError: const Value(null),
+          ),
+        );
+        continue;
+      }
+
+      await _supersedeCommands([command]);
+      await _markRemoteConflictResolved(
+        command,
+        strategy: 'invalid_user_settings_payload_canonical_refresh',
+      );
+      needsCanonicalSnapshot = true;
+    }
+    return needsCanonicalSnapshot;
   }
 
   Future<void> _supersedeCommands(Iterable<LocalOutboxCommand> commands) async {
@@ -11360,6 +11485,7 @@ class SyncService {
   Future<void> _applyCanonicalRuntimeWithReferences(
     Map<String, dynamic> row, {
     bool force = false,
+    bool allowIdleRuntimeRecovery = false,
   }) async {
     final userId = row['user_id'] as String?;
     if (userId == null || userId != client.auth.currentUser?.id) return;
@@ -11389,7 +11515,11 @@ class SyncService {
         return;
       }
     }
-    await _applyRemoteRuntime(row, force: force);
+    await _applyRemoteRuntime(
+      row,
+      force: force,
+      allowIdleRuntimeRecovery: allowIdleRuntimeRecovery,
+    );
   }
 
   Future<bool> _hasUsableRuntimeReferences({
@@ -11431,6 +11561,7 @@ class SyncService {
   Future<void> _applyRemoteRuntime(
     Map<String, dynamic> row, {
     bool force = false,
+    bool allowIdleRuntimeRecovery = false,
     String? acknowledgedCommandId,
     bool allowAcknowledgedRollback = false,
   }) async {
@@ -11496,7 +11627,20 @@ class SyncService {
           row: row,
           hasPendingRuntimeCommand: pending.isNotEmpty,
         );
-    if (!force && !shouldApply && !shouldRestoreSanitized) {
+    final shouldRestoreIdleFromDirectRead =
+        !force &&
+        !shouldApply &&
+        !shouldRestoreSanitized &&
+        allowIdleRuntimeRecovery &&
+        await _canRestoreIdleCanonicalRuntimeFromDirectRead(
+          local: local,
+          row: row,
+          hasPendingRuntimeCommand: pending.isNotEmpty,
+        );
+    if (!force &&
+        !shouldApply &&
+        !shouldRestoreSanitized &&
+        !shouldRestoreIdleFromDirectRead) {
       // A duplicate needs no write.  For stale/inconsistent rows, retain the
       // newer local runtime and let the already-bounded canonical recovery
       // path observe a future server revision instead of reintroducing an old
@@ -11598,6 +11742,56 @@ class SyncService {
     return taskReference != null && sessionReference != null;
   }
 
+  Future<bool> _canRestoreIdleCanonicalRuntimeFromDirectRead({
+    required LocalRuntime? local,
+    required Map<String, dynamic> row,
+    required bool hasPendingRuntimeCommand,
+  }) async {
+    if (local == null) return false;
+    final userId = row['user_id'] as String?;
+    final taskId = row['active_task_occurrence_id'] as String?;
+    final sessionId = row['active_session_id'] as String?;
+    if (userId == null || taskId == null || sessionId == null) return false;
+    final taskReference =
+        await (database.select(database.localTasks)..where(
+              (task) =>
+                  task.id.equals(taskId) &
+                  task.userId.equals(userId) &
+                  task.deletedAt.isNull() &
+                  task.status.isNotIn(const [
+                    'completed',
+                    'cancelled',
+                    'archived',
+                  ]),
+            ))
+            .getSingleOrNull();
+    final sessionReference =
+        await (database.select(database.localEntityRecords)..where(
+              (session) =>
+                  session.id.equals(sessionId) &
+                  session.userId.equals(userId) &
+                  session.entityType.equals('execution_sessions') &
+                  session.parentId.equals(taskId) &
+                  session.deletedAt.isNull() &
+                  session.status.isNotIn(const ['completed', 'cancelled']),
+            ))
+            .getSingleOrNull();
+    return shouldRestoreIdleCanonicalRuntimeFromDirectRead(
+      localState: local.state,
+      localTaskId: local.activeTaskId,
+      localSessionId: local.sessionId,
+      localRevision: local.revision,
+      incomingRevision: (row['revision'] as num?)?.toInt() ?? 1,
+      incomingCommandId: row['last_command_id'] as String?,
+      incomingState: row['state'] as String? ?? 'idle',
+      incomingTaskId: taskId,
+      incomingSessionId: sessionId,
+      hasPendingRuntimeCommand: hasPendingRuntimeCommand,
+      exactTaskReferenceExists: taskReference != null,
+      exactSessionReferenceExists: sessionReference != null,
+    );
+  }
+
   @visibleForTesting
   Future<void> applyRemoteRuntimeForTesting(Map<String, dynamic> row) =>
       _applyRemoteRuntime(row);
@@ -11621,6 +11815,10 @@ class SyncService {
     await _applyCanonicalRuntimeWithReferences(
       Map<String, dynamic>.from(remote),
       force: force,
+      // The direct singleton query is the canonical source. It can repair an
+      // idle cache row whose revision equals the active server row but whose
+      // command identity belongs to an older local state.
+      allowIdleRuntimeRecovery: true,
     );
   }
 

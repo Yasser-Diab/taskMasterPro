@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:taskmaster_pro/core/database/app_database.dart';
 import 'package:taskmaster_pro/core/localization/app_localizations.dart';
+import 'package:taskmaster_pro/features/tasks/domain/day_schedule_capacity.dart';
 import 'package:taskmaster_pro/features/tasks/domain/daily_planned_time.dart';
 import 'package:taskmaster_pro/features/tasks/presentation/task_card.dart';
 
@@ -97,6 +98,45 @@ void main() {
     );
 
     expect(result, Duration.zero);
+  });
+
+  test('dashboard effort counts every task card on the scheduled day', () {
+    final result = DailyPlannedTime.calculateTaskEffort(
+      [
+        task(
+          id: 'visible-one',
+          estimate: const Duration(hours: 4),
+          start: DateTime.utc(2026, 6, 1, 9),
+          end: DateTime.utc(2026, 6, 1, 13),
+        ),
+        // A legacy recurring row can retain its original template anchor.
+        // Its scheduled date is authoritative for today's dashboard card.
+        task(
+          id: 'visible-two',
+          estimate: const Duration(hours: 2, minutes: 30),
+          start: DateTime.utc(2026, 7, 2, 9),
+          end: DateTime.utc(2026, 7, 2, 11, 30),
+        ),
+      ],
+      localDay: DateTime(2026, 7, 1),
+      timeZone: 'UTC',
+    );
+
+    expect(result, const Duration(hours: 6, minutes: 30));
+  });
+
+  test('daily capacity follows the wake-to-sleep rhythm', () {
+    final capacity = DayScheduleCapacity(
+      planned: const Duration(hours: 16, minutes: 1),
+      available: DayScheduleCapacity.availableDuration(
+        wakeTimeMinutes: 7 * 60,
+        sleepTimeMinutes: 23 * 60,
+      ),
+    );
+
+    expect(capacity.available, const Duration(hours: 16));
+    expect(capacity.isExceeded, isTrue);
+    expect(capacity.overflow, const Duration(minutes: 1));
   });
 
   test('1041 minutes uses the shared localized human duration', () {

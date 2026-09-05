@@ -6,6 +6,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../../core/database/app_database.dart';
 import '../../../core/platform/device_identity.dart';
+import '../../../core/sync/user_settings_payload.dart';
 import '../../../core/time/time_zone_service.dart';
 import '../../activity/data/activity_privacy_policy.dart';
 
@@ -1044,6 +1045,20 @@ class SettingsRepository {
         if (changes.useDeviceTimeZone.present)
           'use_device_time_zone': updated.useDeviceTimeZone,
       };
+      final commandPayload = normalizedUserSettingsUpdatePayload({
+        if (changes.localeCode.present)
+          'preferred_language': updated.localeCode,
+        if (changes.timeZone.present) 'time_zone': updated.timeZone,
+        if (changes.clockFormat.present) 'clock_format': updated.clockFormat,
+        if (changes.themeKey.present) 'theme': updated.themeKey,
+        if (changes.accentColor.present) 'accent_color': updated.accentColor,
+        if (changes.notificationSoundKey.present)
+          'notification_sound': updated.notificationSoundKey,
+        if (data.isNotEmpty) 'data': data,
+      });
+      if (commandPayload == null) {
+        throw StateError('Refusing to enqueue an invalid settings update.');
+      }
       await database
           .into(database.localOutboxCommands)
           .insert(
@@ -1056,19 +1071,7 @@ class SettingsRepository {
               entityId: updated.userId,
               commandType: 'update',
               baseRevision: current.revision,
-              payloadJson: jsonEncode({
-                if (changes.localeCode.present)
-                  'preferred_language': updated.localeCode,
-                if (changes.timeZone.present) 'time_zone': updated.timeZone,
-                if (changes.clockFormat.present)
-                  'clock_format': updated.clockFormat,
-                if (changes.themeKey.present) 'theme': updated.themeKey,
-                if (changes.accentColor.present)
-                  'accent_color': updated.accentColor,
-                if (changes.notificationSoundKey.present)
-                  'notification_sound': updated.notificationSoundKey,
-                if (data.isNotEmpty) 'data': data,
-              }),
+              payloadJson: jsonEncode(commandPayload),
               clientTimestamp: now,
               createdAt: now,
             ),

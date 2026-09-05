@@ -5,15 +5,41 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:taskmaster_pro/core/localization/app_localizations.dart';
 
 void main() {
-  test('English, Arabic, and German catalogs contain identical keys', () {
+  test('all client catalogs contain identical keys', () {
     expect(
       AppLocalizations.translationsComplete,
       isTrue,
       reason:
           'Every application-owned localization key must exist in English, '
-          'Arabic, and German.',
+          'Arabic, German, and Polish.',
     );
   });
+
+  test(
+    'Polish covers the visible dashboard, health, calendar and settings copy',
+    () {
+      const polish = AppLocalizations(Locale('pl'));
+
+      expect(
+        polish.format('dashboard_greeting_evening', {'userName': 'Yasser'}),
+        'Dobry wieczór, Yasser',
+      );
+      expect(
+        polish.text('dashboard_no_active_task'),
+        'Żadne zadanie nie jest uruchomione',
+      );
+      expect(
+        polish.text('health_recent_context'),
+        'Dzisiejszy kontekst zdrowotny',
+      );
+      expect(polish.text('calendar_history'), 'Kalendarz i historia');
+      expect(polish.text('settings_sections'), 'Ustawienia');
+      expect(
+        polish.text('sync_some_attention'),
+        'Niektóre zmiany wymagają Twojej uwagi',
+      );
+    },
+  );
 
   test('long durations stay human-readable in every supported locale', () {
     const duration = Duration(minutes: 955);

@@ -294,7 +294,24 @@
     return latestReleasePromise
   }
 
+  const cleanReleaseNoteHtml = (source) =>
+    String(source || '')
+      .replace(/<\s*(strong|b)\s*>/gi, '**')
+      .replace(/<\s*\/\s*(strong|b)\s*>/gi, '**')
+      .replace(/<\s*(em|i)\s*>/gi, '*')
+      .replace(/<\s*\/\s*(em|i)\s*>/gi, '*')
+      .replace(/<\s*br\s*\/?>/gi, '\n')
+      .replace(/<\s*\/?p\s*>/gi, '\n\n')
+      .replace(/<\s*li[^>]*>/gi, '- ')
+      .replace(/<\s*\/\s*li\s*>/gi, '\n')
+      .replace(/<\s*\/?(ul|ol)\s*>/gi, '\n')
+      // The release body is remote content. This is deliberately text-only:
+      // unsupported markup disappears while its readable copy remains.
+      .replace(/<[^>]*>/g, '')
+      .replace(/\n{3,}/g, '\n\n')
+
   const appendInlineMarkdown = (parent, source) => {
+    source = cleanReleaseNoteHtml(source)
     const tokenPattern =
       /\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)|\*\*([^*]+)\*\*|`([^`]+)`/g
     let cursor = 0
@@ -326,10 +343,8 @@
     }
   }
 
-  const renderReleaseMarkdown = (markdown) => {
-    if (!releaseModalBody) return
-    releaseModalBody.replaceChildren()
-    const lines = String(markdown || '').replace(/\r/g, '').split('\n')
+  const renderReleaseMarkdownLines = (target, markdown) => {
+    const lines = cleanReleaseNoteHtml(markdown).replace(/\r/g, '').split('\n')
     let list = null
     let listType = null
 
@@ -350,12 +365,12 @@
         const level = Math.min(4, heading[1].length + 1)
         const element = document.createElement(`h${level}`)
         appendInlineMarkdown(element, heading[2])
-        releaseModalBody.append(element)
+        target.append(element)
         return
       }
       if (/^---+$/.test(line)) {
         closeList()
-        releaseModalBody.append(document.createElement('hr'))
+        target.append(document.createElement('hr'))
         return
       }
       const unordered = line.match(/^[-*]\s+(.+)$/)
@@ -365,7 +380,7 @@
         if (!list || listType !== nextType) {
           list = document.createElement(nextType)
           listType = nextType
-          releaseModalBody.append(list)
+          target.append(list)
         }
         const item = document.createElement('li')
         appendInlineMarkdown(item, (unordered || ordered)[1])
@@ -375,8 +390,38 @@
       closeList()
       const paragraph = document.createElement('p')
       appendInlineMarkdown(paragraph, line)
-      releaseModalBody.append(paragraph)
+      target.append(paragraph)
     })
+  }
+
+  const renderReleaseMarkdown = (markdown) => {
+    if (!releaseModalBody) return
+    releaseModalBody.replaceChildren()
+    const source = String(markdown || '')
+    const detailsPattern = /<details\b([^>]*)>([\s\S]*?)<\/details\s*>/gi
+    let cursor = 0
+    let match
+    while ((match = detailsPattern.exec(source)) !== null) {
+      renderReleaseMarkdownLines(releaseModalBody, source.slice(cursor, match.index))
+      const details = document.createElement('details')
+      details.className = 'release-markdown-details'
+      details.open = /\bopen\b/i.test(match[1] || '')
+      const summaryMatch = /^\s*<summary[^>]*>([\s\S]*?)<\/summary\s*>/i.exec(
+        match[2] || '',
+      )
+      const summary = document.createElement('summary')
+      appendInlineMarkdown(summary, summaryMatch?.[1] || 'Details')
+      const body = document.createElement('div')
+      body.className = 'release-markdown-details-body'
+      renderReleaseMarkdownLines(
+        body,
+        summaryMatch ? (match[2] || '').slice(summaryMatch[0].length) : match[2],
+      )
+      details.append(summary, body)
+      releaseModalBody.append(details)
+      cursor = match.index + match[0].length
+    }
+    renderReleaseMarkdownLines(releaseModalBody, source.slice(cursor))
   }
 
   const releaseCacheKey = (version) =>
@@ -540,7 +585,7 @@
 
   const loadLatestRelease = async () => {
     const config = window.DAYVECTOR_RELEASES
-    const setDownload = (platform, asset) => {
+    const setDownload = (platform, asset, fallbackUrl = null) => {
       const link = document.getElementById(`${platform}-download`)
       const size = document.querySelector(`[data-${platform}-size]`)
       const label = link?.querySelector('[data-download-label]')
@@ -554,23 +599,38 @@
         if (size) size.textContent = fileSize(asset.size)
         return
       }
+      if (fallbackUrl) {
+        // GitHub's release API is deliberately anonymous in this static site.
+        // When its shared rate limit is exhausted, keep the user on the
+        // official, dynamically resolved release page instead of claiming a
+        // published installer is "coming soon".
+        link.href = fallbackUrl
+        link.removeAttribute('aria-disabled')
+        link.removeAttribute('tabindex')
+        if (label) label.textContent = 'View official release'
+        if (size) size.textContent = 'Installer available on GitHub'
+        return
+      }
       link.href = '#'
       link.setAttribute('aria-disabled', 'true')
       link.setAttribute('tabindex', '-1')
       if (label) label.textContent = 'Coming soon!'
       if (size) size.textContent = 'Available with the release'
     }
-    const setReleaseUnavailable = (version = null) => {
+    const setReleaseUnavailable = () => {
       document.querySelectorAll('[data-release-version]').forEach((element) => {
-        element.textContent = version || 'Coming soon!'
+        element.textContent = 'Latest published release'
       })
-      if (version) {
-        document.querySelectorAll('[data-release-notes]').forEach((control) => {
-          control.setAttribute('data-release-version-value', version)
-        })
-      }
-      setDownload('windows', null)
-      setDownload('android', null)
+      document.querySelectorAll('[data-release-notes]').forEach((control) => {
+        control.removeAttribute('data-release-version-value')
+      })
+      const officialReleaseUrl =
+        config?.latestReleasePage ||
+        (config?.releasesPage
+          ? `${config.releasesPage.replace(/\/+$/, '')}/latest`
+          : null)
+      setDownload('windows', null, officialReleaseUrl)
+      setDownload('android', null, officialReleaseUrl)
     }
     if (!config?.latestApiUrl) {
       setReleaseUnavailable()

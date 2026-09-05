@@ -21,6 +21,7 @@ import '../../coaching/presentation/coaching_expression_visual.dart';
 import '../../tasks/data/task_execution_commands.dart';
 import '../../tasks/data/task_execution_providers.dart';
 import '../../tasks/domain/pomodoro_execution_state.dart';
+import '../../tasks/domain/day_schedule_capacity.dart';
 import '../../tasks/domain/task_occurrence_policy.dart';
 import '../../tasks/presentation/task_card.dart';
 import '../../tasks/presentation/task_completion_flow.dart';
@@ -138,11 +139,22 @@ class DashboardScreen extends ConsumerWidget {
       now: now,
       timeZone: timeZone,
     ).length;
-    final plannedMs = DailyPlannedTime.calculate(
+    // The dashboard card is a commitment total, not an interval union. It is
+    // calculated from the exact occurrence cards rendered below, so a visible
+    // task can never disappear from the planned number because a legacy
+    // template timestamp happened to overlap another card.
+    final planned = DailyPlannedTime.calculateTaskEffort(
       scheduledTasks,
       localDay: localToday,
       timeZone: timeZone,
-    ).inMilliseconds;
+    );
+    final dayCapacity = DayScheduleCapacity.forTasks(
+      tasks: scheduledTasks,
+      localDay: localToday,
+      timeZone: timeZone,
+      wakeTimeMinutes: settings?.wakeTimeMinutes ?? 7 * 60,
+      sleepTimeMinutes: settings?.sleepTimeMinutes ?? 23 * 60,
+    );
     final profile = ref.watch(localProfileProvider(user.id)).value;
     final displayName = profile?.displayName.trim().isNotEmpty == true
         ? profile!.displayName
@@ -246,13 +258,22 @@ class DashboardScreen extends ConsumerWidget {
                     ),
                     const SizedBox(height: 20),
                     _PerformanceGrid(
-                      plannedMs: plannedMs,
+                      plannedMs: planned.inMilliseconds,
                       recordedWork: recordedWork,
                       runtime: runtime,
                       completed: completed,
                       overdue: overdue,
                       onOpenTasksFilter: onOpenTasksFilter,
                     ),
+                    if (dayCapacity.isExceeded) ...[
+                      const SizedBox(height: 12),
+                      _ScheduleCapacityNotice(
+                        capacity: dayCapacity,
+                        onReschedule: onOpenTasksFilter == null
+                            ? null
+                            : () => onOpenTasksFilter!('today'),
+                      ),
+                    ],
                     const SizedBox(height: 20),
                     _TodaySchedule(
                       entries: schedule,
@@ -1224,6 +1245,61 @@ class _PerformanceGrid extends StatelessWidget {
           },
         ),
       ],
+    );
+  }
+}
+
+class _ScheduleCapacityNotice extends StatelessWidget {
+  const _ScheduleCapacityNotice({required this.capacity, this.onReschedule});
+
+  final DayScheduleCapacity capacity;
+  final VoidCallback? onReschedule;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = Theme.of(context).colorScheme.error;
+    return Card(
+      color: color.withValues(alpha: 0.10),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(Icons.schedule_outlined, color: color),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    context.l10n.text('schedule_capacity_exceeded_title'),
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    context.l10n.format('schedule_capacity_exceeded_body', {
+                      'planned': _durationLabel(context, capacity.planned),
+                      'available': _durationLabel(context, capacity.available),
+                    }),
+                  ),
+                  if (onReschedule != null) ...[
+                    const SizedBox(height: 8),
+                    TextButton.icon(
+                      onPressed: onReschedule,
+                      icon: const Icon(Icons.event_repeat_outlined),
+                      label: Text(
+                        context.l10n.text('schedule_capacity_reschedule'),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

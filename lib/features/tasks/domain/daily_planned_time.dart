@@ -13,6 +13,76 @@ import 'task_schedule_policy.dart';
 /// A dated task without a complete clock interval still contributes its
 /// estimate on that date, but only into the unallocated portion of the day.
 abstract final class DailyPlannedTime {
+  /// Adds the calendar space reserved by every occurrence on [localDay].
+  ///
+  /// This is intentionally different from [calculate]. The latter is an
+  /// interval union for historical reporting, where overlapping clock windows
+  /// describe the same elapsed time. A dashboard's **Planned** card and the
+  /// daily-capacity guard must instead show the commitment the user has made:
+  /// every visible task, plus any rest explicitly reserved within it. Keeping
+  /// those two numbers on this one calculation prevents a schedule of many
+  /// cards from incorrectly reading as the duration of just one card.
+  static Duration calculateTaskEffort(
+    Iterable<LocalTask> tasks, {
+    required DateTime localDay,
+    required String timeZone,
+  }) {
+    var totalMs = 0;
+    for (final task in tasks) {
+      if (!isOccurrenceScheduledForDay(
+        task,
+        localDay: localDay,
+        timeZone: timeZone,
+      )) {
+        continue;
+      }
+      totalMs += occupiedDuration(task).inMilliseconds;
+    }
+    return Duration(milliseconds: totalMs.clamp(0, 1 << 62).toInt());
+  }
+
+  /// The time an unpositioned task reserves on the user's day. Planned rest
+  /// is not productive work, but it still occupies a real slot and therefore
+  /// belongs in both capacity and planned-commitment calculations.
+  static Duration occupiedDuration(LocalTask task) => occupiedDurationFor(
+    estimatedDuration: Duration(
+      milliseconds: task.estimatedDurationMs.clamp(0, 1 << 62).toInt(),
+    ),
+    plannedRest: TaskSchedulePolicy.plannedRestDurationFromJson(task.dataJson),
+  );
+
+  static Duration occupiedDurationFor({
+    required Duration estimatedDuration,
+    required Duration plannedRest,
+  }) {
+    final total = estimatedDuration.inMilliseconds + plannedRest.inMilliseconds;
+    return Duration(milliseconds: total.clamp(0, 1 << 62).toInt());
+  }
+
+  /// Uses the occurrence's date column before a legacy wall-clock anchor.
+  /// Recurring rows carry a concrete occurrence date, while older imports may
+  /// retain the original template's [LocalTask.plannedStart]. That stale
+  /// anchor must not erase a card that the dashboard is visibly showing today.
+  static bool isOccurrenceScheduledForDay(
+    LocalTask task, {
+    required DateTime localDay,
+    required String timeZone,
+  }) {
+    final scheduledDate = task.scheduledDate;
+    if (scheduledDate != null) {
+      return scheduledDate.year == localDay.year &&
+          scheduledDate.month == localDay.month &&
+          scheduledDate.day == localDay.day;
+    }
+    final plannedStart = task.plannedStart;
+    if (plannedStart == null) return false;
+    final location = _location(timeZone);
+    final local = tz.TZDateTime.from(plannedStart.toUtc(), location);
+    return local.year == localDay.year &&
+        local.month == localDay.month &&
+        local.day == localDay.day;
+  }
+
   static Duration calculate(
     Iterable<LocalTask> tasks, {
     required DateTime localDay,

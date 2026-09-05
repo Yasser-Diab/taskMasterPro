@@ -10,7 +10,10 @@ import '../../../core/database/app_database.dart';
 import '../../../core/data/entity_record_repository.dart';
 import '../../../core/platform/device_identity.dart';
 import '../domain/pomodoro_execution_state.dart';
+import '../domain/day_schedule_capacity.dart';
+import '../domain/daily_planned_time.dart';
 import '../domain/task_domain_catalog.dart';
+import '../domain/task_occurrence_policy.dart';
 import '../domain/task_schedule_policy.dart';
 
 /// Local-only evidence that an otherwise canonical runtime was hidden because
@@ -746,7 +749,10 @@ class TaskRepository {
         );
   }
 
-  Future<String> createTask(TaskDraft draft) async {
+  Future<String> createTask(
+    TaskDraft draft, {
+    bool enforceDailyCapacity = false,
+  }) async {
     _validateDraftDurationBounds(draft);
     final title = draft.title.trim();
     if (title.isEmpty) throw ArgumentError('Task title is required.');
@@ -756,6 +762,13 @@ class TaskRepository {
     final taskId = draft.id ?? _uuid.v4();
     final commandId = _uuid.v4();
     final scheduled = draft.scheduledDate ?? DateTime.now();
+    if (enforceDailyCapacity) {
+      await _enforceDailyCapacity(
+        scheduledDate: scheduled,
+        estimatedDuration: draft.effectiveEstimatedDuration,
+        configuration: draft.configuration,
+      );
+    }
     final payload = <String, Object?>{
       'title': title,
       'description': draft.description.trim(),
@@ -820,7 +833,11 @@ class TaskRepository {
     return taskId;
   }
 
-  Future<void> updateTask(LocalTask task, TaskDraft draft) async {
+  Future<void> updateTask(
+    LocalTask task,
+    TaskDraft draft, {
+    bool enforceDailyCapacity = false,
+  }) async {
     _validateDraftDurationBounds(draft);
     final now = DateTime.now().toUtc();
     final deviceId = await DeviceIdentity.accountId(_userId);
@@ -833,6 +850,14 @@ class TaskRepository {
     final occurrenceKey = draft.clearRecurrenceIdentity
         ? null
         : draft.occurrenceKey ?? task.occurrenceKey;
+    if (enforceDailyCapacity && scheduled != null) {
+      await _enforceDailyCapacity(
+        scheduledDate: scheduled,
+        estimatedDuration: draft.effectiveEstimatedDuration,
+        configuration: draft.configuration,
+        replacingTaskId: task.id,
+      );
+    }
     final payload = <String, Object?>{
       'title': draft.title.trim(),
       'description': draft.description.trim(),
@@ -1034,6 +1059,7 @@ class TaskRepository {
         occurrenceKey: task.occurrenceKey,
         configuration: _configuration(task),
       ),
+      enforceDailyCapacity: true,
     );
   }
 
@@ -1060,6 +1086,7 @@ class TaskRepository {
         occurrenceKey: latest.occurrenceKey,
         configuration: _configuration(latest),
       ),
+      enforceDailyCapacity: true,
     );
   }
 
@@ -3485,6 +3512,61 @@ class TaskRepository {
     final month = value.month.toString().padLeft(2, '0');
     final day = value.day.toString().padLeft(2, '0');
     return '$year-$month-$day';
+  }
+
+  /// Rejects only the proposed write, before its local row or sync command is
+  /// created. Existing overbooked days remain visible and editable so the
+  /// user can actively reschedule them; the guard never hides or mutates
+  /// their prior plan behind their back.
+  Future<void> _enforceDailyCapacity({
+    required DateTime scheduledDate,
+    required Duration estimatedDuration,
+    required Map<String, Object?> configuration,
+    String? replacingTaskId,
+  }) async {
+    final settings =
+        await (database.select(database.localAppSettings)..where(
+              (row) => row.userId.equals(_userId) & row.deletedAt.isNull(),
+            ))
+            .getSingleOrNull();
+    final localDay = DateTime(
+      scheduledDate.year,
+      scheduledDate.month,
+      scheduledDate.day,
+    );
+    final timeZone = settings?.timeZone ?? 'UTC';
+    final existing =
+        await (database.select(database.localTasks)..where(
+              (row) => row.userId.equals(_userId) & row.deletedAt.isNull(),
+            ))
+            .get();
+    final openOccurrences = existing.where(
+      (task) =>
+          task.id != replacingTaskId &&
+          !TaskOccurrencePolicy.terminalStatuses.contains(task.status),
+    );
+    final current = DayScheduleCapacity.forTasks(
+      tasks: openOccurrences,
+      localDay: localDay,
+      timeZone: timeZone,
+      wakeTimeMinutes: settings?.wakeTimeMinutes ?? 7 * 60,
+      sleepTimeMinutes: settings?.sleepTimeMinutes ?? 23 * 60,
+    );
+    final projected = DayScheduleCapacity(
+      planned:
+          current.planned +
+          DailyPlannedTime.occupiedDurationFor(
+            estimatedDuration: estimatedDuration,
+            plannedRest: TaskSchedulePolicy.plannedRestDuration(configuration),
+          ),
+      available: current.available,
+    );
+    if (projected.isExceeded) {
+      throw DayScheduleCapacityExceeded(
+        localDay: localDay,
+        capacity: projected,
+      );
+    }
   }
 
   void _validateDraftDurationBounds(TaskDraft draft) {

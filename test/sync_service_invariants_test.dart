@@ -21,6 +21,56 @@ void main() {
     expect(authoritativeSnapshotCanAdvanceCursor(const {'roadmaps'}), isFalse);
   });
 
+  test('invalid legacy settings commands get one sanitized replay', () async {
+    final database = AppDatabase(NativeDatabase.memory());
+    addTearDown(database.close);
+    final now = DateTime.utc(2026, 9, 5, 12);
+    await database
+        .into(database.localOutboxCommands)
+        .insert(
+          LocalOutboxCommandsCompanion.insert(
+            commandId: 'settings-payload-repair',
+            userId: 'owner-settings',
+            deviceId: 'device-settings',
+            deviceSequence: 1,
+            entityType: 'user_settings',
+            entityId: 'owner-settings',
+            commandType: 'update',
+            baseRevision: 2,
+            payloadJson:
+                '{"theme":"dark","schema_version":1,"data":{"wake_time_minutes":420}}',
+            status: const Value('conflict'),
+            attemptCount: const Value(1),
+            lastError: const Value(
+              '{"reason":"invalid_command_payload","code":"23514"}',
+            ),
+            clientTimestamp: now,
+            createdAt: now,
+          ),
+        );
+    final service = SyncService(
+      database: database,
+      client: SupabaseClient(
+        'https://example.supabase.co',
+        'sb_publishable_test_key',
+      ),
+    );
+
+    final needsSnapshot = await service
+        .repairInvalidUserSettingsPayloadConflictsForTesting('owner-settings');
+    final repaired = await database
+        .select(database.localOutboxCommands)
+        .getSingle();
+
+    expect(needsSnapshot, isFalse);
+    expect(repaired.status, 'pending');
+    expect(repaired.attemptCount, 1);
+    expect(jsonDecode(repaired.payloadJson), {
+      'theme': 'dark',
+      'data': {'wake_time_minutes': 420},
+    });
+  });
+
   test('atomic runtime commands defer every canonical row they project', () {
     const switchPayload = <String, dynamic>{
       'task_occurrence_id': 'task-new',
@@ -2548,6 +2598,64 @@ void main() {
         incomingCommandId: 'different-command',
       ),
       CanonicalRuntimeApplyDecision.staleOrInconsistent,
+    );
+  });
+
+  test('a direct canonical runtime read repairs an equal-revision idle cache', () {
+    expect(
+      shouldRestoreIdleCanonicalRuntimeFromDirectRead(
+        localState: 'idle',
+        localTaskId: null,
+        localSessionId: null,
+        localRevision: 12,
+        incomingRevision: 12,
+        incomingCommandId: 'remote-start',
+        incomingState: 'running',
+        incomingTaskId: 'task-1',
+        incomingSessionId: 'session-1',
+        hasPendingRuntimeCommand: false,
+        exactTaskReferenceExists: true,
+        exactSessionReferenceExists: true,
+      ),
+      isTrue,
+    );
+    expect(
+      shouldRestoreIdleCanonicalRuntimeFromDirectRead(
+        localState: 'idle',
+        localTaskId: null,
+        localSessionId: null,
+        localRevision: 12,
+        incomingRevision: 12,
+        incomingCommandId: 'remote-start',
+        incomingState: 'running',
+        incomingTaskId: 'task-1',
+        incomingSessionId: 'session-1',
+        hasPendingRuntimeCommand: true,
+        exactTaskReferenceExists: true,
+        exactSessionReferenceExists: true,
+      ),
+      isFalse,
+      reason:
+          'A local Start/Pause/Resume command remains authoritative until it is acknowledged.',
+    );
+    expect(
+      shouldRestoreIdleCanonicalRuntimeFromDirectRead(
+        localState: 'running',
+        localTaskId: 'other-task',
+        localSessionId: 'other-session',
+        localRevision: 12,
+        incomingRevision: 12,
+        incomingCommandId: 'remote-start',
+        incomingState: 'running',
+        incomingTaskId: 'task-1',
+        incomingSessionId: 'session-1',
+        hasPendingRuntimeCommand: false,
+        exactTaskReferenceExists: true,
+        exactSessionReferenceExists: true,
+      ),
+      isFalse,
+      reason:
+          'The direct read must not displace an active local runtime at the same revision.',
     );
   });
 
