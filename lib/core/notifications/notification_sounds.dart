@@ -818,6 +818,7 @@ class LocalNotificationService {
       _namespacedNotificationId(taskId, _executionBoundaryNamespace);
   static const standalonePomodoroNotificationId = 820028;
   static const _sleepReminderNotificationId = 820026;
+  static const workScheduleReminderNotificationId = 820029;
 
   /// The quiet, ongoing execution card must never reuse the exact alarm ID.
   /// `FlutterLocalNotificationsPlugin.show` replaces a pending schedule with
@@ -1892,6 +1893,84 @@ class LocalNotificationService {
       );
     });
   }
+
+  /// Schedules the next native work-shift reminder without pretending that a
+  /// user's employment is a task occurrence.  There is exactly one pending
+  /// reminder per installation; HomeShell replaces it whenever synchronized
+  /// schedule settings change or the following shift becomes known.
+  Future<void> scheduleWorkScheduleReminder({
+    required DateTime scheduledAtUtc,
+    required int minutesBeforeStart,
+    required NotificationSoundChoice sound,
+    required String ownerId,
+    bool enabled = true,
+    bool vibration = true,
+    String localeCode = 'en',
+  }) async {
+    await initialize();
+    if (!enabled) {
+      await _cancelSerialized(workScheduleReminderNotificationId);
+      return;
+    }
+    final l10n = AppLocalizations(Locale(localeCode));
+    final title = l10n.text('work_schedule_reminder_title');
+    final body = l10n.format('work_schedule_reminder_body', {
+      'minutes': minutesBeforeStart,
+    });
+    final payload = ownedPayloadForOwner(
+      ownerId: ownerId,
+      route: 'settings/wellbeing',
+      eventType: 'work_schedule',
+      boundaryAtUtc: scheduledAtUtc,
+    );
+    await _serializeNotificationMutation(() async {
+      await _plugin.cancel(id: workScheduleReminderNotificationId);
+      if (!NotificationSchedulePolicy.canSchedule(scheduledAtUtc)) return;
+      await _plugin.zonedSchedule(
+        id: workScheduleReminderNotificationId,
+        title: title,
+        body: body,
+        scheduledDate: tz.TZDateTime.from(scheduledAtUtc.toUtc(), tz.UTC),
+        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+        notificationDetails: NotificationDetails(
+          android: _androidDetails(
+            l10n: l10n,
+            category: 'scheduled_starts',
+            sound: sound,
+            vibration: vibration,
+            title: title,
+            body: body,
+            notificationTag: 'work-schedule',
+            actions: [
+              AndroidNotificationAction(
+                'open',
+                l10n.text('open'),
+                showsUserInterface: true,
+              ),
+            ],
+          ),
+          windows: WindowsNotificationDetails(
+            audio: _windowsAudio(sound),
+            duration: WindowsNotificationDuration.long,
+            scenario: WindowsNotificationScenario.reminder,
+            actions: [
+              WindowsAction(
+                content: l10n.text('open'),
+                arguments: windowsNotificationActionArguments(
+                  actionId: 'open',
+                  payload: payload,
+                ),
+              ),
+            ],
+          ),
+        ),
+        payload: payload,
+      );
+    });
+  }
+
+  Future<void> cancelWorkScheduleReminder() =>
+      _cancelSerialized(workScheduleReminderNotificationId);
 
   /// Reports whether the platform accepted a future execution alarm. The
   /// caller retries only an expired boundary or a thrown transient platform

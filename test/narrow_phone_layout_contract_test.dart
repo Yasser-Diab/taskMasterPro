@@ -191,9 +191,7 @@ void main() {
       expect(source, contains('constraints.maxWidth >= 360'));
       expect(
         source,
-        contains(
-          'Expanded(\n                  child: Text(\n                    title,',
-        ),
+        contains('Expanded(child: Text(title, style: titleStyle))'),
       );
     });
   });

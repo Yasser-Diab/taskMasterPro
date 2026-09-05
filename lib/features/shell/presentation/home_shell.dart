@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:timezone/timezone.dart' as tz;
 
 import '../../../core/database/app_database.dart';
 import '../../../core/localization/app_localizations.dart';
@@ -33,6 +34,7 @@ import '../../health/presentation/windows_health_summary_screen.dart';
 import '../../roadmaps/presentation/roadmaps_screen.dart';
 import '../../settings/presentation/settings_screen.dart';
 import '../../settings/presentation/notifications_sounds_screen.dart';
+import '../../settings/domain/work_schedule.dart';
 import '../../settings/presentation/schedule_wellbeing_screen.dart';
 import '../../sync/presentation/synchronization_panel.dart';
 import '../../tasks/data/task_execution_commands.dart';
@@ -346,6 +348,9 @@ class _HomeShellState extends ConsumerState<HomeShell>
   StreamSubscription<List<LocalTask>>? _androidWidgetTaskSubscription;
   StreamSubscription<AndroidHomeWidgetAction>? _androidWidgetActionSubscription;
   StreamSubscription<List<LocalEntityRecord>>? _taskReminderSubscription;
+  StreamSubscription<LocalAppSetting?>? _workScheduleSubscription;
+  Timer? _workScheduleRefresh;
+  int? _workScheduleReminderFingerprint;
   ModalRoute<dynamic>? _route;
 
   @override
@@ -387,6 +392,10 @@ class _HomeShellState extends ConsumerState<HomeShell>
     _automaticBoundaryRefresh = Timer.periodic(
       const Duration(seconds: 1),
       (_) => unawaited(_advanceAutomaticPomodoroBoundary()),
+    );
+    _workScheduleRefresh = Timer.periodic(
+      const Duration(minutes: 1),
+      (_) => unawaited(_synchronizeNativeWorkReminder()),
     );
   }
 
@@ -522,6 +531,11 @@ class _HomeShellState extends ConsumerState<HomeShell>
             .listen(
               (_) => unawaited(_synchronizePersistedTaskReminders(force: true)),
             );
+    _workScheduleSubscription = ref
+        .read(settingsRepositoryProvider)
+        .watchSettings()
+        .listen((_) => unawaited(_synchronizeNativeWorkReminder(force: true)));
+    await _synchronizeNativeWorkReminder(force: true);
   }
 
   @override
@@ -539,8 +553,10 @@ class _HomeShellState extends ConsumerState<HomeShell>
     unawaited(_androidWidgetActionSubscription?.cancel());
     unawaited(_standaloneSubscription?.cancel());
     unawaited(_taskReminderSubscription?.cancel());
+    unawaited(_workScheduleSubscription?.cancel());
     _trayRefresh?.cancel();
     _automaticBoundaryRefresh?.cancel();
+    _workScheduleRefresh?.cancel();
     _executionAlarmRetryTimer?.cancel();
     _standaloneBoundaryTimer?.cancel();
     super.dispose();
@@ -1478,6 +1494,84 @@ class _HomeShellState extends ConsumerState<HomeShell>
     }
   }
 
+  /// Replaces the single local work alarm whenever the authoritative account
+  /// schedule changes.  This performs no network work; synchronized settings
+  /// arrive through Drift and are interpreted identically on Windows and
+  /// Android using the stored IANA timezone.
+  Future<void> _synchronizeNativeWorkReminder({bool force = false}) async {
+    if (!mounted) return;
+    final settings = ref.read(appSettingsProvider).value;
+    if (settings == null) return;
+    final nowUtc = DateTime.now().toUtc();
+    final plan = WorkSchedulePlan.fromSettings(settings);
+    final preferences = settings.notificationPreferencesJson;
+    final category = 'scheduled_starts';
+    final enabled =
+        plan.enabled &&
+        settings.workReminderEnabled &&
+        NotificationSounds.categoryEnabled(
+          preferencesJson: preferences,
+          category: category,
+        );
+    if (!enabled) {
+      if (force || _workScheduleReminderFingerprint != null) {
+        await localNotificationService.cancelWorkScheduleReminder();
+      }
+      _workScheduleReminderFingerprint = null;
+      return;
+    }
+    tz.Location location;
+    try {
+      location = tz.getLocation(settings.timeZone);
+    } catch (_) {
+      location = tz.UTC;
+    }
+    final offset = Duration(minutes: settings.workReminderOffsetMinutes);
+    final startAt = plan.nextStartUtc(
+      location: location,
+      nowUtc: nowUtc.add(offset),
+    );
+    if (startAt == null) {
+      await localNotificationService.cancelWorkScheduleReminder();
+      _workScheduleReminderFingerprint = null;
+      return;
+    }
+    final reminderAt = startAt.subtract(offset);
+    final fingerprint = Object.hash(
+      settings.revision,
+      settings.timeZone,
+      settings.workScheduleEnabled,
+      settings.workScheduleRotationJson,
+      settings.workScheduleAnchorDate,
+      settings.workReminderEnabled,
+      settings.workReminderOffsetMinutes,
+      settings.workStartMinutes,
+      settings.workEndMinutes,
+      settings.workingDaysJson,
+      settings.notificationPreferencesJson,
+      settings.notificationSoundKey,
+      settings.localeCode,
+      startAt,
+    );
+    if (!force && _workScheduleReminderFingerprint == fingerprint) return;
+    await localNotificationService.scheduleWorkScheduleReminder(
+      scheduledAtUtc: reminderAt,
+      minutesBeforeStart: settings.workReminderOffsetMinutes,
+      sound: NotificationSounds.forCategory(
+        preferencesJson: preferences,
+        category: category,
+        fallbackKey: settings.notificationSoundKey,
+      ),
+      ownerId: widget.user.id,
+      vibration: NotificationSounds.vibrationForCategory(
+        preferencesJson: preferences,
+        category: category,
+      ),
+      localeCode: settings.localeCode,
+    );
+    _workScheduleReminderFingerprint = fingerprint;
+  }
+
   Future<void> _handleTrayCommand(String command) async {
     if (!mounted) return;
     if (command == 'toggleSidebar') {
@@ -1701,9 +1795,14 @@ class _HomeShellState extends ConsumerState<HomeShell>
     }
     if (route == 'settings/wellbeing') {
       if (!mounted || actionId == 'dismiss') return;
+      final settings = ref.read(appSettingsProvider).value;
       await Navigator.of(context).push(
         MaterialPageRoute<void>(
-          builder: (_) => const ScheduleWellbeingScreen(),
+          builder: (_) =>
+              settings?.workPomodoroEnabled == true &&
+                  ownedPayload.eventType == 'work_schedule'
+              ? const StandalonePomodoroScreen()
+              : const ScheduleWellbeingScreen(),
         ),
       );
       return;

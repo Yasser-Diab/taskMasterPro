@@ -2095,9 +2095,15 @@ class SyncService {
   Timer? _realtimeRecoveryTimer;
   Timer? _snapshotRetryTimer;
   Timer? _runtimeFallbackTimer;
+  // The private broadcast is the lowest-overhead delivery path.  The row
+  // stream is an independent safety rail for a deployment where the broadcast
+  // trigger or `realtime.messages` policy is temporarily unavailable.
   RealtimeChannel? _channel;
+  RealtimeChannel? _runtimeRowChannel;
   SyncHealth _currentHealth = SyncHealth.syncing;
   bool _liveConnectionAvailable = false;
+  bool _broadcastRealtimeAvailable = false;
+  bool _runtimeRowRealtimeAvailable = false;
   bool _fallbackCheckAvailable = false;
   Future<void>? _snapshotFuture;
   final ReplayableSyncOperation _pullOperation = ReplayableSyncOperation();
@@ -2145,7 +2151,10 @@ class SyncService {
   }
 
   SyncConnectionDiagnostic getConnectionDiagnostics() {
-    final activeAccountChannels = _channel == null ? 0 : 1;
+    final activeAccountChannels = [
+      _channel,
+      _runtimeRowChannel,
+    ].whereType<RealtimeChannel>().length;
     return SyncConnectionDiagnostic(
       activeRealtimeConnections: _liveConnectionAvailable ? 1 : 0,
       activeAccountChannels: activeAccountChannels,
@@ -2238,8 +2247,12 @@ class SyncService {
     _connectivitySubscription = null;
     await _pendingOutboxSubscription?.cancel();
     _pendingOutboxSubscription = null;
-    await _channel?.unsubscribe();
+    await Future.wait([
+      if (_channel != null) _channel!.unsubscribe(),
+      if (_runtimeRowChannel != null) _runtimeRowChannel!.unsubscribe(),
+    ]);
     _channel = null;
+    _runtimeRowChannel = null;
     _subscribedForUserId = null;
     _registeredRealtimeHandlers = 0;
     _subscriptionFuture = null;
@@ -2250,6 +2263,8 @@ class SyncService {
     _snapshotDeferredRows.clear();
     _incrementalDeferredRows.clear();
     _liveConnectionAvailable = false;
+    _broadcastRealtimeAvailable = false;
+    _runtimeRowRealtimeAvailable = false;
     _fallbackCheckAvailable = false;
     _lastDeviceAuthorizationCheck = null;
     _initialSyncComplete = false;
@@ -2800,11 +2815,17 @@ class SyncService {
     if (record != null && record['revoked_at'] == null) return true;
 
     _setHealth(SyncHealth.attention);
-    await _channel?.unsubscribe();
+    await Future.wait([
+      if (_channel != null) _channel!.unsubscribe(),
+      if (_runtimeRowChannel != null) _runtimeRowChannel!.unsubscribe(),
+    ]);
     _channel = null;
+    _runtimeRowChannel = null;
     _subscribedForUserId = null;
     _registeredRealtimeHandlers = 0;
     _liveConnectionAvailable = false;
+    _broadcastRealtimeAvailable = false;
+    _runtimeRowRealtimeAvailable = false;
     ensureCurrent();
     // Keep the old account-device row revoked. A future explicit sign-in must
     // register a new device identity instead of accidentally reviving the
@@ -2854,82 +2875,150 @@ class SyncService {
   Future<void> _subscribeToAccountInternal({required bool force}) async {
     final user = client.auth.currentUser;
     if (user == null) return;
-    if (!force && _channel != null && _subscribedForUserId == user.id) {
+    if (!force &&
+        _channel != null &&
+        _runtimeRowChannel != null &&
+        _subscribedForUserId == user.id) {
       return;
     }
-    await _channel?.unsubscribe();
+    await Future.wait([
+      if (_channel != null) _channel!.unsubscribe(),
+      if (_runtimeRowChannel != null) _runtimeRowChannel!.unsubscribe(),
+    ]);
     _registeredRealtimeHandlers = 0;
+    _broadcastRealtimeAvailable = false;
+    _runtimeRowRealtimeAvailable = false;
+    _liveConnectionAvailable = false;
     final channel = client.channel(
       'taskmaster:user:${user.id}:runtime',
       opts: const RealtimeChannelConfig(private: true),
     );
+    final runtimeRowChannel = client.channel(
+      'dayvector:user:${user.id}:runtime-row',
+      opts: const RealtimeChannelConfig(replicationReady: true),
+    );
     _channel = channel;
+    _runtimeRowChannel = runtimeRowChannel;
     _subscribedForUserId = user.id;
-    _registeredRealtimeHandlers += 1;
+    _registeredRealtimeHandlers = 2;
     channel
         .onBroadcast(
           event: 'entity_changed',
           callback: (payload) {
-            _lastRealtimeChangeAt = DateTime.now().toUtc();
-            _recordTraffic(
-              'realtime:entity_changed',
-              downloaded: payload,
-              requests: 0,
-              realtimeMessages: 1,
+            _handleRealtimeWake(
+              source: 'realtime:entity_changed',
+              payload: payload,
             );
-            // A command transaction can emit several entity broadcasts. Use a
-            // leading bounded wake: later unrelated events join the same pass
-            // but can never keep moving its deadline indefinitely.
-            _realtimeWake.schedule(() {
-              final generation = _accountGeneration;
-              final userId = _startedForUserId;
-              if (userId == null) return;
-              unawaited(
-                _runBestEffort(
-                  () => runRealtimeConvergencePass(
-                    pullChanges: pullChanges,
-                    restoreCanonicalRuntime: _restoreCanonicalRuntime,
-                    isCurrent: () => _isCurrentOperation(generation, userId),
-                  ),
-                ),
-              );
-            });
           },
         )
         .subscribe((status, _) {
           if (!identical(_channel, channel)) return;
-          final wasLive = _liveConnectionAvailable;
-          final subscribed = status == RealtimeSubscribeStatus.subscribed;
-          _liveConnectionAvailable = subscribed;
-          if (subscribed) {
-            _realtimeRecoveryTimer?.cancel();
-            _realtimeRecoveryTimer = null;
-            final recoveredFromGap = _realtimeGapObserved && !wasLive;
-            final recoveredGeneration = _realtimeOutageGeneration;
-            _realtimeGapObserved = false;
-            _realtimeReconnectAttempts = 0;
-            if (shouldRunFinalRealtimeCatchUp(
-              recoveredFromGap: recoveredFromGap,
-              initialSyncComplete: _initialSyncComplete,
-              recoveredGeneration: recoveredGeneration,
-              lastCatchUpGeneration: _realtimeCatchUpGeneration,
-            )) {
-              _realtimeCatchUpGeneration = recoveredGeneration;
-              unawaited(_synchronizeNow(realtimeRecovered: true));
-            }
-          } else {
-            if (!_realtimeGapObserved) {
-              _realtimeGapObserved = true;
-              _realtimeOutageGeneration += 1;
-              _realtimeReconnectAttempts = 0;
-            }
-            _fallbackCheckAvailable = false;
-            if (_currentHealth != SyncHealth.offline) {
-              _setHealth(SyncHealth.waiting);
-            }
-            if (_initialSyncComplete) _scheduleRealtimeRecovery();
-          }
+          _handleRealtimeSubscription(
+            isRuntimeRowChannel: false,
+            status: status,
+          );
         });
+    runtimeRowChannel
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'user_runtime_state',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'user_id',
+            value: user.id,
+          ),
+          callback: (payload) {
+            // A row event is still only a wake-up.  The convergence pass
+            // reads the durable cursor and materializes task/session rows
+            // before it exposes the singleton runtime to UI code.
+            _handleRealtimeWake(
+              source: 'realtime:user_runtime_state',
+              payload: payload.newRecord,
+            );
+          },
+        )
+        .subscribe((status, _) {
+          if (!identical(_runtimeRowChannel, runtimeRowChannel)) return;
+          _handleRealtimeSubscription(
+            isRuntimeRowChannel: true,
+            status: status,
+          );
+        });
+  }
+
+  void _handleRealtimeWake({required String source, required Object? payload}) {
+    _lastRealtimeChangeAt = DateTime.now().toUtc();
+    _recordTraffic(
+      source,
+      downloaded: payload,
+      requests: 0,
+      realtimeMessages: 1,
+    );
+    // A command transaction can emit several events. A leading bounded wake
+    // makes Start visible promptly without allowing a noisy table to keep
+    // delaying convergence indefinitely.
+    _realtimeWake.schedule(() {
+      final generation = _accountGeneration;
+      final userId = _startedForUserId;
+      if (userId == null) return;
+      unawaited(
+        _runBestEffort(
+          () => runRealtimeConvergencePass(
+            pullChanges: pullChanges,
+            restoreCanonicalRuntime: _restoreCanonicalRuntime,
+            isCurrent: () => _isCurrentOperation(generation, userId),
+          ),
+        ),
+      );
+    });
+  }
+
+  void _handleRealtimeSubscription({
+    required bool isRuntimeRowChannel,
+    required RealtimeSubscribeStatus status,
+  }) {
+    final wasLive = _liveConnectionAvailable;
+    final subscribed = status == RealtimeSubscribeStatus.subscribed;
+    if (isRuntimeRowChannel) {
+      _runtimeRowRealtimeAvailable = subscribed;
+    } else {
+      _broadcastRealtimeAvailable = subscribed;
+    }
+    _liveConnectionAvailable =
+        _broadcastRealtimeAvailable || _runtimeRowRealtimeAvailable;
+    // A single transport connection serves both channels. Only react when
+    // the combined connection changes, otherwise one successful route would
+    // incorrectly mark the other route as a Realtime outage.
+    if (_liveConnectionAvailable == wasLive) return;
+    if (_liveConnectionAvailable) {
+      _realtimeRecoveryTimer?.cancel();
+      _realtimeRecoveryTimer = null;
+      final recoveredFromGap = _realtimeGapObserved && !wasLive;
+      final recoveredGeneration = _realtimeOutageGeneration;
+      _realtimeGapObserved = false;
+      _realtimeReconnectAttempts = 0;
+      if (shouldRunFinalRealtimeCatchUp(
+        recoveredFromGap: recoveredFromGap,
+        initialSyncComplete: _initialSyncComplete,
+        recoveredGeneration: recoveredGeneration,
+        lastCatchUpGeneration: _realtimeCatchUpGeneration,
+      )) {
+        _realtimeCatchUpGeneration = recoveredGeneration;
+        unawaited(_synchronizeNow(realtimeRecovered: true));
+      }
+      return;
+    }
+    if (!_realtimeGapObserved) {
+      _realtimeGapObserved = true;
+      _realtimeOutageGeneration += 1;
+      _realtimeReconnectAttempts = 0;
+    }
+    _fallbackCheckAvailable = false;
+    if (_currentHealth != SyncHealth.offline) {
+      _setHealth(SyncHealth.waiting);
+    }
+    if (_initialSyncComplete) _scheduleRealtimeRecovery();
   }
 
   /// A private Realtime subscription can be healthy while a deployment has a
@@ -10853,7 +10942,7 @@ class SyncService {
               (data['wake_time_minutes'] as num?)?.toInt() ?? 420,
             ),
             sleepTimeMinutes: Value(
-              (data['sleep_time_minutes'] as num?)?.toInt() ?? 1320,
+              (data['sleep_time_minutes'] as num?)?.toInt() ?? 1380,
             ),
             workingDaysJson: Value(
               jsonEncode(data['working_days'] ?? const [1, 2, 3, 4, 5]),
@@ -10863,6 +10952,27 @@ class SyncService {
             ),
             workEndMinutes: Value(
               (data['work_end_minutes'] as num?)?.toInt() ?? 1020,
+            ),
+            workScheduleEnabled: Value(
+              data['work_schedule_enabled'] as bool? ?? false,
+            ),
+            workScheduleRotationJson: Value(
+              jsonEncode(data['work_schedule_rotation'] ?? const []),
+            ),
+            workScheduleAnchorDate: Value(
+              data['work_schedule_anchor_date'] as String? ?? '2026-01-05',
+            ),
+            workReminderEnabled: Value(
+              data['work_reminder_enabled'] as bool? ?? false,
+            ),
+            workReminderOffsetMinutes: Value(
+              (data['work_reminder_offset_minutes'] as num?)?.toInt() ?? 15,
+            ),
+            workPomodoroEnabled: Value(
+              data['work_pomodoro_enabled'] as bool? ?? false,
+            ),
+            workActivityCreditEnabled: Value(
+              data['work_activity_credit_enabled'] as bool? ?? true,
             ),
             quietStartMinutes: Value(
               (data['quiet_start_minutes'] as num?)?.toInt() ?? 1320,

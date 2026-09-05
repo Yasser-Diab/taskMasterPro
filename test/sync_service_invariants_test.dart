@@ -2884,32 +2884,46 @@ void main() {
     );
   });
 
-  test(
-    'duplicate Realtime handlers are derived from measured channel state',
-    () {
-      expect(
-        duplicateRealtimeHandlerCount(
-          activeAccountChannels: 1,
-          registeredEventHandlers: 1,
-        ),
-        0,
-      );
-      expect(
-        duplicateRealtimeHandlerCount(
-          activeAccountChannels: 1,
-          registeredEventHandlers: 3,
-        ),
-        2,
-      );
-      expect(
-        duplicateRealtimeHandlerCount(
-          activeAccountChannels: 0,
-          registeredEventHandlers: 1,
-        ),
-        1,
-      );
-    },
-  );
+  test('duplicate Realtime handlers are derived from measured channel state', () {
+    expect(
+      duplicateRealtimeHandlerCount(
+        activeAccountChannels: 1,
+        registeredEventHandlers: 1,
+      ),
+      0,
+    );
+    expect(
+      duplicateRealtimeHandlerCount(
+        activeAccountChannels: 2,
+        registeredEventHandlers: 2,
+      ),
+      0,
+      reason:
+          'The private broadcast and the authoritative runtime-row stream are complementary delivery routes, not duplicate listeners.',
+    );
+    expect(
+      duplicateRealtimeHandlerCount(
+        activeAccountChannels: 1,
+        registeredEventHandlers: 3,
+      ),
+      2,
+    );
+    expect(
+      duplicateRealtimeHandlerCount(
+        activeAccountChannels: 0,
+        registeredEventHandlers: 1,
+      ),
+      1,
+    );
+  });
+
+  test('runtime Realtime has an independent row-level delivery route', () {
+    final source = File('lib/core/sync/sync_service.dart').readAsStringSync();
+    expect(source, contains("table: 'user_runtime_state'"));
+    expect(source, contains('onPostgresChanges('));
+    expect(source, contains("source: 'realtime:user_runtime_state'"));
+    expect(source, contains('runRealtimeConvergencePass('));
+  });
 
   test('an overlapping sync wake-up replays after the current pass', () async {
     final operation = ReplayableSyncOperation();

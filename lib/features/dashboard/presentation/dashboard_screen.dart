@@ -389,9 +389,9 @@ class _ActiveTaskPanelState extends ConsumerState<_ActiveTaskPanel> {
             widget.task,
             onOpenInAppResource: (url) {
               unawaited(
-                TaskWorkspaceScreen.open(
+                TaskWorkspaceScreen.openForTaskId(
                   context,
-                  widget.task,
+                  widget.task.id,
                   initialSection: 3,
                   initialBrowserUrl: url,
                 ),
@@ -465,7 +465,11 @@ class _ActiveTaskPanelState extends ConsumerState<_ActiveTaskPanel> {
     return Card(
       child: InkWell(
         borderRadius: BorderRadius.circular(20),
-        onTap: () => TaskWorkspaceScreen.open(context, task, initialSection: 1),
+        onTap: () => TaskWorkspaceScreen.openForTaskId(
+          context,
+          task.id,
+          initialSection: 1,
+        ),
         child: Padding(
           padding: const EdgeInsets.all(22),
           child: LayoutBuilder(

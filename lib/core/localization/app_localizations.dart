@@ -6,7 +6,17 @@ class AppLocalizations {
 
   final Locale locale;
 
-  static const supportedLocales = [Locale('en'), Locale('ar'), Locale('de')];
+  /// Keep this list in step with the selectable locales in Settings and the
+  /// public site.  Polish intentionally uses the complete English catalogue
+  /// as a safe fallback while its DayVector-facing copy is translated below;
+  /// no surface should ever expose a missing-key token during a staged
+  /// localization rollout.
+  static const supportedLocales = [
+    Locale('en'),
+    Locale('ar'),
+    Locale('de'),
+    Locale('pl'),
+  ];
 
   static AppLocalizations of(BuildContext context) {
     return Localizations.of<AppLocalizations>(context, AppLocalizations) ??
@@ -16,7 +26,13 @@ class AppLocalizations {
   /// Returns an optional localized value without reporting a missing-key
   /// defect. Use this only for intentionally optional platform metadata whose
   /// caller has a complete localized fallback.
-  String? optionalText(String key) => _translations[locale.languageCode]?[key];
+  String? optionalText(String key) {
+    final languageCode = locale.languageCode;
+    return _translations[languageCode]?[key] ??
+        (languageCode == 'pl'
+            ? (_polishOverrides[key] ?? _translations['en']?[key])
+            : null);
+  }
 
   String text(String key) {
     final value = optionalText(key);
@@ -29,6 +45,7 @@ class AppLocalizations {
     return switch (locale.languageCode) {
       'ar' => 'النص غير متاح',
       'de' => 'Text nicht verfügbar',
+      'pl' => 'Tekst jest niedostępny',
       _ => 'Text unavailable',
     };
   }
@@ -110,11 +127,126 @@ class AppLocalizations {
   static bool get translationsComplete {
     final english = _translations['en']!.keys.toSet();
     return _translations.entries.every(
-      (entry) =>
-          entry.value.keys.toSet().containsAll(english) &&
-          english.containsAll(entry.value.keys),
-    );
+          (entry) =>
+              entry.value.keys.toSet().containsAll(english) &&
+              english.containsAll(entry.value.keys),
+        ) &&
+        english.every((key) => optionalTextFor('pl', key) != null);
   }
+
+  static String? optionalTextFor(String localeCode, String key) =>
+      _translations[localeCode]?[key] ??
+      (localeCode == 'pl'
+          ? (_polishOverrides[key] ?? _translations['en']?[key])
+          : null);
+
+  /// Core Polish product copy.  Less-frequent screens deliberately fall back
+  /// to the reviewed English catalogue above until their dedicated Polish copy
+  /// is ready, which keeps offline notifications and rarely opened settings
+  /// pages intelligible instead of showing an error token.
+  static const _polishOverrides = <String, String>{
+    'app_name': 'DayVector',
+    'dashboard': 'Panel',
+    'tasks': 'Zadania',
+    'task_filters': 'Filtruj zadania',
+    'task_subheading_note': 'Notatka',
+    'task_subheading_note_hint': 'Krótki opis wyświetlany pod tytułem zadania',
+    'task_subheading_note_detail':
+        'Użyj jako krótkiego podtytułu. Pozostaje oddzielony od notatek w obszarze zadania.',
+    'task_notes_detail':
+        'Jeśli dwa urządzenia edytują tę samą notatkę offline, możesz wybrać wersję do zachowania.',
+    'sound_system_default': 'Domyślne ustawienie urządzenia',
+    'calendar': 'Kalendarz',
+    'roadmaps': 'Plany',
+    'activity': 'Aktywność',
+    'health': 'Zdrowie',
+    'settings': 'Ustawienia',
+    'language': 'Język',
+    'appearance': 'Wygląd',
+    'today': 'Dzisiaj',
+    'tomorrow': 'Jutro',
+    'start': 'Rozpocznij',
+    'pause': 'Wstrzymaj',
+    'resume': 'Wznów',
+    'complete': 'Zakończ',
+    'cancel': 'Anuluj',
+    'save': 'Zapisz',
+    'delete': 'Usuń',
+    'edit': 'Edytuj',
+    'close': 'Zamknij',
+    'back': 'Wstecz',
+    'open': 'Otwórz',
+    'retry': 'Spróbuj ponownie',
+    'quick_add': 'Szybkie dodawanie',
+    'active_task': 'Aktywne zadanie',
+    'next_task': 'Następne zadanie',
+    'overdue': 'Zaległe',
+    'remaining': 'Pozostało',
+    'status_ready': 'Gotowe',
+    'status_running': 'W trakcie',
+    'status_paused': 'Wstrzymane',
+    'status_completed': 'Ukończone',
+    'status_overdue': 'Zaległe',
+    'schedule_wellbeing': 'Harmonogram i dobrostan',
+    'schedule_daily_rhythm': 'Codzienny rytm',
+    'schedule_wake_time': 'Godzina pobudki',
+    'schedule_sleep_time': 'Godzina snu',
+    'schedule_working_days': 'Dni pracy',
+    'schedule_work_starts': 'Początek pracy',
+    'schedule_work_ends': 'Koniec pracy',
+    'schedule_rest_coaching': 'Odpoczynek i coaching',
+    'schedule_reminder_offset': 'Przypomnienie przed rozpoczęciem',
+    'schedule_sleep_reminder': 'Przypomnienie o śnie',
+    'schedule_native_work_title': 'Wbudowany harmonogram pracy',
+    'schedule_native_work_description':
+        'DayVector przypomina o pracy bez tworzenia sztucznego zadania.',
+    'schedule_rotation_title': 'Zmienne zmiany',
+    'schedule_rotation_description':
+        'Ustaw kolejne tygodnie z różnymi godzinami rozpoczęcia.',
+    'schedule_add_rotation_week': 'Dodaj tydzień zmiany',
+    'schedule_remove_rotation_week': 'Usuń tydzień zmiany',
+    'schedule_work_reminder': 'Przypomnienie przed pracą',
+    'schedule_work_reminder_description':
+        'Wysyłaj alarm przed kolejnym zaplanowanym rozpoczęciem pracy.',
+    'schedule_work_pomodoro': 'Zaproponuj Pomodoro przy rozpoczęciu pracy',
+    'schedule_work_activity_credit': 'Oznaczaj użyteczny czas pracy',
+    'schedule_work_activity_credit_description':
+        'Porównuj zarejestrowaną aktywność z kategoriami produktywnymi.',
+    'work_schedule_reminder_title': 'Czas przygotować się do pracy',
+    'work_schedule_reminder_body':
+        'Następna zmiana zaczyna się za {minutes} min.',
+    'activity_classification': 'Klasyfikacja aktywności',
+    'classification_productive': 'Produktywne',
+    'classification_research': 'Badania',
+    'classification_communication': 'Komunikacja',
+    'activity_needs_review': 'Wymaga sprawdzenia',
+    'activity_mark_distraction': 'Rozproszenie',
+    'activity_generally_unrelated': 'Zwykle nieprzydatne',
+    'activity_learned_from_usage': 'Nauczono na podstawie użycia',
+    'activity_suggested_by_taskmaster': 'Sugestia DayVector',
+    'community_system_learning': 'Pomóż kategoryzować aplikacje',
+    'community_system_learning_description':
+        'Opcjonalnie. Po sklasyfikowaniu aplikacji udostępnij anonimową kategorię i ocenę przydatności, aby DayVector mógł podpowiadać prawdopodobne typy aplikacji innym osobom. Twoje konto, zadania, tytuły, strony, ścieżki ani historia aktywności nigdy nie są udostępniane.',
+    'community_system_learning_consent':
+        'Udostępniany jest wyłącznie chroniony identyfikator aplikacji oraz anonimowa kategoria i ocena przydatności. Wybór nie może wskazać Twojego konta ani połączyć głosów między aplikacjami. Sugestie nigdy nie zastępują Twojej decyzji.',
+    'notification_category_scheduled_starts': 'Planowane rozpoczęcia',
+    'notification_category_task_reminders': 'Przypomnienia o zadaniach',
+    'notification_test_body': 'To jest przykładowe powiadomienie DayVector.',
+    'standalone_pomodoro': 'Samodzielny Pomodoro',
+    'collapse_navigation': 'Zwiń nawigację (Ctrl+B)',
+    'expand_navigation': 'Rozwiń nawigację (Ctrl+B)',
+    'weekday_mon': 'Pon',
+    'weekday_tue': 'Wt',
+    'weekday_wed': 'Śr',
+    'weekday_thu': 'Czw',
+    'weekday_fri': 'Pt',
+    'weekday_sat': 'Sob',
+    'weekday_sun': 'Niedz',
+    'duration_hour': '1 godz.',
+    'duration_hours': '{count} godz.',
+    'duration_minutes': '{count} min',
+    'duration_seconds': '{count} s',
+  };
 
   static const delegate = _AppLocalizationsDelegate();
 
@@ -868,11 +1000,11 @@ class AppLocalizations {
     'retention_until_deleted': 'Keep until manually deleted',
     'hide_confirmed_system_activity': 'Hide confirmed system activity',
     'show_possible_system_activity': 'Show possible system activity',
-    'community_system_learning': 'Help identify system apps',
+    'community_system_learning': 'Help categorize apps',
     'community_system_learning_description':
-        'Optional. After you classify an app, share an anonymous yes-or-no vote so DayVector can suggest likely system apps to others. Your account, tasks, titles, websites, paths, and activity history are never shared.',
+        'Optional. After you classify an app, share an anonymous category and usefulness vote so DayVector can suggest likely app types to others. Your account, tasks, titles, websites, paths, and activity history are never shared.',
     'community_system_learning_consent':
-        'Only a protected app identifier and your anonymous yes-or-no choice will be shared. The choice cannot identify your account or connect your votes across apps. Suggestions never override your own decision.',
+        'Only a protected app identifier plus your anonymous category and usefulness choice will be shared. The choice cannot identify your account or connect your votes across apps. Suggestions never override your own decision.',
     'share_anonymous_votes': 'Allow anonymous votes',
     'review_hidden_system_activity': 'Review hidden system activity',
     'clear_local_unclassified_activity': 'Clear unclassified local Activity',
@@ -1211,6 +1343,24 @@ class AppLocalizations {
     'schedule_wake_time': 'Wake-up time',
     'schedule_sleep_time': 'Sleep time',
     'schedule_working_days': 'Working days',
+    'schedule_native_work_title': 'Built-in work schedule',
+    'schedule_native_work_description':
+        'Let DayVector handle work reminders without creating a placeholder task.',
+    'schedule_rotation_title': 'Rotating shifts',
+    'schedule_rotation_description':
+        'Set consecutive weeks with different work-start times.',
+    'schedule_add_rotation_week': 'Add rotation week',
+    'schedule_remove_rotation_week': 'Remove rotation week',
+    'schedule_work_reminder': 'Pre-work reminder',
+    'schedule_work_reminder_description':
+        'Send an alarm before the next scheduled work start.',
+    'schedule_work_pomodoro': 'Offer Pomodoro when work begins',
+    'schedule_work_activity_credit': 'Credit useful work time',
+    'schedule_work_activity_credit_description':
+        'Compare captured activity with productive app categories.',
+    'work_schedule_reminder_title': 'Time to get ready for work',
+    'work_schedule_reminder_body':
+        'Your next work shift starts in {minutes} min.',
     'schedule_work_starts': 'Work starts',
     'schedule_work_ends': 'Work ends',
     'schedule_quiet_starts': 'Quiet hours start',
@@ -1481,6 +1631,7 @@ class AppLocalizations {
     'language_english': 'English',
     'language_arabic': 'العربية',
     'language_german': 'Deutsch',
+    'language_polish': 'Polski',
     'onboarding_goal_work_performance': 'Work performance',
     'onboarding_goal_programming': 'Programming',
     'onboarding_goal_language_learning': 'Language learning',
@@ -2996,11 +3147,11 @@ class AppLocalizations {
     'retention_until_deleted': 'الاحتفاظ حتى الحذف يدويًا',
     'hide_confirmed_system_activity': 'إخفاء نشاط النظام المؤكد',
     'show_possible_system_activity': 'إظهار نشاط النظام المحتمل',
-    'community_system_learning': 'المساعدة في تمييز تطبيقات النظام',
+    'community_system_learning': 'المساعدة في تصنيف التطبيقات',
     'community_system_learning_description':
-        'اختياري. بعد تصنيف تطبيق، شارك اختيارًا مجهولًا بنعم أو لا كي يتمكن DayVector من اقتراح تطبيقات النظام المحتملة للآخرين. لن تتم مشاركة حسابك أو مهامك أو العناوين أو المواقع أو المسارات أو سجل نشاطك.',
+        'اختياري. بعد تصنيف تطبيق، شارك فئة مجهولة واختيارًا لمدى فائدته كي يتمكن DayVector من اقتراح أنواع التطبيقات للآخرين. لن تتم مشاركة حسابك أو مهامك أو العناوين أو المواقع أو المسارات أو سجل نشاطك.',
     'community_system_learning_consent':
-        'ستتم مشاركة معرّف محمي للتطبيق واختيارك المجهول بنعم أو لا فقط. لا يمكن للاختيار تحديد حسابك أو ربط اختياراتك بين التطبيقات، ولن تتجاوز الاقتراحات قرارك الشخصي.',
+        'ستتم مشاركة معرّف محمي للتطبيق وفئته المجهولة واختيار مدى فائدته فقط. لا يمكن للاختيار تحديد حسابك أو ربط اختياراتك بين التطبيقات، ولن تتجاوز الاقتراحات قرارك الشخصي.',
     'share_anonymous_votes': 'السماح بالاختيارات المجهولة',
     'review_hidden_system_activity': 'مراجعة نشاط النظام المخفي',
     'clear_local_unclassified_activity': 'مسح النشاط المحلي غير المصنف',
@@ -3334,6 +3485,24 @@ class AppLocalizations {
     'schedule_wake_time': 'وقت الاستيقاظ',
     'schedule_sleep_time': 'وقت النوم',
     'schedule_working_days': 'أيام العمل',
+    'schedule_native_work_title': 'جدول العمل المدمج',
+    'schedule_native_work_description':
+        'دع DayVector يتعامل مع تذكيرات العمل دون إنشاء مهمة وهمية.',
+    'schedule_rotation_title': 'نوبات متغيرة',
+    'schedule_rotation_description':
+        'اضبط أسابيع متتالية بأوقات بدء عمل مختلفة.',
+    'schedule_add_rotation_week': 'إضافة أسبوع نوبة',
+    'schedule_remove_rotation_week': 'إزالة أسبوع النوبة',
+    'schedule_work_reminder': 'تذكير قبل العمل',
+    'schedule_work_reminder_description':
+        'أرسل منبهًا قبل بدء العمل المجدول التالي.',
+    'schedule_work_pomodoro': 'اقترح بومودورو عند بدء العمل',
+    'schedule_work_activity_credit': 'احتسب وقت العمل المفيد',
+    'schedule_work_activity_credit_description':
+        'قارن النشاط المسجل بفئات التطبيقات الإنتاجية.',
+    'work_schedule_reminder_title': 'حان وقت الاستعداد للعمل',
+    'work_schedule_reminder_body':
+        'تبدأ نوبة عملك التالية خلال {minutes} دقيقة.',
     'schedule_work_starts': 'بداية العمل',
     'schedule_work_ends': 'نهاية العمل',
     'schedule_quiet_starts': 'بداية ساعات الهدوء',
@@ -3601,6 +3770,7 @@ class AppLocalizations {
     'language_english': 'English',
     'language_arabic': 'العربية',
     'language_german': 'Deutsch',
+    'language_polish': 'Polski',
     'onboarding_goal_work_performance': 'تحسين أداء العمل',
     'onboarding_goal_programming': 'البرمجة',
     'onboarding_goal_language_learning': 'تعلم اللغات',
@@ -5139,11 +5309,11 @@ class AppLocalizations {
     'retention_until_deleted': 'Bis zum manuellen Löschen behalten',
     'hide_confirmed_system_activity': 'Bestätigte Systemaktivität ausblenden',
     'show_possible_system_activity': 'Mögliche Systemaktivität anzeigen',
-    'community_system_learning': 'System-Apps gemeinsam erkennen',
+    'community_system_learning': 'Apps gemeinsam kategorisieren',
     'community_system_learning_description':
-        'Optional. Teile nach der Einordnung einer App eine anonyme Ja-oder-Nein-Stimme, damit DayVector anderen wahrscheinliche System-Apps vorschlagen kann. Konto, Aufgaben, Titel, Websites, Pfade und Aktivitätsverlauf werden nie geteilt.',
+        'Optional. Teile nach der Einordnung einer App eine anonyme Kategorie und Nützlichkeitsstimme, damit DayVector anderen wahrscheinliche App-Typen vorschlagen kann. Konto, Aufgaben, Titel, Websites, Pfade und Aktivitätsverlauf werden nie geteilt.',
     'community_system_learning_consent':
-        'Nur eine geschützte App-Kennung und deine anonyme Ja-oder-Nein-Auswahl werden geteilt. Daraus lassen sich weder dein Konto noch deine Stimmen für andere Apps ableiten. Vorschläge überschreiben nie deine eigene Entscheidung.',
+        'Nur eine geschützte App-Kennung sowie deine anonyme Kategorie und Nützlichkeitsauswahl werden geteilt. Daraus lassen sich weder dein Konto noch deine Stimmen für andere Apps ableiten. Vorschläge überschreiben nie deine eigene Entscheidung.',
     'share_anonymous_votes': 'Anonyme Stimmen erlauben',
     'review_hidden_system_activity': 'Ausgeblendete Systemaktivität prüfen',
     'clear_local_unclassified_activity':
@@ -5495,6 +5665,24 @@ class AppLocalizations {
     'schedule_wake_time': 'Aufstehzeit',
     'schedule_sleep_time': 'Schlafenszeit',
     'schedule_working_days': 'Arbeitstage',
+    'schedule_native_work_title': 'Integrierter Arbeitsplan',
+    'schedule_native_work_description':
+        'DayVector verwaltet Arbeitserinnerungen ohne eine Platzhalteraufgabe.',
+    'schedule_rotation_title': 'Wechselnde Schichten',
+    'schedule_rotation_description':
+        'Lege aufeinanderfolgende Wochen mit unterschiedlichen Startzeiten fest.',
+    'schedule_add_rotation_week': 'Schichtwoche hinzufügen',
+    'schedule_remove_rotation_week': 'Schichtwoche entfernen',
+    'schedule_work_reminder': 'Erinnerung vor der Arbeit',
+    'schedule_work_reminder_description':
+        'Vor dem nächsten geplanten Arbeitsbeginn einen Alarm senden.',
+    'schedule_work_pomodoro': 'Pomodoro zum Arbeitsbeginn anbieten',
+    'schedule_work_activity_credit': 'Nützliche Arbeitszeit anrechnen',
+    'schedule_work_activity_credit_description':
+        'Erfasste Aktivität mit produktiven App-Kategorien vergleichen.',
+    'work_schedule_reminder_title': 'Zeit, dich auf die Arbeit vorzubereiten',
+    'work_schedule_reminder_body':
+        'Deine nächste Arbeitsschicht beginnt in {minutes} Min.',
     'schedule_work_starts': 'Arbeitsbeginn',
     'schedule_work_ends': 'Arbeitsende',
     'schedule_quiet_starts': 'Beginn der Ruhezeit',
@@ -5773,6 +5961,7 @@ class AppLocalizations {
     'language_english': 'English',
     'language_arabic': 'العربية',
     'language_german': 'Deutsch',
+    'language_polish': 'Polski',
     'onboarding_goal_work_performance': 'Arbeitsleistung',
     'onboarding_goal_programming': 'Programmierung',
     'onboarding_goal_language_learning': 'Sprachenlernen',

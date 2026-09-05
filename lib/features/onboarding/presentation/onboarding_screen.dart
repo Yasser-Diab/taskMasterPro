@@ -140,6 +140,12 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                                     context.l10n.text('language_german'),
                                   ),
                                 ),
+                                DropdownMenuItem(
+                                  value: 'pl',
+                                  child: Text(
+                                    context.l10n.text('language_polish'),
+                                  ),
+                                ),
                               ],
                               onChanged: (value) async {
                                 if (value == null) return;

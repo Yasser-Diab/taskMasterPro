@@ -1,7 +1,7 @@
 (() => {
   const LANGUAGE_STORAGE_KEY = "dayvector:site-language";
   const THEME_STORAGE_KEY = "dayvector:site-theme";
-  const LANGUAGE_ORDER = ["en", "de", "ar"];
+  const LANGUAGE_ORDER = ["en", "de", "ar", "pl"];
   const SUPPORTED_LANGUAGES = new Set(LANGUAGE_ORDER);
 
   const german = {
@@ -1439,6 +1439,668 @@
       "نظام شخصي للتخطيط والتنفيذ والإرشاد على ويندوز وأندرويد",
   });
 
+  // English remains a safe fallback for infrequent legal copy while the
+  // high-traffic product pages are translated here. New website copy belongs
+  // in this shared dictionary instead of per-page markup.
+  const polish = {
+    "DayVector turns direction into daily progress with task planning, roadmaps, focus timers, activity insights and evidence-based coaching on Windows and Android.":
+      "DayVector zamienia kierunek w codzienny postęp dzięki planowaniu zadań, mapom drogowym, licznikom skupienia, analizie aktywności i coachingowi opartemu na danych na Windowsie i Androidzie.",
+    "DayVector — Turn direction into daily progress":
+      "DayVector — Zamień kierunek w codzienny postęp",
+    "Plan meaningful goals, focus on the next task and improve with evidence-based coaching across Windows and Android.":
+      "Planuj ważne cele, skup się na następnym zadaniu i rozwijaj się dzięki coachingowi opartemu na danych na Windowsie i Androidzie.",
+    "Skip to main content": "Przejdź do treści głównej",
+    "DayVector home": "Strona główna DayVector",
+    "Open navigation": "Otwórz nawigację",
+    "Close navigation": "Zamknij nawigację",
+    "Main navigation": "Główna nawigacja",
+    Features: "Funkcje",
+    "How It Works": "Jak to działa",
+    Roadmaps: "Mapy drogowe",
+    Widget: "Widżet",
+    Health: "Zdrowie",
+    Coaching: "Coaching",
+    Pomodoro: "Pomodoro",
+    Privacy: "Prywatność",
+    Contact: "Kontakt",
+    Download: "Pobierz",
+    "Download App": "Pobierz aplikację",
+    "Download app": "Pobierz aplikację",
+    "Turn direction into daily progress": "Zamień kierunek w codzienny postęp",
+    "Plan your goals": "Planuj swoje cele",
+    "Execute your tasks": "Realizuj zadania",
+    "Improve every day": "Rozwijaj się każdego dnia",
+    "Download for Windows": "Pobierz dla Windows",
+    "Download for Android": "Pobierz dla Androida",
+    "Explore how it works": "Zobacz, jak to działa",
+    "Cross-device synchronization": "Synchronizacja między urządzeniami",
+    Today: "Dzisiaj",
+    Focus: "Skupienie",
+    Roadmap: "Mapa drogowa",
+    Available: "Dostępne",
+    Planned: "Planowane",
+    "One connected system": "Jeden połączony system",
+    "A practical loop": "Praktyczny cykl",
+    "Define your goal": "Określ swój cel",
+    "Build the roadmap": "Zbuduj mapę drogową",
+    "Execute the work": "Wykonaj pracę",
+    "Learn and improve": "Ucz się i rozwijaj",
+    "Useful work is never lost": "Przydatna praca nigdy nie przepada",
+    "Get a helpful next step": "Otrzymaj pomocny następny krok",
+    "Personal coaching": "Osobisty coaching",
+    "Your focus space": "Twoja przestrzeń skupienia",
+    "Saved locally": "Zapisano lokalnie",
+    "Focus session": "Sesja skupienia",
+    "Recovery break": "Przerwa regeneracyjna",
+    "Short break": "Krótka przerwa",
+    "Long break": "Długa przerwa",
+    Start: "Rozpocznij",
+    Pause: "Wstrzymaj",
+    Resume: "Wznów",
+    Finish: "Zakończ",
+    Version: "Wersja",
+    "Installation Help": "Pomoc w instalacji",
+    "Privacy policy": "Polityka prywatności",
+    "Terms of use": "Warunki korzystania",
+    "Polish Language Now Available!": "Język polski jest już dostępny!",
+    "Latest DayVector update": "Najnowsza aktualizacja DayVector",
+    "Select language": "Wybierz język",
+    "Use light theme": "Użyj jasnego motywu",
+    "Use dark theme": "Użyj ciemnego motywu",
+    "Personal planning, focused execution and evidence-based coaching on Windows and Android.":
+      "Osobiste planowanie, skupiona realizacja i coaching oparty na danych na Windowsie i Androidzie.",
+    "DayVector — Planning, Focus Timers, Roadmaps and Coaching":
+      "DayVector — Planowanie, timery skupienia, mapy drogowe i coaching",
+    "DayVector turns goals into roadmaps, recurring tasks and daily actions, measures real effort and provides explainable coaching across Windows and Android.":
+      "DayVector zamienia cele w mapy drogowe, zadania cykliczne i codzienne działania, mierzy rzeczywisty wysiłek oraz oferuje zrozumiały coaching na Windowsie i Androidzie.",
+    "DayVector: Plan, Focus and Improve": "DayVector: planuj, skupiaj się i rozwijaj",
+    "Create roadmaps, execute focused tasks, track real activity and improve through evidence-based coaching.":
+      "Twórz mapy drogowe, wykonuj zadania w skupieniu, śledź rzeczywistą aktywność i rozwijaj się dzięki coachingowi opartemu na danych.",
+    "DayVector: Planning, Focus and Personal Coaching":
+      "DayVector: planowanie, skupienie i osobisty coaching",
+    "Skip to timer": "Przejdź do timera",
+    "Pomodoro page navigation": "Nawigacja strony Pomodoro",
+    "DayVector combines task management, structured roadmaps, time tracking and personalized coaching to help you organize your responsibilities, improve your habits and make better use of your time":
+      "DayVector łączy zarządzanie zadaniami, uporządkowane mapy drogowe, śledzenie czasu i spersonalizowany coaching, aby pomóc Ci organizować obowiązki, rozwijać nawyki i lepiej wykorzystywać czas.",
+    "It connects planned work with real activity, credits useful effort to the task it supports and turns verified patterns into clear recommendations":
+      "Łączy zaplanowaną pracę z rzeczywistą aktywnością, przypisuje pożyteczny wysiłek do wspieranego zadania i zamienia potwierdzone wzorce w jasne zalecenia.",
+    "Supported platforms and capabilities": "Obsługiwane platformy i możliwości",
+    "DayVector dashboard showing task suggestions, today's schedule, workload and overdue work":
+      "Panel DayVector z sugestiami zadań, dzisiejszym planem, obciążeniem i zaległymi zadaniami",
+    Windows: "Windows",
+    "Android phones": "Telefony z Androidem",
+    "Android tablets": "Tablety z Androidem",
+    "Offline capable": "Działa offline",
+    "6 tasks complete": "6 zadań ukończonych",
+    "2h 41m active": "2 godz. 41 min aktywności",
+    "68% complete": "68% ukończono",
+    "One application for planning, execution, progress and improvement":
+      "Jedna aplikacja do planowania, realizacji, postępu i rozwoju",
+    "DayVector connects what you plan with what you actually do. It measures real effort, recognizes useful work, identifies delays and helps you improve your future schedule":
+      "DayVector łączy to, co planujesz, z tym, co rzeczywiście robisz. Mierzy realny wysiłek, rozpoznaje pożyteczną pracę, wskazuje opóźnienia i pomaga ulepszać przyszły plan.",
+    "Feature status legend": "Legenda statusu funkcji",
+    Beta: "Beta",
+    "Built for meaningful progress": "Stworzone dla znaczącego postępu",
+    "Everything you need to turn plans into progress":
+      "Wszystko, czego potrzebujesz, aby zamienić plany w postęp",
+    "Long-term direction, daily responsibilities, real execution data and personalized guidance come together inside one calm workspace":
+      "Długoterminowy kierunek, codzienne obowiązki, rzeczywiste dane z realizacji i spersonalizowane wskazówki spotykają się w jednej spokojnej przestrzeni pracy.",
+    "Turn large goals into clear phases": "Zamieniaj duże cele w jasne etapy",
+    "Create roadmaps with phases, milestones, checkpoints, recurring work, practice targets and completion requirements":
+      "Twórz mapy drogowe z etapami, kamieniami milowymi, punktami kontrolnymi, pracą cykliczną, celami ćwiczeń i wymaganiami ukończenia.",
+    "Choose the right next action": "Wybierz właściwe następne działanie",
+    "Bring priority, deadlines, available time, dependencies and roadmap importance into one practical recommendation":
+      "Połącz priorytet, terminy, dostępny czas, zależności i znaczenie mapy drogowej w jedną praktyczną rekomendację.",
+    "Understand how your time is used": "Zrozum, jak wykorzystywany jest Twój czas",
+    "Track focused work, continuous sessions, pauses, idle periods, interruptions and the difference between planned and actual effort":
+      "Śledź pracę w skupieniu, ciągłe sesje, pauzy, bezczynność, przerwy i różnicę między zaplanowanym a rzeczywistym wysiłkiem.",
+    "Review activity from breaks or other sessions and credit approved effort to the task and roadmap it truly supported":
+      "Przeglądaj aktywność z przerw lub innych sesji i przypisuj zatwierdzony wysiłek do zadania oraz mapy drogowej, które faktycznie wspierał.",
+    "Roadmaps adapt to real performance": "Mapy drogowe dostosowują się do rzeczywistych wyników",
+    "Forecasts respond to actual effort, postponed work, missed sessions, confirmed progress and available capacity":
+      "Prognozy reagują na rzeczywisty wysiłek, odłożoną pracę, pominięte sesje, potwierdzony postęp i dostępną pojemność.",
+    "Coaching uses today’s schedule, paused work, roadmap priorities and your preferences to offer a respectful next action":
+      "Coaching wykorzystuje dzisiejszy plan, wstrzymaną pracę, priorytety mapy drogowej i Twoje preferencje, aby zaproponować odpowiednie następne działanie.",
+    "From a long-term goal to today’s next action":
+      "Od długoterminowego celu do dzisiejszego następnego działania",
+    "Create a personal, professional, learning, health or habit goal":
+      "Utwórz cel osobisty, zawodowy, edukacyjny, zdrowotny albo związany z nawykiem.",
+    "Reach German B1": "Osiągnij poziom B1 z niemieckiego",
+    "Divide the goal into phases, milestones, checkpoints and practical recurring tasks":
+      "Podziel cel na etapy, kamienie milowe, punkty kontrolne i praktyczne zadania cykliczne.",
+    "Match each responsibility with focused sessions, continuous timers, checklists, reading or manual completion":
+      "Dopasuj do każdego obowiązku sesje skupienia, ciągłe timery, listy kontrolne, czytanie lub ręczne ukończenie.",
+    "Compare the plan with actual performance and use evidence to shape the next one":
+      "Porównaj plan z rzeczywistymi wynikami i wykorzystaj dane, aby ukształtować kolejny.",
+    "Roadmap workspace": "Przestrzeń mapy drogowej",
+    "DayVector roadmap displaying phases, checkpoints and progress forecasts":
+      "Mapa drogowa DayVector z etapami, punktami kontrolnymi i prognozami postępu",
+    "Build a realistic path toward every goal": "Zbuduj realistyczną drogę do każdego celu",
+    "Roadmaps turn long-term direction into measurable phases and responsibilities. Every item remains editable and every percentage has an explanation":
+      "Mapy drogowe zamieniają długoterminowy kierunek w mierzalne etapy i obowiązki. Każdy element można edytować, a każdy procent ma wyjaśnienie.",
+    "Editable phases": "Edytowalne etapy",
+    "Target dates": "Daty docelowe",
+    "Recurring tasks": "Zadania cykliczne",
+    Milestones: "Kamienie milowe",
+    Checkpoints: "Punkty kontrolne",
+    "Required effort": "Wymagany wysiłek",
+    "Forecast completion": "Prognozowane ukończenie",
+    "Risk warnings": "Ostrzeżenia o ryzyku",
+    "Forecast example": "Przykład prognozy",
+    "The expected phase completion moved by four days because three tasks required more time and two sessions were postponed":
+      "Przewidywane ukończenie etapu przesunęło się o cztery dni, ponieważ trzy zadania wymagały więcej czasu, a dwie sesje zostały przełożone.",
+    Confidence: "Pewność",
+    Medium: "Średnia",
+    Evidence: "Dane",
+    "11 comparable sessions": "11 porównywalnych sesji",
+    "Flexible execution": "Elastyczna realizacja",
+    "Different responsibilities need different methods":
+      "Różne obowiązki wymagają różnych metod",
+    "DayVector is designed to match the work rather than forcing every activity into the same timer":
+      "DayVector dopasowuje się do pracy, zamiast zmuszać każdą aktywność do użycia tego samego timera.",
+    "Pomodoro Focus": "Skupienie Pomodoro",
+    "Focus cycles, breaks, pauses and interruptions":
+      "Cykle skupienia, przerwy, pauzy i zakłócenia",
+    "Try the free browser timer": "Wypróbuj bezpłatny timer w przeglądarce",
+    "Continuous Timer": "Ciągły timer",
+    "Long work blocks, active time and overtime":
+      "Długie bloki pracy, aktywny czas i nadgodziny",
+    Checklist: "Lista kontrolna",
+    "Required items, priorities and completion rules":
+      "Wymagane elementy, priorytety i zasady ukończenia",
+    Reading: "Czytanie",
+    "Books, PDFs, duration, saved position and notes":
+      "Książki, pliki PDF, czas trwania, zapisana pozycja i notatki",
+    Habit: "Nawyk",
+    "Streaks, completion rate, recovery and timing":
+      "Serie, wskaźnik ukończenia, regeneracja i harmonogram",
+    Event: "Wydarzenie",
+    "Arrival, duration, lateness and follow-up work":
+      "Przybycie, czas trwania, spóźnienie i dalsza praca",
+    Hybrid: "Hybrydowe",
+    "Combine timers, checklists, checkpoints and resources":
+      "Łącz timery, listy kontrolne, punkty kontrolne i materiały.",
+    "Focus from your home screen": "Skupienie z ekranu głównego",
+    "Your running session stays visible and controllable":
+      "Twoja aktywna sesja pozostaje widoczna i możliwa do sterowania",
+    "The responsive Android widget reflects the current DayVector session. See the remaining time at a glance, pause without opening the app, move to a break or finish when the work is complete.":
+      "Responsywny widżet Androida odzwierciedla bieżącą sesję DayVector. Sprawdź pozostały czas jednym spojrzeniem, wstrzymaj bez otwierania aplikacji, przejdź do przerwy lub zakończ pracę.",
+    "Live focus and break countdowns": "Liczniki skupienia i przerw na żywo",
+    "Pause, break and finish controls": "Sterowanie pauzą, przerwą i zakończeniem",
+    "Compact, medium and expanded sizes": "Rozmiary kompaktowy, średni i rozszerzony",
+    "Canonical state shared with the app": "Wspólny stan główny z aplikacją",
+    "Try the browser Pomodoro": "Wypróbuj Pomodoro w przeglądarce",
+    "Get the Android widget": "Pobierz widżet Androida",
+    "Live DayVector Android widget demonstration": "Prezentacja widżetu DayVector na Androida na żywo",
+    "Android home screen showing the DayVector widget beside familiar apps":
+      "Ekran główny Androida pokazujący widżet DayVector obok znanych aplikacji",
+    "Interactive widget preview controls": "Interaktywne sterowanie podglądem widżetu",
+    "FOCUS SESSION": "SESJA SKUPIENIA",
+    "RECOVERY BREAK": "PRZERWA REGENERACYJNA",
+    "Deep work session": "Sesja głębokiej pracy",
+    "Time to recharge": "Czas na regenerację",
+    Break: "Przerwa",
+    "A real live preview with working countdown and controls":
+      "Prawdziwy podgląd na żywo z działającym odliczaniem i sterowaniem",
+    "Cross-task attribution": "Przypisywanie między zadaniami",
+    "Useful activity belongs to the task it actually supports":
+      "Przydatna aktywność należy do zadania, które rzeczywiście wspiera",
+    "Time does not always follow the schedule. The contribution engine retains raw activity, requests approval when needed and avoids counting the same physical minute twice":
+      "Czas nie zawsze podąża za harmonogramem. Mechanizm przypisywania zachowuje surową aktywność, prosi o zatwierdzenie, gdy jest potrzebne, i nie liczy tej samej fizycznej minuty dwa razy.",
+    "Current session": "Bieżąca sesja",
+    "Programming task": "Zadanie programistyczne",
+    "Five-minute Pomodoro break": "Pięciominutowa przerwa Pomodoro",
+    "Detected activity": "Wykryta aktywność",
+    "German learning app": "Aplikacja do nauki niemieckiego",
+    "4 minutes 12 seconds": "4 minuty 12 sekund",
+    "Approved result": "Zatwierdzony wynik",
+    "German daily practice": "Codzienna nauka niemieckiego",
+    "German B1 roadmap updated": "Zaktualizowano mapę drogową niemieckiego B1",
+    "Physical timeline": "Rzeczywista oś czasu",
+    "Approved practice": "Zatwierdzone ćwiczenie",
+    "Duplicated time": "Powielony czas",
+    "Unknown and idle-looking activity stays available for review":
+      "Nieznana lub wyglądająca na bezczynną aktywność pozostaje dostępna do sprawdzenia",
+    "Were you reading, working away from the computer, helping another task or simply taking a break? Your answer can improve future suggestions":
+      "Czy czytasz, pracujesz z dala od komputera, pomagasz przy innym zadaniu, czy po prostu robisz przerwę? Twoja odpowiedź może ulepszyć przyszłe sugestie.",
+    "Activity insights": "Analiza aktywności",
+    "Understand which tools help you perform":
+      "Zrozum, które narzędzia pomagają Ci osiągać wyniki",
+    "Compare the applications and websites expected for a task with the tools that were actually used, then correct classifications at any time":
+      "Porównaj aplikacje i strony oczekiwane dla zadania z narzędziami, których faktycznie użyto, a następnie w każdej chwili popraw klasyfikacje.",
+    "Visual Studio Code supported most of this development session":
+      "Visual Studio Code wspierał większą część tej sesji programistycznej",
+    "The browser was used mainly for documentation research":
+      "Przeglądarka była używana głównie do przeglądania dokumentacji",
+    "One recurring application still needs a task assignment":
+      "Jedna często używana aplikacja nadal wymaga przypisania do zadania",
+    "Application report": "Raport aplikacji",
+    "Build synchronization engine": "Zbuduj mechanizm synchronizacji",
+    "Primary application": "Główna aplikacja",
+    Productive: "Produktywna",
+    "Web browser": "Przeglądarka internetowa",
+    "28 minutes": "28 minut",
+    Research: "Badania",
+    Email: "E-mail",
+    "11 minutes": "11 minut",
+    Communication: "Komunikacja",
+    "Video platform": "Platforma wideo",
+    "14 minutes": "14 minut",
+    "Needs review": "Wymaga sprawdzenia",
+    "Coaching based on your actual behavior":
+      "Coaching oparty na Twoim rzeczywistym zachowaniu",
+    "Friendly suggestions use today’s schedule, active or paused work, roadmap priorities and your coaching preferences. You remain in control":
+      "Przyjazne sugestie wykorzystują dzisiejszy plan, aktywną lub wstrzymaną pracę, priorytety mapy drogowej i Twoje preferencje coachingu. To Ty zachowujesz kontrolę.",
+    "Start delays": "Opóźnienia rozpoczęcia",
+    Workload: "Obciążenie pracą",
+    "Roadmap risk": "Ryzyko mapy drogowej",
+    "Break quality": "Jakość przerw",
+    Distraction: "Rozproszenie",
+    "Micro-sessions": "Mikrosesje",
+    "Coaching insight": "Wskazówka coachingu",
+    "Start with less friction": "Zacznij z mniejszym wysiłkiem",
+    "High confidence": "Wysoka pewność",
+    "Your Work tasks usually begin": "Twoje zadania służbowe zwykle zaczynają się",
+    "17 minutes late": "17 minut później",
+    "This recommendation is based on your previous 12 Work sessions":
+      "Ta rekomendacja opiera się na Twoich poprzednich 12 sesjach służbowych",
+    "Suggested action": "Sugerowane działanie",
+    "Move the preparation reminder 10 minutes earlier":
+      "Przesuń przypomnienie o przygotowaniu o 10 minut wcześniej",
+    "Apply suggestion": "Zastosuj sugestię",
+    Helpful: "Pomocna",
+    "Not helpful": "Niepomocna",
+    "Wrong time": "Nieodpowiednia pora",
+    "Current focus": "Aktualne skupienie",
+    "Start on Windows. Continue on Android":
+      "Rozpocznij na Windowsie. Kontynuuj na Androidzie",
+    "Start, pause or resume the same task from Windows or Android. Tasks, roadmaps, settings and approved work stay consistent when devices are online":
+      "Rozpocznij, wstrzymaj lub wznów to samo zadanie na Windowsie albo Androidzie. Zadania, mapy drogowe, ustawienia i zatwierdzona praca pozostają spójne, gdy urządzenia są online.",
+    "Start on Windows": "Rozpocznij na Windowsie",
+    "View on Android": "Zobacz na Androidzie",
+    "Continue on Windows": "Kontynuuj na Windowsie",
+    "Immediate local button response": "Natychmiastowa lokalna reakcja przycisku",
+    "Local timer calculation": "Lokalne obliczanie timera",
+    "Duplicate-command protection": "Ochrona przed zduplikowanymi poleceniami",
+    "One shared active task and session state":
+      "Jedno wspólne aktywne zadanie i stan sesji",
+    "Offline operation": "Działanie offline",
+    "Your work does not stop when the internet does":
+      "Twoja praca nie zatrzymuje się, gdy znika internet",
+    "Create tasks, update roadmaps and keep working without a connection. Saved changes synchronize safely when your device reconnects":
+      "Twórz zadania, aktualizuj mapy drogowe i pracuj bez połączenia. Zapisane zmiany bezpiecznie synchronizują się po ponownym połączeniu urządzenia.",
+    Offline: "Offline",
+    "3 changes waiting safely": "3 zmiany bezpiecznie czekają",
+    Connected: "Połączono",
+    "All changes synchronized": "Wszystkie zmiany zsynchronizowane",
+    "Privacy and control": "Prywatność i kontrola",
+    "Detailed insights under your control": "Szczegółowe informacje pod Twoją kontrolą",
+    "You choose which activity DayVector may record and whether selected data remains local or is synchronized":
+      "Ty wybierasz, jaką aktywność DayVector może rejestrować oraz czy wybrane dane pozostają lokalne, czy są synchronizowane.",
+    "DayVector does not upload browser cookies, website login tokens, clipboard contents, form contents or unencrypted passwords":
+      "DayVector nie przesyła plików cookie przeglądarki, tokenów logowania do stron, zawartości schowka, treści formularzy ani niezaszyfrowanych haseł.",
+    "View Privacy Policy": "Zobacz politykę prywatności",
+    "View Terms of Use": "Zobacz warunki korzystania",
+    "Activity privacy": "Prywatność aktywności",
+    "Your choices": "Twoje wybory",
+    "Track applications": "Śledź aplikacje",
+    "Track window titles": "Śledź tytuły okien",
+    "Track domains only": "Śledź tylko domeny",
+    "Track full URLs": "Śledź pełne adresy URL",
+    "Keep selected history local": "Zachowaj wybraną historię lokalnie",
+    "Pause tracking": "Wstrzymaj śledzenie",
+    "Delete activity history": "Usuń historię aktywności",
+    Review: "Sprawdź",
+    "The operational view": "Widok operacyjny",
+    "Everything important, visible in one place":
+      "Wszystko, co ważne, widoczne w jednym miejscu",
+    "DayVector dashboard showing task suggestions, schedule, workload and overdue responsibilities":
+      "Panel DayVector z sugestiami zadań, planem, obciążeniem i zaległymi obowiązkami",
+    "Today’s responsibilities, active work, roadmap progress, unresolved activity and coaching direction in one focused dashboard":
+      "Dzisiejsze obowiązki, aktywna praca, postęp mapy drogowej, nierozstrzygnięta aktywność i kierunek coachingu na jednym przejrzystym panelu.",
+    "Task suggestions": "Sugestie zadań",
+    "Today's workload": "Dzisiejsze obciążenie",
+    Schedule: "Harmonogram",
+    "Clear current task state": "Jasny stan bieżącego zadania",
+    "Next suggested responsibility": "Sugerowany następny obowiązek",
+    "Today’s schedule and workload": "Dzisiejszy harmonogram i obciążenie",
+    "Overdue work and items needing attention":
+      "Zaległa praca i elementy wymagające uwagi",
+    "Dynamic coaching and synchronization status":
+      "Dynamiczny coaching i stan synchronizacji",
+    "Dynamic coaching": "Dynamiczny coaching",
+    "DayVector coaching carousel with several evidence-based suggestions":
+      "Karuzela coachingu DayVector z kilkoma sugestiami opartymi na danych",
+    "Several suggestions, always in your control":
+      "Kilka sugestii, zawsze pod Twoją kontrolą",
+    "DayVector Activity view grouping useful application time without losing individual periods":
+      "Widok aktywności DayVector grupujący przydatny czas w aplikacjach bez utraty pojedynczych okresów",
+    "Clear, editable classifications": "Jasne, edytowalne klasyfikacje",
+    "Direct contact": "Bezpośredni kontakt",
+    "Questions, feedback or support?": "Pytania, opinie lub pomoc?",
+    "Contact the creator of DayVector for help with the app, privacy questions, feedback, bug reports, feature suggestions or general enquiries":
+      "Skontaktuj się z twórcą DayVector, aby uzyskać pomoc z aplikacją, zapytać o prywatność, przekazać opinię, zgłosić błąd, zaproponować funkcję lub zadać ogólne pytanie.",
+    "Created and maintained by": "Stworzone i utrzymywane przez",
+    "Contact Y. A. Diab": "Skontaktuj się z Y. A. Diabem",
+    "Email Y. A. Diab about DayVector": "Napisz do Y. A. Diaba w sprawie DayVector",
+    "Application support": "Pomoc dotycząca aplikacji",
+    "Privacy questions": "Pytania dotyczące prywatności",
+    "Bug reports": "Zgłoszenia błędów",
+    "Feature suggestions": "Sugestie funkcji",
+    "Build a better system for your time": "Zbuduj lepszy system dla swojego czasu",
+    "Download DayVector and begin turning long-term goals into practical, measurable daily progress":
+      "Pobierz DayVector i zacznij zamieniać długoterminowe cele w praktyczny, mierzalny codzienny postęp.",
+    "Recommended for your device": "Polecane dla Twojego urządzenia",
+    "DayVector for Windows": "DayVector dla Windows",
+    "Designed for Windows 10 and Windows 11": "Zaprojektowane dla Windows 10 i Windows 11",
+    Installer: "Instalator",
+    "64-bit EXE": "64-bitowy EXE",
+    Size: "Rozmiar",
+    "Shown on GitHub": "Wyświetlane na GitHubie",
+    "Checking release…": "Sprawdzanie wydania…",
+    "Release notes": "Informacje o wydaniu",
+    "Installation help": "Pomoc w instalacji",
+    "DayVector for Android": "DayVector dla Androida",
+    "Designed for Android phones and tablets":
+      "Zaprojektowane dla telefonów i tabletów z Androidem",
+    Package: "Pakiet",
+    "Signed APK": "Podpisany APK",
+    "A personal planning, execution and performance-coaching system for Windows and Android":
+      "Osobisty system planowania, realizacji i coachingu wyników dla Windowsa i Androida",
+    Product: "Produkt",
+    "Android Widget": "Widżet Androida",
+    "Free Pomodoro": "Bezpłatne Pomodoro",
+    Legal: "Informacje prawne",
+    "Privacy Policy": "Polityka prywatności",
+    "Terms of Use": "Warunki korzystania",
+    "Support and feedback": "Pomoc i opinie",
+    "Windows and Android": "Windows i Android",
+    "DayVector Release Notes": "Informacje o wydaniu DayVector",
+    "Release date available with the notes": "Data wydania dostępna w informacjach",
+    "Close release notes": "Zamknij informacje o wydaniu",
+    "Loading release notes…": "Wczytywanie informacji o wydaniu…",
+    "Latest published release": "Najnowsze opublikowane wydanie",
+    "Release notes are temporarily unavailable":
+      "Informacje o wydaniu są tymczasowo niedostępne",
+    "Try loading the notes again shortly.":
+      "Spróbuj wczytać informacje ponownie za chwilę.",
+    "Try again": "Spróbuj ponownie",
+    Close: "Zamknij",
+    "Release date unavailable": "Data wydania niedostępna",
+    "Size unavailable": "Rozmiar niedostępny",
+    "Coming soon!": "Wkrótce!",
+    "Available with the release": "Dostępne wraz z wydaniem",
+    "Checking…": "Sprawdzanie…",
+    "Privacy Policy for DayVector": "Polityka prywatności DayVector",
+    "Privacy choices and data-handling information for DayVector.":
+      "Informacje o wyborach prywatności i przetwarzaniu danych w DayVector.",
+    "← Back to privacy overview": "← Wróć do przeglądu prywatności",
+    "Your activity stays under your control": "Twoja aktywność pozostaje pod Twoją kontrolą",
+    "Effective 25 July 2026": "Obowiązuje od 25 lipca 2026 r.",
+    "DayVector is a planning, execution and performance-coaching application created and maintained by Y. A. Diab. This policy explains the categories of information the application may process and the choices available to you.":
+      "DayVector to aplikacja do planowania, realizacji i coachingu wyników, stworzona i utrzymywana przez Y. A. Diaba. Ta polityka wyjaśnia, jakie kategorie informacji aplikacja może przetwarzać i jakie masz możliwości wyboru.",
+    "Information you provide": "Informacje, które podajesz",
+    "This may include account details, profile preferences, tasks, roadmaps, notes, reminders, resources and feedback. Authentication is provided through Supabase. Google sign-in, when selected, is processed by Google and Supabase.":
+      "Może to obejmować dane konta, preferencje profilu, zadania, mapy drogowe, notatki, przypomnienia, materiały i opinie. Uwierzytelnianie zapewnia Supabase. Wybrane logowanie przez Google jest przetwarzane przez Google i Supabase.",
+    "Optional activity information": "Opcjonalne informacje o aktywności",
+    "With your permission, DayVector may process application usage, window titles, website domains or URLs, document activity, idle state and manually recorded off-device work. Controls in the application determine which categories are enabled and whether supported activity remains local or is synchronized.":
+      "Za Twoją zgodą DayVector może przetwarzać użycie aplikacji, tytuły okien, domeny lub adresy URL stron, aktywność w dokumentach, stan bezczynności i ręcznie rejestrowaną pracę poza urządzeniem. Ustawienia aplikacji określają, które kategorie są włączone oraz czy obsługiwana aktywność pozostaje lokalna, czy jest synchronizowana.",
+    "Information DayVector does not upload": "Informacje, których DayVector nie przesyła",
+    "The application is designed not to upload browser cookies, website login tokens, clipboard contents, form contents, banking-session information, email-session tokens or unencrypted passwords.":
+      "Aplikacja została zaprojektowana tak, aby nie przesyłać plików cookie przeglądarki, tokenów logowania do stron, zawartości schowka, treści formularzy, informacji o sesjach bankowych, tokenów sesji e-mail ani niezaszyfrowanych haseł.",
+    "Why information is used": "Dlaczego używamy informacji",
+    "Information is used to operate requested features, synchronize connected devices, calculate progress and reports, detect unresolved activity, improve schedules, deliver notifications and generate explainable coaching. Optional data is not treated as medical diagnosis.":
+      "Informacje są używane do działania wybranych funkcji, synchronizacji połączonych urządzeń, obliczania postępu i raportów, wykrywania nierozstrzygniętej aktywności, ulepszania harmonogramów, dostarczania powiadomień oraz tworzenia zrozumiałego coachingu. Dane opcjonalne nie są traktowane jako diagnoza medyczna.",
+    "Storage and service providers": "Przechowywanie i dostawcy usług",
+    "DayVector stores working data locally on your device. When synchronization is enabled, account data may be processed by Supabase infrastructure. Platform services may also process data needed for sign-in, notifications, software downloads and operating-system integrations.":
+      "DayVector przechowuje dane robocze lokalnie na Twoim urządzeniu. Gdy synchronizacja jest włączona, dane konta mogą być przetwarzane przez infrastrukturę Supabase. Usługi platform mogą również przetwarzać dane potrzebne do logowania, powiadomień, pobierania oprogramowania i integracji z systemem operacyjnym.",
+    "Your controls": "Twoje ustawienia",
+    "Depending on the feature status and platform, you can pause tracking, exclude applications or websites, correct classifications, remove history, keep selected information local, revoke device access, export account data and request account deletion.":
+      "W zależności od statusu funkcji i platformy możesz wstrzymać śledzenie, wykluczyć aplikacje lub strony, poprawić klasyfikacje, usunąć historię, zachować wybrane informacje lokalnie, cofnąć dostęp urządzenia, wyeksportować dane konta i zażądać usunięcia konta.",
+    "Security and sensitive features": "Bezpieczeństwo i funkcje wrażliwe",
+    "DayVector uses platform and service security controls appropriate to each feature. Planned security-sensitive features are not represented as available until their implementation and review are complete.":
+      "DayVector korzysta z zabezpieczeń platform i usług odpowiednich dla każdej funkcji. Planowane funkcje związane z bezpieczeństwem nie są oznaczane jako dostępne, dopóki ich wdrożenie i przegląd nie zostaną ukończone.",
+    "Changes to this policy": "Zmiany w tej polityce",
+    "This policy may be updated as DayVector evolves. The effective date above will change when material revisions are published.":
+      "Ta polityka może być aktualizowana wraz z rozwojem DayVector. Powyższa data obowiązywania zmieni się po opublikowaniu istotnych zmian.",
+    "For privacy questions, email": "W sprawach dotyczących prywatności napisz na adres",
+    "Terms of Service for DayVector": "Warunki korzystania z DayVector",
+    "Terms governing use of the DayVector application.":
+      "Warunki korzystania z aplikacji DayVector.",
+    "← Back to DayVector": "← Wróć do DayVector",
+    "Terms of service": "Warunki korzystania",
+    "Clear terms for using DayVector": "Jasne warunki korzystania z DayVector",
+    "These terms apply to your use of DayVector, an application created and maintained by Y. A. Diab. By creating an account or using the application, you agree to use it lawfully and in accordance with these terms.":
+      "Te warunki dotyczą korzystania z DayVector, aplikacji stworzonej i utrzymywanej przez Y. A. Diaba. Tworząc konto lub korzystając z aplikacji, zgadzasz się używać jej zgodnie z prawem i tymi warunkami.",
+    "Purpose of the application": "Cel aplikacji",
+    "DayVector provides tools for planning, task execution, time and activity review, roadmaps, reports and performance coaching. Features marked Beta or Planned may change, remain incomplete or be unavailable on some platforms.":
+      "DayVector udostępnia narzędzia do planowania, wykonywania zadań, przeglądu czasu i aktywności, map drogowych, raportów oraz coachingu wyników. Funkcje oznaczone jako Beta lub Planowane mogą się zmieniać, pozostać niekompletne albo być niedostępne na niektórych platformach.",
+    "Your account and content": "Twoje konto i treści",
+    "You are responsible for safeguarding your sign-in methods, maintaining accurate account information and keeping appropriate backups of important content. You retain responsibility for the tasks, notes, resources and other content you add.":
+      "Odpowiadasz za ochronę swoich metod logowania, aktualność danych konta oraz odpowiednie kopie zapasowe ważnych treści. Zachowujesz odpowiedzialność za dodawane zadania, notatki, materiały i inne treści.",
+    "Acceptable use": "Dopuszczalne korzystanie",
+    "Do not use DayVector to violate law, infringe the rights of others, attempt unauthorized access, distribute malicious software or interfere with the application and its supporting services.":
+      "Nie używaj DayVector do łamania prawa, naruszania praw innych osób, prób nieuprawnionego dostępu, rozpowszechniania złośliwego oprogramowania ani zakłócania działania aplikacji i usług ją wspierających.",
+    "Updates and availability": "Aktualizacje i dostępność",
+    "Software updates may add, change or remove features. You choose whether to install an offered desktop or Android package, and the operating system may require additional confirmation. Availability can be affected by device, network and third-party service conditions.":
+      "Aktualizacje oprogramowania mogą dodawać, zmieniać lub usuwać funkcje. To Ty decydujesz, czy zainstalować oferowany pakiet desktopowy lub Androida, a system operacyjny może wymagać dodatkowego potwierdzenia. Dostępność może zależeć od urządzenia, sieci i usług innych firm.",
+    "Productivity and coaching information": "Informacje o produktywności i coachingu",
+    "DayVector provides planning, productivity and performance information. It does not provide medical, psychological, legal, financial or professional diagnosis or treatment.":
+      "DayVector dostarcza informacje o planowaniu, produktywności i wynikach. Nie zapewnia diagnozy ani leczenia medycznego, psychologicznego, prawnego, finansowego lub zawodowego.",
+    "No guaranteed outcome": "Brak gwarantowanego wyniku",
+    "Forecasts and recommendations depend on available information and may be incomplete or inaccurate. You remain in control of decisions, classifications, schedules and progress.":
+      "Prognozy i rekomendacje zależą od dostępnych informacji i mogą być niepełne lub niedokładne. Nadal kontrolujesz decyzje, klasyfikacje, harmonogramy i postęp.",
+    "Ending use": "Zakończenie korzystania",
+    "You may stop using the application and, when available in the account controls, request deletion of synchronized account information. Some records may be retained temporarily where required for security, integrity or legal reasons.":
+      "Możesz przestać korzystać z aplikacji oraz, gdy jest to dostępne w ustawieniach konta, poprosić o usunięcie zsynchronizowanych informacji konta. Niektóre zapisy mogą być tymczasowo zachowane, jeśli wymagają tego względy bezpieczeństwa, integralności lub prawo.",
+    "For support or questions about these terms, contact Y. A. Diab at":
+      "Aby uzyskać pomoc lub zadać pytanie dotyczące tych warunków, skontaktuj się z Y. A. Diabem pod adresem",
+    "Installation Help for DayVector": "Pomoc w instalacji DayVector",
+    "Install DayVector on Windows, Android phones and Android tablets.":
+      "Zainstaluj DayVector na Windowsie, telefonach i tabletach z Androidem.",
+    "← Back to downloads": "← Wróć do pobierania",
+    "Get DayVector running": "Uruchom DayVector",
+    "Applies to the version shown on the download card":
+      "Dotyczy wersji widocznej na karcie pobierania",
+    "Windows 10 and Windows 11": "Windows 10 i Windows 11",
+    "Download the Windows installer from the official GitHub release.":
+      "Pobierz instalator Windows z oficjalnego wydania na GitHubie.",
+    "Open the downloaded DayVector Windows installer.":
+      "Otwórz pobrany instalator DayVector dla Windows.",
+    "Review any Windows security prompt, then continue the installer.":
+      "Przejrzyj ewentualny monit zabezpieczeń Windows, a następnie kontynuuj instalację.",
+    "Launch DayVector from the Start menu or desktop shortcut.":
+      "Uruchom DayVector z menu Start lub skrótu na pulpicie.",
+    "Android phones and tablets": "Telefony i tablety z Androidem",
+    "Download the signed DayVector Android package.":
+      "Pobierz podpisany pakiet DayVector dla Androida.",
+    "Open the downloaded APK from your browser or Files application.":
+      "Otwórz pobrany plik APK w przeglądarce lub aplikacji Pliki.",
+    "If Android asks, allow installation from that source for this install.":
+      "Jeśli Android o to poprosi, zezwól na instalację z tego źródła dla tej instalacji.",
+    "Review the package details and confirm installation.":
+      "Sprawdź szczegóły pakietu i potwierdź instalację.",
+    "DayVector never starts an installation without your action. Windows may show a reputation warning for a new, unsigned release, and Android requires confirmation before installing an APK outside an app store.":
+      "DayVector nigdy nie rozpoczyna instalacji bez Twojego działania. Windows może wyświetlić ostrzeżenie o reputacji dla nowego, niepodpisanego wydania, a Android wymaga potwierdzenia przed zainstalowaniem pliku APK spoza sklepu z aplikacjami.",
+    "Check your download": "Sprawdź pobrany plik",
+    "Every official release includes a verification file beside each installer. You can use it to confirm that the download has not changed before opening it.":
+      "Każde oficjalne wydanie zawiera plik weryfikacyjny obok każdego instalatora. Możesz go użyć, aby potwierdzić, że pobrany plik nie zmienił się przed otwarciem.",
+    "Need help?": "Potrzebujesz pomocy?",
+    "Email Y. A. Diab at": "Napisz do Y. A. Diaba na adres",
+    "A free, adjustable Pomodoro timer from DayVector that remembers the current session and settings locally in your browser.":
+      "Bezpłatny, regulowany timer Pomodoro od DayVector, który zapamiętuje bieżącą sesję i ustawienia lokalnie w przeglądarce.",
+    "Free Pomodoro Timer from DayVector": "Bezpłatny timer Pomodoro od DayVector",
+    "Run an adjustable focus timer that resumes where you left off, with an accessible guide to the Pomodoro Technique.":
+      "Uruchom regulowany timer skupienia, który wznawia pracę od miejsca zakończenia, z przystępnym przewodnikiem po technice Pomodoro.",
+    Timer: "Timer",
+    "How to use it": "Jak z niego korzystać",
+    "Android widget": "Widżet Androida",
+    "Free, private and ready without an account":
+      "Bezpłatny, prywatny i gotowy bez konta",
+    "Make the next": "Spraw, aby następne",
+    "25 minutes": "25 minut",
+    "count.": "miało znaczenie.",
+    "Pick one meaningful task, focus for a bounded interval and take a real break. This timer remembers your session in this browser, even when you close the tab.":
+      "Wybierz jedno ważne zadanie, skup się przez określony czas i zrób prawdziwą przerwę. Ten timer zapamiętuje sesję w tej przeglądarce, nawet po zamknięciu karty.",
+    "Timer capabilities": "Możliwości timera",
+    "Remembers your timer on this device": "Zapamiętuje timer na tym urządzeniu",
+    "Adjustable intervals": "Regulowane interwały",
+    "Responsive everywhere": "Responsywny wszędzie",
+    "What is the Pomodoro Technique?": "Czym jest technika Pomodoro?",
+    "History, practical guidance and research context":
+      "Historia, praktyczne wskazówki i kontekst badawczy",
+    "Browser Pomodoro": "Pomodoro w przeglądarce",
+    "Saved only in this browser": "Zapisane tylko w tej przeglądarce",
+    "Local saving unavailable": "Lokalny zapis niedostępny",
+    "What are you moving forward?": "Co chcesz posunąć do przodu?",
+    "e.g. Review chapter 4": "np. Przejrzyj rozdział 4",
+    "Choose timer phase": "Wybierz fazę timera",
+    "Pomodoro controls": "Sterowanie Pomodoro",
+    Reset: "Resetuj",
+    "Start focus": "Rozpocznij skupienie",
+    "Start break": "Rozpocznij przerwę",
+    Skip: "Pomiń",
+    "Ready when you are. Your progress stays on this device.":
+      "Gotowe, gdy Ty jesteś gotowy. Twój postęp pozostaje na tym urządzeniu.",
+    "Focus is running. Keep this interval for one clear task.":
+      "Skupienie trwa. Zachowaj ten interwał dla jednego jasnego zadania.",
+    "Break is running. Step away from the task if you can.":
+      "Trwa przerwa. Odsuń się od zadania, jeśli możesz.",
+    "Break complete. Your next focus is ready.":
+      "Przerwa zakończona. Twoje następne skupienie jest gotowe.",
+    "Focus complete. Take a deliberate break.":
+      "Skupienie zakończone. Zrób świadomą przerwę.",
+    "Adjust timer": "Dostosuj timer",
+    "Focus minutes": "Minuty skupienia",
+    "Focuses per round": "Sesje skupienia na rundę",
+    "Start breaks automatically": "Rozpoczynaj przerwy automatycznie",
+    "Start the next focus automatically": "Rozpoczynaj następne skupienie automatycznie",
+    "Play a gentle completion tone": "Odtwarzaj łagodny dźwięk ukończenia",
+    "Restore recommended times": "Przywróć zalecane czasy",
+    "Your timer stays on this device and is ready when you return. Nothing is sent to DayVector.":
+      "Twój timer pozostaje na tym urządzeniu i jest gotowy, gdy wrócisz. Nic nie jest wysyłane do DayVector.",
+    "A gentle starting ritual": "Łagodny rytuał rozpoczęcia",
+    "Use the interval to protect attention, not to race the clock":
+      "Użyj interwału, aby chronić uwagę, a nie ścigać się z czasem",
+    "The familiar 25-minute timer is a useful entry point. The complete technique also includes planning, handling interruptions, recording effort and learning from each cycle.":
+      "Znany 25-minutowy timer jest dobrym punktem wyjścia. Pełna technika obejmuje także planowanie, radzenie sobie z przerwami, zapisywanie wysiłku i wyciąganie wniosków z każdego cyklu.",
+    "Choose one clear outcome": "Wybierz jeden jasny rezultat",
+    "Write a task small enough to move during one focused interval.":
+      "Zapisz zadanie na tyle małe, aby posunąć je naprzód podczas jednego interwału skupienia.",
+    "Start and protect the interval": "Rozpocznij i chroń interwał",
+    "Put avoidable distractions aside; note interruptions instead of chasing them.":
+      "Odłóż możliwe do uniknięcia rozproszenia; zapisuj przerwy zamiast za nimi podążać.",
+    "Stop when the timer ends": "Zatrzymaj się, gdy timer się skończy",
+    "Take the break seriously. Stand, breathe, drink water or let your attention reset.":
+      "Potraktuj przerwę poważnie. Wstań, odetchnij, napij się wody lub pozwól swojej uwadze się zresetować.",
+    "Review, then begin again": "Sprawdź, a potem zacznij ponownie",
+    "After several focuses, take a longer break and adjust the durations to fit your work.":
+      "Po kilku sesjach skupienia zrób dłuższą przerwę i dostosuj czasy do swojej pracy.",
+    "Go deeper into learning": "Pogłęb naukę",
+    "A useful companion:": "Pomocne uzupełnienie:",
+    "Barbara Oakley’s book explains practical approaches to learning difficult material, overcoming procrastination and moving between focused and more diffuse modes of thinking. Its strategies apply beyond mathematics and science.":
+      "Książka Barbary Oakley wyjaśnia praktyczne podejścia do nauki trudnego materiału, pokonywania prokrastynacji oraz przechodzenia między skupionym i bardziej rozproszonym sposobem myślenia. Jej strategie przydają się nie tylko w matematyce i naukach ścisłych.",
+    "Read about the book": "Przeczytaj o książce",
+    "Product website": "Strona produktu",
+    Terms: "Warunki",
+    "A practical introduction": "Praktyczne wprowadzenie",
+    "The idea behind the Pomodoro Technique": "Idea techniki Pomodoro",
+    "Close Pomodoro information": "Zamknij informacje o Pomodoro",
+    "Who created it?": "Kto ją stworzył?",
+    "Francesco Cirillo created the technique while he was a university student in the late 1980s, using a tomato-shaped kitchen timer. The name comes from the Italian word for tomato. Cirillo emphasizes that the timer is only one part of a broader system for planning, managing interruptions, estimating effort and improving how you work.":
+      "Francesco Cirillo stworzył tę technikę jako student pod koniec lat 80., używając kuchennego minutnika w kształcie pomidora. Nazwa pochodzi od włoskiego słowa oznaczającego pomidor. Cirillo podkreśla, że timer jest tylko jedną częścią szerszego systemu planowania, zarządzania przerwami, szacowania wysiłku i doskonalenia sposobu pracy.",
+    "How can a timer help?": "Jak może pomóc timer?",
+    "A bounded interval can lower the barrier to starting, make interruptions visible and create a deliberate stopping point. Research by Atsunori Ariga and Alejandro Lleras found that brief, rare breaks helped prevent a decline in performance during a sustained-attention task. That does not make one duration perfect for everyone. Adjust the timer to the work and to your needs.":
+      "Ograniczony interwał może ułatwić rozpoczęcie, uwidocznić przerwy i stworzyć świadomy moment zatrzymania. Badania Atsunoriego Arigi i Alejandra Llerasa wykazały, że krótkie, rzadkie przerwy pomagały zapobiegać spadkowi wyników podczas zadania wymagającego długotrwałej uwagi. Nie oznacza to, że jeden czas jest idealny dla wszystkich. Dostosuj timer do pracy i swoich potrzeb.",
+    "A simple first cycle": "Prosty pierwszy cykl",
+    "Choose one task and define what “moved forward” will mean.":
+      "Wybierz jedno zadanie i określ, co będzie oznaczać „posunięcie do przodu”.",
+    "Focus for 25 minutes, recording interruptions instead of following them.":
+      "Skupiaj się przez 25 minut, zapisując przerwy zamiast im ulegać.",
+    "Stop and take a short break when the interval ends.":
+      "Zatrzymaj się i zrób krótką przerwę, gdy interwał się skończy.",
+    "After four focus intervals, take a longer break and review the pattern.":
+      "Po czterech interwałach skupienia zrób dłuższą przerwę i przejrzyj wzorzec.",
+    "The timer is a tool, not a score. Even the creator cautions against reducing the full technique to collecting as many 25-minute intervals as possible.":
+      "Timer jest narzędziem, a nie wynikiem. Nawet twórca ostrzega przed sprowadzaniem pełnej techniki do zbierania jak największej liczby 25-minutowych interwałów.",
+    "Sources and further reading": "Źródła i dalsza lektura",
+    "Francesco Cirillo: creator’s account and philosophy":
+      "Francesco Cirillo: opis i filozofia twórcy",
+    "Official Pomodoro Technique overview": "Oficjalne omówienie techniki Pomodoro",
+    "Ariga & Lleras (2011),": "Ariga i Lleras (2011),",
+    ": brief mental breaks and vigilance":
+      ": krótkie przerwy umysłowe i czujność",
+    "Barbara Oakley:": "Barbara Oakley:",
+    "Pomodoro® is a registered trademark of Francesco Cirillo. This independent educational timer is not affiliated with or endorsed by Francesco Cirillo.":
+      "Pomodoro® jest zarejestrowanym znakiem towarowym Francesco Cirillo. Ten niezależny timer edukacyjny nie jest powiązany z Francesco Cirillo ani przez niego popierany.",
+    "Start a focus interval": "Rozpocznij interwał skupienia",
+    "The same live session as the app": "Ta sama sesja na żywo co w aplikacji",
+    "Health context without clutter": "Kontekst zdrowia bez nadmiaru informacji",
+    "See movement and recovery beside your work":
+      "Zobacz ruch i regenerację obok swojej pracy",
+    "With your permission, DayVector reads the health summaries you choose to share and presents them in a calm daily view. It helps you notice when movement, rest and focused work are supporting each other.":
+      "Za Twoją zgodą DayVector odczytuje wybrane przez Ciebie podsumowania zdrowia i prezentuje je w spokojnym widoku dziennym. Pomaga zauważyć, kiedy ruch, odpoczynek i skupiona praca wzajemnie się wspierają.",
+    "A clear view of today": "Jasny widok na dziś",
+    "Steps, distance, active energy and workouts at a glance":
+      "Kroki, dystans, aktywna energia i treningi na pierwszy rzut oka",
+    "Your week in motion": "Twój tydzień w ruchu",
+    "Readable values and a simple seven-day movement chart":
+      "Czytelne wartości i prosty siedmiodniowy wykres ruchu",
+    "Health sources together": "Źródła zdrowia w jednym miejscu",
+    "Connected watches and health applications in one tidy place":
+      "Połączone zegarki i aplikacje zdrowotne w jednym uporządkowanym miejscu",
+    "Useful on Windows too": "Przydatne także na Windowsie",
+    "Daily summaries stay readable across your signed-in devices":
+      "Codzienne podsumowania pozostają czytelne na zalogowanych urządzeniach",
+    "Swipe down to refresh": "Przeciągnij w dół, aby odświeżyć",
+    "Read-only access": "Dostęp tylko do odczytu",
+    "Captured from the Android app": "Zrzut z aplikacji Android",
+    "DayVector Health dashboard showing today's steps, distance, active energy and a seven-day movement chart":
+      "Panel zdrowia DayVector pokazujący dzisiejsze kroki, dystans, aktywną energię i siedmiodniowy wykres ruchu",
+    "DayVector Health dashboard showing today's steps, distance, active energy, workouts and a seven-day movement chart":
+      "Panel zdrowia DayVector pokazujący dzisiejsze kroki, dystans, aktywną energię, treningi i siedmiodniowy wykres ruchu",
+    "Time does not always follow the schedule. DayVector keeps each activity period available for review and makes sure the same minute is never counted twice":
+      "Czas nie zawsze podąża za harmonogramem. DayVector pozostawia każdy okres aktywności dostępny do sprawdzenia i dba o to, by ta sama minuta nigdy nie została policzona dwa razy.",
+    "Project task": "Zadanie projektu",
+    "Prepare product launch": "Przygotuj premierę produktu",
+    "Activity reports": "Raporty aktywności",
+    "See where your time actually went": "Zobacz, na co naprawdę poszedł Twój czas",
+    "Reports group approved application and website activity by duration. Open the underlying activity whenever you want to review or correct it":
+      "Raporty grupują zatwierdzoną aktywność aplikacji i stron według czasu trwania. Otwórz źródłową aktywność, kiedy chcesz ją sprawdzić lub poprawić.",
+    "See the time recorded for each application and website":
+      "Zobacz czas zarejestrowany dla każdej aplikacji i strony",
+    "Connect trusted tools to the task they support":
+      "Połącz zaufane narzędzia z zadaniem, które wspierają",
+    "Keep uncertain activity ready for your review":
+      "Pozostaw niepewną aktywność gotową do sprawdzenia",
+    "Example activity report": "Przykładowy raport aktywności",
+    "Development session": "Sesja programistyczna",
+    Application: "Aplikacja",
+    "42 minutes": "42 minuty",
+    "Website activity": "Aktywność na stronie",
+    "Paused work": "Wstrzymana praca",
+    "Overdue tasks": "Zaległe zadania",
+    "Roadmap progress": "Postęp mapy drogowej",
+    "Rest timing": "Pora odpoczynku",
+    "Focus patterns": "Wzorce skupienia",
+    "Coaching suggestion": "Sugestia coachingu",
+    "Make the roadmap feel possible again":
+      "Spraw, aby mapa drogowa znów wydawała się możliwa do zrealizowania",
+    "Based on your roadmap": "Na podstawie Twojej mapy drogowej",
+    "Part of your roadmap is at risk. Make": "Część Twojej mapy drogowej jest zagrożona. Uczyń",
+    "Prepare launch brief": "Przygotuj skrót premiery",
+    "the recovery step and leave the rest outside this session":
+      "krokiem odzyskiwania i zostaw resztę poza tą sesją",
+    "Evidence: 3 open roadmap tasks": "Dane: 3 otwarte zadania mapy drogowej",
+    "Next step": "Następny krok",
+    "Open the related task and protect one focused session":
+      "Otwórz powiązane zadanie i chroń jedną sesję skupienia",
+    "Open related task": "Otwórz powiązane zadanie",
+    "Not useful": "Nieprzydatne",
+    "Wrong timing": "Nieodpowiedni moment",
+    "Made to feel at home on Android": "Stworzone, aby naturalnie działać na Androidzie",
+  };
+
   const originalText = new WeakMap();
   const originalAttributes = new WeakMap();
   let language = readLanguage();
@@ -1507,6 +2169,14 @@
       return value;
     }
 
+    if (language === "pl") {
+      let match = value.match(/^Focus (\d+) of (\d+)$/);
+      if (match) return `Skupienie ${match[1]} z ${match[2]}`;
+      match = value.match(/^Version (.+)$/);
+      if (match) return `Wersja ${match[1]}`;
+      return value;
+    }
+
     let match = value.match(
       /^(\d+) min focus, (\d+) min short break, (\d+) min long break$/,
     );
@@ -1549,7 +2219,8 @@
   function translate(value) {
     const clean = normalized(value);
     if (!clean || language === "en") return clean;
-    const dictionary = language === "ar" ? arabic : german;
+    const dictionary =
+      language === "ar" ? arabic : language === "pl" ? polish : german;
     return dictionary[clean] || translatedPattern(clean);
   }
 
@@ -1564,7 +2235,7 @@
       !element ||
       Boolean(
         element.closest(
-          "script, style, noscript, .material-symbols-rounded, [data-i18n-ignore], [data-language-toggle], [data-theme-toggle]",
+          "script, style, noscript, .material-symbols-rounded, [data-i18n-ignore], [data-language-toggle], [data-language-select], [data-theme-toggle]",
         ),
       )
     );
@@ -1629,20 +2300,9 @@
   }
 
   function updateToggle() {
-    document.querySelectorAll("[data-language-toggle]").forEach((button) => {
-      const currentIndex = LANGUAGE_ORDER.indexOf(language);
-      const nextLanguage =
-        LANGUAGE_ORDER[(currentIndex + 1) % LANGUAGE_ORDER.length];
-      const label = button.querySelector("[data-language-label]");
-      if (label) label.textContent = nextLanguage.toUpperCase();
-      const ariaLabel =
-        language === "de"
-          ? "Diese Seite auf Arabisch anzeigen"
-          : language === "ar"
-            ? "اعرض هذه الصفحة بالإنجليزية"
-            : "Show this page in German";
-      button.setAttribute("aria-label", ariaLabel);
-      button.setAttribute("title", ariaLabel);
+    document.querySelectorAll("[data-language-select] select").forEach((select) => {
+      select.value = language;
+      select.setAttribute("aria-label", translate("Select language"));
     });
   }
 
@@ -1668,7 +2328,7 @@
     if (language === "ar") {
       return switchingToLight ? "استخدم المظهر الفاتح" : "استخدم المظهر الداكن";
     }
-    return switchingToLight ? "Use light theme" : "Use dark theme";
+    return translate(switchingToLight ? "Use light theme" : "Use dark theme");
   }
 
   function updateThemeToggle() {
@@ -1706,9 +2366,9 @@
 
   function installThemeToggles() {
     document
-      .querySelectorAll("[data-language-toggle]")
-      .forEach((languageButton) => {
-        if (languageButton.parentElement?.querySelector("[data-theme-toggle]"))
+      .querySelectorAll("[data-language-select]")
+      .forEach((languageControl) => {
+        if (languageControl.parentElement?.querySelector("[data-theme-toggle]"))
           return;
         const button = document.createElement("button");
         button.type = "button";
@@ -1719,7 +2379,7 @@
         button.addEventListener("click", () =>
           applyTheme(theme === "dark" ? "light" : "dark"),
         );
-        languageButton.insertAdjacentElement("afterend", button);
+        languageControl.insertAdjacentElement("afterend", button);
       });
   }
 
@@ -1779,11 +2439,8 @@
   installThemeToggles();
   applyTheme(theme, false);
 
-  document.querySelectorAll("[data-language-toggle]").forEach((button) => {
-    button.addEventListener("click", () => {
-      const currentIndex = LANGUAGE_ORDER.indexOf(language);
-      applyLanguage(LANGUAGE_ORDER[(currentIndex + 1) % LANGUAGE_ORDER.length]);
-    });
+  document.querySelectorAll("[data-language-select] select").forEach((select) => {
+    select.addEventListener("change", () => applyLanguage(select.value));
   });
 
   window.DayVectorI18n = {

@@ -56,7 +56,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   bool _notificationReady = false;
   bool _checkingUpdate = false;
   bool _showAllSettings = false;
-  String _version = '0.0.29';
+  String _version = '0.0.30';
   final _profileSectionKey = GlobalKey();
   final _appearanceSectionKey = GlobalKey();
   final _helpSectionKey = GlobalKey();
@@ -424,54 +424,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       children: [
                         _ThemeSelector(selected: settings.themeKey),
                         const SizedBox(height: 18),
-                        LayoutBuilder(
-                          builder: (context, constraints) {
-                            final label = Text(
-                              context.l10n.text('language'),
-                              style: Theme.of(context).textTheme.titleSmall,
-                            );
-                            final selector = SegmentedButton<String>(
-                              segments: const [
-                                ButtonSegment(
-                                  value: 'en',
-                                  label: Text(
-                                    'EN',
-                                  ), // localization-audit: allow
-                                ),
-                                ButtonSegment(
-                                  value: 'ar',
-                                  label: Text('ع'), // localization-audit: allow
-                                ),
-                                ButtonSegment(
-                                  value: 'de',
-                                  label: Text(
-                                    'DE',
-                                  ), // localization-audit: allow
-                                ),
-                              ],
-                              selected: {settings.localeCode},
-                              onSelectionChanged: (values) => ref
-                                  .read(settingsRepositoryProvider)
-                                  .updateLocale(values.first),
-                            );
-                            if (constraints.maxWidth < 420) {
-                              return Column(
-                                crossAxisAlignment: CrossAxisAlignment.stretch,
-                                children: [
-                                  label,
-                                  const SizedBox(height: 8),
-                                  selector,
-                                ],
-                              );
-                            }
-                            return Row(
-                              children: [
-                                Expanded(child: label),
-                                const SizedBox(width: 12),
-                                selector,
-                              ],
-                            );
-                          },
+                        _LanguageDropdown(
+                          value: settings.localeCode,
+                          onChanged: ref
+                              .read(settingsRepositoryProvider)
+                              .updateLocale,
                         ),
                         const SizedBox(height: 18),
                         _TimeZoneSettings(settings: settings),
@@ -1587,27 +1544,9 @@ class _SettingsCategoryPage extends ConsumerWidget {
                     style: Theme.of(context).textTheme.titleSmall,
                   ),
                   const SizedBox(height: 8),
-                  SizedBox(
-                    width: double.infinity,
-                    child: SegmentedButton<String>(
-                      segments: const [
-                        ButtonSegment(
-                          value: 'en',
-                          label: Text('EN'), // localization-audit: allow
-                        ),
-                        ButtonSegment(
-                          value: 'ar',
-                          label: Text('ع'), // localization-audit: allow
-                        ),
-                        ButtonSegment(
-                          value: 'de',
-                          label: Text('DE'), // localization-audit: allow
-                        ),
-                      ],
-                      selected: {current.localeCode},
-                      onSelectionChanged: (values) =>
-                          repository.updateLocale(values.first),
-                    ),
+                  _LanguageDropdown(
+                    value: current.localeCode,
+                    onChanged: repository.updateLocale,
                   ),
                   const SizedBox(height: 18),
                   _TimeZoneSettings(settings: current),
@@ -1703,7 +1642,7 @@ class _AboutLegalCategory extends StatefulWidget {
 
 class _AboutLegalCategoryState extends State<_AboutLegalCategory> {
   final _updates = AppUpdateService();
-  String _version = '0.0.29';
+  String _version = '0.0.30';
   bool _checking = false;
 
   @override
@@ -2547,6 +2486,41 @@ class _ProfileEditorDialogState extends ConsumerState<_ProfileEditorDialog> {
   }
 }
 
+class _LanguageDropdown extends StatelessWidget {
+  const _LanguageDropdown({required this.value, required this.onChanged});
+
+  final String value;
+  final ValueChanged<String> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return DropdownButtonFormField<String>(
+      key: const ValueKey('settings-language-dropdown'),
+      initialValue:
+          AppLocalizations.supportedLocales
+              .map((locale) => locale.languageCode)
+              .contains(value)
+          ? value
+          : 'en',
+      isExpanded: true,
+      decoration: InputDecoration(
+        labelText: context.l10n.text('language'),
+        prefixIcon: const Icon(Icons.translate_rounded),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+      ),
+      items: const [
+        DropdownMenuItem(value: 'en', child: Text('English (EN)')),
+        DropdownMenuItem(value: 'ar', child: Text('العربية (AR)')),
+        DropdownMenuItem(value: 'de', child: Text('Deutsch (DE)')),
+        DropdownMenuItem(value: 'pl', child: Text('Polski (PL)')),
+      ],
+      onChanged: (next) {
+        if (next != null) onChanged(next);
+      },
+    );
+  }
+}
+
 class _ThemeSelector extends ConsumerWidget {
   const _ThemeSelector({required this.selected});
 
@@ -2608,32 +2582,42 @@ class _SettingsSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final compact = MediaQuery.sizeOf(context).width < 600;
-    return Card(
-      child: Padding(
-        padding: EdgeInsets.all(compact ? 16 : 20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.maxWidth < 600;
+        final titleStyle = Theme.of(
+          context,
+        ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800);
+        return Card(
+          child: Padding(
+            padding: EdgeInsets.all(compact ? 16 : 20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(icon, color: Theme.of(context).colorScheme.primary),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    title,
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
+                if (constraints.maxWidth < 420)
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(icon, color: Theme.of(context).colorScheme.primary),
+                      const SizedBox(height: 8),
+                      Text(title, style: titleStyle),
+                    ],
+                  )
+                else
+                  Row(
+                    children: [
+                      Icon(icon, color: Theme.of(context).colorScheme.primary),
+                      const SizedBox(width: 10),
+                      Expanded(child: Text(title, style: titleStyle)),
+                    ],
                   ),
-                ),
+                const SizedBox(height: 16),
+                child,
               ],
             ),
-            const SizedBox(height: 16),
-            child,
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 }

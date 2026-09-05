@@ -238,7 +238,46 @@ p {
   gap: 0.35rem;
 }
 
+.release-announcement-section {
+  padding-top: 18px;
+}
+
+.release-announcement-slot {
+  display: flex;
+  align-items: center;
+  min-height: 0;
+}
+
+.timeout-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.38rem;
+  max-width: min(100%, 28rem);
+  margin: 0;
+  padding: 0.42rem 0.72rem;
+  border: 1px solid rgba(77, 210, 161, 0.42);
+  border-radius: 999px;
+  background: rgba(48, 209, 141, 0.1);
+  color: #77e7ba;
+  font-size: 0.72rem;
+  font-weight: 800;
+  line-height: 1.2;
+  text-decoration: none;
+  transition: background 150ms ease, border-color 150ms ease;
+}
+
+.timeout-badge:hover {
+  border-color: rgba(96, 236, 181, 0.78);
+  background: rgba(48, 209, 141, 0.18);
+}
+
+.timeout-badge .material-symbols-rounded {
+  color: inherit;
+  font-size: 1rem;
+}
+
 .language-toggle,
+.language-select,
 .theme-toggle {
   display: inline-flex;
   min-height: 40px;
@@ -259,6 +298,7 @@ p {
 }
 
 .language-toggle:hover,
+.language-select:hover,
 .theme-toggle:hover {
   border-color: rgba(70, 169, 255, 0.42);
   background: var(--accent-soft);
@@ -266,6 +306,7 @@ p {
 }
 
 .language-toggle .material-symbols-rounded,
+.language-select .material-symbols-rounded,
 .theme-toggle .material-symbols-rounded {
   color: var(--accent);
   font-size: 1.1rem;
@@ -274,6 +315,25 @@ p {
 .theme-toggle {
   width: 40px;
   padding-inline: 8px;
+}
+
+.language-select {
+  cursor: pointer;
+}
+
+.language-select select {
+  min-width: 2.7rem;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.language-select select option {
+  background: #142033;
+  color: #eef6ff;
 }
 
 html[lang="ar"] {
@@ -288,6 +348,7 @@ html[lang="ar"] .button,
 html[lang="ar"] .section-kicker,
 html[lang="ar"] .eyebrow,
 html[lang="ar"] .language-toggle,
+html[lang="ar"] .language-select,
 html[lang="ar"] .theme-toggle {
   font-family: "Alexandria", "Tajawal", "Segoe UI", sans-serif;
   letter-spacing: 0;
@@ -2940,6 +3001,7 @@ html[data-theme="light"] .footer-wordmark-light {
   }
 
   .language-toggle,
+  .language-select,
   .theme-toggle {
     order: 3;
   }
@@ -3111,7 +3173,8 @@ html[data-theme="light"] .release-modal-panel {
     order: 2;
   }
 
-  .language-toggle {
+  .language-toggle,
+  .language-select {
     order: 3;
   }
 
@@ -3604,7 +3667,8 @@ html[data-theme="light"] .release-modal-panel {
   gap: 0.85rem;
 }
 
-.legal-header-actions .language-toggle {
+.legal-header-actions .language-toggle,
+.legal-header-actions .language-select {
   margin-left: 0;
 }
 
@@ -3709,7 +3773,8 @@ html[data-theme="light"] .release-modal-panel {
     display: contents;
   }
 
-  .legal-header-actions .language-toggle {
+  .legal-header-actions .language-toggle,
+  .legal-header-actions .language-select {
     grid-column: 2;
     grid-row: 1;
     order: initial;

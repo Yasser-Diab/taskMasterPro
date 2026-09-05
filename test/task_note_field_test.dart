@@ -136,6 +136,11 @@ void main() {
         'Kurzes Detail unter dem Aufgabentitel',
         'Gerätestandard',
       ),
+      'pl': (
+        'Notatka',
+        'Krótki opis wyświetlany pod tytułem zadania',
+        'Domyślne ustawienie urządzenia',
+      ),
     };
 
     for (final locale in AppLocalizations.supportedLocales) {

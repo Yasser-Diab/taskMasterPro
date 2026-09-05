@@ -6,6 +6,8 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../config/supabase_config.dart';
+
 const applicationSystemLearningOptInKey =
     'taskmaster.activity.community_learning_opt_in.v1';
 const _applicationSystemLearningSecretKey =
@@ -13,19 +15,17 @@ const _applicationSystemLearningSecretKey =
 const _applicationSystemLearningCacheKey =
     'taskmaster.activity.community_learning_cache.v1';
 
-/// This is a separate, aggregate-only project. It must never receive account
-/// credentials or any TaskMaster task, title, URL, path, activity, or session.
+/// Aggregate learning lives on the current DayVector backend, but its RPCs
+/// accept only hashes and one anonymous, per-app ballot. They never receive an
+/// account ID, task, title, URL, path, activity interval, or session record.
 abstract final class ApplicationSystemLearningConfig {
-  static const projectRef = 'iejbogkqknldxoyepvun';
-  static const url = 'https://$projectRef.supabase.co';
+  static const projectRef = SupabaseConfig.projectRef;
+  static const url = SupabaseConfig.url;
 
   /// A Supabase publishable key is public by design. Keeping it in a build
   /// define lets the aggregate service remain disabled until its isolated
   /// migration has been reviewed and deployed.
-  static const publishableKey = String.fromEnvironment(
-    'TASKMASTER_LEARNING_SUPABASE_KEY',
-    defaultValue: 'sb_publishable_fbgL1lczsWo3sRfsvdO2ZQ_up5cH9CZ',
-  );
+  static const publishableKey = SupabaseConfig.publishableKey;
 
   static bool get isConfigured => publishableKey.startsWith('sb_publishable_');
 }
@@ -143,8 +143,28 @@ abstract interface class ApplicationSystemLearningGateway {
   });
 }
 
+/// A privacy-safe extension of the original system-app learning boundary.
+/// Implementations receive a normalized category and usefulness flag, never
+/// a human-readable application identifier.
+abstract interface class ApplicationCategoryLearningGateway {
+  Future<void> submitCategoryVote({
+    required String platform,
+    required String appKeyHash,
+    required String voterTokenHash,
+    required String category,
+    required bool isUseful,
+  });
+
+  Future<ApplicationCategoryConsensus?> readCategoryConsensus({
+    required String platform,
+    required String appKeyHash,
+  });
+}
+
 class SupabaseApplicationSystemLearningGateway
-    implements ApplicationSystemLearningGateway {
+    implements
+        ApplicationSystemLearningGateway,
+        ApplicationCategoryLearningGateway {
   SupabaseApplicationSystemLearningGateway(this.client);
 
   final SupabaseClient client;
@@ -180,6 +200,110 @@ class SupabaseApplicationSystemLearningGateway
         ? (response.isEmpty ? null : response.first)
         : response;
     return ApplicationSystemConsensus.fromJson(row);
+  }
+
+  @override
+  Future<void> submitCategoryVote({
+    required String platform,
+    required String appKeyHash,
+    required String voterTokenHash,
+    required String category,
+    required bool isUseful,
+  }) async {
+    await client.rpc(
+      'submit_application_category_vote',
+      params: {
+        'p_platform': platform,
+        'p_app_key_hash': appKeyHash,
+        'p_voter_token_hash': voterTokenHash,
+        'p_category': category,
+        'p_is_useful': isUseful,
+      },
+    );
+  }
+
+  @override
+  Future<ApplicationCategoryConsensus?> readCategoryConsensus({
+    required String platform,
+    required String appKeyHash,
+  }) async {
+    final response = await client.rpc(
+      'get_application_category_consensus',
+      params: {'p_platform': platform, 'p_app_key_hash': appKeyHash},
+    );
+    final Object? row = response is List
+        ? (response.isEmpty ? null : response.first)
+        : response;
+    return ApplicationCategoryConsensus.fromJson(row);
+  }
+}
+
+/// Anonymous aggregate evidence. It is intentionally conservative: the
+/// server returns a row only once at least 20 independent installations agree.
+class ApplicationCategoryConsensus {
+  const ApplicationCategoryConsensus({
+    required this.sampleSize,
+    required this.category,
+    required this.isUseful,
+    required this.confidenceLowerBound,
+  });
+
+  final int sampleSize;
+  final String category;
+  final bool isUseful;
+  final double confidenceLowerBound;
+
+  static const supportedCategories = <String>{
+    'productivity',
+    'development',
+    'research',
+    'communication',
+    'education',
+    'design',
+    'finance',
+    'system',
+    'entertainment',
+    'social',
+    'other',
+  };
+
+  static ApplicationCategoryConsensus? fromJson(Object? value) {
+    if (value is! Map) return null;
+    final map = Map<String, Object?>.from(value);
+    final sampleSize = (map['sample_size'] as num?)?.toInt();
+    final category = map['category'] as String?;
+    final isUseful = map['is_useful'] as bool?;
+    final lower = (map['confidence_lower_bound'] as num?)?.toDouble();
+    if (sampleSize == null ||
+        sampleSize < 20 ||
+        category == null ||
+        !supportedCategories.contains(category) ||
+        isUseful == null ||
+        lower == null) {
+      return null;
+    }
+    return ApplicationCategoryConsensus(
+      sampleSize: sampleSize,
+      category: category,
+      isUseful: isUseful,
+      confidenceLowerBound: lower.clamp(0, 1).toDouble(),
+    );
+  }
+
+  /// A proposal only. The Activity review remains visible and a local rule
+  /// always wins over anonymous aggregate evidence.
+  String get suggestedClassification {
+    if (category == 'system') return 'system_activity';
+    if (!isUseful) return 'distraction';
+    return switch (category) {
+      'research' || 'education' => 'passive_useful_activity',
+      'productivity' ||
+      'development' ||
+      'communication' ||
+      'design' ||
+      'finance' => 'supporting_work',
+      _ => 'passive_useful_activity',
+    };
   }
 }
 
@@ -258,12 +382,14 @@ class ApplicationSystemLearningService {
     required this.secretStore,
     required this.gateway,
     required this.cache,
+    this.categoryGateway,
   });
 
   final ApplicationSystemLearningPreferences preferences;
   final ApplicationLearningSecretStore secretStore;
   final ApplicationSystemLearningGateway gateway;
   final ApplicationSystemLearningCache cache;
+  final ApplicationCategoryLearningGateway? categoryGateway;
 
   /// Sends a best-effort anonymous vote only after an explicit local choice.
   /// Network failure never blocks or rolls back that local classification.
@@ -293,6 +419,76 @@ class ApplicationSystemLearningService {
           .timeout(const Duration(seconds: 3));
     } catch (_) {
       // Community learning is optional and must never break Activity review.
+    }
+  }
+
+  /// Submits an anonymous category/usefulness vote after the person has made
+  /// an explicit Activity review choice. This is best effort and opt-in; it
+  /// cannot affect the local decision if the network is unavailable.
+  Future<void> submitExplicitClassification({
+    required String platform,
+    required String applicationIdentifier,
+    required String classification,
+  }) async {
+    final assessment = _assessmentForClassification(classification);
+    final categoryService = categoryGateway;
+    if (assessment == null ||
+        categoryService == null ||
+        !await preferences.isOptedIn()) {
+      return;
+    }
+    final identity = applicationLearningIdentity(
+      platform: platform,
+      applicationIdentifier: applicationIdentifier,
+    );
+    if (identity == null) return;
+    try {
+      final secret = await secretStore.readOrCreateSecret();
+      final token = Hmac(sha256, secret).convert(
+        utf8.encode('dayvector-category-vote-v1:${identity.appKeyHash}'),
+      );
+      await categoryService
+          .submitCategoryVote(
+            platform: identity.platform,
+            appKeyHash: identity.appKeyHash,
+            voterTokenHash: token.toString(),
+            category: assessment.category,
+            isUseful: assessment.isUseful,
+          )
+          .timeout(const Duration(seconds: 3));
+    } catch (_) {
+      // A local review must never be blocked by optional aggregate learning.
+    }
+  }
+
+  /// Returns a conservative aggregate proposal for an unknown application.
+  /// It is never a final classification and is ignored when a local rule is
+  /// already available.
+  Future<ApplicationCategoryConsensus?> possibleCategorySuggestion({
+    required String platform,
+    required String applicationIdentifier,
+    required bool hasLocalRememberedRule,
+  }) async {
+    final categoryService = categoryGateway;
+    if (categoryService == null ||
+        hasLocalRememberedRule ||
+        !await preferences.isOptedIn()) {
+      return null;
+    }
+    final identity = applicationLearningIdentity(
+      platform: platform,
+      applicationIdentifier: applicationIdentifier,
+    );
+    if (identity == null) return null;
+    try {
+      return await categoryService
+          .readCategoryConsensus(
+            platform: identity.platform,
+            appKeyHash: identity.appKeyHash,
+          )
+          .timeout(const Duration(seconds: 3));
+    } catch (_) {
+      return null;
     }
   }
 
@@ -328,6 +524,26 @@ class ApplicationSystemLearningService {
       return null;
     }
   }
+}
+
+({String category, bool isUseful})? _assessmentForClassification(
+  String classification,
+) {
+  return switch (classification) {
+    'system_activity' => (category: 'system', isUseful: false),
+    'direct_task_work' ||
+    'supporting_work' => (category: 'productivity', isUseful: true),
+    'passive_useful_activity' ||
+    'research' ||
+    'learning' ||
+    'reading' => (category: 'research', isUseful: true),
+    'communication' => (category: 'communication', isUseful: true),
+    'distraction' => (category: 'entertainment', isUseful: false),
+    'unrelated' ||
+    'generally_unrelated' => (category: 'other', isUseful: false),
+    'user_application' => (category: 'other', isUseful: true),
+    _ => null,
+  };
 }
 
 class ApplicationLearningSource {

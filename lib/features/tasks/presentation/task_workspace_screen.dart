@@ -52,11 +52,35 @@ class TaskWorkspaceScreen extends ConsumerStatefulWidget {
     LocalTask task, {
     int initialSection = 0,
     String? initialBrowserUrl,
+  }) => openForTaskId(
+    context,
+    task.id,
+    initialSection: initialSection,
+    initialBrowserUrl: initialBrowserUrl,
+  );
+
+  /// Dashboard and notification entry points navigate with the immutable task
+  /// id, not a visual-card model that can be replaced by a concurrent sync
+  /// rebuild.  Giving the route and screen a task-specific identity prevents
+  /// Flutter from retaining a previous workspace state when a user quickly
+  /// opens two different cards.
+  static Future<void> openForTaskId(
+    BuildContext context,
+    String taskId, {
+    int initialSection = 0,
+    String? initialBrowserUrl,
   }) {
+    final targetTaskId = taskId.trim();
+    assert(targetTaskId.isNotEmpty, 'A workspace needs a task id.');
     return Navigator.of(context).push(
       MaterialPageRoute<void>(
+        settings: RouteSettings(
+          name: 'task-workspace/$targetTaskId',
+          arguments: targetTaskId,
+        ),
         builder: (_) => TaskWorkspaceScreen(
-          taskId: task.id,
+          key: ValueKey('task-workspace:$targetTaskId'),
+          taskId: targetTaskId,
           initialSection: initialSection,
           initialBrowserUrl: initialBrowserUrl,
         ),

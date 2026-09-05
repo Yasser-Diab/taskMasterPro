@@ -209,9 +209,28 @@ try {
     }
 
     if (-not $SkipChecks) {
-        & $dart format --output=none --set-exit-if-changed .
+        # Dart 3.12 on Windows reports a false format change for a file whose
+        # only difference is the platform's terminal newline. Ask the
+        # formatter for its canonical source and compare after normalizing
+        # line endings; all meaningful whitespace and layout differences still
+        # fail the release gate.
+        $formatRecords = @(& $dart format --output=json . | ConvertFrom-Json)
         if ($LASTEXITCODE -ne 0) {
             throw 'dart format check failed'
+        }
+        $unformattedPaths = @(
+            foreach ($record in $formatRecords) {
+                $formatPath = Join-Path $projectRoot ([string]$record.path)
+                $actualSource = [System.IO.File]::ReadAllText($formatPath)
+                $actualNormalized = $actualSource.Replace("`r`n", "`n")
+                $expectedNormalized = ([string]$record.source).Replace("`r`n", "`n")
+                if ($actualNormalized -ne $expectedNormalized) {
+                    [string]$record.path
+                }
+            }
+        )
+        if ($unformattedPaths.Count -gt 0) {
+            throw "dart format check failed: $($unformattedPaths -join ', ')"
         }
         # Third-party Windows plugin overrides intentionally include their
         # upstream example apps, which are not release dependencies. Analyze
@@ -259,26 +278,30 @@ try {
         $supabaseConfig,
         "static const authCallback = '([^']+)'"
     )
-    if (-not $projectRefMatch.Success -or -not $authCallbackMatch.Success) {
+    $publishableKeyMatch = [regex]::Match(
+        $supabaseConfig,
+        "static const publishableKey\s*=\s*'([^']+)'"
+    )
+    if (-not $projectRefMatch.Success -or -not $authCallbackMatch.Success -or
+        -not $publishableKeyMatch.Success) {
         throw 'Could not read the release backend identity from SupabaseConfig'
     }
     $learningConfig = Get-Content -Raw -LiteralPath (
         Join-Path $projectRoot `
             'lib\core\learning\application_system_learning.dart'
     )
-    $learningProjectRefMatch = [regex]::Match(
-        $learningConfig,
-        "static const projectRef = '([^']+)'"
-    )
-    $learningKeyMatch = [regex]::Match(
-        $learningConfig,
-        "defaultValue:\s*'(sb_publishable_[^']+)'"
-    )
-    if (-not $learningProjectRefMatch.Success -or
-        -not $learningKeyMatch.Success) {
+    $learningUsesActiveConfig =
+        $learningConfig.Contains("import '../config/supabase_config.dart';") -and
+        $learningConfig.Contains(
+            'static const projectRef = SupabaseConfig.projectRef;'
+        ) -and
+        $learningConfig.Contains(
+            'static const publishableKey = SupabaseConfig.publishableKey;'
+        )
+    if (-not $learningUsesActiveConfig) {
         throw (
-            'Anonymous application learning is not configured for release. ' +
-            'Refusing to package a silently disabled build.'
+            'Anonymous application learning is not bound to the active ' +
+            'SupabaseConfig. Refusing to package a split-backend build.'
         )
     }
     $windowsAppSnapshot = Join-Path (
@@ -291,8 +314,7 @@ try {
     foreach ($expectedIdentity in @(
         $projectRefMatch.Groups[1].Value,
         $authCallbackMatch.Groups[1].Value,
-        $learningProjectRefMatch.Groups[1].Value,
-        $learningKeyMatch.Groups[1].Value
+        $publishableKeyMatch.Groups[1].Value
     )) {
         if (-not $snapshotText.Contains($expectedIdentity)) {
             throw (

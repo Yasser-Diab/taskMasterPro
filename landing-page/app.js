@@ -572,16 +572,16 @@
       setDownload('windows', null)
       setDownload('android', null)
     }
-    const currentVersion = String(config?.currentVersion || '').trim() || null
     if (!config?.latestApiUrl) {
-      setReleaseUnavailable(currentVersion)
+      setReleaseUnavailable()
       return
     }
 
     try {
-      const release = currentVersion
-        ? await loadReleaseForVersion(currentVersion)
-        : await loadLatestPublishedRelease()
+      // Download metadata is public-facing.  Never present a local build or a
+      // planned tag as released: only GitHub's latest published release may
+      // supply the displayed version, notes and installer links.
+      const release = await loadLatestPublishedRelease()
       const assets = Array.isArray(release.assets) ? release.assets : []
       const windows = assets.find((asset) =>
         String(asset.name).toLowerCase().endsWith('.exe'),
@@ -604,7 +604,7 @@
       setDownload('windows', windows)
       setDownload('android', android)
     } catch {
-      setReleaseUnavailable(currentVersion)
+      setReleaseUnavailable()
     }
   }
 

@@ -497,6 +497,7 @@ class _PerformanceReportScreenState
                               DropdownMenuEntry(value: 'en', label: 'English'),
                               DropdownMenuEntry(value: 'ar', label: 'العربية'),
                               DropdownMenuEntry(value: 'de', label: 'Deutsch'),
+                              DropdownMenuEntry(value: 'pl', label: 'Polski'),
                             ],
                             onSelected: _selectLanguage,
                           ),
@@ -710,6 +711,7 @@ class _MobileReportSettingsSheetState
                         DropdownMenuItem(value: 'en', child: Text('English')),
                         DropdownMenuItem(value: 'ar', child: Text('العربية')),
                         DropdownMenuItem(value: 'de', child: Text('Deutsch')),
+                        DropdownMenuItem(value: 'pl', child: Text('Polski')),
                       ],
                       onChanged: (value) {
                         if (value == null) return;

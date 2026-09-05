@@ -202,6 +202,27 @@ class SettingsRepository {
                 workEndMinutes: Value(
                   (data['work_end_minutes'] as num?)?.toInt() ?? 1020,
                 ),
+                workScheduleEnabled: Value(
+                  data['work_schedule_enabled'] as bool? ?? false,
+                ),
+                workScheduleRotationJson: Value(
+                  jsonEncode(data['work_schedule_rotation'] ?? const []),
+                ),
+                workScheduleAnchorDate: Value(
+                  data['work_schedule_anchor_date'] as String? ?? '2026-01-05',
+                ),
+                workReminderEnabled: Value(
+                  data['work_reminder_enabled'] as bool? ?? false,
+                ),
+                workReminderOffsetMinutes: Value(
+                  (data['work_reminder_offset_minutes'] as num?)?.toInt() ?? 15,
+                ),
+                workPomodoroEnabled: Value(
+                  data['work_pomodoro_enabled'] as bool? ?? false,
+                ),
+                workActivityCreditEnabled: Value(
+                  data['work_activity_credit_enabled'] as bool? ?? true,
+                ),
                 quietStartMinutes: Value(
                   (data['quiet_start_minutes'] as num?)?.toInt() ?? 1320,
                 ),
@@ -408,6 +429,13 @@ class SettingsRepository {
     List<int>? workingDays,
     int? workStartMinutes,
     int? workEndMinutes,
+    bool? workScheduleEnabled,
+    List<Map<String, Object?>>? workScheduleRotation,
+    String? workScheduleAnchorDate,
+    bool? workReminderEnabled,
+    int? workReminderOffsetMinutes,
+    bool? workPomodoroEnabled,
+    bool? workActivityCreditEnabled,
     int? quietStartMinutes,
     int? quietEndMinutes,
     bool? sleepReminderEnabled,
@@ -425,6 +453,21 @@ class SettingsRepository {
         ),
         workStartMinutes: Value.absentIfNull(workStartMinutes),
         workEndMinutes: Value.absentIfNull(workEndMinutes),
+        workScheduleEnabled: Value.absentIfNull(workScheduleEnabled),
+        workScheduleRotationJson: Value.absentIfNull(
+          workScheduleRotation == null
+              ? null
+              : jsonEncode(workScheduleRotation),
+        ),
+        workScheduleAnchorDate: Value.absentIfNull(workScheduleAnchorDate),
+        workReminderEnabled: Value.absentIfNull(workReminderEnabled),
+        workReminderOffsetMinutes: Value.absentIfNull(
+          workReminderOffsetMinutes,
+        ),
+        workPomodoroEnabled: Value.absentIfNull(workPomodoroEnabled),
+        workActivityCreditEnabled: Value.absentIfNull(
+          workActivityCreditEnabled,
+        ),
         quietStartMinutes: Value.absentIfNull(quietStartMinutes),
         quietEndMinutes: Value.absentIfNull(quietEndMinutes),
         sleepReminderEnabled: Value.absentIfNull(sleepReminderEnabled),
@@ -957,6 +1000,22 @@ class SettingsRepository {
           'work_start_minutes': updated.workStartMinutes,
         if (changes.workEndMinutes.present)
           'work_end_minutes': updated.workEndMinutes,
+        if (changes.workScheduleEnabled.present)
+          'work_schedule_enabled': updated.workScheduleEnabled,
+        if (changes.workScheduleRotationJson.present)
+          'work_schedule_rotation': jsonDecode(
+            updated.workScheduleRotationJson,
+          ),
+        if (changes.workScheduleAnchorDate.present)
+          'work_schedule_anchor_date': updated.workScheduleAnchorDate,
+        if (changes.workReminderEnabled.present)
+          'work_reminder_enabled': updated.workReminderEnabled,
+        if (changes.workReminderOffsetMinutes.present)
+          'work_reminder_offset_minutes': updated.workReminderOffsetMinutes,
+        if (changes.workPomodoroEnabled.present)
+          'work_pomodoro_enabled': updated.workPomodoroEnabled,
+        if (changes.workActivityCreditEnabled.present)
+          'work_activity_credit_enabled': updated.workActivityCreditEnabled,
         if (changes.quietStartMinutes.present)
           'quiet_start_minutes': updated.quietStartMinutes,
         if (changes.quietEndMinutes.present)

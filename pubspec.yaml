@@ -1,7 +1,7 @@
 name: taskmaster_pro
 description: Local-first execution, roadmap, and evidence-based coaching for Windows and Android.
 publish_to: none
-version: 0.0.29+58
+version: 0.0.30+59
 
 environment:
   sdk: ^3.12.2

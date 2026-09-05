@@ -718,22 +718,16 @@ class _ActivityReviewScreenState extends ConsumerState<ActivityReviewScreen> {
     Iterable<ApplicationLearningSource> sources,
     ActivityResolution resolution,
   ) async {
-    final isSystemActivity = switch (resolution.classification) {
-      'system_activity' => true,
-      'user_application' => false,
-      _ => null,
-    };
-    if (isSystemActivity == null) return;
     try {
       final service = await ref.read(
         applicationSystemLearningServiceProvider.future,
       );
       if (service == null) return;
       for (final source in sources) {
-        await service.submitExplicitChoice(
+        await service.submitExplicitClassification(
           platform: source.platform,
           applicationIdentifier: source.applicationIdentifier,
-          isSystemActivity: isSystemActivity,
+          classification: resolution.classification,
         );
       }
     } catch (_) {

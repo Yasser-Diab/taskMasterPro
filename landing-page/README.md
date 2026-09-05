@@ -18,7 +18,7 @@ The Android widget showcase combines the real, privacy-cleaned phone backdrop
 in `assets/images/widget-phone-backdrop.png` with an interactive HTML widget, so
 the countdown and controls remain live and responsive.
 
-The Health section uses a real app capture from the verified Android 0.0.29
+The Health section uses a real capture from the verified Android DayVector app.
 build at `assets/images/health-dashboard-phone-clean.png`. Only the phone's
 unrelated media-status indicator was removed from the capture.
 

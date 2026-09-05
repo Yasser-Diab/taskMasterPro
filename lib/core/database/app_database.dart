@@ -129,12 +129,30 @@ class LocalAppSettings extends Table {
       integer().withDefault(const Constant(30000))();
   IntColumn get wakeTimeMinutes => integer().withDefault(const Constant(420))();
   IntColumn get sleepTimeMinutes =>
-      integer().withDefault(const Constant(1320))();
+      integer().withDefault(const Constant(1380))();
   TextColumn get workingDaysJson =>
       text().withDefault(const Constant('[1,2,3,4,5]'))();
   IntColumn get workStartMinutes =>
       integer().withDefault(const Constant(540))();
   IntColumn get workEndMinutes => integer().withDefault(const Constant(1020))();
+
+  /// Native work scheduling stays separate from tasks.  The values mirror the
+  /// synchronized `user_settings.data` contract, so a rotating shift never
+  /// needs a fake recurring task merely to trigger a reminder.
+  BoolColumn get workScheduleEnabled =>
+      boolean().withDefault(const Constant(false))();
+  TextColumn get workScheduleRotationJson =>
+      text().withDefault(const Constant('[]'))();
+  TextColumn get workScheduleAnchorDate =>
+      text().withDefault(const Constant('2026-01-05'))();
+  BoolColumn get workReminderEnabled =>
+      boolean().withDefault(const Constant(false))();
+  IntColumn get workReminderOffsetMinutes =>
+      integer().withDefault(const Constant(15))();
+  BoolColumn get workPomodoroEnabled =>
+      boolean().withDefault(const Constant(false))();
+  BoolColumn get workActivityCreditEnabled =>
+      boolean().withDefault(const Constant(true))();
   IntColumn get quietStartMinutes =>
       integer().withDefault(const Constant(1320))();
   IntColumn get quietEndMinutes => integer().withDefault(const Constant(420))();
@@ -477,7 +495,7 @@ class AppDatabase extends _$AppDatabase {
     : super(driftDatabase(name: localDatabaseNameForAccount(userId)));
 
   @override
-  int get schemaVersion => 19;
+  int get schemaVersion => 20;
 
   /// Re-runs execution queries after another Flutter engine writes this
   /// account database.
@@ -1106,6 +1124,36 @@ class AppDatabase extends _$AppDatabase {
       }
       if (from < 19) {
         await repairCorruptedPomodoroCompletionDurations();
+      }
+      if (from < 20) {
+        await addColumnIfMissing(
+          localAppSettings,
+          localAppSettings.workScheduleEnabled,
+        );
+        await addColumnIfMissing(
+          localAppSettings,
+          localAppSettings.workScheduleRotationJson,
+        );
+        await addColumnIfMissing(
+          localAppSettings,
+          localAppSettings.workScheduleAnchorDate,
+        );
+        await addColumnIfMissing(
+          localAppSettings,
+          localAppSettings.workReminderEnabled,
+        );
+        await addColumnIfMissing(
+          localAppSettings,
+          localAppSettings.workReminderOffsetMinutes,
+        );
+        await addColumnIfMissing(
+          localAppSettings,
+          localAppSettings.workPomodoroEnabled,
+        );
+        await addColumnIfMissing(
+          localAppSettings,
+          localAppSettings.workActivityCreditEnabled,
+        );
       }
     },
     beforeOpen: (details) async {

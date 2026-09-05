@@ -44,13 +44,17 @@ final applicationSystemLearningServiceProvider =
         ApplicationSystemLearningConfig.url,
         ApplicationSystemLearningConfig.publishableKey,
       );
+      final learningGateway = SupabaseApplicationSystemLearningGateway(
+        learningClient,
+      );
       return ApplicationSystemLearningService(
         preferences: SharedPreferencesApplicationSystemLearningPreferences(
           preferences,
         ),
         secretStore: SecureApplicationLearningSecretStore(),
-        gateway: SupabaseApplicationSystemLearningGateway(learningClient),
+        gateway: learningGateway,
         cache: ApplicationSystemLearningCache(preferences),
+        categoryGateway: learningGateway,
       );
     });
 

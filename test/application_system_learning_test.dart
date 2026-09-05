@@ -156,6 +156,70 @@ void main() {
       expect(fixture.gateway.lookupCount, 1);
     },
   );
+
+  test(
+    'category votes are opt-in, hashed, and never carry an app name',
+    () async {
+      final shared = await SharedPreferences.getInstance();
+      final preferences = SharedPreferencesApplicationSystemLearningPreferences(
+        shared,
+      );
+      await preferences.setOptedIn(true);
+      final categoryGateway = _CategoryGateway();
+      final service = ApplicationSystemLearningService(
+        preferences: preferences,
+        secretStore: _SecretStore(),
+        gateway: _Gateway(null),
+        cache: ApplicationSystemLearningCache(shared),
+        categoryGateway: categoryGateway,
+      );
+
+      await service.submitExplicitClassification(
+        platform: 'windows',
+        applicationIdentifier: r'C:\Private\Work\Example App.exe',
+        classification: 'supporting_work',
+      );
+
+      expect(categoryGateway.votes, hasLength(1));
+      expect(categoryGateway.votes.single.appKeyHash, hasLength(64));
+      expect(
+        categoryGateway.votes.single.appKeyHash,
+        isNot(contains('example')),
+      );
+      expect(categoryGateway.votes.single.category, 'productivity');
+      expect(categoryGateway.votes.single.isUseful, isTrue);
+    },
+  );
+
+  test('threshold-passing category evidence remains a proposal', () async {
+    final shared = await SharedPreferences.getInstance();
+    final preferences = SharedPreferencesApplicationSystemLearningPreferences(
+      shared,
+    );
+    await preferences.setOptedIn(true);
+    final service = ApplicationSystemLearningService(
+      preferences: preferences,
+      secretStore: _SecretStore(),
+      gateway: _Gateway(null),
+      cache: ApplicationSystemLearningCache(shared),
+      categoryGateway: _CategoryGateway(
+        const ApplicationCategoryConsensus(
+          sampleSize: 24,
+          category: 'development',
+          isUseful: true,
+          confidenceLowerBound: 0.69,
+        ),
+      ),
+    );
+
+    final suggestion = await service.possibleCategorySuggestion(
+      platform: 'windows',
+      applicationIdentifier: 'dart.exe',
+      hasLocalRememberedRule: false,
+    );
+
+    expect(suggestion?.suggestedClassification, 'supporting_work');
+  });
 }
 
 Future<_Fixture> _fixture({
@@ -225,5 +289,47 @@ class _Gateway implements ApplicationSystemLearningGateway {
   }) async {
     submitCount += 1;
     votes.add(_Vote(appKeyHash, voterTokenHash));
+  }
+}
+
+class _CategoryVote {
+  const _CategoryVote({
+    required this.appKeyHash,
+    required this.category,
+    required this.isUseful,
+  });
+
+  final String appKeyHash;
+  final String category;
+  final bool isUseful;
+}
+
+class _CategoryGateway implements ApplicationCategoryLearningGateway {
+  _CategoryGateway([this.consensus]);
+
+  final ApplicationCategoryConsensus? consensus;
+  final List<_CategoryVote> votes = [];
+
+  @override
+  Future<ApplicationCategoryConsensus?> readCategoryConsensus({
+    required String platform,
+    required String appKeyHash,
+  }) async => consensus;
+
+  @override
+  Future<void> submitCategoryVote({
+    required String platform,
+    required String appKeyHash,
+    required String voterTokenHash,
+    required String category,
+    required bool isUseful,
+  }) async {
+    votes.add(
+      _CategoryVote(
+        appKeyHash: appKeyHash,
+        category: category,
+        isUseful: isUseful,
+      ),
+    );
   }
 }

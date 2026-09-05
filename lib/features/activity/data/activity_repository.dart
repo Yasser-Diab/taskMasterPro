@@ -2657,11 +2657,15 @@ class ActivityRepository {
     final localSuggestion = _isPossibleSystemActivity(segment);
     final communitySuggestion = localSuggestion
         ? null
-        : await _communitySystemSuggestion(segment);
+        : await _communityCategorySuggestion(segment);
     if (localSuggestion || communitySuggestion != null) {
       await _insertLocalAttribution(
         segment: segment,
-        classification: 'possible_system_activity',
+        // Both sources are proposals. A person still reviews the result, and
+        // their own remembered rule wins before this branch can run.
+        classification: localSuggestion
+            ? 'possible_system_activity'
+            : communitySuggestion!.suggestedClassification,
         status: 'proposed',
         confirmedByUser: false,
         confidence: communitySuggestion?.confidenceLowerBound ?? 0.95,
@@ -2670,7 +2674,7 @@ class ActivityRepository {
     return false;
   }
 
-  Future<ApplicationSystemConsensus?> _communitySystemSuggestion(
+  Future<ApplicationCategoryConsensus?> _communityCategorySuggestion(
     LocalActivitySegment segment,
   ) async {
     final source = applicationLearningSourceForCapture(
@@ -2682,7 +2686,7 @@ class ActivityRepository {
     try {
       final service = await _communityLearning;
       if (service == null) return null;
-      return service.possibleSystemSuggestion(
+      return service.possibleCategorySuggestion(
         platform: source.platform,
         applicationIdentifier: source.applicationIdentifier,
         // This method is reached only after canonical local-rule lookup found

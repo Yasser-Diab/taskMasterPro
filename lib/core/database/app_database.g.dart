@@ -1320,7 +1320,7 @@ class $LocalAppSettingsTable extends LocalAppSettings
     false,
     type: DriftSqlType.int,
     requiredDuringInsert: false,
-    defaultValue: const Constant(1320),
+    defaultValue: const Constant(1380),
   );
   static const VerificationMeta _workingDaysJsonMeta = const VerificationMeta(
     'workingDaysJson',
@@ -1358,6 +1358,99 @@ class $LocalAppSettingsTable extends LocalAppSettings
     requiredDuringInsert: false,
     defaultValue: const Constant(1020),
   );
+  static const VerificationMeta _workScheduleEnabledMeta =
+      const VerificationMeta('workScheduleEnabled');
+  @override
+  late final GeneratedColumn<bool> workScheduleEnabled = GeneratedColumn<bool>(
+    'work_schedule_enabled',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("work_schedule_enabled" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _workScheduleRotationJsonMeta =
+      const VerificationMeta('workScheduleRotationJson');
+  @override
+  late final GeneratedColumn<String> workScheduleRotationJson =
+      GeneratedColumn<String>(
+        'work_schedule_rotation_json',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+        defaultValue: const Constant('[]'),
+      );
+  static const VerificationMeta _workScheduleAnchorDateMeta =
+      const VerificationMeta('workScheduleAnchorDate');
+  @override
+  late final GeneratedColumn<String> workScheduleAnchorDate =
+      GeneratedColumn<String>(
+        'work_schedule_anchor_date',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+        defaultValue: const Constant('2026-01-05'),
+      );
+  static const VerificationMeta _workReminderEnabledMeta =
+      const VerificationMeta('workReminderEnabled');
+  @override
+  late final GeneratedColumn<bool> workReminderEnabled = GeneratedColumn<bool>(
+    'work_reminder_enabled',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("work_reminder_enabled" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _workReminderOffsetMinutesMeta =
+      const VerificationMeta('workReminderOffsetMinutes');
+  @override
+  late final GeneratedColumn<int> workReminderOffsetMinutes =
+      GeneratedColumn<int>(
+        'work_reminder_offset_minutes',
+        aliasedName,
+        false,
+        type: DriftSqlType.int,
+        requiredDuringInsert: false,
+        defaultValue: const Constant(15),
+      );
+  static const VerificationMeta _workPomodoroEnabledMeta =
+      const VerificationMeta('workPomodoroEnabled');
+  @override
+  late final GeneratedColumn<bool> workPomodoroEnabled = GeneratedColumn<bool>(
+    'work_pomodoro_enabled',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("work_pomodoro_enabled" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _workActivityCreditEnabledMeta =
+      const VerificationMeta('workActivityCreditEnabled');
+  @override
+  late final GeneratedColumn<bool> workActivityCreditEnabled =
+      GeneratedColumn<bool>(
+        'work_activity_credit_enabled',
+        aliasedName,
+        false,
+        type: DriftSqlType.bool,
+        requiredDuringInsert: false,
+        defaultConstraints: GeneratedColumn.constraintIsAlways(
+          'CHECK ("work_activity_credit_enabled" IN (0, 1))',
+        ),
+        defaultValue: const Constant(true),
+      );
   static const VerificationMeta _quietStartMinutesMeta = const VerificationMeta(
     'quietStartMinutes',
   );
@@ -1622,6 +1715,13 @@ class $LocalAppSettingsTable extends LocalAppSettings
     workingDaysJson,
     workStartMinutes,
     workEndMinutes,
+    workScheduleEnabled,
+    workScheduleRotationJson,
+    workScheduleAnchorDate,
+    workReminderEnabled,
+    workReminderOffsetMinutes,
+    workPomodoroEnabled,
+    workActivityCreditEnabled,
     quietStartMinutes,
     quietEndMinutes,
     sleepReminderEnabled,
@@ -1952,6 +2052,69 @@ class $LocalAppSettingsTable extends LocalAppSettings
         ),
       );
     }
+    if (data.containsKey('work_schedule_enabled')) {
+      context.handle(
+        _workScheduleEnabledMeta,
+        workScheduleEnabled.isAcceptableOrUnknown(
+          data['work_schedule_enabled']!,
+          _workScheduleEnabledMeta,
+        ),
+      );
+    }
+    if (data.containsKey('work_schedule_rotation_json')) {
+      context.handle(
+        _workScheduleRotationJsonMeta,
+        workScheduleRotationJson.isAcceptableOrUnknown(
+          data['work_schedule_rotation_json']!,
+          _workScheduleRotationJsonMeta,
+        ),
+      );
+    }
+    if (data.containsKey('work_schedule_anchor_date')) {
+      context.handle(
+        _workScheduleAnchorDateMeta,
+        workScheduleAnchorDate.isAcceptableOrUnknown(
+          data['work_schedule_anchor_date']!,
+          _workScheduleAnchorDateMeta,
+        ),
+      );
+    }
+    if (data.containsKey('work_reminder_enabled')) {
+      context.handle(
+        _workReminderEnabledMeta,
+        workReminderEnabled.isAcceptableOrUnknown(
+          data['work_reminder_enabled']!,
+          _workReminderEnabledMeta,
+        ),
+      );
+    }
+    if (data.containsKey('work_reminder_offset_minutes')) {
+      context.handle(
+        _workReminderOffsetMinutesMeta,
+        workReminderOffsetMinutes.isAcceptableOrUnknown(
+          data['work_reminder_offset_minutes']!,
+          _workReminderOffsetMinutesMeta,
+        ),
+      );
+    }
+    if (data.containsKey('work_pomodoro_enabled')) {
+      context.handle(
+        _workPomodoroEnabledMeta,
+        workPomodoroEnabled.isAcceptableOrUnknown(
+          data['work_pomodoro_enabled']!,
+          _workPomodoroEnabledMeta,
+        ),
+      );
+    }
+    if (data.containsKey('work_activity_credit_enabled')) {
+      context.handle(
+        _workActivityCreditEnabledMeta,
+        workActivityCreditEnabled.isAcceptableOrUnknown(
+          data['work_activity_credit_enabled']!,
+          _workActivityCreditEnabledMeta,
+        ),
+      );
+    }
     if (data.containsKey('quiet_start_minutes')) {
       context.handle(
         _quietStartMinutesMeta,
@@ -2252,6 +2415,34 @@ class $LocalAppSettingsTable extends LocalAppSettings
         DriftSqlType.int,
         data['${effectivePrefix}work_end_minutes'],
       )!,
+      workScheduleEnabled: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}work_schedule_enabled'],
+      )!,
+      workScheduleRotationJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}work_schedule_rotation_json'],
+      )!,
+      workScheduleAnchorDate: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}work_schedule_anchor_date'],
+      )!,
+      workReminderEnabled: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}work_reminder_enabled'],
+      )!,
+      workReminderOffsetMinutes: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}work_reminder_offset_minutes'],
+      )!,
+      workPomodoroEnabled: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}work_pomodoro_enabled'],
+      )!,
+      workActivityCreditEnabled: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}work_activity_credit_enabled'],
+      )!,
       quietStartMinutes: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}quiet_start_minutes'],
@@ -2369,6 +2560,17 @@ class LocalAppSetting extends DataClass implements Insertable<LocalAppSetting> {
   final String workingDaysJson;
   final int workStartMinutes;
   final int workEndMinutes;
+
+  /// Native work scheduling stays separate from tasks.  The values mirror the
+  /// synchronized `user_settings.data` contract, so a rotating shift never
+  /// needs a fake recurring task merely to trigger a reminder.
+  final bool workScheduleEnabled;
+  final String workScheduleRotationJson;
+  final String workScheduleAnchorDate;
+  final bool workReminderEnabled;
+  final int workReminderOffsetMinutes;
+  final bool workPomodoroEnabled;
+  final bool workActivityCreditEnabled;
   final int quietStartMinutes;
   final int quietEndMinutes;
   final bool sleepReminderEnabled;
@@ -2423,6 +2625,13 @@ class LocalAppSetting extends DataClass implements Insertable<LocalAppSetting> {
     required this.workingDaysJson,
     required this.workStartMinutes,
     required this.workEndMinutes,
+    required this.workScheduleEnabled,
+    required this.workScheduleRotationJson,
+    required this.workScheduleAnchorDate,
+    required this.workReminderEnabled,
+    required this.workReminderOffsetMinutes,
+    required this.workPomodoroEnabled,
+    required this.workActivityCreditEnabled,
     required this.quietStartMinutes,
     required this.quietEndMinutes,
     required this.sleepReminderEnabled,
@@ -2498,6 +2707,19 @@ class LocalAppSetting extends DataClass implements Insertable<LocalAppSetting> {
     map['working_days_json'] = Variable<String>(workingDaysJson);
     map['work_start_minutes'] = Variable<int>(workStartMinutes);
     map['work_end_minutes'] = Variable<int>(workEndMinutes);
+    map['work_schedule_enabled'] = Variable<bool>(workScheduleEnabled);
+    map['work_schedule_rotation_json'] = Variable<String>(
+      workScheduleRotationJson,
+    );
+    map['work_schedule_anchor_date'] = Variable<String>(workScheduleAnchorDate);
+    map['work_reminder_enabled'] = Variable<bool>(workReminderEnabled);
+    map['work_reminder_offset_minutes'] = Variable<int>(
+      workReminderOffsetMinutes,
+    );
+    map['work_pomodoro_enabled'] = Variable<bool>(workPomodoroEnabled);
+    map['work_activity_credit_enabled'] = Variable<bool>(
+      workActivityCreditEnabled,
+    );
     map['quiet_start_minutes'] = Variable<int>(quietStartMinutes);
     map['quiet_end_minutes'] = Variable<int>(quietEndMinutes);
     map['sleep_reminder_enabled'] = Variable<bool>(sleepReminderEnabled);
@@ -2568,6 +2790,13 @@ class LocalAppSetting extends DataClass implements Insertable<LocalAppSetting> {
       workingDaysJson: Value(workingDaysJson),
       workStartMinutes: Value(workStartMinutes),
       workEndMinutes: Value(workEndMinutes),
+      workScheduleEnabled: Value(workScheduleEnabled),
+      workScheduleRotationJson: Value(workScheduleRotationJson),
+      workScheduleAnchorDate: Value(workScheduleAnchorDate),
+      workReminderEnabled: Value(workReminderEnabled),
+      workReminderOffsetMinutes: Value(workReminderOffsetMinutes),
+      workPomodoroEnabled: Value(workPomodoroEnabled),
+      workActivityCreditEnabled: Value(workActivityCreditEnabled),
       quietStartMinutes: Value(quietStartMinutes),
       quietEndMinutes: Value(quietEndMinutes),
       sleepReminderEnabled: Value(sleepReminderEnabled),
@@ -2676,6 +2905,27 @@ class LocalAppSetting extends DataClass implements Insertable<LocalAppSetting> {
       workingDaysJson: serializer.fromJson<String>(json['workingDaysJson']),
       workStartMinutes: serializer.fromJson<int>(json['workStartMinutes']),
       workEndMinutes: serializer.fromJson<int>(json['workEndMinutes']),
+      workScheduleEnabled: serializer.fromJson<bool>(
+        json['workScheduleEnabled'],
+      ),
+      workScheduleRotationJson: serializer.fromJson<String>(
+        json['workScheduleRotationJson'],
+      ),
+      workScheduleAnchorDate: serializer.fromJson<String>(
+        json['workScheduleAnchorDate'],
+      ),
+      workReminderEnabled: serializer.fromJson<bool>(
+        json['workReminderEnabled'],
+      ),
+      workReminderOffsetMinutes: serializer.fromJson<int>(
+        json['workReminderOffsetMinutes'],
+      ),
+      workPomodoroEnabled: serializer.fromJson<bool>(
+        json['workPomodoroEnabled'],
+      ),
+      workActivityCreditEnabled: serializer.fromJson<bool>(
+        json['workActivityCreditEnabled'],
+      ),
       quietStartMinutes: serializer.fromJson<int>(json['quietStartMinutes']),
       quietEndMinutes: serializer.fromJson<int>(json['quietEndMinutes']),
       sleepReminderEnabled: serializer.fromJson<bool>(
@@ -2771,6 +3021,21 @@ class LocalAppSetting extends DataClass implements Insertable<LocalAppSetting> {
       'workingDaysJson': serializer.toJson<String>(workingDaysJson),
       'workStartMinutes': serializer.toJson<int>(workStartMinutes),
       'workEndMinutes': serializer.toJson<int>(workEndMinutes),
+      'workScheduleEnabled': serializer.toJson<bool>(workScheduleEnabled),
+      'workScheduleRotationJson': serializer.toJson<String>(
+        workScheduleRotationJson,
+      ),
+      'workScheduleAnchorDate': serializer.toJson<String>(
+        workScheduleAnchorDate,
+      ),
+      'workReminderEnabled': serializer.toJson<bool>(workReminderEnabled),
+      'workReminderOffsetMinutes': serializer.toJson<int>(
+        workReminderOffsetMinutes,
+      ),
+      'workPomodoroEnabled': serializer.toJson<bool>(workPomodoroEnabled),
+      'workActivityCreditEnabled': serializer.toJson<bool>(
+        workActivityCreditEnabled,
+      ),
       'quietStartMinutes': serializer.toJson<int>(quietStartMinutes),
       'quietEndMinutes': serializer.toJson<int>(quietEndMinutes),
       'sleepReminderEnabled': serializer.toJson<bool>(sleepReminderEnabled),
@@ -2836,6 +3101,13 @@ class LocalAppSetting extends DataClass implements Insertable<LocalAppSetting> {
     String? workingDaysJson,
     int? workStartMinutes,
     int? workEndMinutes,
+    bool? workScheduleEnabled,
+    String? workScheduleRotationJson,
+    String? workScheduleAnchorDate,
+    bool? workReminderEnabled,
+    int? workReminderOffsetMinutes,
+    bool? workPomodoroEnabled,
+    bool? workActivityCreditEnabled,
     int? quietStartMinutes,
     int? quietEndMinutes,
     bool? sleepReminderEnabled,
@@ -2901,6 +3173,17 @@ class LocalAppSetting extends DataClass implements Insertable<LocalAppSetting> {
     workingDaysJson: workingDaysJson ?? this.workingDaysJson,
     workStartMinutes: workStartMinutes ?? this.workStartMinutes,
     workEndMinutes: workEndMinutes ?? this.workEndMinutes,
+    workScheduleEnabled: workScheduleEnabled ?? this.workScheduleEnabled,
+    workScheduleRotationJson:
+        workScheduleRotationJson ?? this.workScheduleRotationJson,
+    workScheduleAnchorDate:
+        workScheduleAnchorDate ?? this.workScheduleAnchorDate,
+    workReminderEnabled: workReminderEnabled ?? this.workReminderEnabled,
+    workReminderOffsetMinutes:
+        workReminderOffsetMinutes ?? this.workReminderOffsetMinutes,
+    workPomodoroEnabled: workPomodoroEnabled ?? this.workPomodoroEnabled,
+    workActivityCreditEnabled:
+        workActivityCreditEnabled ?? this.workActivityCreditEnabled,
     quietStartMinutes: quietStartMinutes ?? this.quietStartMinutes,
     quietEndMinutes: quietEndMinutes ?? this.quietEndMinutes,
     sleepReminderEnabled: sleepReminderEnabled ?? this.sleepReminderEnabled,
@@ -3025,6 +3308,27 @@ class LocalAppSetting extends DataClass implements Insertable<LocalAppSetting> {
       workEndMinutes: data.workEndMinutes.present
           ? data.workEndMinutes.value
           : this.workEndMinutes,
+      workScheduleEnabled: data.workScheduleEnabled.present
+          ? data.workScheduleEnabled.value
+          : this.workScheduleEnabled,
+      workScheduleRotationJson: data.workScheduleRotationJson.present
+          ? data.workScheduleRotationJson.value
+          : this.workScheduleRotationJson,
+      workScheduleAnchorDate: data.workScheduleAnchorDate.present
+          ? data.workScheduleAnchorDate.value
+          : this.workScheduleAnchorDate,
+      workReminderEnabled: data.workReminderEnabled.present
+          ? data.workReminderEnabled.value
+          : this.workReminderEnabled,
+      workReminderOffsetMinutes: data.workReminderOffsetMinutes.present
+          ? data.workReminderOffsetMinutes.value
+          : this.workReminderOffsetMinutes,
+      workPomodoroEnabled: data.workPomodoroEnabled.present
+          ? data.workPomodoroEnabled.value
+          : this.workPomodoroEnabled,
+      workActivityCreditEnabled: data.workActivityCreditEnabled.present
+          ? data.workActivityCreditEnabled.value
+          : this.workActivityCreditEnabled,
       quietStartMinutes: data.quietStartMinutes.present
           ? data.quietStartMinutes.value
           : this.quietStartMinutes,
@@ -3114,6 +3418,13 @@ class LocalAppSetting extends DataClass implements Insertable<LocalAppSetting> {
           ..write('workingDaysJson: $workingDaysJson, ')
           ..write('workStartMinutes: $workStartMinutes, ')
           ..write('workEndMinutes: $workEndMinutes, ')
+          ..write('workScheduleEnabled: $workScheduleEnabled, ')
+          ..write('workScheduleRotationJson: $workScheduleRotationJson, ')
+          ..write('workScheduleAnchorDate: $workScheduleAnchorDate, ')
+          ..write('workReminderEnabled: $workReminderEnabled, ')
+          ..write('workReminderOffsetMinutes: $workReminderOffsetMinutes, ')
+          ..write('workPomodoroEnabled: $workPomodoroEnabled, ')
+          ..write('workActivityCreditEnabled: $workActivityCreditEnabled, ')
           ..write('quietStartMinutes: $quietStartMinutes, ')
           ..write('quietEndMinutes: $quietEndMinutes, ')
           ..write('sleepReminderEnabled: $sleepReminderEnabled, ')
@@ -3173,6 +3484,13 @@ class LocalAppSetting extends DataClass implements Insertable<LocalAppSetting> {
     workingDaysJson,
     workStartMinutes,
     workEndMinutes,
+    workScheduleEnabled,
+    workScheduleRotationJson,
+    workScheduleAnchorDate,
+    workReminderEnabled,
+    workReminderOffsetMinutes,
+    workPomodoroEnabled,
+    workActivityCreditEnabled,
     quietStartMinutes,
     quietEndMinutes,
     sleepReminderEnabled,
@@ -3235,6 +3553,13 @@ class LocalAppSetting extends DataClass implements Insertable<LocalAppSetting> {
           other.workingDaysJson == this.workingDaysJson &&
           other.workStartMinutes == this.workStartMinutes &&
           other.workEndMinutes == this.workEndMinutes &&
+          other.workScheduleEnabled == this.workScheduleEnabled &&
+          other.workScheduleRotationJson == this.workScheduleRotationJson &&
+          other.workScheduleAnchorDate == this.workScheduleAnchorDate &&
+          other.workReminderEnabled == this.workReminderEnabled &&
+          other.workReminderOffsetMinutes == this.workReminderOffsetMinutes &&
+          other.workPomodoroEnabled == this.workPomodoroEnabled &&
+          other.workActivityCreditEnabled == this.workActivityCreditEnabled &&
           other.quietStartMinutes == this.quietStartMinutes &&
           other.quietEndMinutes == this.quietEndMinutes &&
           other.sleepReminderEnabled == this.sleepReminderEnabled &&
@@ -3292,6 +3617,13 @@ class LocalAppSettingsCompanion extends UpdateCompanion<LocalAppSetting> {
   final Value<String> workingDaysJson;
   final Value<int> workStartMinutes;
   final Value<int> workEndMinutes;
+  final Value<bool> workScheduleEnabled;
+  final Value<String> workScheduleRotationJson;
+  final Value<String> workScheduleAnchorDate;
+  final Value<bool> workReminderEnabled;
+  final Value<int> workReminderOffsetMinutes;
+  final Value<bool> workPomodoroEnabled;
+  final Value<bool> workActivityCreditEnabled;
   final Value<int> quietStartMinutes;
   final Value<int> quietEndMinutes;
   final Value<bool> sleepReminderEnabled;
@@ -3347,6 +3679,13 @@ class LocalAppSettingsCompanion extends UpdateCompanion<LocalAppSetting> {
     this.workingDaysJson = const Value.absent(),
     this.workStartMinutes = const Value.absent(),
     this.workEndMinutes = const Value.absent(),
+    this.workScheduleEnabled = const Value.absent(),
+    this.workScheduleRotationJson = const Value.absent(),
+    this.workScheduleAnchorDate = const Value.absent(),
+    this.workReminderEnabled = const Value.absent(),
+    this.workReminderOffsetMinutes = const Value.absent(),
+    this.workPomodoroEnabled = const Value.absent(),
+    this.workActivityCreditEnabled = const Value.absent(),
     this.quietStartMinutes = const Value.absent(),
     this.quietEndMinutes = const Value.absent(),
     this.sleepReminderEnabled = const Value.absent(),
@@ -3403,6 +3742,13 @@ class LocalAppSettingsCompanion extends UpdateCompanion<LocalAppSetting> {
     this.workingDaysJson = const Value.absent(),
     this.workStartMinutes = const Value.absent(),
     this.workEndMinutes = const Value.absent(),
+    this.workScheduleEnabled = const Value.absent(),
+    this.workScheduleRotationJson = const Value.absent(),
+    this.workScheduleAnchorDate = const Value.absent(),
+    this.workReminderEnabled = const Value.absent(),
+    this.workReminderOffsetMinutes = const Value.absent(),
+    this.workPomodoroEnabled = const Value.absent(),
+    this.workActivityCreditEnabled = const Value.absent(),
     this.quietStartMinutes = const Value.absent(),
     this.quietEndMinutes = const Value.absent(),
     this.sleepReminderEnabled = const Value.absent(),
@@ -3461,6 +3807,13 @@ class LocalAppSettingsCompanion extends UpdateCompanion<LocalAppSetting> {
     Expression<String>? workingDaysJson,
     Expression<int>? workStartMinutes,
     Expression<int>? workEndMinutes,
+    Expression<bool>? workScheduleEnabled,
+    Expression<String>? workScheduleRotationJson,
+    Expression<String>? workScheduleAnchorDate,
+    Expression<bool>? workReminderEnabled,
+    Expression<int>? workReminderOffsetMinutes,
+    Expression<bool>? workPomodoroEnabled,
+    Expression<bool>? workActivityCreditEnabled,
     Expression<int>? quietStartMinutes,
     Expression<int>? quietEndMinutes,
     Expression<bool>? sleepReminderEnabled,
@@ -3538,6 +3891,20 @@ class LocalAppSettingsCompanion extends UpdateCompanion<LocalAppSetting> {
       if (workingDaysJson != null) 'working_days_json': workingDaysJson,
       if (workStartMinutes != null) 'work_start_minutes': workStartMinutes,
       if (workEndMinutes != null) 'work_end_minutes': workEndMinutes,
+      if (workScheduleEnabled != null)
+        'work_schedule_enabled': workScheduleEnabled,
+      if (workScheduleRotationJson != null)
+        'work_schedule_rotation_json': workScheduleRotationJson,
+      if (workScheduleAnchorDate != null)
+        'work_schedule_anchor_date': workScheduleAnchorDate,
+      if (workReminderEnabled != null)
+        'work_reminder_enabled': workReminderEnabled,
+      if (workReminderOffsetMinutes != null)
+        'work_reminder_offset_minutes': workReminderOffsetMinutes,
+      if (workPomodoroEnabled != null)
+        'work_pomodoro_enabled': workPomodoroEnabled,
+      if (workActivityCreditEnabled != null)
+        'work_activity_credit_enabled': workActivityCreditEnabled,
       if (quietStartMinutes != null) 'quiet_start_minutes': quietStartMinutes,
       if (quietEndMinutes != null) 'quiet_end_minutes': quietEndMinutes,
       if (sleepReminderEnabled != null)
@@ -3603,6 +3970,13 @@ class LocalAppSettingsCompanion extends UpdateCompanion<LocalAppSetting> {
     Value<String>? workingDaysJson,
     Value<int>? workStartMinutes,
     Value<int>? workEndMinutes,
+    Value<bool>? workScheduleEnabled,
+    Value<String>? workScheduleRotationJson,
+    Value<String>? workScheduleAnchorDate,
+    Value<bool>? workReminderEnabled,
+    Value<int>? workReminderOffsetMinutes,
+    Value<bool>? workPomodoroEnabled,
+    Value<bool>? workActivityCreditEnabled,
     Value<int>? quietStartMinutes,
     Value<int>? quietEndMinutes,
     Value<bool>? sleepReminderEnabled,
@@ -3672,6 +4046,17 @@ class LocalAppSettingsCompanion extends UpdateCompanion<LocalAppSetting> {
       workingDaysJson: workingDaysJson ?? this.workingDaysJson,
       workStartMinutes: workStartMinutes ?? this.workStartMinutes,
       workEndMinutes: workEndMinutes ?? this.workEndMinutes,
+      workScheduleEnabled: workScheduleEnabled ?? this.workScheduleEnabled,
+      workScheduleRotationJson:
+          workScheduleRotationJson ?? this.workScheduleRotationJson,
+      workScheduleAnchorDate:
+          workScheduleAnchorDate ?? this.workScheduleAnchorDate,
+      workReminderEnabled: workReminderEnabled ?? this.workReminderEnabled,
+      workReminderOffsetMinutes:
+          workReminderOffsetMinutes ?? this.workReminderOffsetMinutes,
+      workPomodoroEnabled: workPomodoroEnabled ?? this.workPomodoroEnabled,
+      workActivityCreditEnabled:
+          workActivityCreditEnabled ?? this.workActivityCreditEnabled,
       quietStartMinutes: quietStartMinutes ?? this.quietStartMinutes,
       quietEndMinutes: quietEndMinutes ?? this.quietEndMinutes,
       sleepReminderEnabled: sleepReminderEnabled ?? this.sleepReminderEnabled,
@@ -3840,6 +4225,35 @@ class LocalAppSettingsCompanion extends UpdateCompanion<LocalAppSetting> {
     if (workEndMinutes.present) {
       map['work_end_minutes'] = Variable<int>(workEndMinutes.value);
     }
+    if (workScheduleEnabled.present) {
+      map['work_schedule_enabled'] = Variable<bool>(workScheduleEnabled.value);
+    }
+    if (workScheduleRotationJson.present) {
+      map['work_schedule_rotation_json'] = Variable<String>(
+        workScheduleRotationJson.value,
+      );
+    }
+    if (workScheduleAnchorDate.present) {
+      map['work_schedule_anchor_date'] = Variable<String>(
+        workScheduleAnchorDate.value,
+      );
+    }
+    if (workReminderEnabled.present) {
+      map['work_reminder_enabled'] = Variable<bool>(workReminderEnabled.value);
+    }
+    if (workReminderOffsetMinutes.present) {
+      map['work_reminder_offset_minutes'] = Variable<int>(
+        workReminderOffsetMinutes.value,
+      );
+    }
+    if (workPomodoroEnabled.present) {
+      map['work_pomodoro_enabled'] = Variable<bool>(workPomodoroEnabled.value);
+    }
+    if (workActivityCreditEnabled.present) {
+      map['work_activity_credit_enabled'] = Variable<bool>(
+        workActivityCreditEnabled.value,
+      );
+    }
     if (quietStartMinutes.present) {
       map['quiet_start_minutes'] = Variable<int>(quietStartMinutes.value);
     }
@@ -3952,6 +4366,13 @@ class LocalAppSettingsCompanion extends UpdateCompanion<LocalAppSetting> {
           ..write('workingDaysJson: $workingDaysJson, ')
           ..write('workStartMinutes: $workStartMinutes, ')
           ..write('workEndMinutes: $workEndMinutes, ')
+          ..write('workScheduleEnabled: $workScheduleEnabled, ')
+          ..write('workScheduleRotationJson: $workScheduleRotationJson, ')
+          ..write('workScheduleAnchorDate: $workScheduleAnchorDate, ')
+          ..write('workReminderEnabled: $workReminderEnabled, ')
+          ..write('workReminderOffsetMinutes: $workReminderOffsetMinutes, ')
+          ..write('workPomodoroEnabled: $workPomodoroEnabled, ')
+          ..write('workActivityCreditEnabled: $workActivityCreditEnabled, ')
           ..write('quietStartMinutes: $quietStartMinutes, ')
           ..write('quietEndMinutes: $quietEndMinutes, ')
           ..write('sleepReminderEnabled: $sleepReminderEnabled, ')
@@ -14865,6 +15286,13 @@ typedef $$LocalAppSettingsTableCreateCompanionBuilder =
       Value<String> workingDaysJson,
       Value<int> workStartMinutes,
       Value<int> workEndMinutes,
+      Value<bool> workScheduleEnabled,
+      Value<String> workScheduleRotationJson,
+      Value<String> workScheduleAnchorDate,
+      Value<bool> workReminderEnabled,
+      Value<int> workReminderOffsetMinutes,
+      Value<bool> workPomodoroEnabled,
+      Value<bool> workActivityCreditEnabled,
       Value<int> quietStartMinutes,
       Value<int> quietEndMinutes,
       Value<bool> sleepReminderEnabled,
@@ -14922,6 +15350,13 @@ typedef $$LocalAppSettingsTableUpdateCompanionBuilder =
       Value<String> workingDaysJson,
       Value<int> workStartMinutes,
       Value<int> workEndMinutes,
+      Value<bool> workScheduleEnabled,
+      Value<String> workScheduleRotationJson,
+      Value<String> workScheduleAnchorDate,
+      Value<bool> workReminderEnabled,
+      Value<int> workReminderOffsetMinutes,
+      Value<bool> workPomodoroEnabled,
+      Value<bool> workActivityCreditEnabled,
       Value<int> quietStartMinutes,
       Value<int> quietEndMinutes,
       Value<bool> sleepReminderEnabled,
@@ -15124,6 +15559,41 @@ class $$LocalAppSettingsTableFilterComposer
 
   ColumnFilters<int> get workEndMinutes => $composableBuilder(
     column: $table.workEndMinutes,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get workScheduleEnabled => $composableBuilder(
+    column: $table.workScheduleEnabled,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get workScheduleRotationJson => $composableBuilder(
+    column: $table.workScheduleRotationJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get workScheduleAnchorDate => $composableBuilder(
+    column: $table.workScheduleAnchorDate,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get workReminderEnabled => $composableBuilder(
+    column: $table.workReminderEnabled,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get workReminderOffsetMinutes => $composableBuilder(
+    column: $table.workReminderOffsetMinutes,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get workPomodoroEnabled => $composableBuilder(
+    column: $table.workPomodoroEnabled,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get workActivityCreditEnabled => $composableBuilder(
+    column: $table.workActivityCreditEnabled,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -15403,6 +15873,41 @@ class $$LocalAppSettingsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<bool> get workScheduleEnabled => $composableBuilder(
+    column: $table.workScheduleEnabled,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get workScheduleRotationJson => $composableBuilder(
+    column: $table.workScheduleRotationJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get workScheduleAnchorDate => $composableBuilder(
+    column: $table.workScheduleAnchorDate,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get workReminderEnabled => $composableBuilder(
+    column: $table.workReminderEnabled,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get workReminderOffsetMinutes => $composableBuilder(
+    column: $table.workReminderOffsetMinutes,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get workPomodoroEnabled => $composableBuilder(
+    column: $table.workPomodoroEnabled,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get workActivityCreditEnabled => $composableBuilder(
+    column: $table.workActivityCreditEnabled,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<int> get quietStartMinutes => $composableBuilder(
     column: $table.quietStartMinutes,
     builder: (column) => ColumnOrderings(column),
@@ -15671,6 +16176,41 @@ class $$LocalAppSettingsTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<bool> get workScheduleEnabled => $composableBuilder(
+    column: $table.workScheduleEnabled,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get workScheduleRotationJson => $composableBuilder(
+    column: $table.workScheduleRotationJson,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get workScheduleAnchorDate => $composableBuilder(
+    column: $table.workScheduleAnchorDate,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get workReminderEnabled => $composableBuilder(
+    column: $table.workReminderEnabled,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get workReminderOffsetMinutes => $composableBuilder(
+    column: $table.workReminderOffsetMinutes,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get workPomodoroEnabled => $composableBuilder(
+    column: $table.workPomodoroEnabled,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get workActivityCreditEnabled => $composableBuilder(
+    column: $table.workActivityCreditEnabled,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<int> get quietStartMinutes => $composableBuilder(
     column: $table.quietStartMinutes,
     builder: (column) => column,
@@ -15827,6 +16367,13 @@ class $$LocalAppSettingsTableTableManager
                 Value<String> workingDaysJson = const Value.absent(),
                 Value<int> workStartMinutes = const Value.absent(),
                 Value<int> workEndMinutes = const Value.absent(),
+                Value<bool> workScheduleEnabled = const Value.absent(),
+                Value<String> workScheduleRotationJson = const Value.absent(),
+                Value<String> workScheduleAnchorDate = const Value.absent(),
+                Value<bool> workReminderEnabled = const Value.absent(),
+                Value<int> workReminderOffsetMinutes = const Value.absent(),
+                Value<bool> workPomodoroEnabled = const Value.absent(),
+                Value<bool> workActivityCreditEnabled = const Value.absent(),
                 Value<int> quietStartMinutes = const Value.absent(),
                 Value<int> quietEndMinutes = const Value.absent(),
                 Value<bool> sleepReminderEnabled = const Value.absent(),
@@ -15883,6 +16430,13 @@ class $$LocalAppSettingsTableTableManager
                 workingDaysJson: workingDaysJson,
                 workStartMinutes: workStartMinutes,
                 workEndMinutes: workEndMinutes,
+                workScheduleEnabled: workScheduleEnabled,
+                workScheduleRotationJson: workScheduleRotationJson,
+                workScheduleAnchorDate: workScheduleAnchorDate,
+                workReminderEnabled: workReminderEnabled,
+                workReminderOffsetMinutes: workReminderOffsetMinutes,
+                workPomodoroEnabled: workPomodoroEnabled,
+                workActivityCreditEnabled: workActivityCreditEnabled,
                 quietStartMinutes: quietStartMinutes,
                 quietEndMinutes: quietEndMinutes,
                 sleepReminderEnabled: sleepReminderEnabled,
@@ -15941,6 +16495,13 @@ class $$LocalAppSettingsTableTableManager
                 Value<String> workingDaysJson = const Value.absent(),
                 Value<int> workStartMinutes = const Value.absent(),
                 Value<int> workEndMinutes = const Value.absent(),
+                Value<bool> workScheduleEnabled = const Value.absent(),
+                Value<String> workScheduleRotationJson = const Value.absent(),
+                Value<String> workScheduleAnchorDate = const Value.absent(),
+                Value<bool> workReminderEnabled = const Value.absent(),
+                Value<int> workReminderOffsetMinutes = const Value.absent(),
+                Value<bool> workPomodoroEnabled = const Value.absent(),
+                Value<bool> workActivityCreditEnabled = const Value.absent(),
                 Value<int> quietStartMinutes = const Value.absent(),
                 Value<int> quietEndMinutes = const Value.absent(),
                 Value<bool> sleepReminderEnabled = const Value.absent(),
@@ -15997,6 +16558,13 @@ class $$LocalAppSettingsTableTableManager
                 workingDaysJson: workingDaysJson,
                 workStartMinutes: workStartMinutes,
                 workEndMinutes: workEndMinutes,
+                workScheduleEnabled: workScheduleEnabled,
+                workScheduleRotationJson: workScheduleRotationJson,
+                workScheduleAnchorDate: workScheduleAnchorDate,
+                workReminderEnabled: workReminderEnabled,
+                workReminderOffsetMinutes: workReminderOffsetMinutes,
+                workPomodoroEnabled: workPomodoroEnabled,
+                workActivityCreditEnabled: workActivityCreditEnabled,
                 quietStartMinutes: quietStartMinutes,
                 quietEndMinutes: quietEndMinutes,
                 sleepReminderEnabled: sleepReminderEnabled,

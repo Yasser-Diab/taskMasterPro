@@ -105,6 +105,7 @@ void main() {
       'en': 'Filter tasks',
       'ar': 'تصفية المهام',
       'de': 'Aufgaben filtern',
+      'pl': 'Filtruj zadania',
     };
     for (final locale in AppLocalizations.supportedLocales) {
       expect(

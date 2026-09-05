@@ -7,25 +7,25 @@ String _read(String relativePath) => File(
 ).readAsStringSync().replaceAll('\r\n', '\n');
 
 void main() {
-  test('release-facing version metadata is aligned to v0.0.29', () {
-    expect(_read('pubspec.yaml'), contains('version: 0.0.29+58'));
-    expect(_read('package.json'), contains('"version": "0.0.29"'));
-    expect(_read('package-lock.json'), contains('"version": "0.0.29"'));
+  test('release-facing version metadata is aligned to v0.0.30', () {
+    expect(_read('pubspec.yaml'), contains('version: 0.0.30+59'));
+    expect(_read('package.json'), contains('"version": "0.0.30"'));
+    expect(_read('package-lock.json'), contains('"version": "0.0.30"'));
     expect(
       _read('installer/taskmaster-pro.iss'),
-      contains('#define MyAppVersion "0.0.29"'),
+      contains('#define MyAppVersion "0.0.30"'),
     );
     expect(
       _read('lib/core/platform/windows_shell_service.dart'),
-      contains("'version': '0.0.29'"),
+      contains("'version': '0.0.30'"),
     );
     expect(
       _read('windows/runner/flutter_window.h'),
-      contains('What\'s new in v0.0.29'),
+      contains('What\'s new in v0.0.30'),
     );
     expect(
       _read('lib/features/settings/presentation/settings_screen.dart'),
-      contains("String _version = '0.0.29';"),
+      contains("String _version = '0.0.30';"),
     );
   });
 
@@ -46,12 +46,13 @@ void main() {
     expect(script, contains('Windows build version mismatch'));
     expect(script, contains('Windows app snapshot'));
     expect(script, contains('Refusing to package a stale backend'));
+    expect(script, contains(r'$learningUsesActiveConfig'));
     expect(
       script,
-      contains('Anonymous application learning is not configured'),
+      contains('Anonymous application learning is not bound to the active'),
     );
-    expect(script, contains(r'$learningProjectRefMatch.Groups[1].Value'));
-    expect(script, contains(r'$learningKeyMatch.Groups[1].Value'));
+    expect(script, contains('SupabaseConfig.projectRef'));
+    expect(script, contains('SupabaseConfig.publishableKey'));
     expect(script, contains(r'/DMyAppDisplayVersion=$displayVersion'));
     expect(script, contains('buildNumber = [int]\$buildNumber'));
     expect(script, contains('displayVersion = \$displayVersion'));
@@ -73,6 +74,18 @@ void main() {
       contains('Release builds require android/key.properties'),
     );
     expect(androidGradle, isNot(contains('signingConfigs.getByName("debug")')));
+  });
+
+  test('landing download cards only use a published GitHub release', () {
+    final site = _read('landing-page/app.js');
+    final releaseConfig = _read('landing-page/assets/js/release-config.js');
+
+    expect(
+      site,
+      contains('const release = await loadLatestPublishedRelease()'),
+    );
+    expect(site, isNot(contains('setReleaseUnavailable(currentVersion)')));
+    expect(releaseConfig, isNot(contains('currentVersion:')));
   });
 
   test('Windows tray reveal preserves a maximized window placement', () {
