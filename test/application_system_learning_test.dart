@@ -220,6 +220,50 @@ void main() {
 
     expect(suggestion?.suggestedClassification, 'supporting_work');
   });
+
+  test('the complete app taxonomy preserves an explicit music vote', () async {
+    final shared = await SharedPreferences.getInstance();
+    final preferences = SharedPreferencesApplicationSystemLearningPreferences(
+      shared,
+    );
+    await preferences.setOptedIn(true);
+    final categoryGateway = _CategoryGateway();
+    final service = ApplicationSystemLearningService(
+      preferences: preferences,
+      secretStore: _SecretStore(),
+      gateway: _Gateway(null),
+      cache: ApplicationSystemLearningCache(shared),
+      categoryGateway: categoryGateway,
+    );
+
+    await service.submitExplicitClassification(
+      platform: 'android',
+      applicationIdentifier: 'com.example.music',
+      classification: 'direct_task_work',
+      category: 'music_audio',
+      isUseful: false,
+    );
+
+    expect(categoryGateway.votes, hasLength(1));
+    expect(categoryGateway.votes.single.category, 'music_audio');
+    expect(categoryGateway.votes.single.isUseful, isFalse);
+    expect(
+      ApplicationCategoryConsensus.supportedCategories,
+      containsAll(<String>[
+        'business',
+        'health_fitness',
+        'music_audio',
+        'entertainment',
+        'video_streaming',
+        'games',
+        'social',
+        'news_media',
+        'books_reference',
+        'system',
+        'other',
+      ]),
+    );
+  });
 }
 
 Future<_Fixture> _fixture({

@@ -254,16 +254,34 @@ class ApplicationCategoryConsensus {
   final double confidenceLowerBound;
 
   static const supportedCategories = <String>{
+    'business',
     'productivity',
     'development',
     'research',
     'communication',
     'education',
+    'writing',
     'design',
     'finance',
+    'health_fitness',
+    'medical',
+    'utilities',
+    'travel_navigation',
+    'shopping',
+    'food_drink',
+    'home_lifestyle',
+    'automotive',
+    'weather',
+    'music_audio',
     'system',
     'entertainment',
+    'video_streaming',
+    'games',
     'social',
+    'news_media',
+    'sports',
+    'photography',
+    'books_reference',
     'other',
   };
 
@@ -296,12 +314,33 @@ class ApplicationCategoryConsensus {
     if (category == 'system') return 'system_activity';
     if (!isUseful) return 'distraction';
     return switch (category) {
-      'research' || 'education' => 'passive_useful_activity',
+      'research' ||
+      'education' ||
+      'writing' ||
+      'books_reference' ||
+      'news_media' ||
+      'music_audio' ||
+      'entertainment' ||
+      'video_streaming' ||
+      'games' ||
+      'social' ||
+      'sports' ||
+      'photography' => 'passive_useful_activity',
+      'business' ||
       'productivity' ||
       'development' ||
       'communication' ||
       'design' ||
-      'finance' => 'supporting_work',
+      'finance' ||
+      'health_fitness' ||
+      'medical' ||
+      'utilities' ||
+      'travel_navigation' ||
+      'shopping' ||
+      'food_drink' ||
+      'home_lifestyle' ||
+      'automotive' ||
+      'weather' => 'supporting_work',
       _ => 'passive_useful_activity',
     };
   }
@@ -429,8 +468,14 @@ class ApplicationSystemLearningService {
     required String platform,
     required String applicationIdentifier,
     required String classification,
+    String? category,
+    bool? isUseful,
   }) async {
-    final assessment = _assessmentForClassification(classification);
+    final assessment = _explicitAssessment(
+      classification: classification,
+      category: category,
+      isUseful: isUseful,
+    );
     final categoryService = categoryGateway;
     if (assessment == null ||
         categoryService == null ||
@@ -524,6 +569,22 @@ class ApplicationSystemLearningService {
       return null;
     }
   }
+}
+
+({String category, bool isUseful})? _explicitAssessment({
+  required String classification,
+  required String? category,
+  required bool? isUseful,
+}) {
+  final normalizedCategory = category?.trim().toLowerCase();
+  if (normalizedCategory != null &&
+      ApplicationCategoryConsensus.supportedCategories.contains(
+        normalizedCategory,
+      ) &&
+      isUseful != null) {
+    return (category: normalizedCategory, isUseful: isUseful);
+  }
+  return _assessmentForClassification(classification);
 }
 
 ({String category, bool isUseful})? _assessmentForClassification(

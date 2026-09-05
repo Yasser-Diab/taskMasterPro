@@ -265,8 +265,27 @@ void main() {
       );
     }
     await tester.pump(const Duration(milliseconds: 500));
-    expect(find.text('Productive'), findsOneWidget);
-    expect(find.text('Supporting work'), findsOneWidget);
+    expect(find.text('App category'), findsOneWidget);
+    expect(find.text('Choose app category'), findsOneWidget);
+    await tester.tap(find.text('Choose app category'));
+    await tester.pump(const Duration(milliseconds: 500));
+    final categoryScroll = tester.state<ScrollableState>(
+      find.byType(Scrollable).last,
+    );
+    categoryScroll.position.jumpTo(
+      categoryScroll.position.maxScrollExtent * .62,
+    );
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(find.text('Music and audio'), findsOneWidget);
+    await tester.tap(find.text('Music and audio'));
+    for (var frame = 0; frame < 40; frame += 1) {
+      await tester.pump(const Duration(milliseconds: 50));
+      if (find.text('Generally useful').evaluate().isNotEmpty) break;
+    }
+    expect(find.text('Generally useful'), findsOneWidget);
+    expect(find.text('Generally not useful'), findsOneWidget);
+    await tester.tap(find.text('Cancel'));
+    await tester.pump(const Duration(milliseconds: 500));
     await tester.ensureVisible(find.text('Assign to another task'));
     await tester.pump(const Duration(milliseconds: 200));
     await tester.tap(find.text('Assign to another task'));

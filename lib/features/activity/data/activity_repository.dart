@@ -302,6 +302,8 @@ class ActivityResolution {
     this.isAutomatic = false,
     this.taskAllocations = const [],
     this.manualLabel,
+    this.applicationCategory,
+    this.applicationIsUseful,
   });
 
   final String status;
@@ -314,6 +316,12 @@ class ActivityResolution {
   final bool isAutomatic;
   final List<ActivityTaskAllocation> taskAllocations;
   final String? manualLabel;
+
+  /// A general, cross-task application type selected independently from a
+  /// one-off task credit. This stays in rule/catalog JSON so it can evolve
+  /// without changing the Activity attribution contract.
+  final String? applicationCategory;
+  final bool? applicationIsUseful;
 }
 
 class ActivityTaskAllocation {
@@ -1113,6 +1121,8 @@ class ActivityRepository {
           rememberRule: rememberSingleTaskRule,
           isAutomatic: resolution.isAutomatic,
           manualLabel: resolution.manualLabel,
+          applicationCategory: resolution.applicationCategory,
+          applicationIsUseful: resolution.applicationIsUseful,
         ),
       );
       for (final allocation in allocations.skip(1)) {
@@ -2164,6 +2174,8 @@ class ActivityRepository {
       'display_name': displayName,
       'default_display_name': displayName,
       'classification': resolution.classification,
+      'application_category': resolution.applicationCategory,
+      'application_is_useful': resolution.applicationIsUseful,
     };
     final ruleData = <String, Object?>{
       'application_id': applicationId,
@@ -2172,6 +2184,8 @@ class ActivityRepository {
       'scope_type': scopeType,
       'scope_id': scopeId,
       'classification': resolution.classification,
+      'application_category': resolution.applicationCategory,
+      'application_is_useful': resolution.applicationIsUseful,
       'target_type': resolution.targetId == null ? null : resolution.targetType,
       'target_id': resolution.targetId,
       'contribution_type': resolution.contributionType,
@@ -2187,6 +2201,8 @@ class ActivityRepository {
       'display_name',
       'default_display_name',
       'classification',
+      'application_category',
+      'application_is_useful',
     };
     const ruleSemanticKeys = <String>{
       'application_id',
@@ -2195,6 +2211,8 @@ class ActivityRepository {
       'scope_type',
       'scope_id',
       'classification',
+      'application_category',
+      'application_is_useful',
       'target_type',
       'target_id',
       'contribution_type',
@@ -2331,6 +2349,8 @@ class ActivityRepository {
               'display_name': displayName,
               'default_display_name': displayName,
               'classification': resolution.classification,
+              'application_category': resolution.applicationCategory,
+              'application_is_useful': resolution.applicationIsUseful,
             },
             syncPayload: {
               'platform': platform,
@@ -2355,6 +2375,8 @@ class ActivityRepository {
       'scope_type': 'task',
       'scope_id': resolution.targetId,
       'classification': resolution.classification,
+      'application_category': resolution.applicationCategory,
+      'application_is_useful': resolution.applicationIsUseful,
       'target_type': 'task_occurrence',
       'target_id': resolution.targetId,
       'contribution_type': resolution.contributionType,
@@ -2382,6 +2404,8 @@ class ActivityRepository {
         'data': {
           'platform': platform,
           'application_identifier': identifier.toLowerCase(),
+          'application_category': resolution.applicationCategory,
+          'application_is_useful': resolution.applicationIsUseful,
           'rule_origin': 'user_confirmed',
         },
       },
@@ -2467,6 +2491,8 @@ class ActivityRepository {
       'scope_type': scopeType,
       'scope_id': scopeId,
       'classification': resolution.classification,
+      'application_category': resolution.applicationCategory,
+      'application_is_useful': resolution.applicationIsUseful,
       'target_type': null,
       'target_id': null,
       'contribution_type': null,
@@ -2494,6 +2520,8 @@ class ActivityRepository {
         'data': {
           'platform': platform,
           'application_identifier': identifier.toLowerCase(),
+          'application_category': resolution.applicationCategory,
+          'application_is_useful': resolution.applicationIsUseful,
           'rule_origin': 'user_confirmed',
         },
       },
@@ -2557,6 +2585,8 @@ class ActivityRepository {
       'scope_type',
       'scope_id',
       'classification',
+      'application_category',
+      'application_is_useful',
       'target_type',
       'target_id',
       'contribution_type',

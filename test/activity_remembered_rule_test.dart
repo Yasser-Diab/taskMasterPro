@@ -214,6 +214,32 @@ void main() {
     },
   );
 
+  test('remembered app category is independent from task credit', () async {
+    await insertSettings();
+    final entry = await captureReview(
+      id: 'segment-30',
+      processName: 'MusicPlayer.exe',
+    );
+
+    await repository.resolve(
+      entry,
+      const ActivityResolution(
+        status: 'confirmed',
+        classification: 'passive_useful_activity',
+        rememberRule: true,
+        applicationCategory: 'music_audio',
+        applicationIsUseful: true,
+      ),
+    );
+
+    final rule = (await allRules()).singleWhere(
+      (candidate) => candidate.deletedAt == null,
+    );
+    expect(ruleData(rule)['classification'], 'passive_useful_activity');
+    expect(ruleData(rule)['application_category'], 'music_audio');
+    expect(ruleData(rule)['application_is_useful'], isTrue);
+  });
+
   test(
     'automatic classification uses revision before a skewed updatedAt',
     () async {

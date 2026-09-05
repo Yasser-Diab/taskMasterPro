@@ -539,6 +539,13 @@ class _ActivityReviewScreenState extends ConsumerState<ActivityReviewScreen> {
               style: Theme.of(context).textTheme.bodySmall,
             ),
             const SizedBox(height: 16),
+            Text(
+              copy.taskCredit,
+              style: Theme.of(
+                context,
+              ).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: 8),
             ActivityClassificationOption(
               icon: Icons.task_alt_outlined,
               title: copy.assignAnotherTask,
@@ -555,6 +562,8 @@ class _ActivityReviewScreenState extends ConsumerState<ActivityReviewScreen> {
                           _TaskPickerDialog(tasks: tasks, copy: copy),
                     );
                 if (allocations != null && context.mounted) {
+                  final category = await _pickApplicationCategory();
+                  if (!context.mounted) return;
                   Navigator.pop(
                     context,
                     ActivityResolution(
@@ -562,6 +571,8 @@ class _ActivityReviewScreenState extends ConsumerState<ActivityReviewScreen> {
                       classification: 'direct_task_work',
                       contributionType: 'active_work_seconds',
                       taskAllocations: allocations,
+                      applicationCategory: category?.category,
+                      applicationIsUseful: category?.isUseful,
                     ),
                   );
                 }
@@ -569,127 +580,135 @@ class _ActivityReviewScreenState extends ConsumerState<ActivityReviewScreen> {
             ),
             const SizedBox(height: 12),
             Text(
-              copy.productive,
+              copy.appCategories,
               style: Theme.of(
                 context,
               ).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w800),
             ),
             const SizedBox(height: 8),
             ActivityClassificationOption(
-              icon: Icons.business_center_outlined,
-              title: copy.supportingWork,
-              detail: copy.helpful,
-              onTap: () => Navigator.pop(
-                context,
-                const ActivityResolution(
-                  status: 'confirmed',
-                  classification: 'supporting_work',
-                ),
-              ),
-            ),
-            ActivityClassificationOption(
-              icon: Icons.forum_outlined,
-              title: copy.communication,
-              detail: copy.helpful,
-              onTap: () => Navigator.pop(
-                context,
-                const ActivityResolution(
-                  status: 'confirmed',
-                  classification: 'communication',
-                ),
-              ),
-            ),
-            ActivityClassificationOption(
-              icon: Icons.menu_book_outlined,
-              title: copy.usefulReading,
-              detail: copy.research,
-              onTap: () => Navigator.pop(
-                context,
-                const ActivityResolution(
-                  status: 'confirmed',
-                  classification: 'passive_useful_activity',
-                ),
-              ),
-            ),
-            ActivityClassificationOption(
-              icon: Icons.school_outlined,
-              title: copy.learning,
-              detail: copy.helpful,
-              onTap: () => Navigator.pop(
-                context,
-                const ActivityResolution(
-                  status: 'confirmed',
-                  classification: 'learning',
-                ),
-              ),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              copy.notUseful,
-              style: Theme.of(
-                context,
-              ).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w800),
-            ),
-            const SizedBox(height: 8),
-            ActivityClassificationOption(
-              icon: Icons.warning_amber_rounded,
-              title: copy.markDistraction,
-              detail: copy.notUseful,
-              onTap: () => Navigator.pop(
-                context,
-                const ActivityResolution(
-                  status: 'rejected',
-                  classification: 'distraction',
-                ),
-              ),
-            ),
-            ActivityClassificationOption(
-              icon: Icons.do_not_disturb_alt_outlined,
-              title: copy.generallyUnrelated,
-              detail: copy.notUseful,
-              onTap: () => Navigator.pop(
-                context,
-                const ActivityResolution(
-                  status: 'rejected',
-                  classification: 'generally_unrelated',
-                ),
-              ),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              copy.systemActivity,
-              style: Theme.of(
-                context,
-              ).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w800),
-            ),
-            const SizedBox(height: 8),
-            ActivityClassificationOption(
-              icon: Icons.settings_suggest_outlined,
-              title: copy.treatAsSystem,
-              detail: copy.systemActivity,
-              onTap: () => Navigator.pop(
-                context,
-                const ActivityResolution(
-                  status: 'ignored',
-                  classification: 'system_activity',
-                ),
-              ),
-            ),
-            ActivityClassificationOption(
-              icon: Icons.apps_outlined,
-              title: copy.thisIsUserApplication,
-              detail: copy.helpful,
-              onTap: () => Navigator.pop(
-                context,
-                const ActivityResolution(
-                  status: 'confirmed',
-                  classification: 'user_application',
-                ),
-              ),
+              icon: Icons.category_outlined,
+              title: copy.chooseAppCategory,
+              detail: copy.chooseAppCategoryDetail,
+              onTap: () async {
+                final category = await _pickApplicationCategory();
+                if (category == null || !context.mounted) return;
+                Navigator.pop(context, _resolutionForCategory(category));
+              },
             ),
           ],
         ),
       ),
+    );
+  }
+
+  /// A category expresses what an application is.  It deliberately does not
+  /// decide whether a specific interval should be credited to a task: that
+  /// remains the explicit task-allocation action above.
+  Future<_ApplicationCategoryAssessment?> _pickApplicationCategory() async {
+    final copy = _ActivityCopy.of(context);
+    final category = await showModalBottomSheet<_ApplicationCategoryDefinition>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: DraggableScrollableSheet(
+          expand: false,
+          initialChildSize: 0.78,
+          minChildSize: 0.45,
+          maxChildSize: 0.94,
+          builder: (context, controller) => ListView(
+            controller: controller,
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 28),
+            children: [
+              Text(
+                copy.chooseAppCategory,
+                style: Theme.of(
+                  context,
+                ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                copy.chooseAppCategoryDetail,
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+              for (final group in _ApplicationCategoryGroup.values) ...[
+                const SizedBox(height: 18),
+                Text(
+                  copy.appCategoryGroup(group),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w800),
+                ),
+                const SizedBox(height: 8),
+                for (final definition in _applicationCategoryDefinitions.where(
+                  (item) => item.group == group,
+                ))
+                  ActivityClassificationOption(
+                    icon: definition.icon,
+                    title: copy.appCategoryName(definition.category),
+                    detail: copy.categoryWillAskUsefulness,
+                    onTap: () => Navigator.pop(sheetContext, definition),
+                  ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+    if (category == null || !mounted) return null;
+    if (category.category == 'system') {
+      return const _ApplicationCategoryAssessment(
+        category: 'system',
+        isUseful: false,
+      );
+    }
+    final useful = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(copy.appCategoryName(category.category)),
+        content: Text(copy.categoryUsefulnessQuestion),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: Text(copy.cancel),
+          ),
+          OutlinedButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: Text(copy.generallyNotUseful),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: Text(copy.generallyUseful),
+          ),
+        ],
+      ),
+    );
+    if (useful == null) return null;
+    return _ApplicationCategoryAssessment(
+      category: category.category,
+      isUseful: useful,
+    );
+  }
+
+  ActivityResolution _resolutionForCategory(
+    _ApplicationCategoryAssessment assessment,
+  ) {
+    if (assessment.category == 'system') {
+      return const ActivityResolution(
+        status: 'ignored',
+        classification: 'system_activity',
+        applicationCategory: 'system',
+        applicationIsUseful: false,
+      );
+    }
+    return ActivityResolution(
+      status: assessment.isUseful ? 'confirmed' : 'rejected',
+      classification: assessment.isUseful
+          ? _usefulClassificationForCategory(assessment.category)
+          : 'distraction',
+      applicationCategory: assessment.category,
+      applicationIsUseful: assessment.isUseful,
     );
   }
 
@@ -789,6 +808,8 @@ class _ActivityReviewScreenState extends ConsumerState<ActivityReviewScreen> {
           platform: source.platform,
           applicationIdentifier: source.applicationIdentifier,
           classification: resolution.classification,
+          category: resolution.applicationCategory,
+          isUseful: resolution.applicationIsUseful,
         );
       }
     } catch (_) {
@@ -1588,7 +1609,203 @@ extension on ActivityResolution {
     rememberRule: rememberRule ?? this.rememberRule,
     isAutomatic: isAutomatic,
     taskAllocations: taskAllocations,
+    manualLabel: manualLabel,
+    applicationCategory: applicationCategory,
+    applicationIsUseful: applicationIsUseful,
   );
+}
+
+enum _ApplicationCategoryGroup { work, everyday, leisure, system }
+
+class _ApplicationCategoryDefinition {
+  const _ApplicationCategoryDefinition({
+    required this.category,
+    required this.icon,
+    required this.group,
+  });
+
+  final String category;
+  final IconData icon;
+  final _ApplicationCategoryGroup group;
+}
+
+class _ApplicationCategoryAssessment {
+  const _ApplicationCategoryAssessment({
+    required this.category,
+    required this.isUseful,
+  });
+
+  final String category;
+  final bool isUseful;
+}
+
+/// A stable shared vocabulary rather than a presentation-only menu. These
+/// keys are validated before anonymous aggregate learning receives a vote.
+const _applicationCategoryDefinitions = <_ApplicationCategoryDefinition>[
+  _ApplicationCategoryDefinition(
+    category: 'business',
+    icon: Icons.business_center_outlined,
+    group: _ApplicationCategoryGroup.work,
+  ),
+  _ApplicationCategoryDefinition(
+    category: 'productivity',
+    icon: Icons.task_alt_outlined,
+    group: _ApplicationCategoryGroup.work,
+  ),
+  _ApplicationCategoryDefinition(
+    category: 'development',
+    icon: Icons.code_outlined,
+    group: _ApplicationCategoryGroup.work,
+  ),
+  _ApplicationCategoryDefinition(
+    category: 'communication',
+    icon: Icons.forum_outlined,
+    group: _ApplicationCategoryGroup.work,
+  ),
+  _ApplicationCategoryDefinition(
+    category: 'research',
+    icon: Icons.manage_search_outlined,
+    group: _ApplicationCategoryGroup.work,
+  ),
+  _ApplicationCategoryDefinition(
+    category: 'education',
+    icon: Icons.school_outlined,
+    group: _ApplicationCategoryGroup.work,
+  ),
+  _ApplicationCategoryDefinition(
+    category: 'writing',
+    icon: Icons.edit_note_outlined,
+    group: _ApplicationCategoryGroup.work,
+  ),
+  _ApplicationCategoryDefinition(
+    category: 'design',
+    icon: Icons.palette_outlined,
+    group: _ApplicationCategoryGroup.work,
+  ),
+  _ApplicationCategoryDefinition(
+    category: 'finance',
+    icon: Icons.account_balance_wallet_outlined,
+    group: _ApplicationCategoryGroup.work,
+  ),
+  _ApplicationCategoryDefinition(
+    category: 'health_fitness',
+    icon: Icons.fitness_center_outlined,
+    group: _ApplicationCategoryGroup.everyday,
+  ),
+  _ApplicationCategoryDefinition(
+    category: 'medical',
+    icon: Icons.medical_services_outlined,
+    group: _ApplicationCategoryGroup.everyday,
+  ),
+  _ApplicationCategoryDefinition(
+    category: 'utilities',
+    icon: Icons.build_outlined,
+    group: _ApplicationCategoryGroup.everyday,
+  ),
+  _ApplicationCategoryDefinition(
+    category: 'travel_navigation',
+    icon: Icons.map_outlined,
+    group: _ApplicationCategoryGroup.everyday,
+  ),
+  _ApplicationCategoryDefinition(
+    category: 'shopping',
+    icon: Icons.shopping_bag_outlined,
+    group: _ApplicationCategoryGroup.everyday,
+  ),
+  _ApplicationCategoryDefinition(
+    category: 'food_drink',
+    icon: Icons.restaurant_outlined,
+    group: _ApplicationCategoryGroup.everyday,
+  ),
+  _ApplicationCategoryDefinition(
+    category: 'home_lifestyle',
+    icon: Icons.home_outlined,
+    group: _ApplicationCategoryGroup.everyday,
+  ),
+  _ApplicationCategoryDefinition(
+    category: 'automotive',
+    icon: Icons.directions_car_outlined,
+    group: _ApplicationCategoryGroup.everyday,
+  ),
+  _ApplicationCategoryDefinition(
+    category: 'weather',
+    icon: Icons.wb_sunny_outlined,
+    group: _ApplicationCategoryGroup.everyday,
+  ),
+  _ApplicationCategoryDefinition(
+    category: 'music_audio',
+    icon: Icons.music_note_outlined,
+    group: _ApplicationCategoryGroup.leisure,
+  ),
+  _ApplicationCategoryDefinition(
+    category: 'entertainment',
+    icon: Icons.theater_comedy_outlined,
+    group: _ApplicationCategoryGroup.leisure,
+  ),
+  _ApplicationCategoryDefinition(
+    category: 'video_streaming',
+    icon: Icons.ondemand_video_outlined,
+    group: _ApplicationCategoryGroup.leisure,
+  ),
+  _ApplicationCategoryDefinition(
+    category: 'games',
+    icon: Icons.sports_esports_outlined,
+    group: _ApplicationCategoryGroup.leisure,
+  ),
+  _ApplicationCategoryDefinition(
+    category: 'social',
+    icon: Icons.people_outline,
+    group: _ApplicationCategoryGroup.leisure,
+  ),
+  _ApplicationCategoryDefinition(
+    category: 'news_media',
+    icon: Icons.newspaper_outlined,
+    group: _ApplicationCategoryGroup.leisure,
+  ),
+  _ApplicationCategoryDefinition(
+    category: 'sports',
+    icon: Icons.sports_soccer_outlined,
+    group: _ApplicationCategoryGroup.leisure,
+  ),
+  _ApplicationCategoryDefinition(
+    category: 'photography',
+    icon: Icons.photo_camera_outlined,
+    group: _ApplicationCategoryGroup.leisure,
+  ),
+  _ApplicationCategoryDefinition(
+    category: 'books_reference',
+    icon: Icons.menu_book_outlined,
+    group: _ApplicationCategoryGroup.leisure,
+  ),
+  _ApplicationCategoryDefinition(
+    category: 'system',
+    icon: Icons.settings_suggest_outlined,
+    group: _ApplicationCategoryGroup.system,
+  ),
+  _ApplicationCategoryDefinition(
+    category: 'other',
+    icon: Icons.apps_outlined,
+    group: _ApplicationCategoryGroup.system,
+  ),
+];
+
+String _usefulClassificationForCategory(String category) {
+  return switch (category) {
+    'communication' => 'communication',
+    'research' ||
+    'education' ||
+    'writing' ||
+    'books_reference' ||
+    'news_media' ||
+    'music_audio' ||
+    'entertainment' ||
+    'video_streaming' ||
+    'games' ||
+    'social' ||
+    'sports' ||
+    'photography' => 'passive_useful_activity',
+    _ => 'supporting_work',
+  };
 }
 
 class _ActivityCopy {
@@ -1622,6 +1839,17 @@ class _ActivityCopy {
   String get activityPeriods => l10n.text('activity_periods');
   String get lastUsed => l10n.text('activity_last_used');
   String get classification => l10n.text('activity_classification');
+  String get taskCredit => l10n.text('activity_task_credit');
+  String get appCategories => l10n.text('activity_app_categories');
+  String get chooseAppCategory => l10n.text('activity_choose_app_category');
+  String get chooseAppCategoryDetail =>
+      l10n.text('activity_choose_app_category_detail');
+  String get categoryWillAskUsefulness =>
+      l10n.text('activity_category_will_ask_usefulness');
+  String get categoryUsefulnessQuestion =>
+      l10n.text('activity_category_usefulness_question');
+  String get generallyUseful => l10n.text('activity_generally_useful');
+  String get generallyNotUseful => l10n.text('activity_generally_not_useful');
   String get firstDetected => l10n.text('activity_first_detected');
   String get lastDetected => l10n.text('activity_last_detected');
   String get reviewActivity => l10n.text('activity_review');
@@ -1664,6 +1892,18 @@ class _ActivityCopy {
   String get noActivityToday => l10n.text('activity_none_day');
   String get noReview => l10n.text('activity_none_review');
   String get noReviewDetail => l10n.text('activity_none_review_detail');
+
+  String appCategoryGroup(_ApplicationCategoryGroup value) => l10n.text(
+    switch (value) {
+      _ApplicationCategoryGroup.work => 'activity_category_group_work',
+      _ApplicationCategoryGroup.everyday => 'activity_category_group_everyday',
+      _ApplicationCategoryGroup.leisure => 'activity_category_group_leisure',
+      _ApplicationCategoryGroup.system => 'activity_category_group_system',
+    },
+  );
+
+  String appCategoryName(String category) =>
+      l10n.text('application_category_$category');
 
   String classificationName(String value) {
     return activityClassificationLabel(l10n, value);
