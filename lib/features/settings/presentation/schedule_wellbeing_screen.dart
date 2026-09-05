@@ -91,57 +91,6 @@ class ScheduleWellbeingScreen extends ConsumerWidget {
                     ),
                   ),
                 ),
-                const SizedBox(height: 12),
-                Text(
-                  context.l10n.text('schedule_working_days'),
-                  style: const TextStyle(fontWeight: FontWeight.w700),
-                ),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 7,
-                  runSpacing: 7,
-                  children: [
-                    for (var index = 0; index < dayLabels.length; index++)
-                      FilterChip(
-                        selected: workingDays.contains(index + 1),
-                        label: Text(dayLabels[index]),
-                        onSelected: (selected) {
-                          final next = {...workingDays};
-                          selected
-                              ? next.add(index + 1)
-                              : next.remove(index + 1);
-                          repository.updateScheduleAndWellbeing(
-                            workingDays: next.toList()..sort(),
-                          );
-                        },
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                _TimeTile(
-                  title: context.l10n.text('schedule_work_starts'),
-                  value: _time(settings.workStartMinutes).format(context),
-                  onTap: () => _pick(
-                    context,
-                    ref,
-                    initial: settings.workStartMinutes,
-                    save: (value) => repository.updateScheduleAndWellbeing(
-                      workStartMinutes: value,
-                    ),
-                  ),
-                ),
-                _TimeTile(
-                  title: context.l10n.text('schedule_work_ends'),
-                  value: _time(settings.workEndMinutes).format(context),
-                  onTap: () => _pick(
-                    context,
-                    ref,
-                    initial: settings.workEndMinutes,
-                    save: (value) => repository.updateScheduleAndWellbeing(
-                      workEndMinutes: value,
-                    ),
-                  ),
-                ),
                 const Divider(height: 30),
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
@@ -168,102 +117,164 @@ class ScheduleWellbeingScreen extends ConsumerWidget {
                 if (workSchedule.enabled) ...[
                   const SizedBox(height: 8),
                   Text(
-                    context.l10n.text('schedule_rotation_title'),
+                    context.l10n.text('schedule_working_days'),
                     style: const TextStyle(fontWeight: FontWeight.w700),
                   ),
                   const SizedBox(height: 4),
-                  Text(
-                    context.l10n.text('schedule_rotation_description'),
-                    style: Theme.of(context).textTheme.bodySmall,
+                  Wrap(
+                    spacing: 7,
+                    runSpacing: 7,
+                    children: [
+                      for (var index = 0; index < dayLabels.length; index++)
+                        FilterChip(
+                          selected: workingDays.contains(index + 1),
+                          label: Text(dayLabels[index]),
+                          onSelected: (selected) {
+                            final next = {...workingDays};
+                            selected
+                                ? next.add(index + 1)
+                                : next.remove(index + 1);
+                            repository.updateScheduleAndWellbeing(
+                              workingDays: next.toList()..sort(),
+                            );
+                          },
+                        ),
+                    ],
                   ),
                   const SizedBox(height: 8),
-                  for (
-                    var index = 0;
-                    index < workSchedule.rotation.length;
-                    index++
-                  )
-                    _RotatingShiftTile(
-                      index: index,
-                      shift: workSchedule.rotation[index],
-                      time: _time,
-                      onPickStart: () => _pick(
-                        context,
-                        ref,
-                        initial: workSchedule.rotation[index].startMinutes,
-                        save: (value) {
-                          final next = [...workSchedule.rotation];
-                          final current = next[index];
-                          next[index] = WorkScheduleShift(
-                            week: current.week,
-                            startMinutes: value,
-                            endMinutes: current.endMinutes,
-                          );
-                          repository.updateScheduleAndWellbeing(
-                            workScheduleRotation: next
-                                .map((shift) => shift.toJson())
-                                .toList(growable: false),
-                          );
-                        },
-                      ),
-                      onPickEnd: () => _pick(
-                        context,
-                        ref,
-                        initial: workSchedule.rotation[index].endMinutes,
-                        save: (value) {
-                          final next = [...workSchedule.rotation];
-                          final current = next[index];
-                          next[index] = WorkScheduleShift(
-                            week: current.week,
-                            startMinutes: current.startMinutes,
-                            endMinutes: value,
-                          );
-                          repository.updateScheduleAndWellbeing(
-                            workScheduleRotation: next
-                                .map((shift) => shift.toJson())
-                                .toList(growable: false),
-                          );
-                        },
-                      ),
-                      onRemove: () {
-                        final next = [...workSchedule.rotation]
-                          ..removeAt(index);
-                        repository.updateScheduleAndWellbeing(
-                          workScheduleRotation: [
-                            for (var week = 0; week < next.length; week++)
-                              WorkScheduleShift(
-                                week: week + 1,
-                                startMinutes: next[week].startMinutes,
-                                endMinutes: next[week].endMinutes,
-                              ).toJson(),
-                          ],
-                        );
-                      },
-                    ),
-                  Align(
-                    alignment: AlignmentDirectional.centerStart,
-                    child: TextButton.icon(
-                      onPressed: () {
-                        final next = [
-                          ...workSchedule.rotation,
-                          WorkScheduleShift(
-                            week: workSchedule.rotation.length + 1,
-                            startMinutes: settings.workStartMinutes,
-                            endMinutes: settings.workEndMinutes,
-                          ),
-                        ];
-                        repository.updateScheduleAndWellbeing(
-                          workScheduleRotation: next
-                              .map((shift) => shift.toJson())
-                              .toList(growable: false),
-                        );
-                      },
-                      icon: const Icon(Icons.add_circle_outline),
-                      label: Text(
-                        context.l10n.text('schedule_add_rotation_week'),
+                  _TimeTile(
+                    title: context.l10n.text('schedule_work_starts'),
+                    value: _time(settings.workStartMinutes).format(context),
+                    onTap: () => _pick(
+                      context,
+                      ref,
+                      initial: settings.workStartMinutes,
+                      save: (value) => repository.updateScheduleAndWellbeing(
+                        workStartMinutes: value,
                       ),
                     ),
                   ),
-                  const SizedBox(height: 4),
+                  _TimeTile(
+                    title: context.l10n.text('schedule_work_ends'),
+                    value: _time(settings.workEndMinutes).format(context),
+                    onTap: () => _pick(
+                      context,
+                      ref,
+                      initial: settings.workEndMinutes,
+                      save: (value) => repository.updateScheduleAndWellbeing(
+                        workEndMinutes: value,
+                      ),
+                    ),
+                  ),
+                  const Divider(height: 28),
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    value: workSchedule.rotation.isNotEmpty,
+                    title: Text(context.l10n.text('schedule_rotation_title')),
+                    subtitle: Text(
+                      context.l10n.text('schedule_rotation_description'),
+                    ),
+                    onChanged: (value) => repository.updateScheduleAndWellbeing(
+                      workScheduleRotation: value
+                          ? [
+                              WorkScheduleShift(
+                                week: 1,
+                                startMinutes: settings.workStartMinutes,
+                                endMinutes: settings.workEndMinutes,
+                              ).toJson(),
+                            ]
+                          : const [],
+                    ),
+                  ),
+                  if (workSchedule.rotation.isNotEmpty) ...[
+                    for (
+                      var index = 0;
+                      index < workSchedule.rotation.length;
+                      index++
+                    )
+                      _RotatingShiftTile(
+                        index: index,
+                        shift: workSchedule.rotation[index],
+                        time: _time,
+                        onPickStart: () => _pick(
+                          context,
+                          ref,
+                          initial: workSchedule.rotation[index].startMinutes,
+                          save: (value) {
+                            final next = [...workSchedule.rotation];
+                            final current = next[index];
+                            next[index] = WorkScheduleShift(
+                              week: current.week,
+                              startMinutes: value,
+                              endMinutes: current.endMinutes,
+                            );
+                            repository.updateScheduleAndWellbeing(
+                              workScheduleRotation: next
+                                  .map((shift) => shift.toJson())
+                                  .toList(growable: false),
+                            );
+                          },
+                        ),
+                        onPickEnd: () => _pick(
+                          context,
+                          ref,
+                          initial: workSchedule.rotation[index].endMinutes,
+                          save: (value) {
+                            final next = [...workSchedule.rotation];
+                            final current = next[index];
+                            next[index] = WorkScheduleShift(
+                              week: current.week,
+                              startMinutes: current.startMinutes,
+                              endMinutes: value,
+                            );
+                            repository.updateScheduleAndWellbeing(
+                              workScheduleRotation: next
+                                  .map((shift) => shift.toJson())
+                                  .toList(growable: false),
+                            );
+                          },
+                        ),
+                        onRemove: () {
+                          final next = [...workSchedule.rotation]
+                            ..removeAt(index);
+                          repository.updateScheduleAndWellbeing(
+                            workScheduleRotation: [
+                              for (var week = 0; week < next.length; week++)
+                                WorkScheduleShift(
+                                  week: week + 1,
+                                  startMinutes: next[week].startMinutes,
+                                  endMinutes: next[week].endMinutes,
+                                ).toJson(),
+                            ],
+                          );
+                        },
+                      ),
+                    Align(
+                      alignment: AlignmentDirectional.centerStart,
+                      child: TextButton.icon(
+                        onPressed: () {
+                          final next = [
+                            ...workSchedule.rotation,
+                            WorkScheduleShift(
+                              week: workSchedule.rotation.length + 1,
+                              startMinutes: settings.workStartMinutes,
+                              endMinutes: settings.workEndMinutes,
+                            ),
+                          ];
+                          repository.updateScheduleAndWellbeing(
+                            workScheduleRotation: next
+                                .map((shift) => shift.toJson())
+                                .toList(growable: false),
+                          );
+                        },
+                        icon: const Icon(Icons.add_circle_outline),
+                        label: Text(
+                          context.l10n.text('schedule_add_rotation_week'),
+                        ),
+                      ),
+                    ),
+                  ],
+                  const Divider(height: 28),
                   SwitchListTile(
                     contentPadding: EdgeInsets.zero,
                     value: settings.workReminderEnabled,

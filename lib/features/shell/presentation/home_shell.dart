@@ -1527,16 +1527,17 @@ class _HomeShellState extends ConsumerState<HomeShell>
       location = tz.UTC;
     }
     final offset = Duration(minutes: settings.workReminderOffsetMinutes);
-    final startAt = plan.nextStartUtc(
-      location: location,
-      nowUtc: nowUtc.add(offset),
-    );
+    final startAt = plan.nextStartUtc(location: location, nowUtc: nowUtc);
     if (startAt == null) {
       await localNotificationService.cancelWorkScheduleReminder();
       _workScheduleReminderFingerprint = null;
       return;
     }
-    final reminderAt = startAt.subtract(offset);
+    final timing = workScheduleReminderTiming(
+      shiftStartUtc: startAt,
+      nowUtc: nowUtc,
+      reminderOffset: offset,
+    );
     final fingerprint = Object.hash(
       settings.revision,
       settings.timeZone,
@@ -1552,11 +1553,12 @@ class _HomeShellState extends ConsumerState<HomeShell>
       settings.notificationSoundKey,
       settings.localeCode,
       startAt,
+      timing.scheduledAtUtc,
     );
     if (!force && _workScheduleReminderFingerprint == fingerprint) return;
     await localNotificationService.scheduleWorkScheduleReminder(
-      scheduledAtUtc: reminderAt,
-      minutesBeforeStart: settings.workReminderOffsetMinutes,
+      scheduledAtUtc: timing.scheduledAtUtc,
+      minutesBeforeStart: timing.minutesUntilStart,
       sound: NotificationSounds.forCategory(
         preferencesJson: preferences,
         category: category,

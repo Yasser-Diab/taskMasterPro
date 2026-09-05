@@ -14,6 +14,7 @@ import '../data/activity_aggregation_service.dart';
 import '../data/activity_repository.dart';
 import 'activity_badges.dart';
 import 'break_activity_check_in.dart';
+import 'activity_classification_option.dart';
 
 final activityReviewProvider = StreamProvider<List<ActivityReviewEntry>>(
   (ref) => ref.watch(activityRepositoryProvider).watchReviewQueue(),
@@ -517,7 +518,7 @@ class _ActivityReviewScreenState extends ConsumerState<ActivityReviewScreen> {
       builder: (context) => SafeArea(
         child: ListView(
           shrinkWrap: true,
-          padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 28),
           children: [
             Text(
               title,
@@ -525,10 +526,23 @@ class _ActivityReviewScreenState extends ConsumerState<ActivityReviewScreen> {
                 context,
               ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
             ),
-            const SizedBox(height: 12),
-            ListTile(
-              leading: const Icon(Icons.add_task),
-              title: Text(copy.assignAnotherTask),
+            const SizedBox(height: 6),
+            Text(
+              copy.classification,
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              copy.communityLearningDescription,
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+            const SizedBox(height: 16),
+            ActivityClassificationOption(
+              icon: Icons.task_alt_outlined,
+              title: copy.assignAnotherTask,
+              detail: copy.creditToTasks,
               onTap: () async {
                 final tasks = await ref
                     .read(activityRepositoryProvider)
@@ -553,20 +567,18 @@ class _ActivityReviewScreenState extends ConsumerState<ActivityReviewScreen> {
                 }
               },
             ),
-            ListTile(
-              leading: const Icon(Icons.menu_book_outlined),
-              title: Text(copy.usefulReading),
-              onTap: () => Navigator.pop(
+            const SizedBox(height: 12),
+            Text(
+              copy.productive,
+              style: Theme.of(
                 context,
-                const ActivityResolution(
-                  status: 'confirmed',
-                  classification: 'passive_useful_activity',
-                ),
-              ),
+              ).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w800),
             ),
-            ListTile(
-              leading: const Icon(Icons.support_agent_outlined),
-              title: Text(copy.supportingWork),
+            const SizedBox(height: 8),
+            ActivityClassificationOption(
+              icon: Icons.business_center_outlined,
+              title: copy.supportingWork,
+              detail: copy.helpful,
               onTap: () => Navigator.pop(
                 context,
                 const ActivityResolution(
@@ -575,9 +587,54 @@ class _ActivityReviewScreenState extends ConsumerState<ActivityReviewScreen> {
                 ),
               ),
             ),
-            ListTile(
-              leading: const Icon(Icons.warning_amber_rounded),
-              title: Text(copy.markDistraction),
+            ActivityClassificationOption(
+              icon: Icons.forum_outlined,
+              title: copy.communication,
+              detail: copy.helpful,
+              onTap: () => Navigator.pop(
+                context,
+                const ActivityResolution(
+                  status: 'confirmed',
+                  classification: 'communication',
+                ),
+              ),
+            ),
+            ActivityClassificationOption(
+              icon: Icons.menu_book_outlined,
+              title: copy.usefulReading,
+              detail: copy.research,
+              onTap: () => Navigator.pop(
+                context,
+                const ActivityResolution(
+                  status: 'confirmed',
+                  classification: 'passive_useful_activity',
+                ),
+              ),
+            ),
+            ActivityClassificationOption(
+              icon: Icons.school_outlined,
+              title: copy.learning,
+              detail: copy.helpful,
+              onTap: () => Navigator.pop(
+                context,
+                const ActivityResolution(
+                  status: 'confirmed',
+                  classification: 'learning',
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              copy.notUseful,
+              style: Theme.of(
+                context,
+              ).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: 8),
+            ActivityClassificationOption(
+              icon: Icons.warning_amber_rounded,
+              title: copy.markDistraction,
+              detail: copy.notUseful,
               onTap: () => Navigator.pop(
                 context,
                 const ActivityResolution(
@@ -586,20 +643,10 @@ class _ActivityReviewScreenState extends ConsumerState<ActivityReviewScreen> {
                 ),
               ),
             ),
-            ListTile(
-              leading: const Icon(Icons.link_off),
-              title: Text(copy.notRelated),
-              onTap: () => Navigator.pop(
-                context,
-                const ActivityResolution(
-                  status: 'ignored',
-                  classification: 'unrelated',
-                ),
-              ),
-            ),
-            ListTile(
-              leading: const Icon(Icons.do_not_disturb_alt_outlined),
-              title: Text(copy.generallyUnrelated),
+            ActivityClassificationOption(
+              icon: Icons.do_not_disturb_alt_outlined,
+              title: copy.generallyUnrelated,
+              detail: copy.notUseful,
               onTap: () => Navigator.pop(
                 context,
                 const ActivityResolution(
@@ -608,9 +655,18 @@ class _ActivityReviewScreenState extends ConsumerState<ActivityReviewScreen> {
                 ),
               ),
             ),
-            ListTile(
-              leading: const Icon(Icons.settings_suggest_outlined),
-              title: Text(copy.treatAsSystem),
+            const SizedBox(height: 12),
+            Text(
+              copy.systemActivity,
+              style: Theme.of(
+                context,
+              ).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: 8),
+            ActivityClassificationOption(
+              icon: Icons.settings_suggest_outlined,
+              title: copy.treatAsSystem,
+              detail: copy.systemActivity,
               onTap: () => Navigator.pop(
                 context,
                 const ActivityResolution(
@@ -619,9 +675,10 @@ class _ActivityReviewScreenState extends ConsumerState<ActivityReviewScreen> {
                 ),
               ),
             ),
-            ListTile(
-              leading: const Icon(Icons.apps_outlined),
-              title: Text(copy.thisIsUserApplication),
+            ActivityClassificationOption(
+              icon: Icons.apps_outlined,
+              title: copy.thisIsUserApplication,
+              detail: copy.helpful,
               onTap: () => Navigator.pop(
                 context,
                 const ActivityResolution(
@@ -641,13 +698,17 @@ class _ActivityReviewScreenState extends ConsumerState<ActivityReviewScreen> {
     return showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text(allowRemember ? copy.applyQuestion : copy.applyAllocation),
+        title: Text(
+          allowRemember ? copy.communityLearning : copy.applyAllocation,
+        ),
         content: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 420),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              Text(copy.communityLearningDescription),
+              const SizedBox(height: 16),
               OutlinedButton(
                 onPressed: () => Navigator.pop(context, false),
                 child: Text(copy.selectedOnly, textAlign: TextAlign.center),
@@ -1188,8 +1249,17 @@ class _GroupedActivityCard extends StatelessWidget {
                     style: const TextStyle(fontWeight: FontWeight.w800),
                   ),
                   const SizedBox(height: 6),
-                  ActivityClassificationBadge(
-                    classification: group.classification,
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      ActivityClassificationBadge(
+                        classification: group.classification,
+                      ),
+                      ActivityUsefulnessBadge(
+                        classification: group.classification,
+                      ),
+                    ],
                   ),
                 ],
               )
@@ -1204,8 +1274,17 @@ class _GroupedActivityCard extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(width: 8),
-                  ActivityClassificationBadge(
-                    classification: group.classification,
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      ActivityClassificationBadge(
+                        classification: group.classification,
+                      ),
+                      ActivityUsefulnessBadge(
+                        classification: group.classification,
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -1555,6 +1634,16 @@ class _ActivityCopy {
   String get applyAllocation => l10n.text('activity_apply_allocation');
   String get usefulReading => l10n.text('activity_useful_reading');
   String get supportingWork => l10n.text('activity_supporting_work');
+  String get productive => l10n.text('classification_productive');
+  String get research => l10n.text('classification_research');
+  String get communication => l10n.text('classification_communication');
+  String get learning => l10n.text('classification_learning');
+  String get helpful => l10n.text('helpful');
+  String get notUseful => l10n.text('not_useful');
+  String get systemActivity => l10n.text('system_activity');
+  String get communityLearning => l10n.text('community_system_learning');
+  String get communityLearningDescription =>
+      l10n.text('community_system_learning_description');
   String get markDistraction => l10n.text('activity_mark_distraction');
   String get notRelated => l10n.text('activity_not_related');
   String get generallyUnrelated => l10n.text('activity_generally_unrelated');

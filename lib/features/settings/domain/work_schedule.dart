@@ -149,3 +149,37 @@ class WorkSchedulePlan {
     }
   }
 }
+
+/// A single native work reminder.  If the user enables reminders after the
+/// configured lead time but before a regular or rotating shift starts, the
+/// reminder should run immediately.  Skipping to the following week is a
+/// surprising and unsafe outcome for a setting the user just enabled.
+class WorkScheduleReminderTiming {
+  const WorkScheduleReminderTiming({
+    required this.scheduledAtUtc,
+    required this.minutesUntilStart,
+  });
+
+  final DateTime scheduledAtUtc;
+  final int minutesUntilStart;
+}
+
+WorkScheduleReminderTiming workScheduleReminderTiming({
+  required DateTime shiftStartUtc,
+  required DateTime nowUtc,
+  required Duration reminderOffset,
+}) {
+  final start = shiftStartUtc.toUtc();
+  final now = nowUtc.toUtc();
+  final configuredReminder = start.subtract(reminderOffset);
+  final scheduledAt = configuredReminder.isAfter(now)
+      ? configuredReminder
+      : now.add(const Duration(seconds: 1));
+  final remaining = start.difference(now);
+  return WorkScheduleReminderTiming(
+    scheduledAtUtc: scheduledAt,
+    minutesUntilStart: remaining <= Duration.zero
+        ? 0
+        : (remaining.inSeconds + 59) ~/ 60,
+  );
+}

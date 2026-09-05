@@ -265,6 +265,8 @@ void main() {
       );
     }
     await tester.pump(const Duration(milliseconds: 500));
+    expect(find.text('Productive'), findsOneWidget);
+    expect(find.text('Supporting work'), findsOneWidget);
     await tester.ensureVisible(find.text('Assign to another task'));
     await tester.pump(const Duration(milliseconds: 200));
     await tester.tap(find.text('Assign to another task'));
@@ -277,7 +279,13 @@ void main() {
     }
     await tester.pump(const Duration(milliseconds: 500));
 
-    expect(find.text('Credit to tasks'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.text('Credit to tasks'),
+      ),
+      findsOneWidget,
+    );
     expect(find.byType(CheckboxListTile), findsOneWidget);
     expect(tester.takeException(), isNull);
     await tester.tap(find.text('Cancel'));

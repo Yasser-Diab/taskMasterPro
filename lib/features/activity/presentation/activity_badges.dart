@@ -35,6 +35,26 @@ ActivityBadgeTone activityBadgeTone(String classification) {
   };
 }
 
+/// Whether an application category is generally useful outside one particular
+/// task. System and unknown activity intentionally stay undecided: neither a
+/// technical utility nor an unreviewed capture should be presented as a
+/// productivity judgement.
+@visibleForTesting
+bool? activityClassificationIsGenerallyUseful(String classification) {
+  return switch (classification) {
+    'direct_task_work' ||
+    'supporting_work' ||
+    'research' ||
+    'communication' ||
+    'learning' ||
+    'reading' ||
+    'passive_useful_activity' ||
+    'user_application' => true,
+    'distraction' || 'unrelated' || 'generally_unrelated' => false,
+    _ => null,
+  };
+}
+
 String activityClassificationLabel(
   AppLocalizations l10n,
   String classification,
@@ -101,6 +121,59 @@ class ActivityClassificationBadge extends StatelessWidget {
         decoration: BoxDecoration(
           color: colors.background,
           borderRadius: BorderRadius.circular(999),
+        ),
+        child: Text(
+          label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: Theme.of(context).textTheme.labelSmall?.copyWith(
+            color: colors.foreground,
+            fontWeight: FontWeight.w800,
+            height: 1.05,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Makes the useful/not-useful decision explicit beside the app category. The
+/// review sheet uses the same classification when it stores a remembered rule
+/// and submits an opt-in anonymous aggregate vote, so the list never implies
+/// a judgement that the data model cannot support.
+class ActivityUsefulnessBadge extends StatelessWidget {
+  const ActivityUsefulnessBadge({
+    required this.classification,
+    this.maxWidth = 132,
+    super.key,
+  });
+
+  final String classification;
+  final double maxWidth;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = context.l10n;
+    final useful = activityClassificationIsGenerallyUseful(classification);
+    final label = switch (useful) {
+      true => l10n.text('helpful'),
+      false => l10n.text('not_useful'),
+      null => l10n.text('activity_needs_review'),
+    };
+    final colors = _colorsFor(switch (useful) {
+      true => ActivityBadgeTone.productive,
+      false => ActivityBadgeTone.negative,
+      null => ActivityBadgeTone.needsReview,
+    }, Theme.of(context));
+    return Semantics(
+      label: '$label ${l10n.text('activity_classification')}',
+      child: Container(
+        constraints: BoxConstraints(maxWidth: maxWidth),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: colors.background,
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: colors.foreground.withValues(alpha: 0.3)),
         ),
         child: Text(
           label,

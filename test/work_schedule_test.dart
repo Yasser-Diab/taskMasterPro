@@ -51,4 +51,33 @@ void main() {
       isNull,
     );
   });
+
+  test('regular weekly schedules use standard hours without a rotation', () {
+    final plan = WorkSchedulePlan(
+      enabled: true,
+      workingDays: const {DateTime.monday, DateTime.wednesday},
+      standardStartMinutes: 9 * 60,
+      standardEndMinutes: 17 * 60,
+      anchorDate: DateTime(2026, 1, 5),
+      rotation: const [],
+    );
+
+    final next = plan.nextStartUtc(
+      location: tz.getLocation('Europe/Warsaw'),
+      nowUtc: DateTime.utc(2026, 1, 11, 12),
+    );
+
+    expect(next, DateTime.utc(2026, 1, 12, 8));
+  });
+
+  test('enabling a reminder after its lead time alerts before this shift', () {
+    final timing = workScheduleReminderTiming(
+      shiftStartUtc: DateTime.utc(2026, 1, 12, 9),
+      nowUtc: DateTime.utc(2026, 1, 12, 8, 50),
+      reminderOffset: const Duration(minutes: 15),
+    );
+
+    expect(timing.scheduledAtUtc, DateTime.utc(2026, 1, 12, 8, 50, 1));
+    expect(timing.minutesUntilStart, 10);
+  });
 }

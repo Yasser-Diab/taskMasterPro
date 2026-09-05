@@ -103,6 +103,11 @@
     "Get a helpful next step": "Erhalte einen hilfreichen nächsten Schritt",
     "Coaching uses today’s schedule, paused work, roadmap priorities and your preferences to offer a respectful next action":
       "Das Coaching nutzt deinen heutigen Plan, pausierte Arbeit, Roadmap-Prioritäten und deine Wünsche, um einen passenden nächsten Schritt vorzuschlagen.",
+    "New in 0.0.30": "Neu in 0.0.30",
+    "Use DayVector in Polish": "Nutze DayVector auf Polnisch",
+    "Choose Polish from the language menu on the website and in the app. Your language choice stays with you as you plan, focus and review progress":
+      "Wähle Polnisch im Sprachmenü der Website und App. Deine Sprachwahl begleitet dich beim Planen, Fokussieren und Überprüfen deines Fortschritts.",
+    "Polish Language Now Available!": "Polnische Sprache jetzt verfügbar!",
     "A practical loop": "Ein einfacher Ablauf",
     "From a long-term goal to today’s next action":
       "Vom langfristigen Ziel zum nächsten Schritt heute",
@@ -748,6 +753,11 @@
     "Get a helpful next step": "احصل على خطوة تالية مفيدة",
     "Coaching uses today’s schedule, paused work, roadmap priorities and your preferences to offer a respectful next action":
       "يستخدم التدريب جدول اليوم والعمل المتوقف مؤقتًا وأولويات خريطة الطريق وتفضيلاتك لتقديم الإجراء التالي المحترم",
+    "New in 0.0.30": "جديد في 0.0.30",
+    "Use DayVector in Polish": "استخدم DayVector باللغة البولندية",
+    "Choose Polish from the language menu on the website and in the app. Your language choice stays with you as you plan, focus and review progress":
+      "اختر اللغة البولندية من قائمة اللغات في الموقع والتطبيق. يبقى اختيارك للغة معك أثناء التخطيط والتركيز ومراجعة التقدم.",
+    "Polish Language Now Available!": "اللغة البولندية متاحة الآن!",
     "A practical loop": "حلقة عملية",
     "From a long-term goal to today’s next action":
       "من هدف طويل المدى إلى الإجراء التالي اليوم",
@@ -1491,6 +1501,10 @@
     "Learn and improve": "Ucz się i rozwijaj",
     "Useful work is never lost": "Przydatna praca nigdy nie przepada",
     "Get a helpful next step": "Otrzymaj pomocny następny krok",
+    "New in 0.0.30": "Nowość w 0.0.30",
+    "Use DayVector in Polish": "Używaj DayVector po polsku",
+    "Choose Polish from the language menu on the website and in the app. Your language choice stays with you as you plan, focus and review progress":
+      "Wybierz język polski z menu języka na stronie i w aplikacji. Twój wybór pozostaje z Tobą podczas planowania, skupienia i przeglądania postępów.",
     "Personal coaching": "Osobisty coaching",
     "Your focus space": "Twoja przestrzeń skupienia",
     "Saved locally": "Zapisano lokalnie",

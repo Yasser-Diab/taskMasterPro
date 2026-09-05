@@ -239,41 +239,83 @@ p {
 }
 
 .release-announcement-section {
-  padding-top: 18px;
+  padding: 92px 0 0;
 }
 
 .release-announcement-slot {
   display: flex;
   align-items: center;
+  justify-content: center;
   min-height: 0;
 }
 
 .timeout-badge {
   display: inline-flex;
   align-items: center;
-  gap: 0.38rem;
-  max-width: min(100%, 28rem);
+  gap: 0.7rem;
+  width: 100%;
+  max-width: 48rem;
   margin: 0;
-  padding: 0.42rem 0.72rem;
-  border: 1px solid rgba(77, 210, 161, 0.42);
-  border-radius: 999px;
-  background: rgba(48, 209, 141, 0.1);
-  color: #77e7ba;
-  font-size: 0.72rem;
+  padding: 0.78rem 1rem;
+  border: 1px solid rgba(77, 210, 161, 0.58);
+  border-radius: 16px;
+  background:
+    linear-gradient(102deg, rgba(26, 173, 125, 0.24), rgba(55, 93, 215, 0.2)),
+    rgba(16, 33, 58, 0.92);
+  box-shadow: 0 12px 28px rgba(6, 19, 39, 0.22);
+  color: #e9fff5;
+  font-size: 0.9rem;
   font-weight: 800;
   line-height: 1.2;
   text-decoration: none;
-  transition: background 150ms ease, border-color 150ms ease;
+  transition: background 150ms ease, border-color 150ms ease, transform 150ms ease;
 }
 
 .timeout-badge:hover {
-  border-color: rgba(96, 236, 181, 0.78);
-  background: rgba(48, 209, 141, 0.18);
+  border-color: rgba(119, 231, 186, 0.95);
+  background:
+    linear-gradient(102deg, rgba(26, 173, 125, 0.34), rgba(55, 93, 215, 0.28)),
+    rgba(16, 33, 58, 0.96);
+  transform: translateY(-1px);
 }
 
-.timeout-badge .material-symbols-rounded {
-  color: inherit;
-  font-size: 1rem;
+.timeout-badge-icon {
+  display: grid;
+  width: 2rem;
+  height: 2rem;
+  flex: 0 0 2rem;
+  place-items: center;
+  border-radius: 10px;
+  background: rgba(111, 232, 186, 0.16);
+  color: #7cf0bf;
+  font-size: 1.18rem;
+}
+
+.timeout-badge-message {
+  flex: 1;
+}
+
+.timeout-badge-action {
+  color: #a8c8ff;
+  font-size: 1.15rem;
+}
+
+html[data-theme="light"] .timeout-badge {
+  background:
+    linear-gradient(102deg, rgba(27, 164, 118, 0.16), rgba(75, 118, 230, 0.13)),
+    #f8fcff;
+  border-color: rgba(25, 153, 108, 0.42);
+  box-shadow: 0 10px 24px rgba(21, 57, 99, 0.1);
+  color: #103354;
+}
+
+html[data-theme="light"] .timeout-badge-icon {
+  background: rgba(25, 153, 108, 0.13);
+  color: #087957;
+}
+
+html[data-theme="light"] .timeout-badge-action {
+  color: #2459bb;
 }
 
 .language-toggle,

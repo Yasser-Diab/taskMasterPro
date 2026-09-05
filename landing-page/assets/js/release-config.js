@@ -11,12 +11,12 @@ window.DAYVECTOR_RELEASES = Object.freeze({
     'https://api.github.com/repos/Yasser-Diab/taskMasterPro/releases/latest',
   apiBase:
     'https://api.github.com/repos/Yasser-Diab/taskMasterPro/releases/tags/',
-  announcement: Object.freeze({
-    id: 'polish-language-0-0-30',
-    message: 'Polish Language Now Available!',
-    href: '#download',
-    // The site removes an expired announcement without a deploy.  Replace this
-    // object for the next feature drop instead of adding another page-body path.
-    expiresAt: '2027-03-05T00:00:00.000Z',
-  }),
+  // The announcement content lives in the dedicated file, so a feature launch
+  // can be updated without coupling editorial copy to the release API setup.
+  // Resolve from this file rather than the current page: this works for the
+  // landing page as well as its nested legal and Pomodoro pages.
+  announcementsUrl: new URL(
+    '../../announcements.html?v=20260905e',
+    document.currentScript?.src || window.location.href,
+  ).href,
 })

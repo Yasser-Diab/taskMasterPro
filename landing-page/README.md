@@ -30,6 +30,16 @@ When a release contains Windows `.exe`, Android `.apk` and Android `.aab` assets
 buttons link directly to them. Until then, the page shows that the installers
 are not yet published.
 
+## Feature announcement badge
+
+`announcements.html` is the single editable content source for the visible
+in-page feature announcement. Add a `<template data-dayvector-announcement>`
+for each launch, with an ISO-8601 `data-published-at`, mandatory
+`data-expires-at`, and a `data-target` that names the related landing-page
+section ID. The page loads the file at runtime, displays only the newest active
+announcement, and automatically hides expired items. Adding a newer item
+therefore replaces the previous badge without editing the main page script.
+
 To preview locally from the repository root:
 
 ```powershell

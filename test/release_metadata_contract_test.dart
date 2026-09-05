@@ -92,6 +92,23 @@ void main() {
     expect(site, contains('cleanReleaseNoteHtml'));
   });
 
+  test('landing feature announcement is external, time-bound and anchor-linked', () {
+    final announcementSource = _read('landing-page/announcements.html');
+    final announcementScript = _read(
+      'landing-page/assets/js/release-announcement.js',
+    );
+    final releaseConfig = _read('landing-page/assets/js/release-config.js');
+
+    expect(announcementSource, contains('data-dayvector-announcement'));
+    expect(announcementSource, contains('data-published-at'));
+    expect(announcementSource, contains('data-expires-at'));
+    expect(announcementSource, contains('data-target="#polish-language"'));
+    expect(announcementScript, contains('fetch(source'));
+    expect(announcementScript, contains('now < announcement.expiresAt'));
+    expect(announcementScript, contains('second.publishedAt - first.publishedAt'));
+    expect(releaseConfig, contains('announcementsUrl:'));
+  });
+
   test('Windows tray reveal preserves a maximized window placement', () {
     final runner = _read('windows/runner/flutter_window.cpp');
     final start = runner.indexOf('void FlutterWindow::RestoreAndFocus()');
