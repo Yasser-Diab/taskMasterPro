@@ -3,6 +3,28 @@ import 'package:taskmaster_pro/core/time/time_zone_service.dart';
 
 void main() {
   group('IANA time-zone selection', () {
+    test(
+      'automatic mode prefers the operating-system zone over stale Cairo',
+      () {
+        expect(
+          TimeZoneService.resolveStoredIanaZone(
+            deviceZone: 'America/Vancouver',
+            storedZone: 'Africa/Cairo',
+            useDeviceTimeZone: true,
+          ),
+          'America/Vancouver',
+        );
+        expect(
+          TimeZoneService.resolveStoredIanaZone(
+            deviceZone: 'America/Vancouver',
+            storedZone: 'Asia/Kathmandu',
+            useDeviceTimeZone: false,
+          ),
+          'Asia/Kathmandu',
+        );
+      },
+    );
+
     test('uses IANA IDs and formats fractional UTC offsets', () {
       final kathmandu = TimeZoneService.describe(
         'Asia/Kathmandu',

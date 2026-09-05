@@ -11,6 +11,7 @@ import 'package:uuid/uuid.dart';
 
 import '../database/app_database.dart';
 import '../platform/device_identity.dart';
+import '../time/time_zone_service.dart';
 import '../../features/activity/data/activity_privacy_policy.dart';
 import '../../features/roadmaps/data/roadmap_repository.dart';
 import '../../features/tasks/data/installed_application_service.dart';
@@ -459,6 +460,25 @@ Future<void> runRealtimeConvergencePass({
   await pullChanges();
   if (!isCurrent()) return;
   await restoreCanonicalRuntime();
+}
+
+/// Realtime is the preferred delivery path, but a subscribed socket is not
+/// proof that the project is permitted to deliver broadcast rows.  Keep a
+/// small, singleton runtime check as a safety net: it reads one compact row
+/// rather than replaying the account's full change log, so a Start on another
+/// device can never remain invisible until someone pauses it.
+///
+/// The quiet interval is intentionally still short.  It applies only while
+/// this account is open in the app and is cancelled on sign-out; task,
+/// roadmap, Activity and history data continue to be event driven.
+@visibleForTesting
+Duration runtimeFallbackPollDelay({
+  required bool activeRuntime,
+  required bool hasRecentRealtimeChange,
+}) {
+  if (activeRuntime) return const Duration(seconds: 4);
+  if (!hasRecentRealtimeChange) return const Duration(seconds: 8);
+  return const Duration(seconds: 30);
 }
 
 /// Coalesces a transaction's burst of Realtime envelopes without allowing an
@@ -2060,6 +2080,7 @@ class SyncService {
   Timer? _pendingOutboxWakeTimer;
   Timer? _realtimeRecoveryTimer;
   Timer? _snapshotRetryTimer;
+  Timer? _runtimeFallbackTimer;
   RealtimeChannel? _channel;
   SyncHealth _currentHealth = SyncHealth.syncing;
   bool _liveConnectionAvailable = false;
@@ -2092,6 +2113,7 @@ class SyncService {
   bool _pendingRealtimeGapRecovery = false;
   bool _pendingExplicitRecovery = false;
   bool _pendingRealtimeResubscribe = false;
+  DateTime? _lastRealtimeChangeAt;
 
   static const _deviceAuthorizationTtl = Duration(minutes: 30);
 
@@ -2195,6 +2217,8 @@ class SyncService {
     _realtimeRecoveryTimer = null;
     _snapshotRetryTimer?.cancel();
     _snapshotRetryTimer = null;
+    _runtimeFallbackTimer?.cancel();
+    _runtimeFallbackTimer = null;
     _realtimeWake.cancel();
     await _connectivitySubscription?.cancel();
     _connectivitySubscription = null;
@@ -2225,6 +2249,7 @@ class SyncService {
     _pendingRealtimeGapRecovery = false;
     _pendingExplicitRecovery = false;
     _pendingRealtimeResubscribe = false;
+    _lastRealtimeChangeAt = null;
     _traffic.clear();
     _setHealth(SyncHealth.offline);
   }
@@ -2346,6 +2371,7 @@ class SyncService {
     if (!_isCurrentOperation(generation, user.id)) return;
     _initialSyncComplete = true;
     _watchPendingOutbox(generation: generation, userId: user.id);
+    _scheduleRuntimeFallback();
     if (!_liveConnectionAvailable) {
       _scheduleRealtimeRecovery();
     }
@@ -2830,6 +2856,7 @@ class SyncService {
         .onBroadcast(
           event: 'entity_changed',
           callback: (payload) {
+            _lastRealtimeChangeAt = DateTime.now().toUtc();
             _recordTraffic(
               'realtime:entity_changed',
               downloaded: payload,
@@ -2889,6 +2916,65 @@ class SyncService {
             if (_initialSyncComplete) _scheduleRealtimeRecovery();
           }
         });
+  }
+
+  /// A private Realtime subscription can be healthy while a deployment has a
+  /// missing or overly strict `realtime.messages` receive policy.  In that
+  /// state a remote execution transition used to sit on the server until a
+  /// later, unrelated action happened.  This fallback asks only for the
+  /// account's singleton runtime row and materializes its two dependencies
+  /// before exposing it to widgets.
+  void _scheduleRuntimeFallback({Duration? delay}) {
+    if (_runtimeFallbackTimer != null || _startedForUserId == null) return;
+    final generation = _accountGeneration;
+    final userId = _startedForUserId!;
+    final now = DateTime.now().toUtc();
+    final hasRecentRealtimeChange =
+        _lastRealtimeChangeAt != null &&
+        now.difference(_lastRealtimeChangeAt!) < const Duration(minutes: 2);
+    final effectiveDelay =
+        delay ??
+        runtimeFallbackPollDelay(
+          activeRuntime: false,
+          hasRecentRealtimeChange: hasRecentRealtimeChange,
+        );
+    _runtimeFallbackTimer = Timer(effectiveDelay, () {
+      _runtimeFallbackTimer = null;
+      if (!_isCurrentOperation(generation, userId)) return;
+      unawaited(_runRuntimeFallback(generation, userId));
+    });
+  }
+
+  Future<void> _runRuntimeFallback(int generation, String userId) async {
+    var activeRuntime = false;
+    await _runBestEffort(() async {
+      await _restoreCanonicalRuntime(
+        trafficSource: 'table:user_runtime_state.fallback',
+      );
+      final runtime =
+          await (database.select(database.localRuntimeStates)..where(
+                (row) =>
+                    row.id.equals(localRuntimeStateId(userId)) &
+                    row.userId.equals(userId),
+              ))
+              .getSingleOrNull();
+      activeRuntime =
+          runtime != null &&
+          runtime.state != 'idle' &&
+          runtime.activeTaskId != null &&
+          runtime.sessionId != null;
+    });
+    if (!_isCurrentOperation(generation, userId)) return;
+    final now = DateTime.now().toUtc();
+    final hasRecentRealtimeChange =
+        _lastRealtimeChangeAt != null &&
+        now.difference(_lastRealtimeChangeAt!) < const Duration(minutes: 2);
+    _scheduleRuntimeFallback(
+      delay: runtimeFallbackPollDelay(
+        activeRuntime: activeRuntime,
+        hasRecentRealtimeChange: hasRecentRealtimeChange,
+      ),
+    );
   }
 
   void _scheduleRealtimeRecovery() {
@@ -10543,7 +10629,7 @@ class SyncService {
       case 'task_occurrences':
         await _applyTask(row);
       case 'user_runtime_state':
-        await _applyRemoteRuntime(row);
+        await _applyCanonicalRuntimeWithReferences(row);
       case 'roadmaps':
         await _applyRoadmap(row);
       case 'activity_segments':
@@ -10640,6 +10726,19 @@ class SyncService {
     final data = row['data'] is Map
         ? Map<String, dynamic>.from(row['data'] as Map)
         : const <String, dynamic>{};
+    final useDeviceTimeZone = data['use_device_time_zone'] as bool? ?? true;
+    // `time_zone` belongs to a shared account row, but automatic time must
+    // belong to the device rendering it.  Applying the server value verbatim
+    // here made a device in another region inherit Cairo (or the last device
+    // to write its zone) until the next settings refresh.
+    final detectedDeviceTimeZone = useDeviceTimeZone
+        ? await TimeZoneService.detectDeviceIanaZone()
+        : null;
+    final effectiveTimeZone = TimeZoneService.resolveStoredIanaZone(
+      deviceZone: detectedDeviceTimeZone,
+      storedZone: row['time_zone'] as String?,
+      useDeviceTimeZone: useDeviceTimeZone,
+    );
     await database
         .into(database.localAppSettings)
         .insertOnConflictUpdate(
@@ -10651,10 +10750,8 @@ class SyncService {
             accentColor: Value(
               (row['accent_color'] as num?)?.toInt() ?? 0xFF0B78D1,
             ),
-            timeZone: Value(row['time_zone'] as String? ?? 'UTC'),
-            useDeviceTimeZone: Value(
-              data['use_device_time_zone'] as bool? ?? true,
-            ),
+            timeZone: Value(effectiveTimeZone),
+            useDeviceTimeZone: Value(useDeviceTimeZone),
             clockFormat: Value(row['clock_format'] as String? ?? '24h'),
             notificationSoundKey: Value(
               row['notification_sound'] as String? ?? 'system',
@@ -11113,6 +11210,83 @@ class SyncService {
         );
   }
 
+  /// Materializes a canonical runtime only after its task and execution
+  /// session are locally usable.  A runtime row is a pointer, not a complete
+  /// timer on its own: exposing it first lets repository validation sanitize
+  /// it to idle, and the receiver can then be left with a visible status but
+  /// no timestamp or accumulated work.
+  ///
+  /// Incremental pulls normally reach task, session and runtime in that
+  /// order. This guard also covers out-of-order broadcasts, a compact runtime
+  /// recovery read, and a second device joining mid-session.
+  Future<void> _applyCanonicalRuntimeWithReferences(
+    Map<String, dynamic> row, {
+    bool force = false,
+  }) async {
+    final userId = row['user_id'] as String?;
+    if (userId == null || userId != client.auth.currentUser?.id) return;
+    final state = row['state'] as String? ?? 'idle';
+    final taskId = row['active_task_occurrence_id'] as String?;
+    final sessionId = row['active_session_id'] as String?;
+    if (state != 'idle') {
+      final activeTaskId = taskId;
+      final activeSessionId = sessionId;
+      if (activeTaskId == null || activeSessionId == null) return;
+      if (!await _hasUsableRuntimeReferences(
+        userId: userId,
+        taskId: activeTaskId,
+        sessionId: activeSessionId,
+      )) {
+        await _pullEntity('task_occurrences', activeTaskId);
+        await _pullEntity('execution_sessions', activeSessionId);
+      }
+      // Do not publish a dangling runtime for a deleted/unauthorized task.
+      // The next bounded recovery can retry the two compact reads; widgets
+      // never get a row that they immediately have to erase as corrupted.
+      if (!await _hasUsableRuntimeReferences(
+        userId: userId,
+        taskId: activeTaskId,
+        sessionId: activeSessionId,
+      )) {
+        return;
+      }
+    }
+    await _applyRemoteRuntime(row, force: force);
+  }
+
+  Future<bool> _hasUsableRuntimeReferences({
+    required String userId,
+    required String taskId,
+    required String sessionId,
+  }) async {
+    final task =
+        await (database.select(database.localTasks)..where(
+              (row) =>
+                  row.id.equals(taskId) &
+                  row.userId.equals(userId) &
+                  row.deletedAt.isNull() &
+                  row.status.isNotIn(const [
+                    'completed',
+                    'cancelled',
+                    'archived',
+                  ]),
+            ))
+            .getSingleOrNull();
+    if (task == null) return false;
+    final session =
+        await (database.select(database.localEntityRecords)..where(
+              (row) =>
+                  row.id.equals(sessionId) &
+                  row.userId.equals(userId) &
+                  row.entityType.equals('execution_sessions') &
+                  row.parentId.equals(taskId) &
+                  row.deletedAt.isNull() &
+                  row.status.isNotIn(const ['completed', 'cancelled']),
+            ))
+            .getSingleOrNull();
+    return session != null;
+  }
+
   /// `user_runtime_state` is the sole cross-device authority for the current
   /// timer.  Session rows remain auditable history; they must never compete
   /// with each other to decide which task is live on a dashboard.
@@ -11290,11 +11464,14 @@ class SyncService {
   Future<void> applyRemoteRuntimeForTesting(Map<String, dynamic> row) =>
       _applyRemoteRuntime(row);
 
-  Future<void> _restoreCanonicalRuntime({bool force = false}) async {
+  Future<void> _restoreCanonicalRuntime({
+    bool force = false,
+    String trafficSource = 'table:user_runtime_state.recovery',
+  }) async {
     final user = client.auth.currentUser;
     if (user == null) return;
     final remote = await _trackedRemote<Map<String, dynamic>?>(
-      'table:user_runtime_state.recovery',
+      trafficSource,
       () => client
           .from('user_runtime_state')
           .select()
@@ -11303,7 +11480,10 @@ class SyncService {
       fingerprint: 'runtime:${user.id}',
     );
     if (remote == null) return;
-    await _applyRemoteRuntime(Map<String, dynamic>.from(remote), force: force);
+    await _applyCanonicalRuntimeWithReferences(
+      Map<String, dynamic>.from(remote),
+      force: force,
+    );
   }
 
   DateTime? _instant(Object? value) {

@@ -67,13 +67,17 @@ void main() {
     expect(byKey['work_non_friday']!.resourceName, isNull);
     expect(byKey['work_non_friday']!.executionMode, 'pomodoro');
     expect(
-      byKey['work_non_friday']!.executionSettings['pomodoro_focus_ms'],
+      byKey['work_non_friday']!.executionSettingsFor(
+        'Asia/Kathmandu',
+      )['pomodoro_focus_ms'],
       const Duration(minutes: 25).inMilliseconds,
     );
     final workTimer = PomodoroExecutionSnapshot.fromConfiguration(
       runtime: null,
       now: DateTime(2026, 8, 13, 9),
-      configuration: byKey['work_non_friday']!.executionSettings,
+      configuration: byKey['work_non_friday']!.executionSettingsFor(
+        'Asia/Kathmandu',
+      ),
       plannedMs: byKey['work_non_friday']!.duration.inMilliseconds,
     );
     expect(workTimer.remainingMs, const Duration(minutes: 25).inMilliseconds);
@@ -97,6 +101,46 @@ void main() {
             ..where((row) => row.id.equals('marker-2')))
           .write(const LocalTasksCompanion(dataJson: Value('{}')));
       expect(await installer.isEligible(), isFalse);
+    },
+  );
+
+  test(
+    'starter routine materializes in the account time zone, not Cairo',
+    () async {
+      final userId = client.auth.currentUser!.id;
+      await _insertImportedRoadmaps(database, userId);
+      await _insertRequiredDomains(database, userId);
+      final now = DateTime.utc(2026, 8, 13);
+      await database
+          .into(database.localAppSettings)
+          .insert(
+            LocalAppSettingsCompanion.insert(
+              id: localAppSettingsId(userId),
+              userId: Value(userId),
+              timeZone: const Value('Asia/Kathmandu'),
+              useDeviceTimeZone: const Value(false),
+              createdAt: now,
+              updatedAt: now,
+            ),
+          );
+
+      final result = await installer.ensureInstalled();
+      expect(result.templatesCreated, 9);
+      expect(result.rulesCreated, 9);
+      final templates = await entities.list(entityType: 'task_templates');
+      final rules = await entities.list(entityType: 'recurrence_rules');
+      for (final template in templates) {
+        final data = entities.decode(template);
+        expect(
+          (data['execution_settings'] as Map)['time_zone'],
+          'Asia/Kathmandu',
+        );
+        expect((data['data'] as Map)['time_zone'], 'Asia/Kathmandu');
+      }
+      for (final rule in rules) {
+        final data = entities.decode(rule);
+        expect((data['rule_data'] as Map)['time_zone'], 'Asia/Kathmandu');
+      }
     },
   );
 

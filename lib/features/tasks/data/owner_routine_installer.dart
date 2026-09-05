@@ -4,6 +4,7 @@ import 'package:drift/drift.dart';
 
 import '../../../core/data/entity_record_repository.dart';
 import '../../../core/database/app_database.dart';
+import '../../../core/time/time_zone_service.dart';
 import '../../settings/data/settings_repository.dart';
 import '../domain/owner_routine_catalog.dart';
 import '../domain/task_domain_catalog.dart';
@@ -129,6 +130,7 @@ class OwnerRoutineInstaller {
 
     final roadmaps = await _roadmapsByTitle();
     final settingsUpdated = await _repairLegacyWorkScheduleSettings();
+    final timeZone = await _effectiveTimeZone();
     final phases = await entities.list(entityType: 'roadmap_phases');
     final phaseByRoutine = <String, String?>{};
     for (final routine in OwnerRoutineCatalog.routines) {
@@ -176,8 +178,8 @@ class OwnerRoutineInstaller {
       // deterministic records on every launch made built-in routines
       // impossible to delete permanently.
       if (rule?.deletedAt != null || template?.deletedAt != null) continue;
-      final desiredRuleData = _ruleLocalData(routine, templateId);
-      final desiredRulePayload = _rulePayload(routine, templateId);
+      final desiredRuleData = _ruleLocalData(routine, templateId, timeZone);
+      final desiredRulePayload = _rulePayload(routine, templateId, timeZone);
       if (rule == null) {
         await entities.create(
           EntityRecordDraft(
@@ -190,7 +192,7 @@ class OwnerRoutineInstaller {
           ),
         );
         rulesCreated++;
-      } else if (_ruleNeedsRepair(entities.decode(rule), routine)) {
+      } else if (_ruleNeedsRepair(entities.decode(rule), routine, timeZone)) {
         await entities.update(
           rule,
           title: '${routine.title} recurrence',
@@ -207,6 +209,7 @@ class OwnerRoutineInstaller {
         phaseId: phaseId,
         domainId: domainId,
         ruleId: ruleId,
+        timeZone: timeZone,
       );
       final desiredTemplatePayload = _templatePayload(
         routine: routine,
@@ -214,6 +217,7 @@ class OwnerRoutineInstaller {
         phaseId: phaseId,
         domainId: domainId,
         ruleId: ruleId,
+        timeZone: timeZone,
       );
       if (template == null) {
         await entities.create(
@@ -228,7 +232,11 @@ class OwnerRoutineInstaller {
           ),
         );
         templatesCreated++;
-      } else if (_templateNeedsRepair(entities.decode(template), routine)) {
+      } else if (_templateNeedsRepair(
+        entities.decode(template),
+        routine,
+        timeZone,
+      )) {
         await entities.update(
           template,
           title: routine.title,
@@ -238,7 +246,7 @@ class OwnerRoutineInstaller {
         templatesUpdated++;
       }
     }
-    final occurrencesUpdated = await _repairWorkOccurrences();
+    final occurrencesUpdated = await _repairWorkOccurrences(timeZone);
     return OwnerRoutineInstallResult(
       templatesCreated: templatesCreated,
       rulesCreated: rulesCreated,
@@ -246,6 +254,28 @@ class OwnerRoutineInstaller {
       rulesUpdated: rulesUpdated,
       occurrencesUpdated: occurrencesUpdated,
       settingsUpdated: settingsUpdated,
+    );
+  }
+
+  /// Starter routines are scheduled in the account/device's own local IANA
+  /// zone. Existing imported Cairo rows are therefore repaired on automatic
+  /// accounts outside Cairo, while a manual timezone choice remains intact.
+  Future<String> _effectiveTimeZone() async {
+    final current =
+        await (database.select(database.localAppSettings)..where(
+              (row) =>
+                  row.id.equals(localAppSettingsId(_userId)) &
+                  row.userId.equals(_userId),
+            ))
+            .getSingleOrNull();
+    if (current == null) return 'UTC';
+    final detected = current.useDeviceTimeZone
+        ? await TimeZoneService.detectDeviceIanaZone()
+        : null;
+    return TimeZoneService.resolveStoredIanaZone(
+      deviceZone: detected,
+      storedZone: current.timeZone,
+      useDeviceTimeZone: current.useDeviceTimeZone,
     );
   }
 
@@ -279,6 +309,7 @@ class OwnerRoutineInstaller {
   bool _ruleNeedsRepair(
     Map<String, Object?> actual,
     OwnerRoutineDefinition routine,
+    String timeZone,
   ) {
     final nested = actual['rule_data'] is Map
         ? Map<String, Object?>.from(actual['rule_data'] as Map)
@@ -290,12 +321,14 @@ class OwnerRoutineInstaller {
         (actual['interval_value'] as num?)?.toInt() != 1 ||
         !_sameIntegerList(actual['weekdays'], routine.weekdays) ||
         nested['local_time'] != routine.localTime ||
+        nested['time_zone'] != timeZone ||
         !_sameIntegerList(nested['weekdays'], routine.weekdays);
   }
 
   bool _templateNeedsRepair(
     Map<String, Object?> actual,
     OwnerRoutineDefinition routine,
+    String timeZone,
   ) {
     final settings = actual['execution_settings'] is Map
         ? Map<String, Object?>.from(actual['execution_settings'] as Map)
@@ -310,7 +343,10 @@ class OwnerRoutineInstaller {
         actual['execution_mode'] != routine.executionMode ||
         (actual['default_duration_ms'] as num?)?.toInt() !=
             routine.duration.inMilliseconds ||
-        !_containsCanonicalSettings(settings, routine.executionSettings);
+        !_containsCanonicalSettings(
+          settings,
+          routine.executionSettingsFor(timeZone),
+        );
   }
 
   bool _sameIntegerList(Object? actual, List<int> expected) {
@@ -343,7 +379,7 @@ class OwnerRoutineInstaller {
     return true;
   }
 
-  Future<int> _repairWorkOccurrences() async {
+  Future<int> _repairWorkOccurrences(String timeZone) async {
     final routine = OwnerRoutineCatalog.routines.singleWhere(
       (item) => item.key == 'work_non_friday',
     );
@@ -391,7 +427,7 @@ class OwnerRoutineInstaller {
       );
       final settings = <String, Object?>{
         ..._taskConfiguration(task),
-        ...routine.executionSettings,
+        ...routine.executionSettingsFor(timeZone),
       };
       final plannedEnd = plannedStart.add(
         TaskSchedulePolicy.occupiedDurationFor(
@@ -458,6 +494,7 @@ class OwnerRoutineInstaller {
     required String? phaseId,
     required String domainId,
     required String ruleId,
+    required String timeZone,
   }) => {
     ..._templatePayload(
       routine: routine,
@@ -465,13 +502,14 @@ class OwnerRoutineInstaller {
       phaseId: phaseId,
       domainId: domainId,
       ruleId: ruleId,
+      timeZone: timeZone,
     ),
     'data': {
       'owner_routine_key': routine.key,
       'source_fingerprint': OwnerRoutineCatalog.sourceFingerprint,
       if (routine.resourceUrl != null) 'resource_url': routine.resourceUrl,
       if (routine.resourceName != null) 'resource_name': routine.resourceName,
-      'time_zone': 'Africa/Cairo',
+      'time_zone': timeZone,
     },
   };
 
@@ -481,6 +519,7 @@ class OwnerRoutineInstaller {
     required String? phaseId,
     required String domainId,
     required String ruleId,
+    required String timeZone,
   }) => {
     'title': routine.title,
     'description': 'Recurring routine from the supplied roadmap plan.',
@@ -501,22 +540,23 @@ class OwnerRoutineInstaller {
         'enabled': true,
       },
     ],
-    'execution_settings': routine.executionSettings,
+    'execution_settings': routine.executionSettingsFor(timeZone),
     'progress_settings': {'completion_method': 'duration'},
     'data': {
       'owner_routine_key': routine.key,
       'source_fingerprint': OwnerRoutineCatalog.sourceFingerprint,
       if (routine.resourceUrl != null) 'resource_url': routine.resourceUrl,
       if (routine.resourceName != null) 'resource_name': routine.resourceName,
-      'time_zone': 'Africa/Cairo',
+      'time_zone': timeZone,
     },
   };
 
   Map<String, Object?> _ruleLocalData(
     OwnerRoutineDefinition routine,
     String templateId,
+    String timeZone,
   ) => {
-    ..._rulePayload(routine, templateId),
+    ..._rulePayload(routine, templateId, timeZone),
     'rule_data': {
       'template_id': templateId,
       'frequency': routine.frequency,
@@ -524,7 +564,7 @@ class OwnerRoutineInstaller {
       'weekdays': routine.weekdays,
       'starts_on': OwnerRoutineCatalog.routineStart,
       'local_time': routine.localTime,
-      'time_zone': 'Africa/Cairo',
+      'time_zone': timeZone,
       'owner_routine_key': routine.key,
     },
     'data': {
@@ -536,6 +576,7 @@ class OwnerRoutineInstaller {
   Map<String, Object?> _rulePayload(
     OwnerRoutineDefinition routine,
     String templateId,
+    String timeZone,
   ) => {
     'frequency': routine.frequency,
     'interval_value': 1,
@@ -551,7 +592,7 @@ class OwnerRoutineInstaller {
       'weekdays': routine.weekdays,
       'starts_on': OwnerRoutineCatalog.routineStart,
       'local_time': routine.localTime,
-      'time_zone': 'Africa/Cairo',
+      'time_zone': timeZone,
       'owner_routine_key': routine.key,
     },
     'data': {

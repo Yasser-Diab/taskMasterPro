@@ -84,6 +84,19 @@ class SettingsRepository {
         // service instead of replacing remote account state.
       }
     }
+    final remoteSettingsData = remoteSettings?['data'] is Map
+        ? Map<String, dynamic>.from(remoteSettings!['data'] as Map)
+        : const <String, dynamic>{};
+    final useDeviceTimeZone =
+        remoteSettingsData['use_device_time_zone'] as bool? ?? true;
+    final detectedTimeZone = useDeviceTimeZone
+        ? await TimeZoneService.detectDeviceIanaZone()
+        : null;
+    final initialTimeZone = TimeZoneService.resolveStoredIanaZone(
+      deviceZone: detectedTimeZone,
+      storedZone: remoteSettings?['time_zone'] as String?,
+      useDeviceTimeZone: useDeviceTimeZone,
+    );
     await database.transaction(() async {
       final localProfile = await (database.select(
         database.localProfiles,
@@ -145,9 +158,7 @@ class SettingsRepository {
               .getSingleOrNull();
       if (localSettings == null) {
         final remote = remoteSettings;
-        final data = remote?['data'] is Map
-            ? Map<String, dynamic>.from(remote!['data'] as Map)
-            : const <String, dynamic>{};
+        final data = remoteSettingsData;
         final privacyPolicy = ActivityPrivacyPolicy.fromRemoteRow(
           remotePrivacy == null
               ? null
@@ -166,10 +177,8 @@ class SettingsRepository {
                 accentColor: Value(
                   (remote?['accent_color'] as num?)?.toInt() ?? 0xFF0B78D1,
                 ),
-                timeZone: Value(remote?['time_zone'] as String? ?? 'UTC'),
-                useDeviceTimeZone: Value(
-                  data['use_device_time_zone'] as bool? ?? true,
-                ),
+                timeZone: Value(initialTimeZone),
+                useDeviceTimeZone: Value(useDeviceTimeZone),
                 clockFormat: Value(remote?['clock_format'] as String? ?? '24h'),
                 notificationSoundKey: Value(
                   remote?['notification_sound'] as String? ?? 'system',

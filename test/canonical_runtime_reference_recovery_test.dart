@@ -17,6 +17,30 @@ final _now = DateTime.utc(2026, 8, 20, 11);
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  test('runtime fallback stays fast when Realtime has delivered nothing', () {
+    expect(
+      runtimeFallbackPollDelay(
+        activeRuntime: false,
+        hasRecentRealtimeChange: false,
+      ),
+      const Duration(seconds: 8),
+    );
+    expect(
+      runtimeFallbackPollDelay(
+        activeRuntime: true,
+        hasRecentRealtimeChange: true,
+      ),
+      const Duration(seconds: 4),
+    );
+    expect(
+      runtimeFallbackPollDelay(
+        activeRuntime: false,
+        hasRecentRealtimeChange: true,
+      ),
+      const Duration(seconds: 30),
+    );
+  });
+
   test(
     'early canonical runtime restores at the same revision after references arrive',
     () async {
@@ -33,6 +57,8 @@ void main() {
       expect(restored!.state, 'running');
       expect(restored.activeTaskId, _taskId);
       expect(restored.sessionId, _sessionId);
+      expect(restored.segmentStartedAt?.toUtc(), _now);
+      expect(restored.accumulatedActiveMs, 600000);
       expect(restored.revision, 45);
       expect(restored.lastCommandId, _commandId);
       expect(

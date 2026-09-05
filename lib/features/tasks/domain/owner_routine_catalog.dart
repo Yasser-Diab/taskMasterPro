@@ -48,9 +48,12 @@ class OwnerRoutineDefinition {
   /// A Pomodoro task's [duration] is its scheduled/planned work window.  The
   /// countdown itself is driven by [pomodoro_focus_ms], so an 09:00-17:30
   /// routine opens with a 25:00 focus interval instead of an 08:30:00 timer.
-  Map<String, Object?> get executionSettings => {
+  /// Builds schedule settings in the account's selected IANA zone. The
+  /// catalogue describes local routines, not an Egypt-only calendar; the
+  /// caller supplies the owner/device zone when rows are materialized.
+  Map<String, Object?> executionSettingsFor(String timeZone) => {
     'completion_method': 'duration',
-    'time_zone': 'Africa/Cairo',
+    'time_zone': timeZone,
     if (pomodoroFocusDuration != null) ...{
       'planned_window_ms': duration.inMilliseconds,
       'pomodoro_focus_ms': pomodoroFocusDuration!.inMilliseconds,

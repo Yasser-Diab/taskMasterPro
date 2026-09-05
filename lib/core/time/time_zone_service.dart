@@ -40,14 +40,31 @@ class TimeZoneService {
 
   static Future<String> detectDeviceIanaZone() async {
     _ensureInitialized();
+    String? detected;
     try {
-      final value = (await FlutterTimezone.getLocalTimezone()).identifier;
-      if (isValidIana(value)) return value;
+      detected = (await FlutterTimezone.getLocalTimezone()).identifier;
     } catch (_) {
       // A manual IANA selection remains available when a platform cannot
       // report its configured zone. Location permission is intentionally not
       // requested for this normal OS-based detection path.
     }
+    return resolveStoredIanaZone(deviceZone: detected, useDeviceTimeZone: true);
+  }
+
+  /// Chooses an IANA zone without ever making a product-specific location the
+  /// global default.  Automatic mode prefers the operating system's zone;
+  /// a saved manual IANA choice is used only when automatic mode is off or
+  /// platform detection is unavailable.
+  static String resolveStoredIanaZone({
+    String? deviceZone,
+    String? storedZone,
+    required bool useDeviceTimeZone,
+  }) {
+    _ensureInitialized();
+    if (useDeviceTimeZone && deviceZone != null && isValidIana(deviceZone)) {
+      return deviceZone;
+    }
+    if (storedZone != null && isValidIana(storedZone)) return storedZone;
     return 'UTC';
   }
 
