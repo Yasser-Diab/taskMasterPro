@@ -2,12 +2,13 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
-String _read(String relativePath) =>
-    File('${Directory.current.path}/$relativePath').readAsStringSync();
+String _read(String relativePath) => File(
+  '${Directory.current.path}/$relativePath',
+).readAsStringSync().replaceAll('\r\n', '\n');
 
 void main() {
   test('release-facing version metadata is aligned to v0.0.29', () {
-    expect(_read('pubspec.yaml'), contains('version: 0.0.29+57'));
+    expect(_read('pubspec.yaml'), contains('version: 0.0.29+58'));
     expect(_read('package.json'), contains('"version": "0.0.29"'));
     expect(_read('package-lock.json'), contains('"version": "0.0.29"'));
     expect(

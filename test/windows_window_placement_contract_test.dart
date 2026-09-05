@@ -4,7 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 String _runnerSource() => File(
   '${Directory.current.path}/windows/runner/flutter_window.cpp',
-).readAsStringSync();
+).readAsStringSync().replaceAll('\r\n', '\n');
 
 void main() {
   test('tray reveal uses remembered maximized state before restoring', () {

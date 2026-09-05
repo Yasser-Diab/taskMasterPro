@@ -177,6 +177,51 @@ void main() {
     expect(payload['scheduled_date'], '2026-09-03');
     expect(payload['status'], 'ready');
   });
+
+  test(
+    'postponement reschedules an overdue task with past work when it is no longer active',
+    () async {
+      final taskId = await tasks.createTask(
+        TaskDraft(
+          title: 'Resume the proposal',
+          scheduledDate: DateTime(2026, 8, 20),
+          plannedStart: DateTime(2026, 8, 20, 9),
+          plannedEnd: DateTime(2026, 8, 20, 10),
+          dueAt: DateTime(2026, 8, 20, 10, 30),
+          estimatedDuration: const Duration(hours: 1),
+        ),
+      );
+      await (database.update(
+        database.localTasks,
+      )..where((row) => row.id.equals(taskId))).write(
+        LocalTasksCompanion(
+          status: const Value('overdue'),
+          actualStart: Value(DateTime(2026, 8, 20, 9)),
+          activeDurationMs: const Value(20 * 60 * 1000),
+        ),
+      );
+      final overdue = (await tasks.getTask(taskId))!;
+
+      expect(await tasks.postpone(overdue, DateTime(2026, 9, 2)), isTrue);
+
+      final postponed = (await tasks.getTask(taskId))!;
+      expect(postponed.status, 'ready');
+      expect(postponed.actualStart, DateTime(2026, 8, 20, 9));
+      expect(postponed.activeDurationMs, 20 * 60 * 1000);
+      expect(postponed.scheduledDate, DateTime(2026, 9, 2));
+      expect(postponed.plannedStart, DateTime(2026, 9, 2, 9));
+      expect(postponed.plannedEnd, DateTime(2026, 9, 2, 10));
+      expect(postponed.dueAt, DateTime(2026, 9, 2, 10, 30));
+      expect(
+        TaskOccurrencePolicy.isOverdue(
+          postponed,
+          now: now,
+          timeZone: 'Africa/Cairo',
+        ),
+        isFalse,
+      );
+    },
+  );
 }
 
 Future<String> _createSource(TaskRepository tasks) {

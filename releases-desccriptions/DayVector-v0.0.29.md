@@ -43,7 +43,7 @@ Your existing account, tasks, schedules, progress, settings, and local data stay
 - Deleting a recurring task can remove the complete series and stop future occurrences; intentionally deleted built-in routines stay deleted.
 - Changing a series to **Does not repeat** keeps the task you are editing, removes its future repetitions, and preserves completed history.
 - Every overdue occurrence has a visible **Postpone** action with choices for tomorrow, one week, one month, or another date from the calendar.
-- Postponement moves the scheduled date, planned time, and due time together, so the task does not immediately become overdue again.
+- **Tomorrow**, one week, and one month are always calculated from today, not from the task's old date. Postponement moves the scheduled date, planned time, and due time together, then immediately removes the task from Overdue.
 - Task reminders use maximum Android importance and a longer, persistent Windows reminder presentation, while keeping Start, Complete, and Snooze actions close at hand.
 
 ## A more useful Android widget

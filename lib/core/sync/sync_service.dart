@@ -728,6 +728,20 @@ bool shouldRetryMissingApprovedActivityClassification({
     currentVersion < 1 &&
     hasCompleteApprovedLocalAggregate;
 
+/// A rejected classifier whose review no longer exists can be rebuilt only
+/// from a complete approved local aggregate. Without that source there is no
+/// user change left to deliver and leaving the command in `conflict` turns an
+/// orphaned historic review into a permanent synchronization error.
+@visibleForTesting
+bool shouldSupersedeOrphanedActivityClassification({
+  required String? reason,
+  required int currentVersion,
+  required bool hasCompleteApprovedLocalAggregate,
+}) =>
+    reason == 'missing_entity' &&
+    currentVersion < 1 &&
+    !hasCompleteApprovedLocalAggregate;
+
 /// A short-lived server deployment ran the owner-checked task/application
 /// endpoints with caller privileges. Commands rejected at that boundary are
 /// safe to retry once after the endpoint privilege repair is installed.
@@ -6520,6 +6534,20 @@ class SyncService {
         _ => null,
       };
       if (nextPayload == null) {
+        if (shouldSupersedeOrphanedActivityClassification(
+          reason: reason,
+          currentVersion: missingEntityRepairVersion,
+          hasCompleteApprovedLocalAggregate: missingEvidence != null,
+        )) {
+          await _supersedeCommands(group);
+          for (final stale in group) {
+            await _markRemoteConflictResolved(
+              stale,
+              strategy: 'missing_local_activity_source',
+            );
+          }
+          continue;
+        }
         if (group.length > 1) {
           await _supersedeCommands(group.take(group.length - 1));
         }

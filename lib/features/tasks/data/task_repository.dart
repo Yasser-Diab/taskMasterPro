@@ -1070,9 +1070,15 @@ class TaskRepository {
   /// again. Postponement must shift every authoritative time together.
   Future<bool> postpone(LocalTask task, DateTime date) async {
     final latest = await getTask(task.id);
-    if (latest == null ||
-        latest.status == 'completed' ||
-        latest.actualStart != null) {
+    if (latest == null || latest.status == 'completed') {
+      return false;
+    }
+    // A task can have recorded work from an earlier, now-ended session and
+    // still become overdue. That history must not turn Postpone into a silent
+    // no-op. Only the one task that currently owns a live runtime is unsafe to
+    // reschedule.
+    final runtime = await getRuntime();
+    if (runtime?.activeTaskId == latest.id) {
       return false;
     }
     final target = DateTime(date.year, date.month, date.day);
@@ -1107,7 +1113,14 @@ class TaskRepository {
     final deviceId = await DeviceIdentity.accountId(_userId);
     final sequence = await DeviceIdentity.nextSequence(_userId);
     final commandId = _uuid.v4();
-    final nextStatus = latest.status == 'overdue' ? 'ready' : latest.status;
+    final deadline = latest.dueAt ?? latest.plannedEnd;
+    final wasOverdue =
+        latest.status == 'overdue' ||
+        (deadline != null && deadline.toUtc().isBefore(now.toUtc()));
+    // The task card can derive an overdue view from a passed deadline even
+    // when an older local status says "in_progress". Returning it to ready in
+    // the same write is what removes the card from Overdue immediately.
+    final nextStatus = wasOverdue ? 'ready' : latest.status;
     final plannedStart = shift(latest.plannedStart);
     final plannedEnd = shift(latest.plannedEnd);
     final dueAt = shift(latest.dueAt);
@@ -1126,7 +1139,6 @@ class TaskRepository {
                     row.id.equals(latest.id) &
                     row.userId.equals(_userId) &
                     row.revision.equals(latest.revision) &
-                    row.actualStart.isNull() &
                     row.status.equals('completed').not(),
               ))
               .write(

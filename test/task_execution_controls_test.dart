@@ -29,7 +29,7 @@ void main() {
     () {
       final source = File(
         'lib/features/tasks/presentation/task_card.dart',
-      ).readAsStringSync();
+      ).readAsStringSync().replaceAll('\r\n', '\n');
       final startControl = source.substring(
         source.indexOf('class _CanonicalTaskControlState'),
         source.indexOf(

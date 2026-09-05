@@ -397,7 +397,7 @@ void main() {
           hasCompleteApprovedLocalAggregate: false,
         ),
         isFalse,
-        reason: 'an incomplete local Activity record must remain visible',
+        reason: 'there is no complete aggregate available to rebuild',
       );
       expect(
         shouldRetryMissingApprovedActivityClassification(
@@ -432,6 +432,45 @@ void main() {
       );
     },
   );
+
+  test('orphaned Activity classifications stop surfacing as sync errors', () {
+    expect(
+      shouldSupersedeOrphanedActivityClassification(
+        reason: 'missing_entity',
+        currentVersion: 0,
+        hasCompleteApprovedLocalAggregate: false,
+      ),
+      isTrue,
+      reason:
+          'a deleted review without a recoverable local aggregate cannot sync',
+    );
+    expect(
+      shouldSupersedeOrphanedActivityClassification(
+        reason: 'missing_entity',
+        currentVersion: 0,
+        hasCompleteApprovedLocalAggregate: true,
+      ),
+      isFalse,
+      reason: 'a complete approved aggregate must use the bounded rebuild',
+    );
+    expect(
+      shouldSupersedeOrphanedActivityClassification(
+        reason: 'missing_entity',
+        currentVersion: 1,
+        hasCompleteApprovedLocalAggregate: false,
+      ),
+      isFalse,
+      reason: 'a rejected repair remains explicit history',
+    );
+    expect(
+      shouldSupersedeOrphanedActivityClassification(
+        reason: 'revision_mismatch',
+        currentVersion: 0,
+        hasCompleteApprovedLocalAggregate: false,
+      ),
+      isFalse,
+    );
+  });
 
   test('malformed legacy Activity creates migrate once, not forever', () {
     expect(
@@ -2658,13 +2697,16 @@ void main() {
 
   test('stale-pause RPC and canonical aggregate application stay complete', () {
     final source = File('lib/core/sync/sync_service.dart').readAsStringSync();
-    final rpcMatch = RegExp(
-      r": command\.entityType == 'execution_runtime_stale_pause'"
-      r'(?<body>[\s\S]*?)'
-      r": command\.entityType == 'vacation_periods'",
-    ).firstMatch(source);
-    expect(rpcMatch, isNotNull);
-    final rpc = rpcMatch!.namedGroup('body')!;
+    final rpcStart = source.indexOf(
+      ": command.entityType == 'execution_runtime_stale_pause'",
+    );
+    final rpcEnd = source.indexOf(
+      ": command.entityType == 'vacation_periods'",
+      rpcStart,
+    );
+    expect(rpcStart, greaterThanOrEqualTo(0));
+    expect(rpcEnd, greaterThan(rpcStart));
+    final rpc = source.substring(rpcStart, rpcEnd);
     expect(rpc, contains("'resolve_stale_paused_task_v0034_command'"));
     for (final parameter in const [
       "'p_command_id': command.commandId",
@@ -2681,13 +2723,15 @@ void main() {
       expect(rpc, contains(parameter), reason: 'Missing RPC input: $parameter');
     }
 
-    final applyMatch = RegExp(
-      r"if \(command\.entityType == 'execution_runtime_stale_pause'\) \{"
-      r'(?<body>[\s\S]*?)'
-      r'\n    \}\n    if \(const \{',
-    ).firstMatch(source);
-    expect(applyMatch, isNotNull);
-    final apply = applyMatch!.namedGroup('body')!;
+    final applyStart = source.indexOf(
+      "if (command.entityType == 'execution_runtime_stale_pause') {",
+    );
+    // Source files may be checked out with CRLF, so do not make this
+    // behavioural contract depend on a particular newline convention.
+    final applyEnd = source.indexOf('if (const {', applyStart);
+    expect(applyStart, greaterThanOrEqualTo(0));
+    expect(applyEnd, greaterThan(applyStart));
+    final apply = source.substring(applyStart, applyEnd);
     final taskIndex = apply.indexOf('if (canonicalTask != null');
     final sessionIndex = apply.indexOf('if (canonicalSession != null');
     final runtimeIndex = apply.indexOf('if (canonicalRuntime is Map)');
@@ -2711,13 +2755,16 @@ void main() {
 
   test('break extension delivery uses the dedicated v0036 aggregate RPC', () {
     final source = File('lib/core/sync/sync_service.dart').readAsStringSync();
-    final rpcMatch = RegExp(
-      r": command\.entityType == 'execution_break_extension'"
-      r'(?<body>[\s\S]*?)'
-      r": command\.entityType == 'vacation_periods'",
-    ).firstMatch(source);
-    expect(rpcMatch, isNotNull);
-    final rpc = rpcMatch!.namedGroup('body')!;
+    final rpcStart = source.indexOf(
+      ": command.entityType == 'execution_break_extension'",
+    );
+    final rpcEnd = source.indexOf(
+      ": command.entityType == 'vacation_periods'",
+      rpcStart,
+    );
+    expect(rpcStart, greaterThanOrEqualTo(0));
+    expect(rpcEnd, greaterThan(rpcStart));
+    final rpc = source.substring(rpcStart, rpcEnd);
     expect(rpc, contains("'extend_active_break_v0036_command'"));
     for (final parameter in const [
       "'p_command_id': command.commandId",
@@ -2734,13 +2781,16 @@ void main() {
       expect(rpc, contains(parameter), reason: 'Missing RPC input: $parameter');
     }
 
-    final applyMatch = RegExp(
-      r"if \(command\.entityType == 'execution_break_extension'\) \{"
-      r'(?<body>[\s\S]*?)'
-      r"\n    \}\n    if \(command\.entityType == 'execution_runtime_stale_pause'\)",
-    ).firstMatch(source);
-    expect(applyMatch, isNotNull);
-    final apply = applyMatch!.namedGroup('body')!;
+    final applyStart = source.indexOf(
+      "if (command.entityType == 'execution_break_extension') {",
+    );
+    final applyEnd = source.indexOf(
+      "if (command.entityType == 'execution_runtime_stale_pause')",
+      applyStart,
+    );
+    expect(applyStart, greaterThanOrEqualTo(0));
+    expect(applyEnd, greaterThan(applyStart));
+    final apply = source.substring(applyStart, applyEnd);
     expect(apply, contains("result['canonical_task']"));
     expect(apply, contains('excludingCommandId: command.commandId'));
     expect(apply, contains('shouldApplyAcknowledgedCanonicalAggregate('));
@@ -3328,13 +3378,16 @@ void main() {
     final syncSource = File(
       'lib/core/sync/sync_service.dart',
     ).readAsStringSync();
-    final delivery = RegExp(
-      r'Future<void> deliverPendingOutboxForHeadlessAction\(\) async \{'
-      r'(?<body>[\s\S]*?)\n  \}\n\n  Future<void> drainOutbox',
-    ).firstMatch(syncSource);
-
-    expect(delivery, isNotNull);
-    final body = delivery!.namedGroup('body')!;
+    final deliveryStart = syncSource.indexOf(
+      'Future<void> deliverPendingOutboxForHeadlessAction() async {',
+    );
+    final deliveryEnd = syncSource.indexOf(
+      'Future<void> drainOutbox',
+      deliveryStart,
+    );
+    expect(deliveryStart, greaterThanOrEqualTo(0));
+    expect(deliveryEnd, greaterThan(deliveryStart));
+    final body = syncSource.substring(deliveryStart, deliveryEnd);
     expect(body, contains('_startedForUserId = user.id'));
     expect(body, contains('await drainOutbox()'));
     expect(body, isNot(contains('pullChanges')));
