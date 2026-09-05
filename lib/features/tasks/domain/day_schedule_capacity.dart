@@ -32,6 +32,22 @@ class DayScheduleCapacity {
     ),
   );
 
+  /// Computes capacity from task cards that are already known to be on the
+  /// selected day. This preserves the same source of truth as the dashboard
+  /// list, including legacy recurring occurrences whose template anchor no
+  /// longer names today's date.
+  static DayScheduleCapacity forScheduledTasks({
+    required Iterable<LocalTask> tasks,
+    required int wakeTimeMinutes,
+    required int sleepTimeMinutes,
+  }) => DayScheduleCapacity(
+    planned: DailyPlannedTime.totalOccupiedDuration(tasks),
+    available: availableDuration(
+      wakeTimeMinutes: wakeTimeMinutes,
+      sleepTimeMinutes: sleepTimeMinutes,
+    ),
+  );
+
   /// A sleep time on the following calendar day (for example 23:00 → 07:00)
   /// is handled naturally. Equal values are treated as an explicitly open
   /// 24-hour rhythm rather than an accidental zero-minute hard stop.

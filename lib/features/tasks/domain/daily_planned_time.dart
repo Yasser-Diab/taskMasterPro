@@ -27,15 +27,27 @@ abstract final class DailyPlannedTime {
     required DateTime localDay,
     required String timeZone,
   }) {
+    return totalOccupiedDuration(
+      tasks.where(
+        (task) => isOccurrenceScheduledForDay(
+          task,
+          localDay: localDay,
+          timeZone: timeZone,
+        ),
+      ),
+    );
+  }
+
+  /// Sums the commitment represented by task cards that have already been
+  /// selected for a schedule.
+  ///
+  /// Callers such as the dashboard have already resolved the authoritative
+  /// occurrence list. Re-checking a card's legacy template timestamp at that
+  /// point can incorrectly turn a populated schedule into `0 sec`. This
+  /// method deliberately makes no date decision: every supplied card counts.
+  static Duration totalOccupiedDuration(Iterable<LocalTask> tasks) {
     var totalMs = 0;
     for (final task in tasks) {
-      if (!isOccurrenceScheduledForDay(
-        task,
-        localDay: localDay,
-        timeZone: timeZone,
-      )) {
-        continue;
-      }
       totalMs += occupiedDuration(task).inMilliseconds;
     }
     return Duration(milliseconds: totalMs.clamp(0, 1 << 62).toInt());

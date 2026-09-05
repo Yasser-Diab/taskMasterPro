@@ -143,15 +143,9 @@ class DashboardScreen extends ConsumerWidget {
     // calculated from the exact occurrence cards rendered below, so a visible
     // task can never disappear from the planned number because a legacy
     // template timestamp happened to overlap another card.
-    final planned = DailyPlannedTime.calculateTaskEffort(
-      scheduledTasks,
-      localDay: localToday,
-      timeZone: timeZone,
-    );
-    final dayCapacity = DayScheduleCapacity.forTasks(
+    final planned = DailyPlannedTime.totalOccupiedDuration(scheduledTasks);
+    final dayCapacity = DayScheduleCapacity.forScheduledTasks(
       tasks: scheduledTasks,
-      localDay: localToday,
-      timeZone: timeZone,
       wakeTimeMinutes: settings?.wakeTimeMinutes ?? 7 * 60,
       sleepTimeMinutes: settings?.sleepTimeMinutes ?? 23 * 60,
     );

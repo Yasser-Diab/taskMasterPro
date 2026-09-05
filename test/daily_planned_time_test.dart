@@ -101,7 +101,7 @@ void main() {
   });
 
   test('dashboard effort counts every task card on the scheduled day', () {
-    final result = DailyPlannedTime.calculateTaskEffort(
+    final result = DailyPlannedTime.totalOccupiedDuration(
       [
         task(
           id: 'visible-one',
@@ -118,11 +118,37 @@ void main() {
           end: DateTime.utc(2026, 7, 2, 11, 30),
         ),
       ],
-      localDay: DateTime(2026, 7, 1),
-      timeZone: 'UTC',
     );
 
     expect(result, const Duration(hours: 6, minutes: 30));
+  });
+
+  test('a selected dashboard card counts despite a stale occurrence date', () {
+    final result = DailyPlannedTime.totalOccupiedDuration([
+      task(
+        id: 'selected-card-with-stale-date',
+        estimate: const Duration(hours: 4),
+        start: DateTime.utc(2026, 7, 2, 9),
+        end: DateTime.utc(2026, 7, 2, 13),
+      ),
+    ]);
+
+    expect(result, const Duration(hours: 4));
+  });
+
+  test('schedule capacity counts the same selected dashboard cards', () {
+    final capacity = DayScheduleCapacity.forScheduledTasks(
+      tasks: [
+        task(id: 'first', estimate: const Duration(hours: 9)),
+        task(id: 'second', estimate: const Duration(hours: 8)),
+      ],
+      wakeTimeMinutes: 7 * 60,
+      sleepTimeMinutes: 23 * 60,
+    );
+
+    expect(capacity.planned, const Duration(hours: 17));
+    expect(capacity.isExceeded, isTrue);
+    expect(capacity.overflow, const Duration(hours: 1));
   });
 
   test('daily capacity follows the wake-to-sleep rhythm', () {
