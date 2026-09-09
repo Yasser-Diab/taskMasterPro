@@ -17,29 +17,32 @@ final _now = DateTime.utc(2026, 8, 20, 11);
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  test('runtime fallback stays fast when Realtime has delivered nothing', () {
-    expect(
-      runtimeFallbackPollDelay(
-        activeRuntime: false,
-        hasRecentRealtimeChange: false,
-      ),
-      const Duration(seconds: 8),
-    );
-    expect(
-      runtimeFallbackPollDelay(
-        activeRuntime: true,
-        hasRecentRealtimeChange: true,
-      ),
-      const Duration(seconds: 4),
-    );
-    expect(
-      runtimeFallbackPollDelay(
-        activeRuntime: false,
-        hasRecentRealtimeChange: true,
-      ),
-      const Duration(seconds: 30),
-    );
-  });
+  test(
+    'runtime fallback is adaptive without polling healthy idle accounts',
+    () {
+      expect(
+        runtimeFallbackPollDelay(
+          activeRuntime: false,
+          hasRecentRealtimeChange: false,
+        ),
+        const Duration(minutes: 2),
+      );
+      expect(
+        runtimeFallbackPollDelay(
+          activeRuntime: true,
+          hasRecentRealtimeChange: true,
+        ),
+        const Duration(seconds: 15),
+      );
+      expect(
+        runtimeFallbackPollDelay(
+          activeRuntime: false,
+          hasRecentRealtimeChange: true,
+        ),
+        const Duration(minutes: 1),
+      );
+    },
+  );
 
   test(
     'early canonical runtime restores at the same revision after references arrive',

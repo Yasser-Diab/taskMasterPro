@@ -469,17 +469,18 @@ Future<void> runRealtimeConvergencePass({
 /// rather than replaying the account's full change log, so a Start on another
 /// device can never remain invisible until someone pauses it.
 ///
-/// The quiet interval is intentionally still short.  It applies only while
-/// this account is open in the app and is cancelled on sign-out; task,
-/// roadmap, Activity and history data continue to be event driven.
+/// Realtime remains the immediate path.  The fallback is deliberately
+/// adaptive: a quiet, healthy account must not turn an hours-long idle period
+/// into a request every few seconds, while an active timer still receives a
+/// compact canonical check often enough to repair a missed transition.
 @visibleForTesting
 Duration runtimeFallbackPollDelay({
   required bool activeRuntime,
   required bool hasRecentRealtimeChange,
 }) {
-  if (activeRuntime) return const Duration(seconds: 4);
-  if (!hasRecentRealtimeChange) return const Duration(seconds: 8);
-  return const Duration(seconds: 30);
+  if (activeRuntime) return const Duration(seconds: 15);
+  if (hasRecentRealtimeChange) return const Duration(minutes: 1);
+  return const Duration(minutes: 2);
 }
 
 /// Coalesces a transaction's burst of Realtime envelopes without allowing an
