@@ -817,6 +817,23 @@ bool isIdempotentDuplicateCreateConflict({
           reason == 'unique_constraint');
 }
 
+/// A tab close has one terminal desired state: the tab is deleted. The server
+/// proves an old, duplicate close is already satisfied with this exact
+/// acknowledgement; no other browser command is eligible for this shortcut.
+@visibleForTesting
+bool isIdempotentBrowserTabDeleteAcknowledgement({
+  required String entityType,
+  required String commandType,
+  required Map<String, dynamic> result,
+}) {
+  return entityType == 'browser_tabs' &&
+      commandType == 'delete' &&
+      result['status'] == 'accepted' &&
+      result['deleted'] == true &&
+      result['idempotent'] == true &&
+      result['reason'] == 'already_deleted';
+}
+
 /// A create can be retired only when the server has proved that the exact
 /// durable UUID already belongs to this account and is still an active row.
 ///
@@ -3860,6 +3877,11 @@ class SyncService {
       return;
     }
 
+    await _runBestEffort(
+      () => _reconcileIdempotentBrowserTabDeleteConflicts(user.id),
+    );
+    _ensureCurrentOperation(generation, userId);
+
     final now = DateTime.now();
     final query = database.select(database.localOutboxCommands)
       ..where(
@@ -4543,6 +4565,67 @@ class SyncService {
       await (database.update(database.localOutboxCommands)
             ..where((row) => row.commandId.equals(command.commandId)))
           .write(LocalOutboxCommandsCompanion(nextAttemptAt: Value(now)));
+    }
+  }
+
+  /// Replays only legacy browser-tab close conflicts through the v0032
+  /// idempotency gate. A command is retired only when the server proves that
+  /// the same account's canonical tab is already deleted; an active tab or a
+  /// later restore remains an ordinary visible revision conflict.
+  Future<void> _reconcileIdempotentBrowserTabDeleteConflicts(
+    String userId,
+  ) async {
+    final commands =
+        await (database.select(database.localOutboxCommands)..where(
+              (command) =>
+                  command.userId.equals(userId) &
+                  command.status.equals('conflict') &
+                  command.entityType.equals('browser_tabs') &
+                  command.commandType.equals('delete') &
+                  (command.lastError.like('%server_rejected_command%') |
+                      command.lastError.like('%revision_mismatch%')),
+            ))
+            .get();
+    for (final command in commands) {
+      try {
+        final response = await client.rpc<Object?>(
+          'apply_entity_command',
+          params: {
+            'p_command_id': command.commandId,
+            'p_device_id': command.deviceId,
+            'p_device_sequence': command.deviceSequence,
+            'p_entity_type': 'browser_tabs',
+            'p_entity_id': command.entityId,
+            'p_base_revision': command.baseRevision,
+            'p_operation': 'delete',
+            'p_payload': _payloadMap(command.payloadJson),
+          },
+        );
+        final result = response is Map
+            ? Map<String, dynamic>.from(response)
+            : <String, dynamic>{};
+        if (!isIdempotentBrowserTabDeleteAcknowledgement(
+          entityType: command.entityType,
+          commandType: command.commandType,
+          result: result,
+        )) {
+          continue;
+        }
+        await (database.update(
+          database.localOutboxCommands,
+        )..where((row) => row.commandId.equals(command.commandId))).write(
+          const LocalOutboxCommandsCompanion(
+            status: Value('accepted'),
+            lastError: Value(null),
+            nextAttemptAt: Value(null),
+          ),
+        );
+      } on _StaleSyncOperation {
+        rethrow;
+      } catch (_) {
+        // Keep the conflict intact unless the current server explicitly proves
+        // the canonical deletion. A later drain can retry this narrow repair.
+      }
     }
   }
 

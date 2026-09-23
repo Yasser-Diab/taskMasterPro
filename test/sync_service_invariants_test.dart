@@ -1326,6 +1326,47 @@ void main() {
     );
   });
 
+  test(
+    'only a proven already-deleted browser tab can retire a stale close',
+    () {
+      const acknowledged = <String, dynamic>{
+        'status': 'accepted',
+        'deleted': true,
+        'idempotent': true,
+        'reason': 'already_deleted',
+      };
+      expect(
+        isIdempotentBrowserTabDeleteAcknowledgement(
+          entityType: 'browser_tabs',
+          commandType: 'delete',
+          result: acknowledged,
+        ),
+        isTrue,
+      );
+      expect(
+        isIdempotentBrowserTabDeleteAcknowledgement(
+          entityType: 'browser_tabs',
+          commandType: 'update',
+          result: acknowledged,
+        ),
+        isFalse,
+      );
+      expect(
+        isIdempotentBrowserTabDeleteAcknowledgement(
+          entityType: 'browser_tabs',
+          commandType: 'delete',
+          result: const {
+            'status': 'accepted',
+            'deleted': false,
+            'idempotent': true,
+            'reason': 'already_deleted',
+          },
+        ),
+        isFalse,
+      );
+    },
+  );
+
   test('only a live same-owner canonical create is auto-retired', () {
     const owner = '5b4fd021-1342-4d0b-a8e0-04ff1b8d1abc';
     const domainId = '4a509309-2aa4-4577-a20d-923bdd2e61ef';
